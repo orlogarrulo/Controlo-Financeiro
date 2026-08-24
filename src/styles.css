@@ -72,17 +72,93 @@
   }
 }
 
+/* ——— Impressão A4 limpa (menus, filtros e botões ocultos) ——— */
 @media print {
+  @page {
+    size: A4;
+    margin: 12mm 10mm;
+  }
+
   nav,
+  aside,
+  header,
   .no-print {
     display: none !important;
   }
+
+  html,
   body {
-    background: white;
-    color: black;
+    background: white !important;
+    color: black !important;
+    font-size: 10pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
+
+  /* Conteúdo a largura total, sem sidebar */
+  .min-h-dvh,
+  .flex.min-h-dvh,
+  .flex.min-w-0.flex-1.flex-col {
+    display: block !important;
+    min-height: 0 !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
   .print-sheet {
     box-shadow: none !important;
-    border: 1px solid #ccc;
+    border: 1px solid #ccc !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Tabelas: não cortar linhas no meio da página */
+  table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  th,
+  td {
+    padding: 4px 6px !important;
+    border-bottom: 1px solid #ddd;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  article {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .font-display {
+    font-size: 1.15em;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  [data-sonner-toaster],
+  [data-sonner-toast] {
+    display: none !important;
   }
 }

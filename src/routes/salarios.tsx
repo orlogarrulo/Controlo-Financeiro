@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/kpi";
+import { Button } from "@/components/ui/button";
 import { salariosAll } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
 
@@ -21,6 +22,11 @@ function Salarios() {
         kicker="Pessoal"
         title="Salários"
         description="Desconto = (salário ÷ dias úteis) × dias em falta. Adiantamentos a funcionários entram em «Outros descontos» no mês de regularização."
+        actions={
+          <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+            Imprimir
+          </Button>
+        }
       />
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
         <table className="w-full min-w-[800px] text-sm">

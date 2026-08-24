@@ -47,20 +47,27 @@ function Lancamentos() {
       <PageHeader
         kicker="Livro único"
         title="Lançamentos financeiros"
-        description="Master que substitui as folhas Lançamentos, Adiantamentos do Sócio e Lançamentos Contábeis. Filtre, pesquise e exporte para o Google Sheets."
+        description="Master que substitui as folhas Lançamentos, Adiantamentos do Sócio e Lançamentos Contábeis. Cada linha tem origem (Sócio, Cartão, Fundo, Banco, Inscrição, etc.) — nem todos os lançamentos são feitos pelo sócio. Filtre, pesquise e exporte para o Google Sheets."
         actions={
           <>
-            <Button variant="secondary" onClick={() => downloadCsv("Lancamentos_Financeiros.csv", ledgerToCsv(filtered))}>
+            <Button
+              variant="secondary"
+              className="no-print"
+              onClick={() => downloadCsv("Lancamentos_Financeiros.csv", ledgerToCsv(filtered))}
+            >
               <Download /> CSV Sheets
             </Button>
-            <Button asChild>
+            <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+              Imprimir
+            </Button>
+            <Button asChild className="no-print">
               <Link to="/capturar">Novo</Link>
             </Button>
           </>
         }
       />
 
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="no-print mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--color-faint)]" />
           <Input className="pl-9" placeholder="Pesquisar fatura, fornecedor, FAT-…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -93,7 +100,7 @@ function Lancamentos() {
       </p>
 
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
               <th className="px-3 py-2 font-medium">Doc</th>
@@ -102,7 +109,7 @@ function Lancamentos() {
               <th className="px-3 py-2 font-medium">Categoria</th>
               <th className="px-3 py-2 font-medium">Origem</th>
               <th className="px-3 py-2 font-medium text-right">Valor</th>
-              <th className="px-3 py-2 font-medium" />
+              <th className="no-print px-3 py-2 font-medium" />
             </tr>
           </thead>
           <tbody>
@@ -125,7 +132,7 @@ function Lancamentos() {
                 >
                   {r.tipo === "entrada" ? "+" : "−"} {formatKz(r.valor)}
                 </td>
-                <td className="px-3 py-2">
+                <td className="no-print px-3 py-2">
                   {r.origem === "formulario" ? (
                     <button type="button" className="text-[var(--color-clay)]" onClick={() => remove(r.id)} aria-label="Apagar">
                       <Trash2 className="size-4" />

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader, Kpi } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { fundoAtmAll, fundoPagAll, useFinance } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
 
@@ -19,6 +20,11 @@ function Fundo() {
         kicker="Caixa em numerário"
         title="Fundo de maneio"
         description="Cada levantamento ATM cria um bloco. Os pagamentos em dinheiro descontam-se desse valor. Os totais abaixo usam as linhas reais (o Excel somava 22.000 Kz no dia 09/08 com apenas 2.400 Kz lançados)."
+        actions={
+          <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+            Imprimir
+          </Button>
+        }
       />
       <div className="mb-5 grid grid-cols-3 gap-3">
         <Kpi label="Levantado" value={lev} compact />

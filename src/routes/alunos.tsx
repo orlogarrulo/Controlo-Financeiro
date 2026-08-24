@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
@@ -27,8 +28,13 @@ function Alunos() {
         kicker="Matrículas 2026/2027"
         title="Alunos"
         description="Cadastro unificado a partir do Controlo de Propinas, Cadastro e Recibos de Inscrição. Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
+        actions={
+          <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+            Imprimir
+          </Button>
+        }
       />
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+      <div className="no-print mb-4 flex flex-col gap-2 sm:flex-row">
         <Input placeholder="Nome, família, ID…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select
           className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
@@ -78,7 +84,7 @@ function Alunos() {
               <Item k="Telefone" v={a.telefone || "—"} />
             </dl>
             {a.obs ? <p className="mt-2 text-xs text-[var(--color-amber)]">{a.obs}</p> : null}
-            <Link to="/recibos" className="mt-2 inline-block text-xs text-[var(--color-forest)]">
+            <Link to="/recibos" className="no-print mt-2 inline-block text-xs text-[var(--color-forest)]">
               Ver recibo {a.recibo}
             </Link>
           </article>
