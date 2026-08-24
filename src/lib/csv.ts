@@ -7,6 +7,17 @@ function esc(v: string | number | undefined | null): string {
   return s;
 }
 
+const ORIGEM_PT: Record<string, string> = {
+  socio: "Sócio",
+  cartao: "Cartão",
+  fundo: "Fundo",
+  banco: "Banco",
+  inscricao: "Inscrição",
+  propina: "Propina",
+  formulario: "Formulário",
+};
+
+/** Colunas estáveis para Google Sheets / Excel (sem formatação a cores). */
 export const SHEET_COLUMNS = [
   "Nº Interno",
   "Data",
@@ -20,6 +31,8 @@ export const SHEET_COLUMNS = [
   "Origem",
   "Observações",
   "Tem foto",
+  "Registado por",
+  "Registado em",
 ] as const;
 
 export function ledgerToCsv(rows: Lancamento[]): string {
@@ -34,16 +47,20 @@ export function ledgerToCsv(rows: Lancamento[]): string {
         r.descricao,
         r.fornecedor,
         r.fatura,
+        // Valor com vírgula decimal (Excel PT) — sem cores, só dados
         String(r.valor).replace(".", ","),
         r.pagamento,
-        r.origem,
+        ORIGEM_PT[r.origem] ?? r.origem,
         r.observacoes,
         r.foto || r.ficheiro ? "Sim" : "Não",
+        r.criadoPor || "",
+        r.createdAt ? r.createdAt.slice(0, 19).replace("T", " ") : "",
       ]
         .map(esc)
         .join(";"),
     )
     .join("\n");
+  // BOM UTF-8 para Excel abrir acentos corretamente
   return `${header}\n${body}`;
 }
 

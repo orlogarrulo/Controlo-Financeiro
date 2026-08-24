@@ -53,9 +53,12 @@ export function PageHeader({
           <p className="text-[11px] font-medium tracking-[0.16em] text-[var(--color-forest)] uppercase">{kicker}</p>
         ) : null}
         <h1 className="font-display mt-1 text-3xl tracking-tight sm:text-4xl">{title}</h1>
-        {description ? <p className="mt-2 max-w-2xl text-sm text-[var(--color-muted)]">{description}</p> : null}
+        {/* Descrição só no ecrã — nunca na impressão (cabeçalho + dados apenas) */}
+        {description ? (
+          <p className="no-print mt-2 max-w-2xl text-sm text-[var(--color-muted)]">{description}</p>
+        ) : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {actions ? <div className="no-print flex flex-wrap gap-2">{actions}</div> : null}
     </div>
   );
 }

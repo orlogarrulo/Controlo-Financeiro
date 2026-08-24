@@ -34,6 +34,11 @@ export type Lancamento = {
   foto?: string;
   linkedId?: string;
   createdAt?: string;
+  /** Nome do colaborador que registou (escritório, até 5 pessoas). */
+  criadoPor?: string;
+  /** Nome do colaborador que alterou pela última vez. */
+  editadoPor?: string;
+  updatedAt?: string;
 };
 
 export type MovimentoBai = {
@@ -75,6 +80,8 @@ export type FundoPagamento = {
   obs: string;
   atm: string;
   foto?: string;
+  criadoPor?: string;
+  createdAt?: string;
 };
 
 export type Aluno = {
@@ -101,6 +108,8 @@ export type Aluno = {
   obs: string;
   propina: number;
   statusPag: "pago" | "registado" | "pendente";
+  criadoPor?: string;
+  createdAt?: string;
 };
 
 export type Mensalidade = {
@@ -151,6 +160,15 @@ export type Seed = {
   mensalidades: Mensalidade[];
   salarios: Salario[];
 };
+
+/** Colaboradores do escritório (até 5). Podem ser renomeados na app. */
+export const DEFAULT_OPERATORS = [
+  "Colaborador 1",
+  "Colaborador 2",
+  "Colaborador 3",
+  "Colaborador 4",
+  "Colaborador 5",
+] as const;
 
 export const MESES_LETIVOS = [
   "set",

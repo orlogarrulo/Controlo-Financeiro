@@ -12,7 +12,7 @@ import type {
   Salario,
   Seed,
 } from "@/data/types";
-import { MESES_LETIVOS } from "@/data/types";
+import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
 
 const seed = seedJson as Seed;
 
@@ -36,6 +36,12 @@ type ExtraState = {
   mensalidades: Mensalidade[];
   fundoExtra: FundoPagamento[];
   fotos: Record<string, string>;
+  /** Nome do colaborador ativo neste browser (escritório, até 5). */
+  activeOperator: string;
+  /** Lista editável dos 5 nomes do escritório. */
+  operators: string[];
+  /** Registo de auditoria local: quem fez o quê. */
+  auditLog: { at: string; by: string; action: string; detail: string }[];
 };
 
 type Store = ExtraState & {
@@ -45,6 +51,9 @@ type Store = ExtraState & {
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
   resetLocal: () => void;
+  setActiveOperator: (name: string) => void;
+  setOperatorName: (index: number, name: string) => void;
+  pushAudit: (action: string, detail: string) => void;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -57,10 +66,30 @@ export const useFinance = create<Store>()(
       mensalidades: initialMensalidades,
       fundoExtra: [],
       fotos: {},
+      activeOperator: DEFAULT_OPERATORS[0],
+      operators: [...DEFAULT_OPERATORS],
+      auditLog: [],
+      setActiveOperator: (name) => set({ activeOperator: name }),
+      setOperatorName: (index, name) => {
+        const ops = [...get().operators];
+        if (index < 0 || index >= ops.length) return;
+        const prev = ops[index];
+        ops[index] = name.trim() || prev;
+        const patch: Partial<ExtraState> = { operators: ops };
+        if (get().activeOperator === prev) patch.activeOperator = ops[index];
+        set(patch);
+      },
+      pushAudit: (action, detail) => {
+        const by = get().activeOperator || "—";
+        const entry = { at: new Date().toISOString(), by, action, detail };
+        set({ auditLog: [entry, ...get().auditLog].slice(0, 500) });
+      },
       addCaptura: (input) => {
         const extras = get().extras;
         const n = extras.length + 1;
         const id = `FRM-${String(n).padStart(3, "0")}`;
+        const by = get().activeOperator || "—";
+        const now = new Date().toISOString();
         const row: Lancamento = {
           id,
           data: input.data,
@@ -77,21 +106,33 @@ export const useFinance = create<Store>()(
           fonte: "Formulário / Foto",
           ficheiro: Boolean(input.foto),
           foto: input.foto,
-          createdAt: new Date().toISOString(),
+          createdAt: now,
+          criadoPor: by,
         };
         set({ extras: [...extras, row] });
         if (input.foto) set({ fotos: { ...get().fotos, [id]: input.foto } });
+        get().pushAudit("criar_lancamento", `${id} · ${row.descricao} · ${row.valor}`);
         return row;
       },
-      addAluno: (aluno) => set({ alunosExtra: [...get().alunosExtra, aluno] }),
-      setMensalidade: (id, mes, valor) =>
+      addAluno: (aluno) => {
+        const by = get().activeOperator || "—";
+        const row = { ...aluno, criadoPor: by, createdAt: new Date().toISOString() };
+        set({ alunosExtra: [...get().alunosExtra, row] });
+        get().pushAudit("criar_aluno", `${row.id} · ${row.nome}`);
+      },
+      setMensalidade: (id, mes, valor) => {
         set({
           mensalidades: get().mensalidades.map((m) =>
             m.id === id ? { ...m, pagamentos: { ...m.pagamentos, [mes]: valor } } : m,
           ),
-        }),
+        });
+        get().pushAudit("propina", `${id} · ${mes} · ${valor}`);
+      },
       setFoto: (id, dataUrl) => set({ fotos: { ...get().fotos, [id]: dataUrl } }),
-      removeExtra: (id) => set({ extras: get().extras.filter((e) => e.id !== id) }),
+      removeExtra: (id) => {
+        get().pushAudit("apagar_lancamento", id);
+        set({ extras: get().extras.filter((e) => e.id !== id) });
+      },
       resetLocal: () =>
         set({
           extras: [],
@@ -99,6 +140,7 @@ export const useFinance = create<Store>()(
           mensalidades: initialMensalidades,
           fundoExtra: [],
           fotos: {},
+          auditLog: [],
         }),
     }),
     {
@@ -111,6 +153,9 @@ export const useFinance = create<Store>()(
         mensalidades: s.mensalidades,
         fundoExtra: s.fundoExtra,
         fotos: s.fotos,
+        activeOperator: s.activeOperator,
+        operators: s.operators,
+        auditLog: s.auditLog,
       }),
     },
   ),

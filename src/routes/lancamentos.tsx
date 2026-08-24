@@ -35,7 +35,7 @@ function Lancamentos() {
     if (origem !== "todas" && r.origem !== origem) return false;
     if (tipo !== "todos" && r.tipo !== tipo) return false;
     if (!q) return true;
-    const hay = `${r.id} ${r.descricao} ${r.fornecedor} ${r.fatura} ${r.categoria}`.toLowerCase();
+    const hay = `${r.id} ${r.descricao} ${r.fornecedor} ${r.fatura} ${r.categoria} ${r.criadoPor ?? ""}`.toLowerCase();
     return hay.includes(q.toLowerCase());
   });
 
@@ -100,7 +100,7 @@ function Lancamentos() {
       </p>
 
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-        <table className="w-full min-w-[860px] text-sm">
+        <table className="w-full min-w-[960px] text-left text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
               <th className="px-3 py-2 font-medium">Doc</th>
@@ -108,6 +108,7 @@ function Lancamentos() {
               <th className="px-3 py-2 font-medium">Descrição</th>
               <th className="px-3 py-2 font-medium">Categoria</th>
               <th className="px-3 py-2 font-medium">Origem</th>
+              <th className="px-3 py-2 font-medium">Registado por</th>
               <th className="px-3 py-2 font-medium text-right">Valor</th>
               <th className="no-print px-3 py-2 font-medium" />
             </tr>
@@ -126,6 +127,9 @@ function Lancamentos() {
                 <td className="px-3 py-2 text-xs">{r.categoria}</td>
                 <td className="px-3 py-2">
                   <Badge variant={r.tipo === "entrada" ? "default" : "muted"}>{ORIGEM_LABEL[r.origem] ?? r.origem}</Badge>
+                </td>
+                <td className="px-3 py-2 text-xs text-[var(--color-muted)]">
+                  {r.criadoPor || (r.origem === "formulario" ? "—" : "Sistema")}
                 </td>
                 <td
                   className={`px-3 py-2 text-right tabular-nums ${r.tipo === "entrada" ? "text-[var(--color-forest)]" : ""}`}

@@ -25,6 +25,7 @@ export const Route = createFileRoute("/capturar")({ component: Capturar });
 function Capturar() {
   const seed = getSeed();
   const add = useFinance((s) => s.addCaptura);
+  const activeOperator = useFinance((s) => s.activeOperator);
   const nav = useNavigate();
   const [foto, setFoto] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -73,6 +74,10 @@ function Capturar() {
         title="Capturar fatura"
         description="Fotografe o talão ou a fatura e preencha os campos. O número interno (FRM-xxx) gera-se sozinho — escreva-o no papel. O mesmo modelo serve para o Google Forms."
       />
+      <p className="no-print mb-4 text-sm text-[var(--color-muted)]">
+        A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
+        <span className="text-[var(--color-faint)]"> · altere no menu lateral se for outra pessoa</span>
+      </p>
 
       <form onSubmit={submit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">

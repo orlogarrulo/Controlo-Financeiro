@@ -13,10 +13,11 @@ import {
   Banknote,
   Cloud,
   X,
+  UserRound,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { getSeed } from "@/lib/store";
+import { getSeed, useFinance } from "@/lib/store";
 
 const NAV = [
   { to: "/", label: "Quadro", icon: LayoutDashboard },
@@ -35,17 +36,65 @@ export function AppShell({ children }: { children: ReactNode }) {
   const escola = getSeed().escola;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
+  const [editOps, setEditOps] = useState(false);
+  const activeOperator = useFinance((s) => s.activeOperator);
+  const operators = useFinance((s) => s.operators);
+  const setActiveOperator = useFinance((s) => s.setActiveOperator);
+  const setOperatorName = useFinance((s) => s.setOperatorName);
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-ink)]">
       <div className="flex min-h-dvh">
         <aside className="no-print sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-bg-elevated)] lg:flex">
           <Brand />
-          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-6">
+          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-4">
             {NAV.map((item) => (
               <NavLink key={item.to} {...item} active={pathname === item.to} />
             ))}
           </nav>
+
+          {/* Seleção do colaborador ativo (escritório, 5 pessoas) */}
+          <div className="border-t border-[var(--color-line)] px-3 py-3">
+            <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium tracking-[0.12em] text-[var(--color-muted)] uppercase">
+              <UserRound className="size-3" /> A trabalhar como
+            </p>
+            <select
+              className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
+              value={activeOperator}
+              onChange={(e) => setActiveOperator(e.target.value)}
+              aria-label="Colaborador ativo"
+            >
+              {operators.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="mt-1.5 text-[10px] text-[var(--color-forest)] underline-offset-2 hover:underline"
+              onClick={() => setEditOps((v) => !v)}
+            >
+              {editOps ? "Fechar nomes" : "Renomear equipa"}
+            </button>
+            {editOps ? (
+              <div className="mt-2 space-y-1.5">
+                {operators.map((name, i) => (
+                  <input
+                    key={i}
+                    className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+                    value={name}
+                    onChange={(e) => setOperatorName(i, e.target.value)}
+                    aria-label={`Nome colaborador ${i + 1}`}
+                  />
+                ))}
+                <p className="text-[10px] leading-snug text-[var(--color-muted)]">
+                  Os registos novos ficam associados a quem está selecionado.
+                </p>
+              </div>
+            ) : null}
+          </div>
+
           <p className="px-4 pb-5 text-[11px] leading-relaxed text-[var(--color-muted)]">
             {escola.ano} · Isenta de impostos
           </p>
@@ -70,6 +119,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Camera className="size-5" />
             </Link>
           </header>
+
+          {/* Barra compacta: colaborador ativo (telemóvel) */}
+          <div className="no-print flex items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-bg-elevated)] px-4 py-2 lg:hidden">
+            <UserRound className="size-3.5 shrink-0 text-[var(--color-muted)]" />
+            <select
+              className="h-8 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
+              value={activeOperator}
+              onChange={(e) => setActiveOperator(e.target.value)}
+              aria-label="Colaborador ativo"
+            >
+              {operators.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {open ? (
             <div className="no-print fixed inset-0 z-40 lg:hidden">
