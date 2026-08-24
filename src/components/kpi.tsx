@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { formatKz, formatKzShort } from "@/lib/format";
+import { isCollaborator1 } from "@/lib/can-edit";
+import { useFinance } from "@/lib/store";
 
 export function Kpi({
   label,
@@ -46,6 +48,11 @@ export function PageHeader({
   description?: string;
   actions?: ReactNode;
 }) {
+  const activeOperator = useFinance((s) => s.activeOperator);
+  const operators = useFinance((s) => s.operators);
+  // Textos de orientação / instruções só para o Colaborador 1
+  const showGuide = isCollaborator1(activeOperator, operators);
+
   return (
     <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
@@ -53,8 +60,8 @@ export function PageHeader({
           <p className="text-[11px] font-medium tracking-[0.16em] text-[var(--color-forest)] uppercase">{kicker}</p>
         ) : null}
         <h1 className="font-display mt-1 text-3xl tracking-tight sm:text-4xl">{title}</h1>
-        {/* Descrição só no ecrã — nunca na impressão (cabeçalho + dados apenas) */}
-        {description ? (
+        {/* Descrição: só Colaborador 1 · nunca na impressão */}
+        {showGuide && description ? (
           <p className="no-print mt-2 max-w-2xl text-sm text-[var(--color-muted)]">{description}</p>
         ) : null}
       </div>

@@ -33,6 +33,8 @@ export type CapturaInput = {
 type ExtraState = {
   extras: Lancamento[];
   alunosExtra: Aluno[];
+  /** Sobrescritas de campos de alunos do seed ou extras (por id). */
+  alunosOverrides: Record<string, Partial<Aluno>>;
   mensalidades: Mensalidade[];
   fundoExtra: FundoPagamento[];
   fotos: Record<string, string>;
@@ -47,6 +49,7 @@ type ExtraState = {
 type Store = ExtraState & {
   addCaptura: (input: CapturaInput) => Lancamento;
   addAluno: (aluno: Aluno) => void;
+  updateAluno: (id: string, patch: Partial<Aluno>) => void;
   setMensalidade: (id: string, mes: string, valor: number) => void;
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
@@ -63,6 +66,7 @@ export const useFinance = create<Store>()(
     (set, get) => ({
       extras: [],
       alunosExtra: [],
+      alunosOverrides: {},
       mensalidades: initialMensalidades,
       fundoExtra: [],
       fotos: {},
@@ -120,6 +124,33 @@ export const useFinance = create<Store>()(
         set({ alunosExtra: [...get().alunosExtra, row] });
         get().pushAudit("criar_aluno", `${row.id} · ${row.nome}`);
       },
+      updateAluno: (id, patch) => {
+        const ops = get().operators;
+        const by = get().activeOperator || "—";
+        // Apenas o Colaborador 1 (primeiro da lista) pode editar alunos
+        if (by !== ops[0]) {
+          throw new Error("Apenas o Colaborador 1 pode editar dados de alunos.");
+        }
+        const inExtra = get().alunosExtra.some((a) => a.id === id);
+        if (inExtra) {
+          set({
+            alunosExtra: get().alunosExtra.map((a) =>
+              a.id === id
+                ? { ...a, ...patch, editadoPor: by, updatedAt: new Date().toISOString() }
+                : a,
+            ),
+          });
+        } else {
+          const prev = get().alunosOverrides[id] ?? {};
+          set({
+            alunosOverrides: {
+              ...get().alunosOverrides,
+              [id]: { ...prev, ...patch, editadoPor: by, updatedAt: new Date().toISOString() },
+            },
+          });
+        }
+        get().pushAudit("editar_aluno", `${id} · ${Object.keys(patch).join(", ")}`);
+      },
       setMensalidade: (id, mes, valor) => {
         set({
           mensalidades: get().mensalidades.map((m) =>
@@ -137,6 +168,7 @@ export const useFinance = create<Store>()(
         set({
           extras: [],
           alunosExtra: [],
+          alunosOverrides: {},
           mensalidades: initialMensalidades,
           fundoExtra: [],
           fotos: {},
@@ -150,6 +182,7 @@ export const useFinance = create<Store>()(
       partialize: (s) => ({
         extras: s.extras,
         alunosExtra: s.alunosExtra,
+        alunosOverrides: s.alunosOverrides,
         mensalidades: s.mensalidades,
         fundoExtra: s.fundoExtra,
         fotos: s.fotos,
@@ -298,8 +331,9 @@ export function computeTotals(
   extras: Lancamento[],
   mensalidades: Mensalidade[],
   alunosExtra: Aluno[],
+  alunosOverrides: Record<string, Partial<Aluno>> = {},
 ): Totals {
-  const alunos = [...seed.alunos, ...alunosExtra];
+  const alunos = alunosAll(alunosExtra, alunosOverrides);
   const inscricoesLiquido = alunos.reduce((s, a) => s + a.liquido, 0);
   const mensal1 = alunos.reduce((s, a) => s + (a.mensalidade1 || 0), 0);
   const propinasRecebidas =
@@ -353,8 +387,15 @@ export function computeTotals(
   };
 }
 
-export function alunosAll(alunosExtra: Aluno[]): Aluno[] {
-  return [...seed.alunos, ...alunosExtra];
+export function alunosAll(
+  alunosExtra: Aluno[],
+  overrides: Record<string, Partial<Aluno>> = {},
+): Aluno[] {
+  const apply = (a: Aluno): Aluno => {
+    const o = overrides[a.id];
+    return o ? { ...a, ...o } : a;
+  };
+  return [...seed.alunos.map(apply), ...alunosExtra.map(apply)];
 }
 
 export function salariosAll(): Salario[] {

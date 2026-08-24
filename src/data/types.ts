@@ -110,6 +110,8 @@ export type Aluno = {
   statusPag: "pago" | "registado" | "pendente";
   criadoPor?: string;
   createdAt?: string;
+  editadoPor?: string;
+  updatedAt?: string;
 };
 
 export type Mensalidade = {

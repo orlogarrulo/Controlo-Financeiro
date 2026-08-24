@@ -10,8 +10,9 @@ export const Route = createFileRoute("/recibos")({ component: Recibos });
 
 function Recibos() {
   const extraA = useFinance((s) => s.alunosExtra);
+  const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const extraF = useFinance((s) => s.fundoExtra);
-  const alunos = alunosAll(extraA);
+  const alunos = alunosAll(extraA, alunosOverrides);
   const fundo = fundoPagAll(extraF);
   const escola = getSeed().escola;
   const [q, setQ] = useState("");

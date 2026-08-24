@@ -21,6 +21,7 @@ import {
   useFinance,
 } from "@/lib/store";
 import { formatKz, formatKzShort } from "@/lib/format";
+import { isCollaborator1 } from "@/lib/can-edit";
 
 export const Route = createFileRoute("/")({ component: Dashboard });
 
@@ -28,7 +29,11 @@ function Dashboard() {
   const extras = useFinance((s) => s.extras);
   const mensalidades = useFinance((s) => s.mensalidades);
   const alunosExtra = useFinance((s) => s.alunosExtra);
-  const t = computeTotals(extras, mensalidades, alunosExtra);
+  const alunosOverrides = useFinance((s) => s.alunosOverrides);
+  const activeOperator = useFinance((s) => s.activeOperator);
+  const operators = useFinance((s) => s.operators);
+  const isAdmin = isCollaborator1(activeOperator, operators);
+  const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides);
   const ledger = buildLedger(extras);
   const cats = categoriaTotals(ledger.filter((l) => l.tipo === "despesa" && l.origem !== "inscricao"))
     .filter((c) => c.despesas > 0)
@@ -45,7 +50,11 @@ function Dashboard() {
       <PageHeader
         kicker={escola.nomeCurto}
         title="Quadro financeiro"
-        description="Tudo o que estava espalhado pelas planilhas Excel — sócio, cartão BAI, fundo de maneio, matrículas e salários — num só sítio. Capture uma fatura com o telemóvel e o lançamento entra no master."
+        description={
+          isAdmin
+            ? "Tudo o que estava espalhado pelas planilhas Excel — sócio, cartão BAI, fundo de maneio, matrículas e salários — num só sítio. Capture uma fatura com o telemóvel e o lançamento entra no master."
+            : undefined
+        }
         actions={
           <Button asChild>
             <Link to="/capturar">
@@ -74,7 +83,7 @@ function Dashboard() {
         <Kpi label="Propinas recebidas" value={t.propinasRecebidas} compact hint="Wendy: 1.ª mensalidade" />
       </div>
 
-      {alerts.length ? (
+      {isAdmin && alerts.length ? (
         <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--color-amber)]/30 bg-[var(--color-amber-soft)] px-4 py-3">
           <p className="flex items-center gap-2 text-sm font-medium text-[var(--color-amber)]">
             <AlertTriangle className="size-4" /> Pontos a tratar
@@ -125,9 +134,21 @@ function Dashboard() {
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        <Quick to="/lancamentos" title="Lançamentos master" body="FAT, CX, RM e capturas num único livro." />
-        <Quick to="/google" title="Google Sheets + Forms" body="Exportar CSV e ligar o formulário existente." />
-        <Quick to="/alunos" title="17 alunos" body="Matrículas, descontos de irmãos e recibos EF." />
+        <Quick
+          to="/lancamentos"
+          title="Lançamentos master"
+          body={isAdmin ? "FAT, CX, RM e capturas num único livro." : undefined}
+        />
+        <Quick
+          to="/google"
+          title="Google Sheets + Forms"
+          body={isAdmin ? "Exportar CSV e ligar o formulário existente." : undefined}
+        />
+        <Quick
+          to="/alunos"
+          title="Alunos"
+          body={isAdmin ? "Matrículas, descontos de irmãos e recibos EF." : undefined}
+        />
       </div>
     </div>
   );
@@ -144,7 +165,7 @@ function Row({ k, v, bold, danger }: { k: string; v: number; bold?: boolean; dan
   );
 }
 
-function Quick({ to, title, body }: { to: string; title: string; body: string }) {
+function Quick({ to, title, body }: { to: string; title: string; body?: string }) {
   return (
     <Link
       to={to}
@@ -154,7 +175,7 @@ function Quick({ to, title, body }: { to: string; title: string; body: string })
         {title}
         <ArrowUpRight className="size-4 text-[var(--color-faint)] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
       </p>
-      <p className="mt-1 text-sm text-[var(--color-muted)]">{body}</p>
+      {body ? <p className="mt-1 text-sm text-[var(--color-muted)]">{body}</p> : null}
       <Badge className="mt-3">Abrir</Badge>
     </Link>
   );
