@@ -72,16 +72,31 @@
   }
 }
 
-/* ——— Impressão A4 limpa (menus, filtros e botões ocultos) ——— */
+/* ——— Impressão ——— */
+/* Visível só na impressão */
+.print-only {
+  display: none !important;
+}
+
 @media print {
+  .print-only {
+    display: block !important;
+  }
+
   @page {
     size: A4;
     margin: 12mm 10mm;
   }
 
+  /* Recibos: A5, dois por folha A4 (ou página A5) */
+  @page recibo-a5 {
+    size: A5;
+    margin: 8mm;
+  }
+
   nav,
   aside,
-  header,
+  header.no-print,
   .no-print {
     display: none !important;
   }
@@ -95,7 +110,6 @@
     print-color-adjust: exact;
   }
 
-  /* Conteúdo a largura total, sem sidebar */
   .min-h-dvh,
   .flex.min-h-dvh,
   .flex.min-w-0.flex-1.flex-col {
@@ -116,7 +130,6 @@
     page-break-inside: avoid;
   }
 
-  /* Tabelas: não cortar linhas no meio da página */
   table {
     width: 100% !important;
     min-width: 0 !important;
@@ -162,13 +175,48 @@
     display: none !important;
   }
 
+  /* Logo sempre visível na impressão */
+  .print-header {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8mm !important;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 4mm;
+  }
+
   .print-header img {
+    display: block !important;
     height: 56px !important;
     width: 56px !important;
+    object-fit: contain !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  .print-header {
-    margin-bottom: 8mm !important;
+  /* Área de recibos A5 — dois por página A4 */
+  .recibos-print-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .recibo-a5 {
+    page: recibo-a5;
+    width: 100%;
+    max-width: none;
+    min-height: 130mm;
+    box-sizing: border-box;
+    border: 1px solid #999 !important;
+    padding: 6mm !important;
+    margin: 0 0 4mm 0 !important;
+    border-radius: 0 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Em browsers que ignoram @page name: metade de A4 ≈ dois A5 */
+  .recibo-a5 + .recibo-a5 {
+    page-break-before: always;
   }
 }
-

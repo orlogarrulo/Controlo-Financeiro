@@ -21,7 +21,8 @@ import {
   useFinance,
 } from "@/lib/store";
 import { formatKz, formatKzShort } from "@/lib/format";
-import { isCollaborator1 } from "@/lib/can-edit";
+import { isAdminSession } from "@/lib/can-edit";
+import { PrintHeader } from "@/components/print-header";
 
 export const Route = createFileRoute("/")({ component: Dashboard });
 
@@ -32,7 +33,8 @@ function Dashboard() {
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
-  const isAdmin = isCollaborator1(activeOperator, operators);
+  const adminUnlocked = useFinance((s) => s.adminUnlocked);
+  const isAdmin = isAdminSession(activeOperator, operators, adminUnlocked);
   const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides);
   const ledger = buildLedger(extras);
   const cats = categoriaTotals(ledger.filter((l) => l.tipo === "despesa" && l.origem !== "inscricao"))
@@ -46,14 +48,18 @@ function Dashboard() {
   if (t.resultado < 0) alerts.push("Resultado líquido negativo — arranque ainda a ser absorvido pelas matrículas");
 
   // Fluxo de caixa simplificado
-  const entradasTotais = t.proveitos + t.socioEntradas;
+  // Entradas operacionais = proveitos; o capital do sócio não é proveito.
+  const entradasOperacionais = t.proveitos;
   const saidasTotais = t.custosTotais;
-  const saldoCaixa = entradasTotais - saidasTotais;
+  const saldoCaixa = t.saldoBai + t.fundoRestante;
 
-  // Balanço patrimonial simplificado (escola isenta)
+  // Balanço patrimonial simplificado (escola isenta de impostos)
+  // Passivo ao sócio = adiantamentos/empréstimos do sócio (a reembolsar na totalidade
+  // até haver reembolso explícito). As despesas "origem sócio" são custos da escola
+  // financiados por esse passivo — não reduzem a dívida.
   const ativoCorrente = t.saldoBai + t.fundoRestante;
-  const passivoSocio = Math.max(0, t.socioEntradas - t.socioDespesas);
-  const patrimonioLiquido = ativoCorrente - passivoSocio + t.resultado;
+  const passivoSocio = t.socioEntradas;
+  const patrimonioLiquido = ativoCorrente - passivoSocio;
 
   return (
     <div>
@@ -78,6 +84,11 @@ function Dashboard() {
           </div>
         }
       />
+
+      {/* Logo só na impressão A4 */}
+      <div className="mb-4 print-only">
+        <PrintHeader title="Quadro financeiro" subtitle={escola.ano} />
+      </div>
 
       {/* Resumo financeiro da escola — visível a todos */}
       <Card className="mb-5 print-sheet">
@@ -151,8 +162,13 @@ function Dashboard() {
               <Row k="Ativo — Fundo de maneio" v={t.fundoRestante} />
               <Row k="Total ativo corrente" v={ativoCorrente} bold />
               <div className="my-2 h-px bg-[var(--color-line)]" />
-              <Row k="Passivo — A reembolsar ao sócio" v={passivoSocio} />
-              <Row k="Património líquido (estimado)" v={patrimonioLiquido} bold danger={patrimonioLiquido < 0} />
+              <Row k="Passivo — Adiantamentos do sócio" v={t.socioEntradas} />
+              <Row k="Passivo — A reembolsar ao sócio" v={passivoSocio} bold />
+              <p className="text-[11px] text-[var(--color-muted)]">
+                Custos já pagos com fundos do sócio: {formatKz(t.socioDespesas)} (não reduzem a dívida).
+              </p>
+              <div className="my-2 h-px bg-[var(--color-line)]" />
+              <Row k="Património líquido (Ativo − Passivo)" v={patrimonioLiquido} bold danger={patrimonioLiquido < 0} />
               <p className="pt-2 text-xs text-[var(--color-muted)]">
                 Escola consular isenta de impostos. Valores em KZ. Apenas Colaborador 1.
               </p>
@@ -167,17 +183,17 @@ function Dashboard() {
               </Button>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              <Row k="Entradas (proveitos + sócio)" v={entradasTotais} />
-              <Row k="  · Proveitos (inscrições + propinas)" v={t.proveitos} />
-              <Row k="  · Entradas do sócio" v={t.socioEntradas} />
+              <Row k="Proveitos (inscrições + propinas)" v={entradasOperacionais} />
+              <Row k="Capital do sócio (financiamento)" v={t.socioEntradas} />
               <div className="my-2 h-px bg-[var(--color-line)]" />
-              <Row k="Saídas (custos totais)" v={saidasTotais} />
-              <Row k="  · Arranque (sócio)" v={t.socioDespesas} />
-              <Row k="  · Operação (cartão, fundo, banco)" v={t.custosOperacionais} />
+              <Row k="Saídas — arranque (sócio)" v={t.socioDespesas} />
+              <Row k="Saídas — operação (cartão, fundo, banco)" v={t.custosOperacionais} />
+              <Row k="Total saídas" v={saidasTotais} bold />
               <div className="my-2 h-px bg-[var(--color-line)]" />
-              <Row k="Saldo de caixa (estimado)" v={saldoCaixa} bold danger={saldoCaixa < 0} />
+              <Row k="Saldo BAI + fundo (caixa actual)" v={saldoCaixa} bold danger={saldoCaixa < 0} />
+              <Row k="Resultado líquido (proveitos − custos)" v={t.resultado} bold danger={t.resultado < 0} />
               <p className="pt-2 text-xs text-[var(--color-muted)]">
-                Fluxo consolidado desde o arranque. Apenas Colaborador 1.
+                O capital do sócio é financiamento (passivo), não proveito. Apenas Colaborador 1.
               </p>
             </CardContent>
           </Card>

@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EDIT_PIN, isCollaborator1 } from "@/lib/can-edit";
+import { EDIT_PIN, isAdminSession } from "@/lib/can-edit";
+import { PrintHeader } from "@/components/print-header";
 import { buildLedger, useFinance } from "@/lib/store";
 import { downloadCsv, ledgerToCsv } from "@/lib/csv";
 import { formatDate, formatKz } from "@/lib/format";
@@ -61,7 +62,8 @@ function Lancamentos() {
   const fotos = useFinance((s) => s.fotos);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
-  const canEdit = isCollaborator1(activeOperator, operators);
+  const adminUnlocked = useFinance((s) => s.adminUnlocked);
+  const canEdit = isAdminSession(activeOperator, operators, adminUnlocked);
   const rows = useMemo(() => buildLedger(extras), [extras]);
   const [q, setQ] = useState("");
   const [origem, setOrigem] = useState<Origem | "todas">("todas");
@@ -140,6 +142,9 @@ function Lancamentos() {
 
   return (
     <div>
+      <div className="mb-4 print-only">
+        <PrintHeader title="Lançamentos financeiros" />
+      </div>
       <PageHeader
         kicker="Livro único"
         title="Lançamentos financeiros"

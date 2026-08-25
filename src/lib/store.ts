@@ -13,6 +13,7 @@ import type {
   Seed,
 } from "@/data/types";
 import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
+import { EDIT_PIN } from "@/lib/can-edit";
 
 const seed = seedJson as Seed;
 
@@ -42,6 +43,8 @@ type ExtraState = {
   activeOperator: string;
   /** Lista editável dos 5 nomes do escritório. */
   operators: string[];
+  /** Sessão Colaborador 1 desbloqueada com PIN (não persistir em claro como segredo). */
+  adminUnlocked: boolean;
   /** Registo de auditoria local: quem fez o quê. */
   auditLog: { at: string; by: string; action: string; detail: string }[];
 };
@@ -57,6 +60,8 @@ type Store = ExtraState & {
   resetLocal: () => void;
   setActiveOperator: (name: string) => void;
   setOperatorName: (index: number, name: string) => void;
+  unlockAdmin: (pin: string) => boolean;
+  lockAdmin: () => void;
   pushAudit: (action: string, detail: string) => void;
 };
 
@@ -73,8 +78,28 @@ export const useFinance = create<Store>()(
       fotos: {},
       activeOperator: DEFAULT_OPERATORS[0],
       operators: [...DEFAULT_OPERATORS],
+      adminUnlocked: false,
       auditLog: [],
-      setActiveOperator: (name) => set({ activeOperator: name }),
+      setActiveOperator: (name) => {
+        const ops = get().operators;
+        // Trocar para não-admin → sempre trancar privilégios
+        if (!ops[0] || name !== ops[0]) {
+          set({ activeOperator: name, adminUnlocked: false });
+        } else {
+          // Seleccionar Colaborador 1 sem PIN → ainda sem privilégios até unlockAdmin
+          set({ activeOperator: name, adminUnlocked: false });
+        }
+      },
+      unlockAdmin: (pin) => {
+        const ops = get().operators;
+        const name = get().activeOperator;
+        if (!ops[0] || name !== ops[0]) return false;
+        if (pin !== EDIT_PIN) return false;
+        set({ adminUnlocked: true });
+        get().pushAudit("desbloquear_admin", "Colaborador 1");
+        return true;
+      },
+      lockAdmin: () => set({ adminUnlocked: false }),
       setOperatorName: (index, name) => {
         const ops = [...get().operators];
         if (index < 0 || index >= ops.length) return;
@@ -129,8 +154,8 @@ export const useFinance = create<Store>()(
         const ops = get().operators;
         const by = get().activeOperator || "—";
         // Apenas o Colaborador 1 (primeiro da lista) pode editar alunos
-        if (by !== ops[0]) {
-          throw new Error("Apenas o Colaborador 1 pode editar dados de alunos.");
+        if (by !== ops[0] || !get().adminUnlocked) {
+          throw new Error("Apenas o Colaborador 1 (com código) pode editar dados de alunos.");
         }
         const inExtra = get().alunosExtra.some((a) => a.id === id);
         if (inExtra) {
@@ -164,8 +189,8 @@ export const useFinance = create<Store>()(
       removeExtra: (id) => {
         const ops = get().operators;
         const by = get().activeOperator || "—";
-        if (!ops[0] || by !== ops[0]) {
-          throw new Error("Apenas o Colaborador 1 pode apagar lançamentos.");
+        if (!ops[0] || by !== ops[0] || !get().adminUnlocked) {
+          throw new Error("Apenas o Colaborador 1 (com código) pode apagar lançamentos.");
         }
         get().pushAudit("apagar_lancamento", id);
         set({ extras: get().extras.filter((e) => e.id !== id) });
@@ -173,8 +198,8 @@ export const useFinance = create<Store>()(
       updateExtra: (id, patch) => {
         const ops = get().operators;
         const by = get().activeOperator || "—";
-        if (!ops[0] || by !== ops[0]) {
-          throw new Error("Apenas o Colaborador 1 pode editar lançamentos.");
+        if (!ops[0] || by !== ops[0] || !get().adminUnlocked) {
+          throw new Error("Apenas o Colaborador 1 (com código) pode editar lançamentos.");
         }
         set({
           extras: get().extras.map((e) =>

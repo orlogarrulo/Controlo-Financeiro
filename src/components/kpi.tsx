@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { formatKz, formatKzShort } from "@/lib/format";
-import { isCollaborator1 } from "@/lib/can-edit";
+import { isAdminSession } from "@/lib/can-edit";
 import { useFinance } from "@/lib/store";
 
 export function Kpi({
@@ -50,8 +50,9 @@ export function PageHeader({
 }) {
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
+  const adminUnlocked = useFinance((s) => s.adminUnlocked);
   // Textos de orientação / instruções só para o Colaborador 1
-  const showGuide = isCollaborator1(activeOperator, operators);
+  const showGuide = isAdminSession(activeOperator, operators, adminUnlocked);
 
   return (
     <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

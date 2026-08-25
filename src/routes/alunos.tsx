@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EDIT_PIN, isCollaborator1 } from "@/lib/can-edit";
+import { EDIT_PIN, isAdminSession } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
 import type { Aluno } from "@/data/types";
@@ -40,7 +40,8 @@ function Alunos() {
   const updateAluno = useFinance((s) => s.updateAluno);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
-  const canEdit = isCollaborator1(activeOperator, operators);
+  const adminUnlocked = useFinance((s) => s.adminUnlocked);
+  const canEdit = isAdminSession(activeOperator, operators, adminUnlocked);
 
   const alunos = alunosAll(extra, overrides);
   const [q, setQ] = useState("");

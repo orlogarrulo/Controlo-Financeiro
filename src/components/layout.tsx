@@ -16,8 +16,14 @@ import {
   UserRound,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getSeed, useFinance } from "@/lib/store";
+import { isAdminSession } from "@/lib/can-edit";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const NAV = [
   { to: "/", label: "Quadro", icon: LayoutDashboard },
@@ -37,10 +43,44 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
   const [editOps, setEditOps] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pendingOperator, setPendingOperator] = useState<string | null>(null);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
+  const adminUnlocked = useFinance((s) => s.adminUnlocked);
   const setActiveOperator = useFinance((s) => s.setActiveOperator);
   const setOperatorName = useFinance((s) => s.setOperatorName);
+  const unlockAdmin = useFinance((s) => s.unlockAdmin);
+  const lockAdmin = useFinance((s) => s.lockAdmin);
+  const isAdmin = isAdminSession(activeOperator, operators, adminUnlocked);
+
+  function requestOperatorChange(name: string) {
+    const isFirst = operators[0] && name === operators[0];
+    if (isFirst) {
+      setPendingOperator(name);
+      setPin("");
+      setPinOpen(true);
+      return;
+    }
+    setActiveOperator(name);
+    toast.message(`A trabalhar como ${name}`);
+  }
+
+  function confirmAdminPin() {
+    if (!pendingOperator) return;
+    setActiveOperator(pendingOperator);
+    const ok = unlockAdmin(pin);
+    if (!ok) {
+      toast.error("Código de autorização incorrecto.");
+      lockAdmin();
+      return;
+    }
+    toast.success("Colaborador 1 desbloqueado");
+    setPinOpen(false);
+    setPin("");
+    setPendingOperator(null);
+  }
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-ink)]">
@@ -61,7 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <select
               className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
               value={activeOperator}
-              onChange={(e) => setActiveOperator(e.target.value)}
+              onChange={(e) => requestOperatorChange(e.target.value)}
               aria-label="Colaborador ativo"
             >
               {operators.map((name) => (
@@ -70,14 +110,46 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className="mt-1.5 text-[10px] text-[var(--color-forest)] underline-offset-2 hover:underline"
-              onClick={() => setEditOps((v) => !v)}
-            >
-              {editOps ? "Fechar nomes" : "Renomear equipa"}
-            </button>
-            {editOps ? (
+            <p className="mt-1 text-[10px] leading-snug text-[var(--color-muted)]">
+              {isAdmin
+                ? "Sessão Colaborador 1 activa (edição permitida)."
+                : "Escolha o membro da equipa. Colaborador 1 exige código."}
+            </p>
+            {!isAdmin && operators[0] && activeOperator === operators[0] ? (
+              <button
+                type="button"
+                className="mt-1.5 text-[10px] font-medium text-[var(--color-forest)] underline-offset-2 hover:underline"
+                onClick={() => {
+                  setPendingOperator(operators[0]);
+                  setPin("");
+                  setPinOpen(true);
+                }}
+              >
+                Introduzir código (Colaborador 1)
+              </button>
+            ) : null}
+            {isAdmin ? (
+              <button
+                type="button"
+                className="mt-1.5 text-[10px] text-[var(--color-clay)] underline-offset-2 hover:underline"
+                onClick={() => {
+                  lockAdmin();
+                  toast.message("Sessão de administração bloqueada");
+                }}
+              >
+                Bloquear sessão admin
+              </button>
+            ) : null}
+            {isAdmin ? (
+              <button
+                type="button"
+                className="mt-1.5 block text-[10px] text-[var(--color-forest)] underline-offset-2 hover:underline"
+                onClick={() => setEditOps((v) => !v)}
+              >
+                {editOps ? "Fechar nomes" : "Renomear equipa"}
+              </button>
+            ) : null}
+            {isAdmin && editOps ? (
               <div className="mt-2 space-y-1.5">
                 {operators.map((name, i) => (
                   <input
@@ -173,6 +245,36 @@ export function AppShell({ children }: { children: ReactNode }) {
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-24 lg:px-8 lg:pb-10">{children}</main>
         </div>
       </div>
+
+
+      <Dialog open={pinOpen} onOpenChange={(o) => { if (!o) { setPinOpen(false); setPendingOperator(null); setPin(""); } }}>
+        <DialogContent>
+          <DialogTitle>Colaborador 1</DialogTitle>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            Introduza o código de autorização para aceder à edição e relatórios reservados.
+          </p>
+          <div className="mt-4 space-y-1.5">
+            <Label>Código de autorização</Label>
+            <Input
+              type="password"
+              inputMode="numeric"
+              placeholder="••••"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              autoComplete="off"
+              onKeyDown={(e) => e.key === "Enter" && confirmAdminPin()}
+            />
+          </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => { setPinOpen(false); setPendingOperator(null); setPin(""); }}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmAdminPin}>
+              Entrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[var(--color-line)] bg-[var(--color-bg-elevated)]/95 px-1 py-1 backdrop-blur-md lg:hidden">
         {[NAV[0], NAV[2], NAV[1], NAV[3], NAV[4]].map((item) => {

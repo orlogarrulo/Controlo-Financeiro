@@ -18,9 +18,12 @@ function Recibos() {
   const escola = getSeed().escola;
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string>(alunos[0]?.recibo ?? "");
+  const [sel2, setSel2] = useState<string>("");
 
   const aluno = alunos.find((a) => a.recibo === sel);
   const rm = fundo.find((p) => p.id === sel);
+  const aluno2 = alunos.find((a) => a.recibo === sel2);
+  const rm2 = fundo.find((p) => p.id === sel2);
 
   const list = useMemo(() => {
     const a = alunos.map((x) => ({ id: x.recibo, label: `${x.recibo} · ${x.nome}` }));
@@ -35,14 +38,14 @@ function Recibos() {
       <PageHeader
         kicker="Impressão A5"
         title="Recibos"
-        description="Escolha o número (EF/… ou RM-…) para gerar o comprovativo. Use Imprimir no telemóvel ou no computador."
+        description="Formato A5 (dois recibos por folha A4). Escolha até dois números para imprimir juntos."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir A4
+            Imprimir A5
           </Button>
         }
       />
-      <div className="no-print mb-4 grid gap-2 sm:grid-cols-[1fr_220px]">
+      <div className="no-print mb-4 grid gap-2 sm:grid-cols-[1fr_1fr_1fr]">
         <Input placeholder="Pesquisar recibo…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select
           className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
@@ -51,14 +54,30 @@ function Recibos() {
         >
           {list.map((x) => (
             <option key={x.id} value={x.id}>
-              {x.label}
+              1.º · {x.label}
+            </option>
+          ))}
+        </select>
+        <select
+          className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+          value={sel2}
+          onChange={(e) => setSel2(e.target.value)}
+        >
+          <option value="">2.º recibo (opcional)</option>
+          {list.filter((x) => x.id !== sel).map((x) => (
+            <option key={x.id} value={x.id}>
+              2.º · {x.label}
             </option>
           ))}
         </select>
       </div>
 
-      {aluno ? <ReciboInscricao aluno={aluno} escola={escola} /> : null}
-      {rm ? <ReciboManeio pag={rm} escola={escola} /> : null}
+      <div className="recibos-print-area space-y-4">
+        {aluno ? <ReciboInscricao aluno={aluno} escola={escola} /> : null}
+        {rm ? <ReciboManeio pag={rm} escola={escola} /> : null}
+        {aluno2 ? <ReciboInscricao aluno={aluno2} escola={escola} /> : null}
+        {rm2 ? <ReciboManeio pag={rm2} escola={escola} /> : null}
+      </div>
     </div>
   );
 }
@@ -79,7 +98,7 @@ function ReciboInscricao({
   ];
   const desc = aluno.bruto - aluno.liquido;
   return (
-    <article className="print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
+    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
       <PrintHeader title="Recibo de inscrição" subtitle={escola.subtitulo} />
       <div className="mt-4 flex justify-between text-sm">
         <span>
@@ -144,7 +163,7 @@ function ReciboManeio({
   escola: ReturnType<typeof getSeed>["escola"];
 }) {
   return (
-    <article className="print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
+    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
       <PrintHeader title="Recibo fundo de maneio" />
       <div className="mt-4 flex justify-between text-sm">
         <span>

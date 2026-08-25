@@ -11,7 +11,10 @@ export function PrintHeader({
       <img
         src="/logo-escola.png"
         alt="École Consulaire du Congo"
-        className="h-16 w-16 object-contain sm:h-20 sm:w-20"
+        width={80}
+        height={80}
+        className="h-16 w-16 shrink-0 object-contain sm:h-20 sm:w-20 print:block"
+        style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
       />
       <div className="min-w-0 flex-1">
         <p className="font-display text-base leading-tight text-[var(--color-ink)] sm:text-lg">
