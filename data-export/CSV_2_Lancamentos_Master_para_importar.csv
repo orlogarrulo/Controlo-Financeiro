@@ -1,0 +1,63 @@
+﻿Data;Tipo;Categoria;Descrição;Fornecedor;Fatura;Valor;Pagamento;Origem;Observações;DocInterno
+2026-06-14;entrada;Empréstimo Sócio;Entrada de capital do sócio (total das despesas de arranque);;;4988379,88;Transferência;socio;;FAT-001
+2026-06-14;despesa;Pintura Exterior;Tinta para pintura exterior;Achour - Comércio Geral;829;265000,00;Cartão Multicaixa;socio;;FAT-002
+2026-06-25;despesa;Internet / Telefone;Telemóvel secretaria;Mobismart;202606251721242870014;106000,00;Cartão Multicaixa;socio;;FAT-003
+2026-06-25;despesa;Internet / Telefone;Telemóvel direcção pedagógica;Mobismart;202606251717116930013;106000,00;Cartão Multicaixa;socio;;FAT-004
+2026-06-25;despesa;Internet / Telefone;Cartão SIM 945402542;Unitel;FR4426S42818N/174541;250,01;Cartão Multicaixa;socio;;FAT-005
+2026-06-25;despesa;Internet / Telefone;Cartões SIM (3 números);Unitel;FR4426S42818N/174538;750,03;Cartão Multicaixa;socio;;FAT-006
+2026-06-25;despesa;Material de Escritório;Material de escritório;KERO;FR8326S25915N/6523;17253,00;Cartão Multicaixa;socio;;FAT-007
+2026-06-26;despesa;Equipamentos;4 tinteiros HP Officejet Pro 7740;NCR;FR4726S809N/35071;158189,82;Cartão Multicaixa;socio;;FAT-008
+2026-06-26;despesa;Outras Despesas;2 fechaduras;Sahal Trading - Imp. & Exp.;RTJ2026/1157;13100,00;Transferência Express;socio;;FAT-009
+2026-07-01;despesa;Pintura Exterior;Tintas exterior e material construção;Comércio Geral - Imp. & Exp.;1083;58500,00;Transferência;socio;;FAT-010
+2026-07-03;despesa;Outras Despesas;Estuque e lixas;M.N.A. SD. RAHMA;;31000,00;Transferência;socio;;FAT-011
+2026-07-08;despesa;Pintura Exterior;Tintas e material de pintura;Achour - Comércio Geral;805;128000,00;Cartão Multicaixa;socio;;FAT-012
+2026-07-08;despesa;Publicidade Exterior;Impressão lona pesada 300x900;Gráfica TAMACO;AFA7F84768594FCA;85000,00;Cartão Multicaixa;socio;;FAT-013
+2026-07-11;despesa;Panfletos / Publicidade;Impressão 500 panfletos A5;Gráfica TAMACO;;100000,00;Transferência;socio;;FAT-014
+2026-07-17;despesa;Equipamentos;8 lâmpadas fluorescentes + arrancadores;DDH - Comércio Geral;2441;13600,00;Transferência Express;socio;;FAT-015
+2026-07-17;despesa;Material Serralharia;Material para serralharia;DKJF;029;365000,00;Cartão Multicaixa;socio;;FAT-016
+2026-07-18;despesa;Equipamentos;5 garrafões gasóleo 20L;Sonangol Distribuidora;FR 202655/21059;42000,00;Dinheiro;socio;;FAT-017
+2026-07-19;despesa;Publicidade Exterior;Impressão vinil 150x350;Gráfica TAMACO;7101738663;30000,00;Transferência;socio;;FAT-018
+2026-07-21;despesa;Outras Despesas;Corrente + cadeado grande;Praça;0279716;19000,00;Dinheiro;socio;;FAT-019
+2026-07-22;despesa;Equipamentos;Material manutenção gerador;Beledear Comércio Geral;FT 2026/1862;348500,02;Transferência;socio;;FAT-020
+2026-07-23;despesa;Outras Despesas;20m rede para sombra;Comércio Geral - Imp. & Exp.;1254;50000,00;Transferência Express;socio;;FAT-021
+2026-07-23;despesa;Equipamentos;Conserto bomba injetora gerador;;;25000,00;Transferência Express;socio;;FAT-022
+2026-07-23;despesa;Pintura Exterior;3 baldes tinta Coelho amarelo;Bouke Salem;367;150000,00;Transferência;socio;;FAT-023
+2026-07-23;despesa;Pintura Exterior;Tintas de óleo para decoração exterior;;;97000,00;Transferência Express;socio;;FAT-024
+2026-07-23;despesa;Transporte s/ Fatura;Táxi funcionário (Pedro Pintor);;;2000,00;Cartão Multicaixa;socio;;FAT-025
+2026-07-23;despesa;Transporte s/ Fatura;Táxi funcionário (Ribeiro);;;2000,00;Transferência;socio;;FAT-026
+2026-07-23;despesa;Publicidade Exterior;Impressão 3 peças vinil exterior;;;16200,00;Transferência;socio;;FAT-027
+2026-07-23;despesa;Serralharia;Mão de obra serralheiro;;;50000,00;Transferência Express;socio;;FAT-028
+2026-07-23;despesa;Mão de Obra;Mão de obra mecânico;;;45000,00;Transferência Express;socio;;FAT-029
+2026-07-24;despesa;Serralharia;Trabalhos de serralharia + transporte;Serralheiro;;360000,00;Transferência Express;socio;;FAT-030
+2026-07-24;despesa;Transporte s/ Fatura;Táxi serralheiro;Táxi;;5000,00;Transferência Express;socio;;FAT-031
+2026-07-24;despesa;Equipamentos;Manutenção do gerador;Técnico Gerador;;90000,00;Transferência Express;socio;;FAT-032
+2026-07-25;despesa;Outras Despesas;20m rede para sombra;;;50000,00;;socio;;FAT-033
+2026-07-25;despesa;Pintura Exterior;Tintas para decoração;Novo Ango P.S.E.;1038;86000,00;Transferência Express;socio;;FAT-034
+2026-07-25;despesa;Pintura Exterior;Tinta para decoração;Marpeluza;73;14000,00;Transferência Express;socio;;FAT-035
+2026-07-26;despesa;Material Serralharia;Ferros e material serralharia;Primedine - Com. Geral Lda;29;197500,00;Cartão Multicaixa;socio;;FAT-036
+2026-07-28;despesa;Publicidade Exterior;Impressão 2 lonas;Gráfca Capuca;255;154000,00;Transferência;socio;;FAT-037
+2026-07-28;despesa;Pintura Exterior;Material para reparos e pintura;YEHDIH;0981;27000,00;Transferência Express;socio;;FAT-038
+2026-07-30;despesa;Serralharia;Mão de obra serralheiro (trabalho 1);Organizações Bom Preço;95;415000,00;Transferência;socio;;FAT-039
+2026-07-31;despesa;Pintura Exterior;Tintas e rolos pintura exterior;Ana De Jesus Albino;;5730,00;Transferência Express;socio;;FAT-040
+2026-07-31;despesa;Material de Escritório;Material de escritório;Kero;FR8326S25932N/23890;363313,00;Cartão Multicaixa;socio;;FAT-041
+2026-07-31;despesa;Pintura Exterior;Tintas e material de pintura;Novo Ango P.S.E.;1039;51500,00;Transferência;socio;;FAT-042
+2026-07-31;despesa;Limpeza / Higiene;Material de limpeza;Kero;FR8326S25932N/23892;2994,00;Cartão Multicaixa;socio;;FAT-043
+2026-08-01;despesa;Serralharia;Material para serralharia;DKJF;46;263000,00;Transferência;socio;;FAT-044
+2026-08-01;despesa;Material Serralharia;Eléctrodos e discos serralharia;DKJF;50;30000,00;Transferência;socio;;FAT-045
+2026-08-03;despesa;Serralharia;Mão de obra serralheiro (trabalho 2);Organizações Bom Preço;93;120000,00;Transferência;socio;;FAT-046
+2026-08-04;despesa;Pintura Exterior;Mão de obra de pintura;Pintor;;132000,00;Transferência Express;socio;;FAT-047
+2026-08-04;despesa;Pintura Exterior;2 baldes tinta branca 20L + táxi;Pintor;;36000,00;Transferência Express;socio;;FAT-048
+2026-08-04;despesa;Pintura Exterior;Tintas e rolos pintura exterior;Novo Ango P.S.E.;1040;43000,00;Transferência Express;socio;;FAT-049
+2026-08-06;despesa;Panfletos / Publicidade;Impressão 500 panfletos A5;Gráfica TAMACO;98D9EF0E92DDC968A0000006900200;100000,00;Cartão Multicaixa;socio;;FAT-050
+2026-08-06;despesa;Salários;Pagamento de 2 salários de Julho/26;Teresa, Adelaide;N/A;90000,00;Dinheiro;socio;Pagamento de 1/2 salário 2 func. limpeza;FAT-051
+2026-08-13;despesa;Despesas de Representação;Almoço de negócio para o colégio;Restaurante Convés;FR 22026/28686;28000,00;Cartão Multicaixa;socio;Almoço de negócio – 13/08/2026;FAT-052
+2026-08-20;entrada;Inscrição / Matrícula;Matrícula Késane Aimé Teixeira Correia de Azevedo · Maternelle P2 · seguro próprio;;;150000,00;Transferência BAI;inscricao;Seguro externo;ENT-2026-08-001
+2026-08-21;entrada;Inscrição / Matrícula;Matrícula Belangela Nito Daniel Kanvadioko · 3ème · seguro próprio;;;150000,00;Transferência BAI;inscricao;Seguro externo;ENT-2026-08-002
+2026-08-21;entrada;Curso intensivo;Curso intensivo francês · Belangela Nito Daniel Kanvadioko;;;40000,00;Transferência BAI;inscricao;;ENT-2026-08-003
+2026-08-22;entrada;Outras entradas;Vendas do dia do Evento 50 anos;;;30666,00;Multicaixa / dinheiro;formulario;Evento 50 anos;ENT-2026-08-004
+2026-08-22;entrada;Outras entradas;Entrada a identificar;;;40000,00;Transferência BAI;formulario;A identificar mais tarde;ENT-2026-08-005
+2026-08-21;despesa;Evento 50 Anos;Levantamento ATM Evento 50 anos (incl. gasóleo 92.400);;;120000,00;ATM BAI;fundo;Fundo de maneio evento;CX-2026-08-001
+2026-08-22;despesa;Evento 50 Anos;Transferência compras / DJ Evento 50 anos;;;300000,00;Transferência BAI;banco;Evento 50 anos;BAI-2026-08-001
+2026-08-22;despesa;Evento 50 Anos;"Transferência funcionários Evento (via conta empresa; sobra 6k+34k=40k noutra conta)";;;80000,00;Transferência BAI;banco;"80k; líquido funcionários menor";BAI-2026-08-002
+2026-08-22;despesa;Evento 50 Anos;Transferência funcionários Evento;;;50000,00;Transferência BAI;banco;50k;BAI-2026-08-003
+2026-08-22;despesa;Evento 50 Anos;Transferência compras Evento · Inês Passi;Inês Passi;;20000,00;Transferência BAI;banco;;BAI-2026-08-004
