@@ -17,8 +17,9 @@ import {
 } from "@/components/ui/select";
 import { getSeed, useFinance, type CapturaInput } from "@/lib/store";
 import { compressImage } from "@/lib/image";
-import { todayIso } from "@/lib/format";
-import type { Origem } from "@/data/types";
+import { todayIso, formatDateLong, formatKz } from "@/lib/format";
+import type { Origem, Lancamento } from "@/data/types";
+import { PrintHeader } from "@/components/print-header";
 
 export const Route = createFileRoute("/capturar")({ component: Capturar });
 
@@ -29,6 +30,7 @@ function Capturar() {
   const nav = useNavigate();
   const [foto, setFoto] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Lancamento | null>(null);
   const [form, setForm] = useState<CapturaInput>({
     data: todayIso(),
     tipo: "despesa",
@@ -63,12 +65,65 @@ function Capturar() {
       return;
     }
     const row = add({ ...form, foto });
-    toast.success(`${row.id} registado`);
-    void nav({ to: "/lancamentos" });
+    setLastSaved(row);
+    toast.success(`${row.id} registado — pode imprimir o comprovativo`);
   }
 
   return (
     <div>
+      {lastSaved ? (
+        <div className="mb-6">
+          <div className="no-print mb-3 flex flex-wrap items-center gap-2">
+            <p className="text-sm text-[var(--color-muted)]">
+              Lançamento <strong className="text-[var(--color-ink)]">{lastSaved.id}</strong> gravado.
+            </p>
+            <Button type="button" onClick={() => window.print()}>
+              Imprimir
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => { setLastSaved(null); setFoto(undefined); }}>
+              Novo lançamento
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => void nav({ to: "/lancamentos" })}>
+              Ver lançamentos
+            </Button>
+          </div>
+          <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
+            <PrintHeader title="Comprovativo de lançamento" />
+            <div className="mt-3 flex justify-between text-sm">
+              <span>N.º <strong>{lastSaved.docInterno || lastSaved.id}</strong></span>
+              <span>{formatDateLong(lastSaved.data)}</span>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="col-span-2">
+                <dt className="text-xs text-[var(--color-muted)]">Descrição</dt>
+                <dd className="font-medium">{lastSaved.descricao}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--color-muted)]">Categoria</dt>
+                <dd>{lastSaved.categoria}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--color-muted)]">Tipo</dt>
+                <dd>{lastSaved.tipo === "entrada" ? "Entrada" : "Despesa"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--color-muted)]">Fornecedor</dt>
+                <dd>{lastSaved.fornecedor || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--color-muted)]">Pagamento</dt>
+                <dd>{lastSaved.pagamento || "—"}</dd>
+              </div>
+              <div className="col-span-2 border-t border-[var(--color-line)] pt-2 font-medium">
+                Valor: {formatKz(lastSaved.valor)}
+              </div>
+            </dl>
+            <p className="mt-3 text-[10px] text-[var(--color-muted)]">Registado por {lastSaved.criadoPor || "—"}</p>
+          </article>
+        </div>
+      ) : null}
+
+      <div className={lastSaved ? "no-print" : ""}>
       <PageHeader
         kicker="Entrada remota"
         title="Capturar fatura"
@@ -238,6 +293,7 @@ function Capturar() {
           </div>
         </aside>
       </form>
+      </div>
     </div>
   );
 }

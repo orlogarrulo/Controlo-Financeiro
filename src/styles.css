@@ -189,44 +189,57 @@
     print-color-adjust: exact;
   }
 
-  /* Dois recibos A5 na mesma folha A4 (metade superior + metade inferior) */
+  /* Dois recibos A5 na mesma folha A4 — sem desperdício */
   .recibos-print-area {
     display: flex !important;
     flex-direction: column !important;
+    justify-content: flex-start !important;
     gap: 0 !important;
     width: 100% !important;
+    height: auto !important;
   }
 
   .recibo-a5 {
     width: 100% !important;
     max-width: none !important;
-    height: 135mm !important;
-    max-height: 135mm !important;
+    height: auto !important;
+    max-height: 48% !important;
     min-height: 0 !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
-    border: 1px solid #999 !important;
-    padding: 5mm 6mm !important;
-    margin: 0 !important;
+    border: 1px solid #888 !important;
+    padding: 4mm 5mm !important;
+    margin: 0 0 3mm 0 !important;
     border-radius: 0 !important;
-    break-inside: avoid !important;
     page-break-inside: avoid !important;
+    break-inside: avoid !important;
     page-break-after: avoid !important;
-  }
-
-  .recibo-a5 + .recibo-a5 {
-    margin-top: 4mm !important;
-    border-top: 1px dashed #aaa !important;
     page-break-before: avoid !important;
   }
 
-  .recibo-a5 .print-header img {
-    height: 40px !important;
-    width: 40px !important;
+  .recibo-a5:last-child {
+    margin-bottom: 0 !important;
   }
 
   .recibo-a5 .print-header {
-    margin-bottom: 3mm !important;
-    padding-bottom: 2mm !important;
+    margin-bottom: 2mm !important;
+    padding-bottom: 1.5mm !important;
+    gap: 8px !important;
+  }
+
+  .recibo-a5 .print-header img {
+    height: 36px !important;
+    width: 36px !important;
+  }
+
+  .recibo-a5 .print-header .font-display,
+  .recibo-a5 .font-display {
+    font-size: 11pt !important;
+  }
+
+  .recibo-a5 table,
+  .recibo-a5 dl,
+  .recibo-a5 p {
+    font-size: 9pt !important;
   }
 }

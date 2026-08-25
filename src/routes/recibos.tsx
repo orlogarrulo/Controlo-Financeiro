@@ -4,41 +4,148 @@ import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { alunosAll, fundoPagAll, getSeed, useFinance } from "@/lib/store";
-import { formatDateLong, formatKz } from "@/lib/format";
+import { formatDateLong, formatKz, todayIso } from "@/lib/format";
 import { PrintHeader } from "@/components/print-header";
+import { MESES_LETIVOS } from "@/data/types";
 
 export const Route = createFileRoute("/recibos")({ component: Recibos });
+
+const MES_LABEL: Record<string, string> = {
+  set: "Setembro",
+  out: "Outubro",
+  nov: "Novembro",
+  dez: "Dezembro",
+  jan: "Janeiro",
+  fev: "Fevereiro",
+  mar: "Março",
+  abr: "Abril",
+  mai: "Maio",
+  jun: "Junho",
+};
+
+type Slot =
+  | { kind: "inscricao"; id: string }
+  | { kind: "propina"; id: string; mes: string }
+  | { kind: "maneio"; id: string }
+  | { kind: "none" };
+
+function parseSlot(raw: string): Slot {
+  if (!raw) return { kind: "none" };
+  if (raw.startsWith("prop:")) {
+    const [, id, mes] = raw.split(":");
+    return { kind: "propina", id, mes };
+  }
+  if (raw.startsWith("rm:")) return { kind: "maneio", id: raw.slice(3) };
+  return { kind: "inscricao", id: raw };
+}
+
+function slotKey(s: Slot): string {
+  if (s.kind === "propina") return `prop:${s.id}:${s.mes}`;
+  if (s.kind === "maneio") return `rm:${s.id}`;
+  if (s.kind === "inscricao") return s.id;
+  return "";
+}
 
 function Recibos() {
   const extraA = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const extraF = useFinance((s) => s.fundoExtra);
+  const mensalidades = useFinance((s) => s.mensalidades);
   const alunos = alunosAll(extraA, alunosOverrides);
   const fundo = fundoPagAll(extraF);
   const escola = getSeed().escola;
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState<string>(alunos[0]?.recibo ?? "");
+  const [sel, setSel] = useState<string>(alunos[0]?.recibo ? alunos[0].recibo : "");
   const [sel2, setSel2] = useState<string>("");
 
-  const aluno = alunos.find((a) => a.recibo === sel);
-  const rm = fundo.find((p) => p.id === sel);
-  const aluno2 = alunos.find((a) => a.recibo === sel2);
-  const rm2 = fundo.find((p) => p.id === sel2);
-
   const list = useMemo(() => {
-    const a = alunos.map((x) => ({ id: x.recibo, label: `${x.recibo} · ${x.nome}` }));
-    const f = fundo.map((x) => ({ id: x.id, label: `${x.id} · ${x.descricao}` }));
-    const all = [...a, ...f];
+    const insc = alunos.map((x) => ({
+      id: x.recibo,
+      label: `Inscrição · ${x.recibo} · ${x.nome}`,
+    }));
+    const prop: { id: string; label: string }[] = [];
+    for (const m of mensalidades) {
+      for (const mes of MESES_LETIVOS) {
+        const v = m.pagamentos[mes] || 0;
+        if (v > 0) {
+          prop.push({
+            id: `prop:${m.id}:${mes}`,
+            label: `Propina · ${MES_LABEL[mes] ?? mes} · ${m.nome} · ${formatKz(v)}`,
+          });
+        }
+      }
+      // also allow generating for months not yet paid (valor propina)
+      if (!Object.values(m.pagamentos).some((v) => v > 0)) {
+        prop.push({
+          id: `prop:${m.id}:set`,
+          label: `Propina · Setembro · ${m.nome} · ${formatKz(m.propina)} (a registar)`,
+        });
+      }
+    }
+    // Always offer current month propina options for each student with propina
+    for (const a of alunos) {
+      if (!a.propina) continue;
+      const mid = mensalidades.find((m) => m.nome === a.nome)?.id ?? a.id;
+      for (const mes of ["set", "out", "nov"] as const) {
+        const key = `prop:${mid}:${mes}`;
+        if (!prop.some((p) => p.id === key)) {
+          const paid = mensalidades.find((m) => m.id === mid)?.pagamentos[mes] || 0;
+          prop.push({
+            id: key,
+            label: `Propina · ${MES_LABEL[mes]} · ${a.nome} · ${formatKz(paid || a.propina)}`,
+          });
+        }
+      }
+    }
+    const f = fundo.map((x) => ({ id: `rm:${x.id}`, label: `Fundo · ${x.id} · ${x.descricao}` }));
+    const all = [...insc, ...prop, ...f];
     if (!q) return all;
-    return all.filter((x) => x.label.toLowerCase().includes(q.toLowerCase()));
-  }, [alunos, fundo, q]);
+    const qq = q.toLowerCase();
+    return all.filter((x) => x.label.toLowerCase().includes(qq));
+  }, [alunos, fundo, mensalidades, q]);
+
+  const s1 = parseSlot(sel);
+  const s2 = parseSlot(sel2);
+
+  function renderSlot(s: Slot) {
+    if (s.kind === "inscricao") {
+      const aluno = alunos.find((a) => a.recibo === s.id);
+      return aluno ? <ReciboInscricao key={s.id} aluno={aluno} escola={escola} /> : null;
+    }
+    if (s.kind === "propina") {
+      const m = mensalidades.find((x) => x.id === s.id);
+      const aluno =
+        alunos.find((a) => a.id === s.id || a.nome === m?.nome) ||
+        alunos.find((a) => a.nome === m?.nome);
+      const valor = m?.pagamentos[s.mes] || m?.propina || aluno?.propina || 0;
+      if (!m && !aluno) return null;
+      return (
+        <ReciboPropina
+          key={slotKey(s)}
+          nome={m?.nome || aluno?.nome || "—"}
+          turma={m?.turma || aluno?.turma || "—"}
+          mes={s.mes}
+          valor={valor}
+          encarregado={aluno?.encarregado || ""}
+          telefone={aluno?.telefone || ""}
+          nRecibo={`RP-${s.id}-${s.mes.toUpperCase()}`}
+          escola={escola}
+        />
+      );
+    }
+    if (s.kind === "maneio") {
+      const pag = fundo.find((p) => p.id === s.id);
+      return pag ? <ReciboManeio key={s.id} pag={pag} escola={escola} /> : null;
+    }
+    return null;
+  }
 
   return (
     <div>
       <PageHeader
-        kicker="Impressão A5"
+        kicker="Impressão"
         title="Recibos"
-        description="Formato A5 (dois recibos por folha A4). Escolha até dois números para imprimir juntos."
+        description="Inscrição, propina/mensalidade e fundo de maneio. Dois recibos A5 na mesma folha A4."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
             Imprimir
@@ -46,7 +153,7 @@ function Recibos() {
         }
       />
       <div className="no-print mb-4 grid gap-2 sm:grid-cols-[1fr_1fr_1fr]">
-        <Input placeholder="Pesquisar recibo…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input placeholder="Pesquisar aluno, propina, RM…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select
           className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
           value={sel}
@@ -64,19 +171,19 @@ function Recibos() {
           onChange={(e) => setSel2(e.target.value)}
         >
           <option value="">2.º recibo (opcional)</option>
-          {list.filter((x) => x.id !== sel).map((x) => (
-            <option key={x.id} value={x.id}>
-              2.º · {x.label}
-            </option>
-          ))}
+          {list
+            .filter((x) => x.id !== sel)
+            .map((x) => (
+              <option key={x.id} value={x.id}>
+                2.º · {x.label}
+              </option>
+            ))}
         </select>
       </div>
 
-      <div className="recibos-print-area space-y-4">
-        {aluno ? <ReciboInscricao aluno={aluno} escola={escola} /> : null}
-        {rm ? <ReciboManeio pag={rm} escola={escola} /> : null}
-        {aluno2 ? <ReciboInscricao aluno={aluno2} escola={escola} /> : null}
-        {rm2 ? <ReciboManeio pag={rm2} escola={escola} /> : null}
+      <div className="recibos-print-area">
+        {renderSlot(s1)}
+        {s2.kind !== "none" ? renderSlot(s2) : null}
       </div>
     </div>
   );
@@ -90,24 +197,25 @@ function ReciboInscricao({
   escola: ReturnType<typeof getSeed>["escola"];
 }) {
   const lines = [
-    { d: "Taxa de inscrição – Ano letivo 2026/2027", q: 1, v: aluno.inscricao },
-    ...(aluno.seguro ? [{ d: "Seguro escolar", q: 1, v: aluno.seguro }] : []),
-    ...(aluno.manuais ? [{ d: "Manuais escolares", q: 1, v: aluno.manuais }] : []),
-    ...(aluno.curso ? [{ d: "Curso intensivo", q: 1, v: aluno.curso }] : []),
-    ...(aluno.mensalidade1 ? [{ d: "1.ª mensalidade", q: 1, v: aluno.mensalidade1 }] : []),
+    { d: "Taxa de inscrição – Ano letivo 2026/2027", v: aluno.inscricao },
+    ...(aluno.seguro ? [{ d: "Seguro escolar", v: aluno.seguro }] : []),
+    ...(aluno.manuais ? [{ d: "Manuais escolares", v: aluno.manuais }] : []),
+    ...(aluno.uniforme ? [{ d: "Uniforme", v: aluno.uniforme }] : []),
+    ...(aluno.curso ? [{ d: "Curso intensivo", v: aluno.curso }] : []),
+    ...(aluno.mensalidade1 ? [{ d: "1.ª mensalidade", v: aluno.mensalidade1 }] : []),
   ];
   const desc = aluno.bruto - aluno.liquido;
   return (
-    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
+    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
       <PrintHeader title="Recibo de inscrição" subtitle={escola.subtitulo} />
-      <div className="mt-4 flex justify-between text-sm">
+      <div className="mt-3 flex justify-between text-sm">
         <span>
           N.º <strong>{aluno.recibo}</strong>
         </span>
         <span>{formatDateLong(aluno.dataPag)}</span>
       </div>
-      <dl className="mt-4 grid gap-1 text-sm">
-        <div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <div className="col-span-2">
           <dt className="text-xs text-[var(--color-muted)]">Aluno</dt>
           <dd className="font-medium">{aluno.nome}</dd>
         </div>
@@ -116,39 +224,125 @@ function ReciboInscricao({
           <dd>{aluno.turma}</dd>
         </div>
         <div>
-          <dt className="text-xs text-[var(--color-muted)]">Encarregado</dt>
+          <dt className="text-xs text-[var(--color-muted)]">Família</dt>
+          <dd>{aluno.familia || "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Encarregado de educação</dt>
           <dd>{aluno.encarregado || "________________"}</dd>
         </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Telefone</dt>
+          <dd>{aluno.telefone || "________________"}</dd>
+        </div>
       </dl>
-      <table className="mt-4 w-full text-sm">
+      <table className="mt-3 w-full text-sm">
         <tbody>
           {lines.map((l) => (
             <tr key={l.d} className="border-t border-[var(--color-line)]">
-              <td className="py-1.5">{l.d}</td>
-              <td className="py-1.5 text-right tabular-nums">{formatKz(l.v)}</td>
+              <td className="py-1">{l.d}</td>
+              <td className="py-1 text-right tabular-nums">{formatKz(l.v)}</td>
             </tr>
           ))}
           {desc > 0 ? (
             <tr className="border-t border-[var(--color-line)] text-[var(--color-clay)]">
-              <td className="py-1.5">Desconto {aluno.descPct}% (irmãos)</td>
-              <td className="py-1.5 text-right tabular-nums">− {formatKz(desc)}</td>
+              <td className="py-1">Desconto {aluno.descPct}% (irmãos)</td>
+              <td className="py-1 text-right tabular-nums">− {formatKz(desc)}</td>
             </tr>
           ) : null}
           <tr className="border-t-2 border-[var(--color-ink)] font-medium">
-            <td className="py-2">Total</td>
-            <td className="py-2 text-right tabular-nums">{formatKz(aluno.liquido)}</td>
+            <td className="py-1.5">Total</td>
+            <td className="py-1.5 text-right tabular-nums">{formatKz(aluno.liquido)}</td>
           </tr>
         </tbody>
       </table>
-      <p className="mt-4 text-xs text-[var(--color-muted)]">{escola.notaFiscal}</p>
-      <div className="mt-8 grid grid-cols-2 gap-6 text-xs">
+      <p className="mt-2 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
+      <div className="mt-4 grid grid-cols-2 gap-4 text-[11px]">
         <div>
           <p>Recebido pela escola</p>
-          <p className="mt-8 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
         </div>
         <div>
           <p>Encarregado de educação</p>
-          <p className="mt-8 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ReciboPropina({
+  nome,
+  turma,
+  mes,
+  valor,
+  encarregado,
+  telefone,
+  nRecibo,
+  escola,
+}: {
+  nome: string;
+  turma: string;
+  mes: string;
+  valor: number;
+  encarregado: string;
+  telefone: string;
+  nRecibo: string;
+  escola: ReturnType<typeof getSeed>["escola"];
+}) {
+  const mesNome = MES_LABEL[mes] ?? mes;
+  return (
+    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
+      <PrintHeader title="Recibo de propina / mensalidade" subtitle={escola.subtitulo} />
+      <div className="mt-3 flex justify-between text-sm">
+        <span>
+          N.º <strong>{nRecibo}</strong>
+        </span>
+        <span>{formatDateLong(todayIso())}</span>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <div className="col-span-2">
+          <dt className="text-xs text-[var(--color-muted)]">Aluno</dt>
+          <dd className="font-medium">{nome}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Classe</dt>
+          <dd>{turma}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Mês de referência</dt>
+          <dd>{mesNome} · {escola.ano}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Encarregado de educação</dt>
+          <dd>{encarregado || "________________"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Telefone</dt>
+          <dd>{telefone || "________________"}</dd>
+        </div>
+      </dl>
+      <table className="mt-3 w-full text-sm">
+        <tbody>
+          <tr className="border-t border-[var(--color-line)]">
+            <td className="py-1">Propina mensal — {mesNome}</td>
+            <td className="py-1 text-right tabular-nums">{formatKz(valor)}</td>
+          </tr>
+          <tr className="border-t-2 border-[var(--color-ink)] font-medium">
+            <td className="py-1.5">Total recebido</td>
+            <td className="py-1.5 text-right tabular-nums">{formatKz(valor)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="mt-2 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
+      <div className="mt-4 grid grid-cols-2 gap-4 text-[11px]">
+        <div>
+          <p>Recebido pela escola</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
+        </div>
+        <div>
+          <p>Encarregado de educação</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
         </div>
       </div>
     </article>
@@ -163,15 +357,15 @@ function ReciboManeio({
   escola: ReturnType<typeof getSeed>["escola"];
 }) {
   return (
-    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
+    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
       <PrintHeader title="Recibo fundo de maneio" />
-      <div className="mt-4 flex justify-between text-sm">
+      <div className="mt-3 flex justify-between text-sm">
         <span>
           N.º <strong>{pag.id}</strong>
         </span>
         <span>{formatDateLong(pag.data)}</span>
       </div>
-      <p className="mt-4 text-sm">
+      <p className="mt-3 text-sm">
         Recebi de <strong>{escola.nomeCurto}</strong> a quantia de <strong>{formatKz(pag.valor)}</strong> referente a{" "}
         {pag.descricao}.
       </p>
@@ -179,15 +373,15 @@ function ReciboManeio({
         Beneficiário: <strong>{pag.recebeu || "________________"}</strong>
       </p>
       {pag.obs ? <p className="mt-2 text-xs text-[var(--color-muted)]">{pag.obs}</p> : null}
-      <p className="mt-4 text-xs text-[var(--color-muted)]">{escola.notaFiscal}</p>
-      <div className="mt-8 grid grid-cols-2 gap-6 text-xs">
+      <p className="mt-2 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
+      <div className="mt-4 grid grid-cols-2 gap-4 text-[11px]">
         <div>
           <p>O recebedor</p>
-          <p className="mt-8 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
         <div>
           <p>Pela escola</p>
-          <p className="mt-8 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
       </div>
     </article>
