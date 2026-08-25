@@ -1,4 +1,6 @@
+import { Printer } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,12 +20,18 @@ function Mensalidades() {
   return (
     <div>
       <PageHeader
+        actions={
+          <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+            <Printer className="mr-1 size-4" /> Imprimir
+          </Button>
+        }
+        
         kicker="Setembro a Junho"
         title="Mensalidades"
         description="Células amarelas: valor pago no mês. Wendy já tem Setembro liquidado com a inscrição (170.000 Kz). Status calcula-se sozinho."
       />
       <p className="mb-3 text-sm text-[var(--color-muted)]">Total recebido em propinas: {formatKz(grand)}</p>
-      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+      <div className="overflow-x-auto print-sheet rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
         <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>

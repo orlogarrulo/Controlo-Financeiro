@@ -2,6 +2,7 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AppShell } from "@/components/layout";
+import { OperatorGate } from "@/components/operator-gate";
 import { HydrateStore } from "@/components/hydrate-store";
 import { Toaster } from "sonner";
 import appCss from "../styles.css?url";
@@ -47,9 +48,11 @@ export const Route = createRootRoute({
         <PreviewHostBridge />
         <AuthProvider>
           <HydrateStore />
-          <AppShell>
-            <Outlet />
-          </AppShell>
+          <OperatorGate>
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          </OperatorGate>
           <Toaster position="top-center" richColors />
         </AuthProvider>
         <Scripts />

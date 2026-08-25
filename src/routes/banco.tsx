@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader, Kpi } from "@/components/kpi";
+import { Button } from "@/components/ui/button";
+import { Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getSeed, movimentosAll, useFinance } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
@@ -22,6 +24,11 @@ function Banco() {
         kicker="BAI Express · Cartão 9"
         title="Movimentos do cartão"
         description={`${escola.contaBai} · ${escola.cartao}. Saldo inicial ${formatKz(escola.saldoInicialBai)}.`}
+        actions={
+          <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+            <Printer className="mr-1 size-4" /> Imprimir extrato
+          </Button>
+        }
       />
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Saldo atual" value={last?.saldo ?? 0} compact tone="forest" />
@@ -60,7 +67,7 @@ function Banco() {
       </div>
 
       <h2 className="font-display mb-2 text-xl">Extrato</h2>
-      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>

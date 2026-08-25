@@ -18,6 +18,7 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { getSeed, useFinance } from "@/lib/store";
+import { clearOperatorSession, isCollaborator1 } from "@/lib/can-edit";
 
 const NAV = [
   { to: "/", label: "Quadro", icon: LayoutDashboard },
@@ -58,6 +59,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium tracking-[0.12em] text-[var(--color-muted)] uppercase">
               <UserRound className="size-3" /> A trabalhar como
             </p>
+            <button
+              type="button"
+              className="mb-2 text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
+              onClick={() => clearOperatorSession()}
+            >
+              Trocar colaborador
+            </button>
             <select
               className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
               value={activeOperator}
@@ -207,13 +215,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 function Brand() {
+  const escola = getSeed().escola;
   return (
-    <div className="px-4 py-6">
-      <p className="text-[10px] font-medium tracking-[0.18em] text-[var(--color-forest)] uppercase">
-        École Consulaire
-      </p>
-      <p className="font-display mt-1 text-xl leading-tight tracking-tight">Controlo Financeiro</p>
-      <p className="mt-1 text-xs text-[var(--color-muted)]">Luanda · 2026/2027</p>
+    <div className="flex items-center gap-3 px-4 py-5">
+      <img src="/logo-escola.jpg" alt="" className="size-10 rounded-md object-contain" width={40} height={40} />
+      <div className="min-w-0">
+        <p className="truncate text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+          {escola.nomeCurto}
+        </p>
+        <p className="truncate text-sm font-medium leading-tight">Controlo Financeiro</p>
+      </div>
     </div>
   );
 }

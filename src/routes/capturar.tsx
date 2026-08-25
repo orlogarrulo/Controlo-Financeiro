@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { getSeed, useFinance, type CapturaInput } from "@/lib/store";
 import { compressImage } from "@/lib/image";
+import { ocrImage, parseOcrText } from "@/lib/ocr";
 import { todayIso } from "@/lib/format";
 import type { Origem } from "@/data/types";
 
@@ -48,7 +49,22 @@ function Capturar() {
     try {
       const data = await compressImage(file);
       setFoto(data);
-      toast.success("Foto da fatura anexada");
+      toast.success("Foto anexada — a tentar OCR…");
+      try {
+        const text = await ocrImage(data);
+        const parsed = parseOcrText(text);
+        setForm((f) => ({
+          ...f,
+          valor: parsed.valor || f.valor,
+          fatura: parsed.fatura || f.fatura,
+          fornecedor: parsed.fornecedor || f.fornecedor,
+          data: parsed.data || f.data,
+          observacoes: f.observacoes || (text ? `OCR: ${text.slice(0, 180)}…` : ""),
+        }));
+        toast.success("OCR concluído — verifique os campos");
+      } catch {
+        toast.message("Foto ok. OCR indisponível; preencha manualmente.");
+      }
     } catch {
       toast.error("Não foi possível ler a imagem");
     } finally {
@@ -72,7 +88,7 @@ function Capturar() {
       <PageHeader
         kicker="Entrada remota"
         title="Capturar fatura"
-        description="Fotografe o talão ou a fatura e preencha os campos. O número interno (FRM-xxx) gera-se sozinho — escreva-o no papel. O mesmo modelo serve para o Google Forms."
+        description="Fotografe a fatura (OCR preenche valor/n.º se possível). Escolha a origem: Sócio, Cartão BAI, Dinheiro (fundo) ou Outras — não misture. Numeração mensal automática (ex. FRM-2026-08-001)."
       />
       <p className="no-print mb-4 text-sm text-[var(--color-muted)]">
         A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
@@ -147,10 +163,12 @@ function Capturar() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="formulario">Formulário / Foto</SelectItem>
-                  <SelectItem value="cartao">Cartão BAI</SelectItem>
-                  <SelectItem value="fundo">Fundo de maneio</SelectItem>
-                  <SelectItem value="banco">Transferência / Banco</SelectItem>
+                  <SelectItem value="formulario">Outras (formulário)</SelectItem>
+                  <SelectItem value="cartao">Despesa · Cartão Multicaixa BAI</SelectItem>
+                  <SelectItem value="fundo">Despesa · Dinheiro (fundo maneio)</SelectItem>
+                  <SelectItem value="banco">Despesa · Transferência BAI</SelectItem>
+                  <SelectItem value="inscricao">Entrada · Matrícula / inscrição</SelectItem>
+                  <SelectItem value="propina">Entrada · Propina</SelectItem>
                   <SelectItem value="socio">Empréstimo sócio</SelectItem>
                 </SelectContent>
               </Select>

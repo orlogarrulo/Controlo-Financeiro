@@ -2,65 +2,61 @@
 
 Aplicação de controlo financeiro escolar (lançamentos, propinas, cartão BAI, fundo de maneio, recibos).
 
+## Acesso
+
+1. No arranque **obrigatório** escolher o membro da equipa (Colaborador 1–5).
+2. **Colaborador 1** — permissão total de edição; pede **código** (não mostrado aos outros).
+3. Colaboradores 2–5 — entram sem código; só consulta / registos limitados.
+4. «Trocar colaborador» na barra lateral para mudar de sessão.
+
 ## Stack
 
-- Vite + React + TypeScript
-- TanStack Router
-- Zustand (persistência local)
-- Deploy: Vercel
+- Vite + React + TypeScript · TanStack Router · Zustand
+- Deploy: **Vercel**
 
-## Desenvolvimento local
+## Local
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Build / Vercel
+## GitHub → Vercel
 
 ```bash
-npm install
-npm run build
+git init
+git add .
+git commit -m "Controlo Financeiro École Consulaire"
+git branch -M main
+git remote add origin https://github.com/SEU_USER/controlo-financeiro.git
+git push -u origin main
 ```
 
-O output de produção fica em `dist/` (ou conforme `vite.config.ts`).
+No Vercel: importar o repo (framework Vite, `npm run build`, output `dist`). Existe `vercel.json`.
 
-### Vercel
+## Funcionalidades recentes
 
-1. Criar repositório no GitHub e fazer push desta pasta (raiz = `APP_1`).
-2. Em [vercel.com](https://vercel.com) → **Add New Project** → importar o repo.
-3. Framework: Vite (detectado automaticamente).
-4. Build Command: `npm run build`
-5. Output Directory: conforme o projecto (geralmente `dist`).
-6. Deploy.
+- **Gate de colaborador** + PIN só para Colaborador 1
+- **Logotipo oficial** no login, barra e **recibos impressos**
+- **Recibos**: 1 ou 2 por folha A4 (dois A5), para poupar papel
+- **Import/export CSV** (Google Sheets + Forms / extrato BAI) com reconciliação
+- Seed BAI reconciliado (saldo **1 064 700,56 Kz**)
 
-## Importação CSV / Google Sheets
+CSV de exemplo: `data-export/BAI_Movimentos_para_importar_APP.csv`
 
-Na app: **Google Sheets + Forms**
+## Impressão de recibos
 
-- **Exportar** lançamentos (master) ou movimentos BAI.
-- **Importar** CSV do Forms, do extrato BAI (Excel) ou lançamentos.
-- Modo **Extrato BAI**: substitui o extrato na app e mostra reconciliação de saldo.
+1. Menu **Recibos**
+2. Escolher o 1.º recibo e, se quiser, o 2.º (opcional)
+3. **Imprimir** — orientação vertical A4; cada recibo ~A5 na mesma folha
 
-Ficheiro de exemplo (reconciliado com Excel, saldo **1 064 700,56 Kz**):
 
-`data-export/BAI_Movimentos_para_importar_APP.csv`
+## Lançamentos e recibos
 
-## Acesso
-
-Ecrã inicial: escolher colaborador. **Colaborador 1** usa o código de acesso configurado na equipa.
-
-## Dados
-
-- Seed em `src/data/seed.json` (movimentos BAI, alunos, lançamentos sócio, etc.).
-- Dados locais (extras, imports) em `localStorage` (`ecc-financeiro-v1`).
-
-## Notas Evento 50 Anos (Ago/2026)
-
-Incluído no seed / CSV de importação:
-
-- Levantamentos ATM e TPA do evento
-- Transferências (compras, DJ, funcionários, Inês Passi 20k)
-- Matrículas Késane (20-08) e Belangela (21-08 + curso 40k)
-- Vendas evento 30 666 Kz
-- Entrada 40 000 Kz a identificar
+- **Edição** de lançamentos (Colaborador 1) após o registo.
+- **Origens de despesa** separadas: Sócio · Cartão BAI · Dinheiro (fundo) · Outras.
+- **Entradas**: matrícula, seguro, manuais, uniforme, ATL, curso intensivo, propinas.
+- **Numeração mensal**: `FRM-2026-08-001`, `BAI-2026-08-001`, etc. (reinicia a 001 cada mês).
+- **OCR** na captura de foto (preenche valor/fatura quando possível).
+- **Seguro externo**: no aluno, opção para não cobrar seguro da escola e recalcular.
+- **Impressão** em Lançamentos, Cartão BAI, Alunos, Propinas e Recibos (2× A5).

@@ -30,10 +30,12 @@ function Dashboard() {
   const mensalidades = useFinance((s) => s.mensalidades);
   const alunosExtra = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
+  const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra);
+  const baiOverride = useFinance((s) => s.baiOverride);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const isAdmin = isCollaborator1(activeOperator, operators);
-  const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides);
+  const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides, movimentosBaiExtra, baiOverride);
   const ledger = buildLedger(extras);
   const cats = categoriaTotals(ledger.filter((l) => l.tipo === "despesa" && l.origem !== "inscricao"))
     .filter((c) => c.despesas > 0)

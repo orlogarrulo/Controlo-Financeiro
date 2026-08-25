@@ -16,6 +16,25 @@ import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
 
 const seed = seedJson as Seed;
 
+/** Numeração interna mensal: PREFIXO-AAAA-MM-001 (reinicia cada mês). */
+export function nextMonthlyDoc(
+  prefix: string,
+  existing: { docInterno?: string; id?: string; data?: string }[],
+  dataIso?: string,
+): string {
+  const d = dataIso || new Date().toISOString().slice(0, 10);
+  const ym = d.slice(0, 7); // YYYY-MM
+  const re = new RegExp(`^${prefix}-${ym}-(\d{3})$`);
+  let max = 0;
+  for (const e of existing) {
+    const key = e.docInterno || e.id || "";
+    const m = key.match(re);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `${prefix}-${ym}-${String(max + 1).padStart(3, "0")}`;
+}
+
+
 export type CapturaInput = {
   data: string;
   tipo: "entrada" | "despesa";
@@ -57,6 +76,7 @@ type Store = ExtraState & {
   setMensalidade: (id: string, mes: string, valor: number) => void;
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
+  updateExtra: (id: string, patch: Partial<Lancamento>) => void;
   resetLocal: () => void;
   setActiveOperator: (name: string) => void;
   setOperatorName: (index: number, name: string) => void;
@@ -98,8 +118,19 @@ export const useFinance = create<Store>()(
       },
       addCaptura: (input) => {
         const extras = get().extras;
-        const n = extras.length + 1;
-        const id = `FRM-${String(n).padStart(3, "0")}`;
+        const prefix =
+          input.tipo === "entrada"
+            ? input.origem === "inscricao" || input.origem === "propina"
+              ? "ENT"
+              : "ENT"
+            : input.origem === "socio"
+              ? "SOC"
+              : input.origem === "fundo"
+                ? "CX"
+                : input.origem === "cartao" || input.origem === "banco"
+                  ? "BAI"
+                  : "FRM";
+        const id = nextMonthlyDoc(prefix, [...seed.lancamentosSocio, ...extras], input.data);
         const by = get().activeOperator || "—";
         const now = new Date().toISOString();
         const row: Lancamento = {
@@ -168,6 +199,17 @@ export const useFinance = create<Store>()(
         get().pushAudit("propina", `${id} · ${mes} · ${valor}`);
       },
       setFoto: (id, dataUrl) => set({ fotos: { ...get().fotos, [id]: dataUrl } }),
+      updateExtra: (id, patch) => {
+        const by = get().activeOperator || "—";
+        set({
+          extras: get().extras.map((e) =>
+            e.id === id
+              ? { ...e, ...patch, editadoPor: by, updatedAt: new Date().toISOString() }
+              : e,
+          ),
+        });
+        get().pushAudit("editar_lancamento", `${id}`);
+      },
       removeExtra: (id) => {
         get().pushAudit("apagar_lancamento", id);
         set({ extras: get().extras.filter((e) => e.id !== id) });

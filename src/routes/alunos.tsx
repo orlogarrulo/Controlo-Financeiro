@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Pencil } from "lucide-react";
+import { Pencil, Printer } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -113,7 +113,7 @@ function Alunos() {
       return;
     }
     if (pin !== EDIT_PIN) {
-      toast.error("Código incorrecto. Introduza 1977.");
+      toast.error("Código incorrecto.");
       return;
     }
 
@@ -165,7 +165,7 @@ function Alunos() {
         title="Alunos"
         description={
           canEdit
-            ? "Cadastro unificado. Edição de valores e dados de contacto apenas para o Colaborador 1, com código 1977. Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
+            ? "Cadastro unificado. Edição de valores e dados de contacto apenas para o Colaborador 1, com código de autorização. Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
             : undefined
         }
         actions={
@@ -267,7 +267,20 @@ function Alunos() {
               Valores (KZ)
             </p>
             <Field label="Inscrição" value={form.inscricao} onChange={(v) => setForm({ ...form, inscricao: v })} />
-            <Field label="Seguro" value={form.seguro} onChange={(v) => setForm({ ...form, seguro: v })} />
+            <div className="space-y-1">
+              <Field label="Seguro escolar" value={form.seguro} onChange={(v) => setForm({ ...form, seguro: v })} />
+              <label className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
+                <input
+                  type="checkbox"
+                  checked={form.seguro === "0" || form.seguro === ""}
+                  onChange={(e) => {
+                    if (e.target.checked) setForm({ ...form, seguro: "0" });
+                    else setForm({ ...form, seguro: form.seguro === "0" ? "30000" : form.seguro });
+                  }}
+                />
+                Seguro externo (encarregado) — não cobrar seguro da escola; recalcula total
+              </label>
+            </div>
             <Field label="Manuais" value={form.manuais} onChange={(v) => setForm({ ...form, manuais: v })} />
             <Field label="Uniforme" value={form.uniforme} onChange={(v) => setForm({ ...form, uniforme: v })} />
             <Field label="Extras" value={form.extras} onChange={(v) => setForm({ ...form, extras: v })} />
@@ -295,7 +308,7 @@ function Alunos() {
                 className="mt-1.5 max-w-[160px]"
                 autoComplete="off"
               />
-              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Obrigatório para gravar (1977).</p>
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Obrigatório para gravar. Só o Colaborador 1 conhece o código.</p>
             </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">
