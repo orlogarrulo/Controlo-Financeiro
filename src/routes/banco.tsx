@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader, Kpi } from "@/components/kpi";
+import { PageHeader, Kpi } from "@/components/kpi"
+import { PrintHeader } from "@/components/print-header";
 import { Badge } from "@/components/ui/badge";
 import { getSeed, movimentosAll } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
@@ -16,6 +17,7 @@ function Banco() {
 
   return (
     <div>
+      <div className="print-only mb-4"><PrintHeader /></div>
       <PageHeader
         kicker="BAI Express · Cartão 9"
         title="Movimentos do cartão"

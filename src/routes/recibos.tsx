@@ -41,7 +41,7 @@ function Recibos() {
         description="Formato A5 (dois recibos por folha A4). Escolha até dois números para imprimir juntos."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir A5
+            Imprimir
           </Button>
         }
       />

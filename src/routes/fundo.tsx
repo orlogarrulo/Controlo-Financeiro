@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader, Kpi } from "@/components/kpi";
+import { PageHeader, Kpi } from "@/components/kpi"
+import { PrintHeader } from "@/components/print-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fundoAtmAll, fundoPagAll, useFinance } from "@/lib/store";
@@ -16,13 +17,14 @@ function Fundo() {
 
   return (
     <div>
+      <div className="print-only mb-4"><PrintHeader /></div>
       <PageHeader
         kicker="Caixa em numerário"
         title="Fundo de maneio"
         description="Cada levantamento ATM cria um bloco. Os pagamentos em dinheiro descontam-se desse valor. Os totais abaixo usam as linhas reais (o Excel somava 22.000 Kz no dia 09/08 com apenas 2.400 Kz lançados)."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir A4
+            Imprimir
           </Button>
         }
       />

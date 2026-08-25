@@ -89,7 +89,7 @@ function GooglePage() {
         description="Backup no Drive, histórico no Sheets e captura no telemóvel via Forms. Tudo liga ao livro de lançamentos desta app."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir A4
+            Imprimir
           </Button>
         }
       />
@@ -250,7 +250,7 @@ function GooglePage() {
                 <code className="text-xs">02_Faturas / AAAA-MM</code>.
               </li>
               <li>
-                Relatórios (DRE, fluxo): use <strong>Imprimir A4</strong> no Quadro → Guardar como PDF → pasta{" "}
+                Relatórios (DRE, fluxo): use <strong>Imprimir</strong> no Quadro → Guardar como PDF → pasta{" "}
                 <code className="text-xs">05_Relatórios</code>.
               </li>
             </ol>

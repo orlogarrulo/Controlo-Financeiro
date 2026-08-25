@@ -8,6 +8,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  Legend,
 } from "recharts";
 import { PageHeader, Kpi } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
@@ -74,7 +75,7 @@ function Dashboard() {
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-              <Printer /> Imprimir A4
+              <Printer /> Imprimir
             </Button>
             <Button asChild>
               <Link to="/capturar">
@@ -135,7 +136,7 @@ function Dashboard() {
       </div>
 
       {isAdmin && alerts.length ? (
-        <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--color-amber)]/30 bg-[var(--color-amber-soft)] px-4 py-3">
+        <div className="no-print mt-5 rounded-[var(--radius-md)] border border-[var(--color-amber)]/30 bg-[var(--color-amber-soft)] px-4 py-3">
           <p className="flex items-center gap-2 text-sm font-medium text-[var(--color-amber)]">
             <AlertTriangle className="size-4" /> Pontos a tratar
           </p>
@@ -154,7 +155,7 @@ function Dashboard() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Balanço patrimonial (simplificado)</CardTitle>
               <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
-                Imprimir A4
+                Imprimir
               </Button>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
@@ -179,7 +180,7 @@ function Dashboard() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Fluxo de caixa</CardTitle>
               <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
-                Imprimir A4
+                Imprimir
               </Button>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
@@ -205,7 +206,7 @@ function Dashboard() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Despesas por categoria</CardTitle>
             <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
-              Imprimir A4
+              Imprimir
             </Button>
           </CardHeader>
           <CardContent className="h-72">
@@ -215,7 +216,8 @@ function Dashboard() {
                 <XAxis dataKey="nome" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" interval={0} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatKzShort(v)} />
                 <Tooltip formatter={(v: number) => formatKz(v)} />
-                <Bar dataKey="despesas" fill="var(--color-forest)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="despesas" name="Despesas (KZ)" fill="var(--color-forest)" radius={[4, 4, 0, 0]} />
+                <Legend verticalAlign="bottom" height={28} wrapperStyle={{ fontSize: 11 }} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -225,7 +227,7 @@ function Dashboard() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>DRE simplificado</CardTitle>
             <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
-              Imprimir A4
+              Imprimir
             </Button>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">

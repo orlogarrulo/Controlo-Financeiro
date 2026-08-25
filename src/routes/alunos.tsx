@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/kpi";
+import { PageHeader } from "@/components/kpi"
+import { PrintHeader } from "@/components/print-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -161,6 +162,7 @@ function Alunos() {
 
   return (
     <div>
+      <div className="print-only mb-4"><PrintHeader /></div>
       <PageHeader
         kicker="Matrículas 2026/2027"
         title="Alunos"
@@ -171,7 +173,7 @@ function Alunos() {
         }
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir A4
+            Imprimir
           </Button>
         }
       />

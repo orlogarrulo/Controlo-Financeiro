@@ -163,7 +163,7 @@ function Lancamentos() {
               <Download /> CSV Sheets
             </Button>
             <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-              Imprimir A4
+              Imprimir
             </Button>
             <Button asChild className="no-print">
               <Link to="/capturar">Novo</Link>

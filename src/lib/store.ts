@@ -40,7 +40,7 @@ type ExtraState = {
   fundoExtra: FundoPagamento[];
   fotos: Record<string, string>;
   /** Nome do colaborador ativo neste browser (escritório, até 5). */
-  activeOperator: string;
+  activeOperator: string; // "" = ainda não escolheu membro da equipa
   /** Lista editável dos 5 nomes do escritório. */
   operators: string[];
   /** Sessão Colaborador 1 desbloqueada com PIN (não persistir em claro como segredo). */
@@ -76,7 +76,7 @@ export const useFinance = create<Store>()(
       mensalidades: initialMensalidades,
       fundoExtra: [],
       fotos: {},
-      activeOperator: DEFAULT_OPERATORS[0],
+      activeOperator: "",
       operators: [...DEFAULT_OPERATORS],
       adminUnlocked: false,
       auditLog: [],
@@ -92,10 +92,9 @@ export const useFinance = create<Store>()(
       },
       unlockAdmin: (pin) => {
         const ops = get().operators;
-        const name = get().activeOperator;
-        if (!ops[0] || name !== ops[0]) return false;
+        if (!ops[0]) return false;
         if (pin !== EDIT_PIN) return false;
-        set({ adminUnlocked: true });
+        set({ activeOperator: ops[0], adminUnlocked: true });
         get().pushAudit("desbloquear_admin", "Colaborador 1");
         return true;
       },
