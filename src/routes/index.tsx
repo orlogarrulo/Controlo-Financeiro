@@ -8,7 +8,6 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  Legend,
 } from "recharts";
 import { PageHeader, Kpi } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
@@ -209,17 +208,42 @@ function Dashboard() {
               Imprimir
             </Button>
           </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cats} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
-                <XAxis dataKey="nome" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatKzShort(v)} />
-                <Tooltip formatter={(v: number) => formatKz(v)} />
-                <Bar dataKey="despesas" name="Despesas (KZ)" fill="var(--color-forest)" radius={[4, 4, 0, 0]} />
-                <Legend verticalAlign="bottom" height={28} wrapperStyle={{ fontSize: 11 }} />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={cats} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
+                  <XAxis dataKey="categoria" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" interval={0} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatKzShort(v)} />
+                  <Tooltip
+                    cursor={{ fill: "var(--color-forest-soft)", opacity: 0.4 }}
+                    labelFormatter={(label) => String(label)}
+                    formatter={(v: number) => [formatKz(Number(v)), "Valor"]}
+                    contentStyle={{
+                      borderRadius: 8,
+                      border: "1px solid var(--color-line)",
+                      fontSize: 12,
+                    }}
+                  />
+                  <Bar dataKey="despesas" name="Valor (KZ)" fill="var(--color-forest)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Legenda discriminada por categoria — ecrã e impressão */}
+            <ul className="mt-3 grid gap-1 border-t border-[var(--color-line)] pt-3 text-xs sm:grid-cols-2 print:grid-cols-2">
+              {cats.map((c) => (
+                <li key={c.categoria} className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="size-2.5 shrink-0 rounded-sm bg-[var(--color-forest)]"
+                      aria-hidden
+                    />
+                    <span className="truncate font-medium text-[var(--color-ink)]">{c.categoria}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-[var(--color-muted)]">{formatKz(c.despesas)}</span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
 
