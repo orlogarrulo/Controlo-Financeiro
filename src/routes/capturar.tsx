@@ -24,7 +24,7 @@ import { PrintHeader } from "@/components/print-header";
 
 export const Route = createFileRoute("/capturar")({ component: Capturar });
 
-type Mode = "despesa" | "propina" | "inscricao" | "seguro" | "manuais" | "extra";
+type Mode = "despesa" | "propina" | "inscricao" | "manuais" | "extra";
 
 const METODOS = [
   "Numerário",
@@ -36,8 +36,7 @@ const METODOS = [
 
 const RECEITA_MODES: { id: Mode; label: string }[] = [
   { id: "propina", label: "Propina" },
-  { id: "inscricao", label: "Inscrição" },
-  { id: "seguro", label: "Seguro" },
+  { id: "inscricao", label: "Inscrição + seguro" },
   { id: "manuais", label: "Manuais" },
   { id: "extra", label: "Actividades extra" },
 ];
@@ -86,16 +85,30 @@ function Capturar() {
     data: todayIso(),
     pagamento: "Transferência bancária",
     detalhe: "",
+    /** Encarregado já tem seguro próprio — não cobra os 30.000 Kz */
+    temSeguroProprio: false,
   });
 
   function alunoById(id: string): Aluno | undefined {
     return alunos.find((a) => a.id === id);
   }
 
-  function defaultValor(mode: Mode, a?: Aluno): number {
+  function defaultValor(mode: Mode, a?: Aluno, temSeguroProprio = false): number {
     if (!a) return 0;
-    if (mode === "inscricao") return a.liquido || a.inscricao || 0;
-    if (mode === "seguro") return a.seguro || 0;
+    if (mode === "inscricao") {
+      // Matrícula = inscrição (+ componentes sem seguro se já tiver seguro próprio)
+      const base =
+        (a.inscricao || 0) +
+        (a.manuais || 0) +
+        (a.uniforme || 0) +
+        (a.extras || 0) +
+        (a.curso || 0) +
+        (a.mensalidade1 || 0);
+      const seguro = temSeguroProprio ? 0 : a.seguro || 0;
+      const bruto = base + seguro;
+      if (a.descPct) return Math.round(bruto * (1 - a.descPct / 100));
+      return bruto || a.liquido || a.inscricao || 0;
+    }
     if (mode === "manuais") return a.manuais || 0;
     if (mode === "extra") return a.extras || a.curso || 0;
     if (mode === "propina") return a.propina || 0;
@@ -115,8 +128,9 @@ function Capturar() {
     setReceita((r) => ({
       ...r,
       alunoId: a?.id || r.alunoId,
-      valor: defaultValor(id, a),
+      valor: defaultValor(id, a, r.temSeguroProprio),
       detalhe: id === "extra" ? r.detalhe : "",
+      temSeguroProprio: id === "inscricao" ? r.temSeguroProprio : false,
     }));
   }
 
@@ -178,7 +192,7 @@ function Capturar() {
       data: prop.data,
       tipo: "entrada",
       categoria: "Propina / Mensalidade",
-      descricao: `Propina ${mesLabel} — ${nome}`,
+      descricao: `Propina ${mesLabel} — ${nome}${aluno?.turma ? ` · ${aluno.turma}` : ""}`,
       fornecedor: aluno?.encarregado || nome,
       fatura: "",
       valor,
@@ -190,47 +204,53 @@ function Capturar() {
     afterSave(row, `prop:${mid}:${prop.mes}`);
   }
 
-  function submitReceitaEscolar(
-    e: FormEvent,
-    kind: "inscricao" | "seguro" | "manuais" | "extra",
-  ) {
+  function submitReceitaEscolar(e: FormEvent, kind: "inscricao" | "manuais" | "extra") {
     e.preventDefault();
     const aluno = alunoById(receita.alunoId);
     if (!aluno) {
       toast.error("Seleccione o aluno");
       return;
     }
-    const valor = receita.valor || defaultValor(kind, aluno);
+    const valor = receita.valor || defaultValor(kind, aluno, receita.temSeguroProprio);
     if (!valor) {
       toast.error("Indique o valor recebido");
       return;
     }
 
-    const meta = {
-      inscricao: {
+    if (kind === "inscricao") {
+      const seguroIncluido = receita.temSeguroProprio ? 0 : aluno.seguro || 0;
+      const obsSeguro = receita.temSeguroProprio
+        ? "Seguro próprio do encarregado — isento na escola"
+        : seguroIncluido
+          ? `Inclui seguro escolar ${seguroIncluido} Kz`
+          : "";
+      const row = add({
+        data: receita.data,
+        tipo: "entrada",
         categoria: "Inscrição / Matrícula",
-        titulo: `Inscrição — ${aluno.nome}`,
-        origem: "inscricao" as Origem,
-        reciboKey: aluno.recibo,
-      },
-      seguro: {
-        categoria: "Seguro Escolar",
-        titulo: `Seguro escolar — ${aluno.nome}`,
-        origem: "inscricao" as Origem,
-        reciboKey: `seg:${aluno.id}`,
-      },
+        descricao: `Inscrição — ${aluno.nome} · ${aluno.turma}`,
+        fornecedor: aluno.encarregado || "",
+        fatura: aluno.recibo || "",
+        valor,
+        pagamento: receita.pagamento,
+        origem: "inscricao",
+        observacoes: [aluno.turma, obsSeguro].filter(Boolean).join(" · "),
+      });
+      afterSave(row, aluno.recibo);
+      return;
+    }
+
+    const meta = {
       manuais: {
         categoria: "Manuais Escolares",
-        titulo: `Manuais escolares — ${aluno.nome}`,
-        origem: "inscricao" as Origem,
+        titulo: `Manuais escolares — ${aluno.nome} · ${aluno.turma}`,
         reciboKey: `man:${aluno.id}`,
       },
       extra: {
         categoria: "Actividades extra",
         titulo: receita.detalhe
-          ? `${receita.detalhe} — ${aluno.nome}`
-          : `Actividades extra — ${aluno.nome}`,
-        origem: "inscricao" as Origem,
+          ? `${receita.detalhe} — ${aluno.nome} · ${aluno.turma}`
+          : `Actividades extra — ${aluno.nome} · ${aluno.turma}`,
         reciboKey: `ext:${aluno.id}:${encodeURIComponent(receita.detalhe || "extra")}`,
       },
     }[kind];
@@ -244,8 +264,8 @@ function Capturar() {
       fatura: aluno.recibo || "",
       valor,
       pagamento: receita.pagamento,
-      origem: meta.origem,
-      observacoes: kind === "extra" ? receita.detalhe : "",
+      origem: "inscricao",
+      observacoes: kind === "extra" ? receita.detalhe : aluno.turma,
     });
     afterSave(row, meta.reciboKey);
   }
@@ -383,48 +403,38 @@ function Capturar() {
         <PageHeader
           kicker="Registo"
           title="Novo lançamento"
-          description="Receitas escolares (propina, inscrição, seguro, manuais, extra) com formulário curto. Despesas/faturas à parte."
+          description="Receitas: propina, matrícula (+seguro opcional), manuais, extra. Despesa/fatura à parte (numeração FRM-AAAA-MM-001)."
         />
         <p className="mb-4 text-sm text-[var(--color-muted)]">
           A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
         </p>
 
-        <div className="no-print mb-2">
-          <p className="mb-1.5 text-[11px] font-medium tracking-wide text-[var(--color-muted)] uppercase">
-            Receitas escolares
-          </p>
-          <div className="mb-3 flex flex-wrap gap-2">
-            {RECEITA_MODES.map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => selectMode(id)}
-                className={
-                  mode === id
-                    ? "rounded-full bg-[var(--color-forest)] px-3 py-1.5 text-sm text-[var(--color-forest-fg)]"
-                    : "rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm"
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className="mb-1.5 text-[11px] font-medium tracking-wide text-[var(--color-muted)] uppercase">
-            Custos da escola
-          </p>
-          <div className="mb-5 flex flex-wrap gap-2">
+        <div className="no-print mb-5 flex flex-wrap gap-2">
+          {RECEITA_MODES.map(({ id, label }) => (
             <button
+              key={id}
               type="button"
-              onClick={() => selectMode("despesa")}
+              onClick={() => selectMode(id)}
               className={
-                mode === "despesa"
+                mode === id
                   ? "rounded-full bg-[var(--color-forest)] px-3 py-1.5 text-sm text-[var(--color-forest-fg)]"
                   : "rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm"
               }
             >
-              Despesa / fatura
+              {label}
             </button>
-          </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => selectMode("despesa")}
+            className={
+              mode === "despesa"
+                ? "rounded-full bg-[var(--color-clay)] px-3 py-1.5 text-sm text-white"
+                : "rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-muted)]"
+            }
+          >
+            Despesa / fatura
+          </button>
         </div>
 
         {mode === "despesa" ? (
@@ -589,14 +599,14 @@ function Capturar() {
           </form>
         ) : null}
 
-        {mode === "inscricao" || mode === "seguro" || mode === "manuais" || mode === "extra" ? (
+        {mode === "inscricao" || mode === "manuais" || mode === "extra" ? (
           <form
             onSubmit={(e) => submitReceitaEscolar(e, mode)}
             className="max-w-md space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
           >
             <p className="text-sm text-[var(--color-muted)]">
-              {mode === "inscricao" && "Pagamento de matrícula · recibo em Recibos."}
-              {mode === "seguro" && "Seguro escolar · valor sugerido do cadastro do aluno."}
+              {mode === "inscricao" &&
+                "Matrícula = inscrição + seguro (pode isentar se o encarregado já tiver seguro próprio)."}
               {mode === "manuais" && "Manuais escolares · valor sugerido do cadastro."}
               {mode === "extra" && "Actividades extra / curso · indique o detalhe se quiser."}
             </p>
@@ -609,7 +619,7 @@ function Capturar() {
                   setReceita({
                     ...receita,
                     alunoId: e.target.value,
-                    valor: defaultValor(mode, a),
+                    valor: defaultValor(mode, a, receita.temSeguroProprio),
                   });
                 }}
               >
@@ -620,6 +630,37 @@ function Capturar() {
                 ))}
               </select>
             </Field>
+            {alunoById(receita.alunoId) ? (
+              <p className="text-sm text-[var(--color-muted)]">
+                Classe:{" "}
+                <strong className="text-[var(--color-ink)]">{alunoById(receita.alunoId)?.turma}</strong>
+              </p>
+            ) : null}
+            {mode === "inscricao" ? (
+              <label className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={receita.temSeguroProprio}
+                  onChange={(e) => {
+                    const tem = e.target.checked;
+                    const a = alunoById(receita.alunoId);
+                    setReceita({
+                      ...receita,
+                      temSeguroProprio: tem,
+                      valor: defaultValor("inscricao", a, tem),
+                    });
+                  }}
+                />
+                <span>
+                  Encarregado já tem <strong>seguro próprio</strong> — não cobrar seguro escolar
+                  {alunoById(receita.alunoId)?.seguro
+                    ? ` (${formatKz(alunoById(receita.alunoId)!.seguro)})`
+                    : " (30.000 Kz)"}
+                  .
+                </span>
+              </label>
+            ) : null}
             {mode === "extra" ? (
               <Field label="Actividade / detalhe">
                 <Input
@@ -658,12 +699,10 @@ function Capturar() {
             <Button type="submit">
               <Check className="size-4" />{" "}
               {mode === "inscricao"
-                ? "Guardar inscrição"
-                : mode === "seguro"
-                  ? "Guardar seguro"
-                  : mode === "manuais"
-                    ? "Guardar manuais"
-                    : "Guardar actividade extra"}
+                ? "Guardar matrícula"
+                : mode === "manuais"
+                  ? "Guardar manuais"
+                  : "Guardar actividade extra"}
             </Button>
           </form>
         ) : null}

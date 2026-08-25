@@ -115,10 +115,21 @@ export const useFinance = create<Store>()(
       },
       addCaptura: (input) => {
         const extras = get().extras;
-        const n = extras.length + 1;
-        const id = `FRM-${String(n).padStart(3, "0")}`;
         const by = get().activeOperator || "—";
         const now = new Date().toISOString();
+        // Numeração mensal: FRM-AAAA-MM-001 … reinicia em cada mês
+        const dataRef = (input.data || now.slice(0, 10)).slice(0, 7); // YYYY-MM
+        const prefix = `FRM-${dataRef}-`;
+        let maxN = 0;
+        for (const e of extras) {
+          const doc = e.docInterno || e.id || "";
+          if (doc.startsWith(prefix)) {
+            const tail = doc.slice(prefix.length);
+            const num = parseInt(tail, 10);
+            if (Number.isFinite(num) && num > maxN) maxN = num;
+          }
+        }
+        const id = `${prefix}${String(maxN + 1).padStart(3, "0")}`;
         const row: Lancamento = {
           id,
           data: input.data,

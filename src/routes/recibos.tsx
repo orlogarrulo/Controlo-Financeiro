@@ -150,9 +150,9 @@ function Recibos() {
     }
     const f = fundo.map((x) => ({ id: `rm:${x.id}`, label: `Fundo · ${x.id} · ${x.descricao}` }));
     const all = [...insc, ...seg, ...man, ...ext, ...prop, ...f];
-    if (!q) return all;
-    const qq = q.toLowerCase();
-    return all.filter((x) => x.label.toLowerCase().includes(qq));
+    const qq = q.trim().toLowerCase();
+    if (qq.length < 2) return [];
+    return all.filter((x) => x.label.toLowerCase().includes(qq) || x.id.toLowerCase().includes(qq));
   }, [alunos, fundo, mensalidades, q]);
 
   const s1 = parseSlot(sel);
@@ -240,40 +240,86 @@ function Recibos() {
       <PageHeader
         kicker="Impressão"
         title="Recibos"
-        description="Inscrição, propina/mensalidade e fundo de maneio. Dois recibos A5 na mesma folha A4."
+        description="Pesquise por nome ou ID. Dois recibos A5 na mesma folha A4."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
             Imprimir
           </Button>
         }
       />
-      <div className="no-print mb-4 grid gap-2 sm:grid-cols-[1fr_1fr_1fr]">
-        <Input placeholder="Pesquisar aluno, propina, RM…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select
-          className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-          value={sel}
-          onChange={(e) => setSel(e.target.value)}
-        >
-          {list.map((x) => (
-            <option key={x.id} value={x.id}>
-              1.º · {x.label}
-            </option>
-          ))}
-        </select>
-        <select
-          className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-          value={sel2}
-          onChange={(e) => setSel2(e.target.value)}
-        >
-          <option value="">2.º recibo (opcional)</option>
-          {list
-            .filter((x) => x.id !== sel)
-            .map((x) => (
-              <option key={x.id} value={x.id}>
-                2.º · {x.label}
-              </option>
-            ))}
-        </select>
+      <div className="no-print mb-4 space-y-3">
+        <Input
+          placeholder="Pesquisar por nome do aluno, ID ou n.º de recibo…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        {!q.trim() ? (
+          <p className="text-sm text-[var(--color-muted)]">
+            Escreva pelo menos 2 letras do nome ou o ID para listar recibos. Evita listas longas.
+          </p>
+        ) : list.length === 0 ? (
+          <p className="text-sm text-[var(--color-clay)]">Nenhum resultado para «{q}».</p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div>
+              <p className="mb-1 text-xs text-[var(--color-muted)]">1.º recibo</p>
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-[var(--radius-md)] border border-[var(--color-line)] p-2">
+                {list.map((x) => (
+                  <button
+                    key={x.id}
+                    type="button"
+                    onClick={() => setSel(x.id)}
+                    className={
+                      sel === x.id
+                        ? "block w-full rounded-[var(--radius-sm)] bg-[var(--color-forest)] px-3 py-2 text-left text-sm text-[var(--color-forest-fg)]"
+                        : "block w-full rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm hover:bg-[var(--color-forest-soft)]"
+                    }
+                  >
+                    {x.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-xs text-[var(--color-muted)]">2.º recibo (opcional, mesma folha A4)</p>
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-[var(--radius-md)] border border-[var(--color-line)] p-2">
+                <button
+                  type="button"
+                  onClick={() => setSel2("")}
+                  className={
+                    !sel2
+                      ? "block w-full rounded-[var(--radius-sm)] bg-[var(--color-bg)] px-3 py-2 text-left text-sm font-medium"
+                      : "block w-full rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm text-[var(--color-muted)] hover:bg-[var(--color-forest-soft)]"
+                  }
+                >
+                  Nenhum
+                </button>
+                {list
+                  .filter((x) => x.id !== sel)
+                  .map((x) => (
+                    <button
+                      key={x.id}
+                      type="button"
+                      onClick={() => setSel2(x.id)}
+                      className={
+                        sel2 === x.id
+                          ? "block w-full rounded-[var(--radius-sm)] bg-[var(--color-forest)] px-3 py-2 text-left text-sm text-[var(--color-forest-fg)]"
+                          : "block w-full rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm hover:bg-[var(--color-forest-soft)]"
+                      }
+                    >
+                      {x.label}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {(sel || sel2) && (
+          <p className="text-xs text-[var(--color-muted)]">
+            Seleccionado: {list.find((x) => x.id === sel)?.label || sel}
+            {sel2 ? ` + ${list.find((x) => x.id === sel2)?.label || sel2}` : ""}
+          </p>
+        )}
       </div>
 
       <div className="recibos-print-area">
