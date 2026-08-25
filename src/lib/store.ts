@@ -53,6 +53,7 @@ type Store = ExtraState & {
   setMensalidade: (id: string, mes: string, valor: number) => void;
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
+  updateExtra: (id: string, patch: Partial<Lancamento>) => void;
   resetLocal: () => void;
   setActiveOperator: (name: string) => void;
   setOperatorName: (index: number, name: string) => void;
@@ -161,8 +162,28 @@ export const useFinance = create<Store>()(
       },
       setFoto: (id, dataUrl) => set({ fotos: { ...get().fotos, [id]: dataUrl } }),
       removeExtra: (id) => {
+        const ops = get().operators;
+        const by = get().activeOperator || "—";
+        if (!ops[0] || by !== ops[0]) {
+          throw new Error("Apenas o Colaborador 1 pode apagar lançamentos.");
+        }
         get().pushAudit("apagar_lancamento", id);
         set({ extras: get().extras.filter((e) => e.id !== id) });
+      },
+      updateExtra: (id, patch) => {
+        const ops = get().operators;
+        const by = get().activeOperator || "—";
+        if (!ops[0] || by !== ops[0]) {
+          throw new Error("Apenas o Colaborador 1 pode editar lançamentos.");
+        }
+        set({
+          extras: get().extras.map((e) =>
+            e.id === id
+              ? { ...e, ...patch, editadoPor: by, updatedAt: new Date().toISOString() }
+              : e,
+          ),
+        });
+        get().pushAudit("editar_lancamento", `${id} · ${Object.keys(patch).join(", ")}`);
       },
       resetLocal: () =>
         set({

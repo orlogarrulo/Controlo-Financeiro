@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { alunosAll, fundoPagAll, getSeed, useFinance } from "@/lib/store";
 import { formatDateLong, formatKz } from "@/lib/format";
+import { PrintHeader } from "@/components/print-header";
 
 export const Route = createFileRoute("/recibos")({ component: Recibos });
 
@@ -37,7 +38,7 @@ function Recibos() {
         description="Escolha o número (EF/… ou RM-…) para gerar o comprovativo. Use Imprimir no telemóvel ou no computador."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir
+            Imprimir A4
           </Button>
         }
       />
@@ -79,11 +80,7 @@ function ReciboInscricao({
   const desc = aluno.bruto - aluno.liquido;
   return (
     <article className="print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
-      <p className="text-[10px] font-medium tracking-[0.18em] text-[var(--color-forest)] uppercase">
-        Recibo de inscrição
-      </p>
-      <h2 className="font-display mt-1 text-2xl leading-tight">{escola.nomeCurto}</h2>
-      <p className="text-xs text-[var(--color-muted)]">{escola.subtitulo}</p>
+      <PrintHeader title="Recibo de inscrição" subtitle={escola.subtitulo} />
       <div className="mt-4 flex justify-between text-sm">
         <span>
           N.º <strong>{aluno.recibo}</strong>
@@ -148,10 +145,7 @@ function ReciboManeio({
 }) {
   return (
     <article className="print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6">
-      <p className="text-[10px] font-medium tracking-[0.18em] text-[var(--color-forest)] uppercase">
-        Recibo fundo de maneio
-      </p>
-      <h2 className="font-display mt-1 text-2xl leading-tight">{escola.nomeCurto}</h2>
+      <PrintHeader title="Recibo fundo de maneio" />
       <div className="mt-4 flex justify-between text-sm">
         <span>
           N.º <strong>{pag.id}</strong>

@@ -113,7 +113,7 @@ function Alunos() {
       return;
     }
     if (pin !== EDIT_PIN) {
-      toast.error("Código incorrecto. Introduza 1977.");
+      toast.error("Código de autorização incorrecto.");
       return;
     }
 
@@ -165,12 +165,12 @@ function Alunos() {
         title="Alunos"
         description={
           canEdit
-            ? "Cadastro unificado. Edição de valores e dados de contacto apenas para o Colaborador 1, com código 1977. Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
+            ? "Cadastro unificado. Edição de valores e dados de contacto apenas para o Colaborador 1, Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
             : undefined
         }
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir
+            Imprimir A4
           </Button>
         }
       />
@@ -246,7 +246,7 @@ function Alunos() {
         <DialogContent>
           <DialogTitle>Editar aluno {editing?.id}</DialogTitle>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
-            Colaborador 1 · introduza o código <strong>1977</strong> para gravar.
+            Colaborador 1 · introduza o código de autorização para gravar.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Field label="Nome do aluno" value={form.nome} onChange={(v) => setForm({ ...form, nome: v })} />
@@ -295,7 +295,7 @@ function Alunos() {
                 className="mt-1.5 max-w-[160px]"
                 autoComplete="off"
               />
-              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Obrigatório para gravar (1977).</p>
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Obrigatório para gravar.</p>
             </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">

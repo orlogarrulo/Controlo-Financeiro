@@ -161,4 +161,14 @@
   [data-sonner-toast] {
     display: none !important;
   }
+
+  .print-header img {
+    height: 56px !important;
+    width: 56px !important;
+  }
+
+  .print-header {
+    margin-bottom: 8mm !important;
+  }
 }
+

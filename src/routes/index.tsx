@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Camera, AlertTriangle, ArrowUpRight } from "lucide-react";
+import { Camera, AlertTriangle, ArrowUpRight, Printer } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -45,6 +45,16 @@ function Dashboard() {
   if (t.docsSemFicheiro) alerts.push(`${t.docsSemFicheiro} faturas FAT sem ficheiro digital`);
   if (t.resultado < 0) alerts.push("Resultado líquido negativo — arranque ainda a ser absorvido pelas matrículas");
 
+  // Fluxo de caixa simplificado
+  const entradasTotais = t.proveitos + t.socioEntradas;
+  const saidasTotais = t.custosTotais;
+  const saldoCaixa = entradasTotais - saidasTotais;
+
+  // Balanço patrimonial simplificado (escola isenta)
+  const ativoCorrente = t.saldoBai + t.fundoRestante;
+  const passivoSocio = Math.max(0, t.socioEntradas - t.socioDespesas);
+  const patrimonioLiquido = ativoCorrente - passivoSocio + t.resultado;
+
   return (
     <div>
       <PageHeader
@@ -56,13 +66,43 @@ function Dashboard() {
             : undefined
         }
         actions={
-          <Button asChild>
-            <Link to="/capturar">
-              <Camera /> Nova captura
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" className="no-print" onClick={() => window.print()}>
+              <Printer /> Imprimir A4
+            </Button>
+            <Button asChild>
+              <Link to="/capturar">
+                <Camera /> Nova captura
+              </Link>
+            </Button>
+          </div>
         }
       />
+
+      {/* Resumo financeiro da escola — visível a todos */}
+      <Card className="mb-5 print-sheet">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Resumo financeiro da escola</CardTitle>
+          <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
+            Imprimir
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <MiniK label="Alunos" value={String(t.alunos)} />
+            <MiniK label="Proveitos" value={formatKz(t.proveitos)} tone="forest" />
+            <MiniK label="Custos" value={formatKz(t.custosTotais)} />
+            <MiniK
+              label="Resultado"
+              value={formatKz(t.resultado)}
+              tone={t.resultado < 0 ? "clay" : "forest"}
+            />
+          </div>
+          <p className="mt-3 text-xs text-[var(--color-muted)]">
+            {escola.nome} · {escola.ano} · {escola.notaFiscal}
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Alunos inscritos" value={String(t.alunos)} hint="Ano letivo 2026/2027" />
@@ -96,29 +136,83 @@ function Dashboard() {
         </div>
       ) : null}
 
+      {/* Balanço patrimonial + Fluxo de caixa — só Colaborador 1 */}
+      {isAdmin ? (
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <Card className="print-sheet">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Balanço patrimonial (simplificado)</CardTitle>
+              <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
+                Imprimir A4
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <Row k="Ativo — Saldo BAI" v={t.saldoBai} />
+              <Row k="Ativo — Fundo de maneio" v={t.fundoRestante} />
+              <Row k="Total ativo corrente" v={ativoCorrente} bold />
+              <div className="my-2 h-px bg-[var(--color-line)]" />
+              <Row k="Passivo — A reembolsar ao sócio" v={passivoSocio} />
+              <Row k="Património líquido (estimado)" v={patrimonioLiquido} bold danger={patrimonioLiquido < 0} />
+              <p className="pt-2 text-xs text-[var(--color-muted)]">
+                Escola consular isenta de impostos. Valores em KZ. Apenas Colaborador 1.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="print-sheet">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Fluxo de caixa</CardTitle>
+              <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
+                Imprimir A4
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <Row k="Entradas (proveitos + sócio)" v={entradasTotais} />
+              <Row k="  · Proveitos (inscrições + propinas)" v={t.proveitos} />
+              <Row k="  · Entradas do sócio" v={t.socioEntradas} />
+              <div className="my-2 h-px bg-[var(--color-line)]" />
+              <Row k="Saídas (custos totais)" v={saidasTotais} />
+              <Row k="  · Arranque (sócio)" v={t.socioDespesas} />
+              <Row k="  · Operação (cartão, fundo, banco)" v={t.custosOperacionais} />
+              <div className="my-2 h-px bg-[var(--color-line)]" />
+              <Row k="Saldo de caixa (estimado)" v={saldoCaixa} bold danger={saldoCaixa < 0} />
+              <p className="pt-2 text-xs text-[var(--color-muted)]">
+                Fluxo consolidado desde o arranque. Apenas Colaborador 1.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
       <div className="mt-6 grid gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
-          <CardHeader>
+        <Card className="lg:col-span-3 print-sheet">
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Despesas por categoria</CardTitle>
+            <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
+              Imprimir A4
+            </Button>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cats} layout="vertical" margin={{ left: 8, right: 12 }}>
-                <CartesianGrid stroke="var(--color-line)" horizontal={false} />
-                <XAxis type="number" tickFormatter={(v) => formatKzShort(Number(v))} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="categoria" width={132} tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(v) => formatKz(Number(v))} />
-                <Bar dataKey="despesas" fill="#1f5c4a" radius={[0, 4, 4, 0]} />
+              <BarChart data={cats} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
+                <XAxis dataKey="nome" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" interval={0} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatKzShort(v)} />
+                <Tooltip formatter={(v: number) => formatKz(v)} />
+                <Bar dataKey="despesas" fill="var(--color-forest)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>DRE resumido</CardTitle>
+        <Card className="lg:col-span-2 print-sheet">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>DRE simplificado</CardTitle>
+            <Button variant="secondary" size="sm" className="no-print" onClick={() => window.print()}>
+              Imprimir A4
+            </Button>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
+          <CardContent className="space-y-1 text-sm">
             <Row k="Inscrições (s/ 1.ª mensal.)" v={t.inscricoesSemMensal} />
             <Row k="Propinas" v={t.propinasRecebidas} />
             <Row k="Total proveitos" v={t.proveitos} bold />
@@ -133,7 +227,7 @@ function Dashboard() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-3 no-print">
         <Quick
           to="/lancamentos"
           title="Lançamentos master"
@@ -150,6 +244,21 @@ function Dashboard() {
           body={isAdmin ? "Matrículas, descontos de irmãos e recibos EF." : undefined}
         />
       </div>
+    </div>
+  );
+}
+
+function MiniK({ label, value, tone }: { label: string; value: string; tone?: "forest" | "clay" }) {
+  return (
+    <div>
+      <p className="text-xs text-[var(--color-muted)]">{label}</p>
+      <p
+        className={`text-base font-medium tabular-nums ${
+          tone === "forest" ? "text-[var(--color-forest)]" : tone === "clay" ? "text-[var(--color-clay)]" : ""
+        }`}
+      >
+        {value}
+      </p>
     </div>
   );
 }

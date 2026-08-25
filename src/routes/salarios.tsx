@@ -24,7 +24,7 @@ function Salarios() {
         description="Desconto = (salário ÷ dias úteis) × dias em falta. Adiantamentos a funcionários entram em «Outros descontos» no mês de regularização."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir
+            Imprimir A4
           </Button>
         }
       />

@@ -29,7 +29,7 @@ const NAV = [
   { to: "/fundo", label: "Fundo", icon: Wallet },
   { to: "/salarios", label: "Salários", icon: Banknote },
   { to: "/recibos", label: "Recibos", icon: FileSpreadsheet },
-  { to: "/google", label: "Google Sheets", icon: Cloud },
+  { to: "/google", label: "Google Drive", icon: Cloud },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

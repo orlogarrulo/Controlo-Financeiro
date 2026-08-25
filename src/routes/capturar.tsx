@@ -72,7 +72,7 @@ function Capturar() {
       <PageHeader
         kicker="Entrada remota"
         title="Capturar fatura"
-        description="Fotografe o talão ou a fatura e preencha os campos. O número interno (FRM-xxx) gera-se sozinho — escreva-o no papel. O mesmo modelo serve para o Google Forms."
+        description="Fotografe o talão ou a fatura (a foto fica anexada ao lançamento) e preencha os campos. O número interno (FRM-xxx) gera-se sozinho — escreva-o no papel. Após gravar, o Colaborador 1 pode editar todos os campos em Lançamentos."
       />
       <p className="no-print mb-4 text-sm text-[var(--color-muted)]">
         A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
