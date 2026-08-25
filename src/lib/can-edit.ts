@@ -29,3 +29,10 @@ export function writeSession(s: OperatorSession | null) {
   if (!s) localStorage.removeItem(SESSION_KEY);
   else localStorage.setItem(SESSION_KEY, JSON.stringify(s));
 }
+
+export function clearOperatorSession() {
+  writeSession(null);
+  if (typeof window !== "undefined") {
+    window.location.reload();
+  }
+}

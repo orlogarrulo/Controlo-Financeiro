@@ -39,3 +39,16 @@ export function DialogTitle({ className, ...props }: React.ComponentPropsWithout
     />
   );
 }
+
+
+export function DialogHeader({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("mb-4 flex flex-col gap-1.5 pr-8 text-left", className)}
+      {...props}
+    />
+  );
+}

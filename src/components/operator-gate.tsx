@@ -168,7 +168,4 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function clearOperatorSession() {
-  writeSession(null);
-  window.location.reload();
-}
+// clearOperatorSession está em @/lib/can-edit

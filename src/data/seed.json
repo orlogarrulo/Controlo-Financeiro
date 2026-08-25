@@ -1105,7 +1105,7 @@
     {
       "id": "BAI-001",
       "linha": 1,
-      "data": "24-07-2026",
+      "data": "2026-07-24",
       "banco": "Juros vencidos",
       "descricao": "Juros vencidos",
       "entrada": 0.0,
@@ -1116,7 +1116,7 @@
     {
       "id": "BAI-002",
       "linha": 2,
-      "data": "24-07-2026",
+      "data": "2026-07-24",
       "banco": "Imposto s/Juros",
       "descricao": "Imposto sobre juros",
       "entrada": 0.0,
@@ -1127,7 +1127,7 @@
     {
       "id": "BAI-003",
       "linha": 3,
-      "data": "24-07-2026",
+      "data": "2026-07-24",
       "banco": "Comissao_gest_M",
       "descricao": "Comissão de gestão mensal",
       "entrada": 0.0,
@@ -1138,7 +1138,7 @@
     {
       "id": "BAI-004",
       "linha": 4,
-      "data": "24-07-2026",
+      "data": "2026-07-24",
       "banco": "IVA sobre comis",
       "descricao": "IVA sobre comissão",
       "entrada": 0.0,
@@ -1149,7 +1149,7 @@
     {
       "id": "BAI-005",
       "linha": 5,
-      "data": "27-07-2026",
+      "data": "2026-07-27",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 564000.0,
@@ -1160,7 +1160,7 @@
     {
       "id": "BAI-006",
       "linha": 6,
-      "data": "27-07-2026",
+      "data": "2026-07-27",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1171,7 +1171,7 @@
     {
       "id": "BAI-007",
       "linha": 7,
-      "data": "27-07-2026",
+      "data": "2026-07-27",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 220000.0,
@@ -1182,7 +1182,7 @@
     {
       "id": "BAI-008",
       "linha": 8,
-      "data": "27-07-2026",
+      "data": "2026-07-27",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1193,7 +1193,7 @@
     {
       "id": "BAI-009",
       "linha": 9,
-      "data": "30-07-2026",
+      "data": "2026-07-30",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 350000.0,
@@ -1204,7 +1204,7 @@
     {
       "id": "BAI-010",
       "linha": 10,
-      "data": "31-07-2026",
+      "data": "2026-07-31",
       "banco": "Comissao_gest_M",
       "descricao": "Comissão de gestão mensal",
       "entrada": 0.0,
@@ -1215,7 +1215,7 @@
     {
       "id": "BAI-011",
       "linha": 11,
-      "data": "31-07-2026",
+      "data": "2026-07-31",
       "banco": "IVA sobre comis",
       "descricao": "IVA sobre comissão",
       "entrada": 0.0,
@@ -1226,7 +1226,7 @@
     {
       "id": "BAI-012",
       "linha": 12,
-      "data": "31-07-2026",
+      "data": "2026-07-31",
       "banco": "Comissao Alug T",
       "descricao": "Comissão aluguer TPA",
       "entrada": 0.0,
@@ -1237,7 +1237,7 @@
     {
       "id": "BAI-013",
       "linha": 13,
-      "data": "31-07-2026",
+      "data": "2026-07-31",
       "banco": "IVA Comissao Al",
       "descricao": "IVA comissão aluguer",
       "entrada": 0.0,
@@ -1248,7 +1248,7 @@
     {
       "id": "BAI-014",
       "linha": 14,
-      "data": "31-07-2026",
+      "data": "2026-07-31",
       "banco": "Imposto de Selo",
       "descricao": "Imposto de selo",
       "entrada": 0.0,
@@ -1259,7 +1259,7 @@
     {
       "id": "BAI-015",
       "linha": 15,
-      "data": "31-07-2026",
+      "data": "2026-07-31",
       "banco": "Juros devedores",
       "descricao": "Juros devedores",
       "entrada": 0.0,
@@ -1270,7 +1270,7 @@
     {
       "id": "BAI-016",
       "linha": 16,
-      "data": "31-07-2026",
+      "data": "2026-07-31",
       "banco": "Imposto de Selo",
       "descricao": "Imposto de selo",
       "entrada": 0.0,
@@ -1281,7 +1281,7 @@
     {
       "id": "BAI-017",
       "linha": 17,
-      "data": "02-08-2026",
+      "data": "2026-08-02",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 360000.0,
@@ -1292,7 +1292,7 @@
     {
       "id": "BAI-018",
       "linha": 18,
-      "data": "03-08-2026",
+      "data": "2026-08-03",
       "banco": "TRF KWiK de MAN",
       "descricao": "Transferência KWiK recebida",
       "entrada": 180000.0,
@@ -1303,7 +1303,7 @@
     {
       "id": "BAI-019",
       "linha": 19,
-      "data": "06-08-2026",
+      "data": "2026-08-06",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 150000.0,
@@ -1314,7 +1314,7 @@
     {
       "id": "BAI-020",
       "linha": 20,
-      "data": "06-08-2026",
+      "data": "2026-08-06",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1325,7 +1325,7 @@
     {
       "id": "BAI-021",
       "linha": 21,
-      "data": "06-08-2026",
+      "data": "2026-08-06",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1336,7 +1336,7 @@
     {
       "id": "BAI-022",
       "linha": 22,
-      "data": "06-08-2026",
+      "data": "2026-08-06",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1347,7 +1347,7 @@
     {
       "id": "BAI-023",
       "linha": 23,
-      "data": "07-08-2026",
+      "data": "2026-08-07",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1358,7 +1358,7 @@
     {
       "id": "BAI-024",
       "linha": 24,
-      "data": "08-08-2026",
+      "data": "2026-08-08",
       "banco": "ATM-MCX504808*3",
       "descricao": "Levantamento p/ pagamento em dinheiro",
       "entrada": 0.0,
@@ -1369,7 +1369,7 @@
     {
       "id": "BAI-025",
       "linha": 25,
-      "data": "09-08-2026",
+      "data": "2026-08-09",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1380,7 +1380,7 @@
     {
       "id": "BAI-026",
       "linha": 26,
-      "data": "09-08-2026",
+      "data": "2026-08-09",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1391,7 +1391,7 @@
     {
       "id": "BAI-027",
       "linha": 27,
-      "data": "09-08-2026",
+      "data": "2026-08-09",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1402,7 +1402,7 @@
     {
       "id": "BAI-028",
       "linha": 28,
-      "data": "09-08-2026",
+      "data": "2026-08-09",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1413,7 +1413,7 @@
     {
       "id": "BAI-029",
       "linha": 29,
-      "data": "11-08-2026",
+      "data": "2026-08-11",
       "banco": "ATM-MCX504808*3",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1424,7 +1424,7 @@
     {
       "id": "BAI-030",
       "linha": 30,
-      "data": "11-08-2026",
+      "data": "2026-08-11",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1435,7 +1435,7 @@
     {
       "id": "BAI-031",
       "linha": 31,
-      "data": "12-08-2026",
+      "data": "2026-08-12",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 150000.0,
@@ -1446,7 +1446,7 @@
     {
       "id": "BAI-032",
       "linha": 32,
-      "data": "13-08-2026",
+      "data": "2026-08-13",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 2000.0,
@@ -1457,7 +1457,7 @@
     {
       "id": "BAI-033",
       "linha": 33,
-      "data": "13-08-2026",
+      "data": "2026-08-13",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 610000.0,
@@ -1468,7 +1468,7 @@
     {
       "id": "BAI-034",
       "linha": 34,
-      "data": "13-08-2026",
+      "data": "2026-08-13",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1479,7 +1479,7 @@
     {
       "id": "BAI-035",
       "linha": 35,
-      "data": "13-08-2026",
+      "data": "2026-08-13",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1490,7 +1490,7 @@
     {
       "id": "BAI-036",
       "linha": 36,
-      "data": "14-08-2026",
+      "data": "2026-08-14",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1501,7 +1501,7 @@
     {
       "id": "BAI-037",
       "linha": 37,
-      "data": "14-08-2026",
+      "data": "2026-08-14",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1512,7 +1512,7 @@
     {
       "id": "BAI-038",
       "linha": 38,
-      "data": "17-08-2026",
+      "data": "2026-08-17",
       "banco": "Serviço Especial",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
