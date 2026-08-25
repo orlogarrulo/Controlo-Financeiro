@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Camera, AlertTriangle, ArrowUpRight } from "lucide-react";
+import { Camera, AlertTriangle, ArrowUpRight, Printer } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -50,27 +50,68 @@ function Dashboard() {
 
   return (
     <div>
-      <PageHeader
-        kicker={escola.nomeCurto}
-        title="Quadro financeiro"
-        description={
-          isAdmin
-            ? "Tudo o que estava espalhado pelas planilhas Excel — sócio, cartão BAI, fundo de maneio, matrículas e salários — num só sítio. Capture uma fatura com o telemóvel e o lançamento entra no master."
-            : undefined
-        }
-        actions={
-          <Button asChild>
-            <Link to="/capturar">
-              <Camera /> Nova captura
-            </Link>
-          </Button>
-        }
-      />
+      {/* —— CAPA DE IMPRESSÃO —— */}
+      <section className="print-only print-cover hidden print:flex print:min-h-[260mm] print:flex-col print:items-center print:justify-center print:break-after-page">
+        <img src="/logo-escola.jpg" alt="" className="mb-6 h-28 w-28 object-contain" width={112} height={112} />
+        <p className="text-[11px] font-medium tracking-[0.2em] text-[var(--color-forest)] uppercase">
+          {escola.nome}
+        </p>
+        <h1 className="font-display mt-3 text-center text-3xl tracking-tight">Quadro financeiro</h1>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">
+          {escola.nomeCurto} · Luanda · {escola.ano}
+        </p>
+        <div className="mt-10 h-px w-32 bg-[var(--color-line-strong)]" />
+        <p className="mt-6 text-center text-sm tabular-nums text-[var(--color-ink)]">
+          Resumo à data de {new Date().toLocaleDateString("pt-PT")}
+        </p>
+        <p className="mt-16 text-[10px] tracking-[0.15em] text-[var(--color-muted)] uppercase">
+          Apprendre · Grandir · Réussir
+        </p>
+      </section>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Alunos inscritos" value={String(t.alunos)} hint="Ano letivo 2026/2027" />
-        <Kpi label="Proveitos" value={t.proveitos} compact tone="forest" hint="Inscrições + propinas" />
-        <Kpi label="Custos" value={t.custosTotais} compact hint="Arranque + operação" />
+      {/* —— ECRÃ (não imprimir instruções / atalhos) —— */}
+      <div className="no-print">
+        <PageHeader
+          kicker={escola.nomeCurto}
+          title="Quadro financeiro"
+          description={
+            isAdmin
+              ? "Visão geral: matrículas, cartão BAI, fundo e resultado."
+              : undefined
+          }
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => window.print()}>
+                <Printer className="mr-1 size-4" /> Imprimir
+              </Button>
+              <Button asChild>
+                <Link to="/capturar">
+                  <Camera /> Nova despesa
+                </Link>
+              </Button>
+            </div>
+          }
+        />
+      </div>
+
+      {/* Cabeçalho simplificado só na impressão (página 2) */}
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
+        <img src="/logo-escola.jpg" alt="" className="h-12 w-12 object-contain" width={48} height={48} />
+        <div>
+          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+            {escola.nomeCurto}
+          </p>
+          <p className="font-display text-lg leading-tight">Quadro financeiro · resumo</p>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
+          </p>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 print-sheet">
+        <Kpi label="Alunos inscritos" value={String(t.alunos)} />
+        <Kpi label="Proveitos" value={t.proveitos} compact tone="forest" />
+        <Kpi label="Custos" value={t.custosTotais} compact />
         <Kpi
           label="Resultado líquido"
           value={t.resultado}
@@ -79,15 +120,16 @@ function Dashboard() {
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 print-sheet">
         <Kpi label="A reembolsar ao sócio" value={t.socioEntradas} compact tone="amber" />
-        <Kpi label="Saldo cartão BAI" value={t.saldoBai} compact tone="forest" hint={escola.cartao} />
-        <Kpi label="Fundo de maneio" value={t.fundoRestante} compact hint={`${formatKzShort(t.fundoGasto)} gastos`} />
-        <Kpi label="Propinas recebidas" value={t.propinasRecebidas} compact hint="Wendy: 1.ª mensalidade" />
+        <Kpi label="Saldo cartão BAI" value={t.saldoBai} compact tone="forest" />
+        <Kpi label="Fundo de maneio" value={t.fundoRestante} compact />
+        <Kpi label="Propinas recebidas" value={t.propinasRecebidas} compact />
       </div>
 
+      {/* Pontos a tratar: só no ecrã, nunca na impressão */}
       {isAdmin && alerts.length ? (
-        <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--color-amber)]/30 bg-[var(--color-amber-soft)] px-4 py-3">
+        <div className="no-print mt-5 rounded-[var(--radius-md)] border border-[var(--color-amber)]/30 bg-[var(--color-amber-soft)] px-4 py-3">
           <p className="flex items-center gap-2 text-sm font-medium text-[var(--color-amber)]">
             <AlertTriangle className="size-4" /> Pontos a tratar
           </p>
@@ -100,24 +142,24 @@ function Dashboard() {
       ) : null}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
+        <Card className="no-print lg:col-span-3">
           <CardHeader>
             <CardTitle>Despesas por categoria</CardTitle>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cats} layout="vertical" margin={{ left: 8, right: 12 }}>
-                <CartesianGrid stroke="var(--color-line)" horizontal={false} />
-                <XAxis type="number" tickFormatter={(v) => formatKzShort(Number(v))} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="categoria" width={132} tick={{ fontSize: 10 }} />
+              <BarChart data={cats} layout="vertical" margin={{ left: 8, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tickFormatter={(v) => formatKzShort(Number(v))} />
+                <YAxis type="category" dataKey="categoria" width={120} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v) => formatKz(Number(v))} />
-                <Bar dataKey="despesas" fill="#1f5c4a" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="despesas" fill="var(--color-forest)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 print:col-span-full print-sheet">
           <CardHeader>
             <CardTitle>DRE resumido</CardTitle>
           </CardHeader>
@@ -125,32 +167,55 @@ function Dashboard() {
             <Row k="Inscrições (s/ 1.ª mensal.)" v={t.inscricoesSemMensal} />
             <Row k="Propinas" v={t.propinasRecebidas} />
             <Row k="Total proveitos" v={t.proveitos} bold />
-            <div className="h-px bg-[var(--color-line)] my-2" />
+            <div className="my-2 h-px bg-[var(--color-line)]" />
             <Row k="Arranque (sócio)" v={t.socioDespesas} />
             <Row k="Operação (cartão, fundo, banco)" v={t.custosOperacionais} />
             <Row k="Total custos" v={t.custosTotais} bold />
-            <div className="h-px bg-[var(--color-line)] my-2" />
+            <div className="my-2 h-px bg-[var(--color-line)]" />
             <Row k="Resultado líquido" v={t.resultado} bold danger={t.resultado < 0} />
             <p className="pt-2 text-xs text-[var(--color-muted)]">{escola.notaFiscal}</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      {/* Tabela simples de despesas (impressão) */}
+      {cats.length > 0 ? (
+        <div className="print-only mt-6 hidden print:block print-sheet">
+          <h2 className="font-display mb-2 text-lg">Despesas por categoria</h2>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-[11px] uppercase text-[var(--color-muted)]">
+                <th className="py-1">Categoria</th>
+                <th className="py-1 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cats.map((c) => (
+                <tr key={c.categoria} className="border-b border-[var(--color-line)]">
+                  <td className="py-1.5">{c.categoria}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatKz(c.despesas)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      <div className="no-print mt-6 grid gap-3 sm:grid-cols-3">
         <Quick
           to="/lancamentos"
-          title="Lançamentos master"
-          body={isAdmin ? "FAT, CX, RM e capturas num único livro." : undefined}
+          title="Despesas"
+          body={isAdmin ? "Lista por fonte de pagamento." : undefined}
         />
         <Quick
           to="/google"
           title="Google Sheets + Forms"
-          body={isAdmin ? "Exportar CSV e ligar o formulário existente." : undefined}
+          body={isAdmin ? "Importar / exportar CSV." : undefined}
         />
         <Quick
           to="/alunos"
-          title="Alunos"
-          body={isAdmin ? "Matrículas, descontos de irmãos e recibos EF." : undefined}
+          title="Matrículas"
+          body={isAdmin ? "Cadastro e recibos EF." : undefined}
         />
       </div>
       {isAdmin && sessionLog.length > 0 ? (
@@ -173,6 +238,7 @@ function Dashboard() {
     </div>
   );
 }
+
 
 function Row({ k, v, bold, danger }: { k: string; v: number; bold?: boolean; danger?: boolean }) {
   return (

@@ -101,7 +101,13 @@ export type Aluno = {
   descPct: number;
   liquido: number;
   encarregado: string;
+  /** Nome do pai (opcional). */
+  pai?: string;
+  /** Nome da mãe (opcional). */
+  mae?: string;
   telefone: string;
+  /** Morada / endereço. */
+  morada?: string;
   bi: string;
   familia: string;
   recibo: string;

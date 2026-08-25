@@ -224,3 +224,21 @@
     display: none !important;
   }
 }
+
+
+/* Visível só na impressão */
+.print-only {
+  display: none !important;
+}
+@media print {
+  .print-only {
+    display: block !important;
+  }
+  .print-only.print\:flex,
+  .print-cover {
+    display: flex !important;
+  }
+  .print-cover {
+    page-break-after: always;
+  }
+}
