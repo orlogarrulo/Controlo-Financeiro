@@ -26,6 +26,23 @@ export const Route = createFileRoute("/capturar")({ component: Capturar });
 
 type Mode = "despesa" | "propina" | "inscricao" | "manuais" | "extra";
 
+const TURMAS_ESCOLA = [
+  "Maternelle",
+  "Maternelle P1",
+  "Maternelle P2",
+  "Maternelle P3",
+  "CM1",
+  "CM2",
+  "6ème",
+  "5ème",
+  "4ème",
+  "3ème",
+];
+
+/** Valores padrão de matrícula (ajustáveis no formulário). */
+const MATRICULA_INSCRICAO = 150000;
+const MATRICULA_SEGURO = 30000;
+
 const METODOS = [
   "Numerário",
   "Transferência bancária",
@@ -46,6 +63,7 @@ function Capturar() {
   const add = useFinance((s) => s.addCaptura);
   const updateExtra = useFinance((s) => s.updateExtra);
   const setMensalidade = useFinance((s) => s.setMensalidade);
+  const addAluno = useFinance((s) => s.addAluno);
   const activeOperator = useFinance((s) => s.activeOperator);
   const alunosExtra = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
@@ -85,30 +103,35 @@ function Capturar() {
     data: todayIso(),
     pagamento: "Transferência bancária",
     detalhe: "",
-    /** Encarregado já tem seguro próprio — não cobra os 30.000 Kz */
-    temSeguroProprio: false,
   });
+
+  /** Novo aluno — inscrição / matrícula */
+  const [matricula, setMatricula] = useState({
+    nome: "",
+    pai: "",
+    mae: "",
+    telefone: "",
+    morada: "",
+    turma: TURMAS_ESCOLA[0],
+    data: todayIso(),
+    pagamento: "Transferência bancária",
+    temSeguroProprio: false,
+    valorInscricao: MATRICULA_INSCRICAO,
+    valorSeguro: MATRICULA_SEGURO,
+  });
+
+
+  function totalMatricula(m = matricula): number {
+    const seguro = m.temSeguroProprio ? 0 : m.valorSeguro;
+    return (m.valorInscricao || 0) + seguro;
+  }
 
   function alunoById(id: string): Aluno | undefined {
     return alunos.find((a) => a.id === id);
   }
 
-  function defaultValor(mode: Mode, a?: Aluno, temSeguroProprio = false): number {
+  function defaultValor(mode: Mode, a?: Aluno): number {
     if (!a) return 0;
-    if (mode === "inscricao") {
-      // Matrícula = inscrição (+ componentes sem seguro se já tiver seguro próprio)
-      const base =
-        (a.inscricao || 0) +
-        (a.manuais || 0) +
-        (a.uniforme || 0) +
-        (a.extras || 0) +
-        (a.curso || 0) +
-        (a.mensalidade1 || 0);
-      const seguro = temSeguroProprio ? 0 : a.seguro || 0;
-      const bruto = base + seguro;
-      if (a.descPct) return Math.round(bruto * (1 - a.descPct / 100));
-      return bruto || a.liquido || a.inscricao || 0;
-    }
     if (mode === "manuais") return a.manuais || 0;
     if (mode === "extra") return a.extras || a.curso || 0;
     if (mode === "propina") return a.propina || 0;
@@ -124,13 +147,13 @@ function Capturar() {
       setProp((p) => ({ ...p, valor: m?.propina || a?.propina || p.valor }));
       return;
     }
+    if (id === "inscricao") return;
     const a = alunoById(receita.alunoId) || alunos[0];
     setReceita((r) => ({
       ...r,
       alunoId: a?.id || r.alunoId,
-      valor: defaultValor(id, a, r.temSeguroProprio),
+      valor: defaultValor(id, a),
       detalhe: id === "extra" ? r.detalhe : "",
-      temSeguroProprio: id === "inscricao" ? r.temSeguroProprio : false,
     }));
   }
 
@@ -204,39 +227,104 @@ function Capturar() {
     afterSave(row, `prop:${mid}:${prop.mes}`);
   }
 
-  function submitReceitaEscolar(e: FormEvent, kind: "inscricao" | "manuais" | "extra") {
+
+  function submitMatricula(e: FormEvent) {
+    e.preventDefault();
+    const nome = matricula.nome.trim();
+    if (!nome) {
+      toast.error("Indique o nome do aluno");
+      return;
+    }
+    if (!matricula.turma) {
+      toast.error("Seleccione a classe");
+      return;
+    }
+    const valor = totalMatricula();
+    if (!valor) {
+      toast.error("Indique o valor");
+      return;
+    }
+
+    const nExtra = alunosExtra.length + 1;
+    const id = `N-${String(nExtra).padStart(3, "0")}`;
+    const recibo = `EF/N${String(nExtra).padStart(3, "0")}`;
+    const seguro = matricula.temSeguroProprio ? 0 : matricula.valorSeguro;
+    const bruto = matricula.valorInscricao + seguro;
+    const encarregado = [matricula.pai.trim(), matricula.mae.trim()].filter(Boolean).join(" / ") || "—";
+    const obsParts = [
+      matricula.morada.trim() ? `Morada: ${matricula.morada.trim()}` : "",
+      matricula.temSeguroProprio
+        ? "Seguro próprio do encarregado — isento na escola"
+        : seguro
+          ? `Inclui seguro escolar ${seguro} Kz`
+          : "",
+    ].filter(Boolean);
+
+    const novo: Aluno = {
+      id,
+      nome,
+      turma: matricula.turma,
+      grupo: matricula.turma,
+      inscricao: matricula.valorInscricao,
+      manuais: 0,
+      uniforme: 0,
+      seguro,
+      extras: 0,
+      curso: 0,
+      mensalidade1: 0,
+      dataPag: matricula.data,
+      bruto,
+      descPct: 0,
+      liquido: valor,
+      encarregado,
+      telefone: matricula.telefone.trim(),
+      bi: "",
+      familia: matricula.pai.trim() || matricula.mae.trim() || "",
+      recibo,
+      obs: obsParts.join(" · "),
+      propina: 170000,
+      statusPag: "pago",
+    };
+    addAluno(novo);
+
+    const row = add({
+      data: matricula.data,
+      tipo: "entrada",
+      categoria: "Inscrição / Matrícula",
+      descricao: `Inscrição — ${nome} · ${matricula.turma}`,
+      fornecedor: encarregado,
+      fatura: recibo,
+      valor,
+      pagamento: matricula.pagamento,
+      origem: "inscricao",
+      observacoes: obsParts.join(" · "),
+    });
+    afterSave(row, recibo);
+    setMatricula({
+      nome: "",
+      pai: "",
+      mae: "",
+      telefone: "",
+      morada: "",
+      turma: TURMAS_ESCOLA[0],
+      data: todayIso(),
+      pagamento: "Transferência bancária",
+      temSeguroProprio: false,
+      valorInscricao: MATRICULA_INSCRICAO,
+      valorSeguro: MATRICULA_SEGURO,
+    });
+  }
+
+  function submitReceitaEscolar(e: FormEvent, kind: "manuais" | "extra") {
     e.preventDefault();
     const aluno = alunoById(receita.alunoId);
     if (!aluno) {
       toast.error("Seleccione o aluno");
       return;
     }
-    const valor = receita.valor || defaultValor(kind, aluno, receita.temSeguroProprio);
+    const valor = receita.valor || defaultValor(kind, aluno);
     if (!valor) {
       toast.error("Indique o valor recebido");
-      return;
-    }
-
-    if (kind === "inscricao") {
-      const seguroIncluido = receita.temSeguroProprio ? 0 : aluno.seguro || 0;
-      const obsSeguro = receita.temSeguroProprio
-        ? "Seguro próprio do encarregado — isento na escola"
-        : seguroIncluido
-          ? `Inclui seguro escolar ${seguroIncluido} Kz`
-          : "";
-      const row = add({
-        data: receita.data,
-        tipo: "entrada",
-        categoria: "Inscrição / Matrícula",
-        descricao: `Inscrição — ${aluno.nome} · ${aluno.turma}`,
-        fornecedor: aluno.encarregado || "",
-        fatura: aluno.recibo || "",
-        valor,
-        pagamento: receita.pagamento,
-        origem: "inscricao",
-        observacoes: [aluno.turma, obsSeguro].filter(Boolean).join(" · "),
-      });
-      afterSave(row, aluno.recibo);
       return;
     }
 
@@ -599,14 +687,139 @@ function Capturar() {
           </form>
         ) : null}
 
-        {mode === "inscricao" || mode === "manuais" || mode === "extra" ? (
+        {mode === "inscricao" ? (
+          <form
+            onSubmit={submitMatricula}
+            className="max-w-lg space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
+          >
+            <p className="text-sm text-[var(--color-muted)]">
+              Registo de <strong>novo aluno</strong>. Matrícula = inscrição + seguro (isento se o encarregado já tiver seguro próprio).
+            </p>
+            <Field label="Nome do aluno">
+              <Input
+                value={matricula.nome}
+                onChange={(e) => setMatricula({ ...matricula, nome: e.target.value })}
+                placeholder="Nome completo"
+                required
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Nome do pai">
+                <Input
+                  value={matricula.pai}
+                  onChange={(e) => setMatricula({ ...matricula, pai: e.target.value })}
+                  placeholder="Pai"
+                />
+              </Field>
+              <Field label="Nome da mãe">
+                <Input
+                  value={matricula.mae}
+                  onChange={(e) => setMatricula({ ...matricula, mae: e.target.value })}
+                  placeholder="Mãe"
+                />
+              </Field>
+            </div>
+            <Field label="Telefone">
+              <Input
+                value={matricula.telefone}
+                onChange={(e) => setMatricula({ ...matricula, telefone: e.target.value })}
+                placeholder="9xx xxx xxx"
+                inputMode="tel"
+              />
+            </Field>
+            <Field label="Morada">
+              <Input
+                value={matricula.morada}
+                onChange={(e) => setMatricula({ ...matricula, morada: e.target.value })}
+                placeholder="Bairro, rua, município…"
+              />
+            </Field>
+            <Field label="Classe">
+              <select
+                className="h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                value={matricula.turma}
+                onChange={(e) => setMatricula({ ...matricula, turma: e.target.value })}
+              >
+                {TURMAS_ESCOLA.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <label className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={matricula.temSeguroProprio}
+                onChange={(e) => setMatricula({ ...matricula, temSeguroProprio: e.target.checked })}
+              />
+              <span>
+                Encarregado já tem <strong>seguro próprio</strong> — não cobrar seguro escolar (
+                {formatKz(matricula.valorSeguro)}).
+              </span>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Valor inscrição (KZ)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={matricula.valorInscricao || ""}
+                  onChange={(e) =>
+                    setMatricula({ ...matricula, valorInscricao: Number(e.target.value) || 0 })
+                  }
+                />
+              </Field>
+              <Field label="Valor seguro (KZ)">
+                <Input
+                  type="number"
+                  min={0}
+                  disabled={matricula.temSeguroProprio}
+                  value={matricula.temSeguroProprio ? 0 : matricula.valorSeguro || ""}
+                  onChange={(e) =>
+                    setMatricula({ ...matricula, valorSeguro: Number(e.target.value) || 0 })
+                  }
+                />
+              </Field>
+            </div>
+            <p className="text-sm font-medium">
+              Total a receber: <span className="tabular-nums text-[var(--color-forest)]">{formatKz(totalMatricula())}</span>
+            </p>
+            <Field label="Data de pagamento">
+              <Input
+                value={matricula.data}
+                onChange={(e) => setMatricula({ ...matricula, data: e.target.value })}
+              />
+            </Field>
+            <Field label="Método de pagamento">
+              <Select
+                value={matricula.pagamento}
+                onValueChange={(v) => setMatricula({ ...matricula, pagamento: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {METODOS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Button type="submit">
+              <Check className="size-4" /> Guardar matrícula
+            </Button>
+          </form>
+        ) : null}
+
+        {mode === "manuais" || mode === "extra" ? (
           <form
             onSubmit={(e) => submitReceitaEscolar(e, mode)}
             className="max-w-md space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
           >
             <p className="text-sm text-[var(--color-muted)]">
-              {mode === "inscricao" &&
-                "Matrícula = inscrição + seguro (pode isentar se o encarregado já tiver seguro próprio)."}
               {mode === "manuais" && "Manuais escolares · valor sugerido do cadastro."}
               {mode === "extra" && "Actividades extra / curso · indique o detalhe se quiser."}
             </p>
@@ -619,7 +832,7 @@ function Capturar() {
                   setReceita({
                     ...receita,
                     alunoId: e.target.value,
-                    valor: defaultValor(mode, a, receita.temSeguroProprio),
+                    valor: defaultValor(mode, a),
                   });
                 }}
               >
@@ -635,31 +848,6 @@ function Capturar() {
                 Classe:{" "}
                 <strong className="text-[var(--color-ink)]">{alunoById(receita.alunoId)?.turma}</strong>
               </p>
-            ) : null}
-            {mode === "inscricao" ? (
-              <label className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={receita.temSeguroProprio}
-                  onChange={(e) => {
-                    const tem = e.target.checked;
-                    const a = alunoById(receita.alunoId);
-                    setReceita({
-                      ...receita,
-                      temSeguroProprio: tem,
-                      valor: defaultValor("inscricao", a, tem),
-                    });
-                  }}
-                />
-                <span>
-                  Encarregado já tem <strong>seguro próprio</strong> — não cobrar seguro escolar
-                  {alunoById(receita.alunoId)?.seguro
-                    ? ` (${formatKz(alunoById(receita.alunoId)!.seguro)})`
-                    : " (30.000 Kz)"}
-                  .
-                </span>
-              </label>
             ) : null}
             {mode === "extra" ? (
               <Field label="Actividade / detalhe">
@@ -698,11 +886,7 @@ function Capturar() {
             </Field>
             <Button type="submit">
               <Check className="size-4" />{" "}
-              {mode === "inscricao"
-                ? "Guardar matrícula"
-                : mode === "manuais"
-                  ? "Guardar manuais"
-                  : "Guardar actividade extra"}
+              {mode === "manuais" ? "Guardar manuais" : "Guardar actividade extra"}
             </Button>
           </form>
         ) : null}
