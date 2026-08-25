@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader, Kpi } from "@/components/kpi"
-import { PrintHeader } from "@/components/print-header";
+import { PageHeader, Kpi } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fundoAtmAll, fundoPagAll, useFinance } from "@/lib/store";
@@ -17,7 +16,6 @@ function Fundo() {
 
   return (
     <div>
-      <div className="print-only mb-4"><PrintHeader /></div>
       <PageHeader
         kicker="Caixa em numerário"
         title="Fundo de maneio"

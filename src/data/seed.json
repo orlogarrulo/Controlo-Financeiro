@@ -1105,7 +1105,7 @@
     {
       "id": "BAI-001",
       "linha": 1,
-      "data": "2026-07-24",
+      "data": "24-07-2026",
       "banco": "Juros vencidos",
       "descricao": "Juros vencidos",
       "entrada": 0.0,
@@ -1116,7 +1116,7 @@
     {
       "id": "BAI-002",
       "linha": 2,
-      "data": "2026-07-24",
+      "data": "24-07-2026",
       "banco": "Imposto s/Juros",
       "descricao": "Imposto sobre juros",
       "entrada": 0.0,
@@ -1127,7 +1127,7 @@
     {
       "id": "BAI-003",
       "linha": 3,
-      "data": "2026-07-24",
+      "data": "24-07-2026",
       "banco": "Comissao_gest_M",
       "descricao": "Comissão de gestão mensal",
       "entrada": 0.0,
@@ -1138,7 +1138,7 @@
     {
       "id": "BAI-004",
       "linha": 4,
-      "data": "2026-07-24",
+      "data": "24-07-2026",
       "banco": "IVA sobre comis",
       "descricao": "IVA sobre comissão",
       "entrada": 0.0,
@@ -1149,7 +1149,7 @@
     {
       "id": "BAI-005",
       "linha": 5,
-      "data": "2026-07-27",
+      "data": "27-07-2026",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 564000.0,
@@ -1160,7 +1160,7 @@
     {
       "id": "BAI-006",
       "linha": 6,
-      "data": "2026-07-27",
+      "data": "27-07-2026",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1171,7 +1171,7 @@
     {
       "id": "BAI-007",
       "linha": 7,
-      "data": "2026-07-27",
+      "data": "27-07-2026",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 220000.0,
@@ -1182,7 +1182,7 @@
     {
       "id": "BAI-008",
       "linha": 8,
-      "data": "2026-07-27",
+      "data": "27-07-2026",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1193,7 +1193,7 @@
     {
       "id": "BAI-009",
       "linha": 9,
-      "data": "2026-07-30",
+      "data": "30-07-2026",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 350000.0,
@@ -1204,7 +1204,7 @@
     {
       "id": "BAI-010",
       "linha": 10,
-      "data": "2026-07-31",
+      "data": "31-07-2026",
       "banco": "Comissao_gest_M",
       "descricao": "Comissão de gestão mensal",
       "entrada": 0.0,
@@ -1215,7 +1215,7 @@
     {
       "id": "BAI-011",
       "linha": 11,
-      "data": "2026-07-31",
+      "data": "31-07-2026",
       "banco": "IVA sobre comis",
       "descricao": "IVA sobre comissão",
       "entrada": 0.0,
@@ -1226,7 +1226,7 @@
     {
       "id": "BAI-012",
       "linha": 12,
-      "data": "2026-07-31",
+      "data": "31-07-2026",
       "banco": "Comissao Alug T",
       "descricao": "Comissão aluguer TPA",
       "entrada": 0.0,
@@ -1237,7 +1237,7 @@
     {
       "id": "BAI-013",
       "linha": 13,
-      "data": "2026-07-31",
+      "data": "31-07-2026",
       "banco": "IVA Comissao Al",
       "descricao": "IVA comissão aluguer",
       "entrada": 0.0,
@@ -1248,7 +1248,7 @@
     {
       "id": "BAI-014",
       "linha": 14,
-      "data": "2026-07-31",
+      "data": "31-07-2026",
       "banco": "Imposto de Selo",
       "descricao": "Imposto de selo",
       "entrada": 0.0,
@@ -1259,7 +1259,7 @@
     {
       "id": "BAI-015",
       "linha": 15,
-      "data": "2026-07-31",
+      "data": "31-07-2026",
       "banco": "Juros devedores",
       "descricao": "Juros devedores",
       "entrada": 0.0,
@@ -1270,7 +1270,7 @@
     {
       "id": "BAI-016",
       "linha": 16,
-      "data": "2026-07-31",
+      "data": "31-07-2026",
       "banco": "Imposto de Selo",
       "descricao": "Imposto de selo",
       "entrada": 0.0,
@@ -1281,7 +1281,7 @@
     {
       "id": "BAI-017",
       "linha": 17,
-      "data": "2026-08-02",
+      "data": "02-08-2026",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 360000.0,
@@ -1292,7 +1292,7 @@
     {
       "id": "BAI-018",
       "linha": 18,
-      "data": "2026-08-03",
+      "data": "03-08-2026",
       "banco": "TRF KWiK de MAN",
       "descricao": "Transferência KWiK recebida",
       "entrada": 180000.0,
@@ -1303,7 +1303,7 @@
     {
       "id": "BAI-019",
       "linha": 19,
-      "data": "2026-08-06",
+      "data": "06-08-2026",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 150000.0,
@@ -1314,7 +1314,7 @@
     {
       "id": "BAI-020",
       "linha": 20,
-      "data": "2026-08-06",
+      "data": "06-08-2026",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1325,7 +1325,7 @@
     {
       "id": "BAI-021",
       "linha": 21,
-      "data": "2026-08-06",
+      "data": "06-08-2026",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1336,7 +1336,7 @@
     {
       "id": "BAI-022",
       "linha": 22,
-      "data": "2026-08-06",
+      "data": "06-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1347,7 +1347,7 @@
     {
       "id": "BAI-023",
       "linha": 23,
-      "data": "2026-08-07",
+      "data": "07-08-2026",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1358,7 +1358,7 @@
     {
       "id": "BAI-024",
       "linha": 24,
-      "data": "2026-08-08",
+      "data": "08-08-2026",
       "banco": "ATM-MCX504808*3",
       "descricao": "Levantamento p/ pagamento em dinheiro",
       "entrada": 0.0,
@@ -1369,7 +1369,7 @@
     {
       "id": "BAI-025",
       "linha": 25,
-      "data": "2026-08-09",
+      "data": "09-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1380,7 +1380,7 @@
     {
       "id": "BAI-026",
       "linha": 26,
-      "data": "2026-08-09",
+      "data": "09-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1391,7 +1391,7 @@
     {
       "id": "BAI-027",
       "linha": 27,
-      "data": "2026-08-09",
+      "data": "09-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1402,7 +1402,7 @@
     {
       "id": "BAI-028",
       "linha": 28,
-      "data": "2026-08-09",
+      "data": "09-08-2026",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1413,7 +1413,7 @@
     {
       "id": "BAI-029",
       "linha": 29,
-      "data": "2026-08-11",
+      "data": "11-08-2026",
       "banco": "ATM-MCX504808*3",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
@@ -1424,7 +1424,7 @@
     {
       "id": "BAI-030",
       "linha": 30,
-      "data": "2026-08-11",
+      "data": "11-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1435,7 +1435,7 @@
     {
       "id": "BAI-031",
       "linha": 31,
-      "data": "2026-08-12",
+      "data": "12-08-2026",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 150000.0,
@@ -1446,7 +1446,7 @@
     {
       "id": "BAI-032",
       "linha": 32,
-      "data": "2026-08-13",
+      "data": "13-08-2026",
       "banco": "Transf. pelo NI",
       "descricao": "Transferência recebida (NI)",
       "entrada": 2000.0,
@@ -1457,7 +1457,7 @@
     {
       "id": "BAI-033",
       "linha": 33,
-      "data": "2026-08-13",
+      "data": "13-08-2026",
       "banco": "Fecho TPA 00004",
       "descricao": "Fecho de terminal de pagamento (TPA)",
       "entrada": 610000.0,
@@ -1468,7 +1468,7 @@
     {
       "id": "BAI-034",
       "linha": 34,
-      "data": "2026-08-13",
+      "data": "13-08-2026",
       "banco": "Comissao-Fecho",
       "descricao": "Comissão de fecho TPA",
       "entrada": 0.0,
@@ -1479,7 +1479,7 @@
     {
       "id": "BAI-035",
       "linha": 35,
-      "data": "2026-08-13",
+      "data": "13-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1490,7 +1490,7 @@
     {
       "id": "BAI-036",
       "linha": 36,
-      "data": "2026-08-14",
+      "data": "14-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1501,7 +1501,7 @@
     {
       "id": "BAI-037",
       "linha": 37,
-      "data": "2026-08-14",
+      "data": "14-08-2026",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1512,7 +1512,7 @@
     {
       "id": "BAI-038",
       "linha": 38,
-      "data": "2026-08-17",
+      "data": "17-08-2026",
       "banco": "Serviço Especial",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
@@ -1567,112 +1567,222 @@
     {
       "id": "BAI-043",
       "linha": 43,
-      "data": "2026-08-21",
-      "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada",
-      "entrada": 0.0,
-      "saida": 80000.0,
-      "saldo": 1942034.56,
-      "observacoes": "Pagamto Curso Intensivo Inês"
+      "data": "2026-08-20",
+      "banco": "Transf. pelo NI",
+      "descricao": "Transferência recebida – Matrícula Késane",
+      "entrada": 150000.0,
+      "saida": 0.0,
+      "saldo": 2172034.56,
+      "observacoes": "Matrícula Késane Aimé Teixeira Correia de Azevedo – Maternelle P2 (seguro próprio)"
     },
     {
       "id": "BAI-044",
       "linha": 44,
       "data": "2026-08-21",
-      "banco": "ATM-MCX504808*3",
-      "descricao": "Levantamento ATM",
-      "entrada": 0.0,
-      "saida": 60000.0,
-      "saldo": 1882034.56,
-      "observacoes": "Fundo maneio Evento 50 anos"
+      "banco": "Transf. pelo NI",
+      "descricao": "Transferência recebida – Matrícula Belangela",
+      "entrada": 150000.0,
+      "saida": 0.0,
+      "saldo": 2322034.56,
+      "observacoes": "Matrícula Belangela Nito Daniel Kanvadioko – Troisième / 3ème (seguro próprio)"
     },
     {
       "id": "BAI-045",
       "linha": 45,
       "data": "2026-08-21",
-      "banco": "ATM-MCX504808*4",
-      "descricao": "Levantamento ATM",
-      "entrada": 0.0,
-      "saida": 60000.0,
-      "saldo": 1822034.56,
-      "observacoes": "Fundo maneio Evento 50 anos"
+      "banco": "Transf. pelo NI",
+      "descricao": "Transferência recebida – Curso Intensivo Belangela",
+      "entrada": 40000.0,
+      "saida": 0.0,
+      "saldo": 2362034.56,
+      "observacoes": "Curso intensivo francês – Belangela Nito Daniel Kanvadioko"
     },
     {
       "id": "BAI-046",
       "linha": 46,
       "data": "2026-08-21",
-      "banco": "TPA-MCX504808**",
-      "descricao": "Pagamento com cartão",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Curso Intensivo",
       "entrada": 0.0,
-      "saida": 52500.0,
-      "saldo": 1769534.56,
-      "observacoes": "CM S22026/18259"
+      "saida": 80000.0,
+      "saldo": 2282034.56,
+      "observacoes": "Pagamento Curso Intensivo Francês - Inês Passi"
     },
     {
       "id": "BAI-047",
       "linha": 47,
       "data": "2026-08-21",
-      "banco": "TPA-MCX504808**",
-      "descricao": "Pagamento com cartão",
+      "banco": "ATM-MCX504808*3",
+      "descricao": "Levantamento ATM - Fundo Maneio Evento 50 anos",
       "entrada": 0.0,
-      "saida": 31100.0,
-      "saldo": 1738434.56,
-      "observacoes": "FRS22026/9376"
+      "saida": 60000.0,
+      "saldo": 2222034.56,
+      "observacoes": "Fundo maneio Evento 50 anos"
     },
     {
       "id": "BAI-048",
       "linha": 48,
       "data": "2026-08-21",
-      "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada",
+      "banco": "ATM-MCX504808*4",
+      "descricao": "Levantamento ATM - Fundo Maneio Evento 50 anos",
       "entrada": 0.0,
-      "saida": 100000.0,
-      "saldo": 1638434.56,
-      "observacoes": "Compras Evento 50 anos"
+      "saida": 60000.0,
+      "saldo": 2162034.56,
+      "observacoes": "Fundo maneio Evento 50 anos"
     },
     {
       "id": "BAI-049",
       "linha": 49,
       "data": "2026-08-21",
-      "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada",
+      "banco": "TPA-MCX504808**",
+      "descricao": "Pagamento com cartão",
       "entrada": 0.0,
-      "saida": 20000.0,
-      "saldo": 1618434.56,
-      "observacoes": "Compras Evento 50 anos"
+      "saida": 52500.0,
+      "saldo": 2109534.56,
+      "observacoes": "CM S22026/18259 - Evento 50 anos"
     },
     {
       "id": "BAI-050",
       "linha": 50,
       "data": "2026-08-21",
-      "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada",
+      "banco": "TPA-MCX504808**",
+      "descricao": "Pagamento com cartão",
       "entrada": 0.0,
-      "saida": 200000.0,
-      "saldo": 1418434.56,
-      "observacoes": "Compras Evento 50 anos"
+      "saida": 31100.0,
+      "saldo": 2078434.56,
+      "observacoes": "FRS22026/9376 - Evento 50 anos"
     },
     {
       "id": "BAI-051",
       "linha": 51,
       "data": "2026-08-21",
       "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada",
+      "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
-      "saida": 135000.0,
-      "saldo": 1283434.56,
-      "observacoes": "Compras Evento 50 anos"
+      "saida": 100000.0,
+      "saldo": 1978434.56,
+      "observacoes": "Compras Evento 50 anos - Rosária Perdigão (reforço)"
     },
     {
       "id": "BAI-052",
       "linha": 52,
       "data": "2026-08-21",
       "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 20000.0,
+      "saldo": 1958434.56,
+      "observacoes": "Compras Evento 50 anos"
+    },
+    {
+      "id": "BAI-053",
+      "linha": 53,
+      "data": "2026-08-21",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 200000.0,
+      "saldo": 1758434.56,
+      "observacoes": "Compras Evento 50 anos - Rosária Perdigão"
+    },
+    {
+      "id": "BAI-054",
+      "linha": 54,
+      "data": "2026-08-21",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 135000.0,
+      "saldo": 1623434.56,
+      "observacoes": "Compras Evento 50 anos - Mabouana Pierette"
+    },
+    {
+      "id": "BAI-055",
+      "linha": 55,
+      "data": "2026-08-21",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
       "saida": 59400.0,
-      "saldo": 1224034.56,
-      "observacoes": "Compras Evento 50 anos"
+      "saldo": 1564034.56,
+      "observacoes": "Compras Evento 50 anos - Sabores do Oriente"
+    },
+    {
+      "id": "BAI-056",
+      "linha": 56,
+      "data": "2026-08-21",
+      "banco": "ATM-MCX504808*",
+      "descricao": "Levantamento ATM - Fundo Maneio Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 120000.0,
+      "saldo": 1444034.56,
+      "observacoes": "Fundo maneio Evento 50 anos (gasóleo e restantes)"
+    },
+    {
+      "id": "BAI-057",
+      "linha": 57,
+      "data": "2026-08-22",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 300000.0,
+      "saldo": 1144034.56,
+      "observacoes": "Pgmto DJ e Diversos - Evento 50 anos"
+    },
+    {
+      "id": "BAI-058",
+      "linha": 58,
+      "data": "2026-08-22",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 80000.0,
+      "saldo": 1064034.56,
+      "observacoes": "Pgmto Funcionários via outra conta empresa (sobram 6 000 nessa conta)"
+    },
+    {
+      "id": "BAI-059",
+      "linha": 59,
+      "data": "2026-08-22",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 50000.0,
+      "saldo": 1014034.56,
+      "observacoes": "Pgmto Funcionários via outra conta empresa (sobram 34 000 nessa conta)"
+    },
+    {
+      "id": "BAI-060",
+      "linha": 60,
+      "data": "2026-08-22",
+      "banco": "Transf. pelo NI / Fecho TPA",
+      "descricao": "Vendas do dia do Evento 50 anos",
+      "entrada": 30666.0,
+      "saida": 0.0,
+      "saldo": 1044700.56,
+      "observacoes": "Vendas Evento 50 anos – 30 666 Kz"
+    },
+    {
+      "id": "BAI-061",
+      "linha": 61,
+      "data": "2026-08-22",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
+      "saida": 20000.0,
+      "saldo": 1024700.56,
+      "observacoes": "Compras Evento 50 anos - Inês Passi"
+    },
+    {
+      "id": "BAI-062",
+      "linha": 62,
+      "data": "2026-08-22",
+      "banco": "Transf. / crédito a id.",
+      "descricao": "Entrada a identificar",
+      "entrada": 40000.0,
+      "saida": 0.0,
+      "saldo": 1064700.56,
+      "observacoes": "ENTRADA DESCONHECIDA – a identificar mais tarde (fecha saldo 1 064 700,56)"
     }
   ],
   "faturasCartao": [
@@ -2245,7 +2355,7 @@
     {
       "id": "P1-08",
       "nome": "Kesane Aimé Teixeira Correia de Azevedo",
-      "turma": "Maternelle P1",
+      "turma": "Maternelle P2",
       "grupo": "Maternelle",
       "inscricao": 150000,
       "manuais": 0,
@@ -2254,7 +2364,7 @@
       "extras": 0,
       "curso": 0,
       "mensalidade1": 0,
-      "dataPag": "2026-08-21",
+      "dataPag": "2026-08-20",
       "bruto": 150000,
       "descPct": 0,
       "liquido": 150000,
@@ -2479,7 +2589,7 @@
       "extras": 0,
       "curso": 40000,
       "mensalidade1": 0,
-      "dataPag": "",
+      "dataPag": "2026-08-21",
       "bruto": 190000,
       "descPct": 0,
       "liquido": 190000,
@@ -2490,7 +2600,7 @@
       "recibo": "EF/017",
       "obs": "Curso intensivo 40.000. Data de pagamento em falta.",
       "propina": 170000,
-      "statusPag": "registado"
+      "statusPag": "pago"
     }
   ],
   "mensalidades": [

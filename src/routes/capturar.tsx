@@ -1,7 +1,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Camera, Check, Pencil, Printer } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Camera, ImagePlus, Check } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
@@ -15,154 +15,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { alunosAll, getSeed, useFinance, type CapturaInput } from "@/lib/store";
+import { getSeed, useFinance, type CapturaInput } from "@/lib/store";
 import { compressImage } from "@/lib/image";
-import { todayIso, formatDateLong, formatKz } from "@/lib/format";
-import type { Aluno, Lancamento, Origem } from "@/data/types";
-import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
-import { PrintHeader } from "@/components/print-header";
+import { todayIso } from "@/lib/format";
+import type { Origem } from "@/data/types";
 
 export const Route = createFileRoute("/capturar")({ component: Capturar });
-
-type Mode = "despesa" | "propina" | "inscricao" | "manuais" | "extra";
-
-const TURMAS_ESCOLA = [
-  "Maternelle",
-  "Maternelle P1",
-  "Maternelle P2",
-  "Maternelle P3",
-  "CM1",
-  "CM2",
-  "6ème",
-  "5ème",
-  "4ème",
-  "3ème",
-];
-
-/** Valores padrão de matrícula (ajustáveis no formulário). */
-const MATRICULA_INSCRICAO = 150000;
-const MATRICULA_SEGURO = 30000;
-
-const METODOS = [
-  "Numerário",
-  "Transferência bancária",
-  "Cartão Multicaixa",
-  "BAI Express",
-  "Outro",
-];
-
-const RECEITA_MODES: { id: Mode; label: string }[] = [
-  { id: "propina", label: "Propina" },
-  { id: "inscricao", label: "Inscrição + seguro" },
-  { id: "manuais", label: "Manuais" },
-  { id: "extra", label: "Actividades extra" },
-];
 
 function Capturar() {
   const seed = getSeed();
   const add = useFinance((s) => s.addCaptura);
-  const updateExtra = useFinance((s) => s.updateExtra);
-  const setMensalidade = useFinance((s) => s.setMensalidade);
-  const addAluno = useFinance((s) => s.addAluno);
   const activeOperator = useFinance((s) => s.activeOperator);
-  const alunosExtra = useFinance((s) => s.alunosExtra);
-  const alunosOverrides = useFinance((s) => s.alunosOverrides);
-  const mensalidades = useFinance((s) => s.mensalidades);
-  const alunos = useMemo(() => alunosAll(alunosExtra, alunosOverrides), [alunosExtra, alunosOverrides]);
   const nav = useNavigate();
-
-  const [mode, setMode] = useState<Mode>("propina");
   const [foto, setFoto] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Lancamento | null>(null);
-  const [reciboSel, setReciboSel] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-
-  const [despesa, setDespesa] = useState({
+  const [form, setForm] = useState<CapturaInput>({
     data: todayIso(),
+    tipo: "despesa",
+    categoria: "Outras Despesas",
     descricao: "",
     fornecedor: "",
     fatura: "",
     valor: 0,
     pagamento: "Cartão Multicaixa",
-    conta: "formulario" as Origem,
+    origem: "formulario",
     observacoes: "",
   });
-
-  const [prop, setProp] = useState({
-    alunoId: mensalidades[0]?.id || alunos[0]?.id || "",
-    mes: "set",
-    valor: 0,
-    data: todayIso(),
-    pagamento: "Transferência bancária",
-  });
-
-  const [receita, setReceita] = useState({
-    alunoId: alunos[0]?.id || "",
-    valor: 0,
-    data: todayIso(),
-    pagamento: "Transferência bancária",
-    detalhe: "",
-  });
-
-  /** Novo aluno — inscrição / matrícula */
-  const [matricula, setMatricula] = useState({
-    nome: "",
-    pai: "",
-    mae: "",
-    telefone: "",
-    morada: "",
-    turma: TURMAS_ESCOLA[0],
-    data: todayIso(),
-    pagamento: "Transferência bancária",
-    temSeguroProprio: false,
-    valorInscricao: MATRICULA_INSCRICAO,
-    valorSeguro: MATRICULA_SEGURO,
-  });
-
-
-  function totalMatricula(m = matricula): number {
-    const seguro = m.temSeguroProprio ? 0 : m.valorSeguro;
-    return (m.valorInscricao || 0) + seguro;
-  }
-
-  function alunoById(id: string): Aluno | undefined {
-    return alunos.find((a) => a.id === id);
-  }
-
-  function defaultValor(mode: Mode, a?: Aluno): number {
-    if (!a) return 0;
-    if (mode === "manuais") return a.manuais || 0;
-    if (mode === "extra") return a.extras || a.curso || 0;
-    if (mode === "propina") return a.propina || 0;
-    return 0;
-  }
-
-  function selectMode(id: Mode) {
-    setMode(id);
-    if (id === "despesa") return;
-    if (id === "propina") {
-      const m = mensalidades.find((x) => x.id === prop.alunoId);
-      const a = alunos.find((x) => x.id === prop.alunoId || x.nome === m?.nome);
-      setProp((p) => ({ ...p, valor: m?.propina || a?.propina || p.valor }));
-      return;
-    }
-    if (id === "inscricao") return;
-    const a = alunoById(receita.alunoId) || alunos[0];
-    setReceita((r) => ({
-      ...r,
-      alunoId: a?.id || r.alunoId,
-      valor: defaultValor(id, a),
-      detalhe: id === "extra" ? r.detalhe : "",
-    }));
-  }
 
   async function onFile(file: File | undefined) {
     if (!file) return;
     setBusy(true);
     try {
-      setFoto(await compressImage(file));
-      toast.success("Foto anexada");
+      const data = await compressImage(file);
+      setFoto(data);
+      toast.success("Foto da fatura anexada");
     } catch {
       toast.error("Não foi possível ler a imagem");
     } finally {
@@ -170,727 +56,188 @@ function Capturar() {
     }
   }
 
-  function afterSave(row: Lancamento, sel: string | null) {
-    setLastSaved(row);
-    setReciboSel(sel);
-    setEditing(false);
-    toast.success(`${row.id} registado`);
-  }
-
-  function submitDespesa(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
-    if (!despesa.descricao.trim() || !despesa.valor) {
+    if (!form.descricao.trim() || !form.valor) {
       toast.error("Preencha a descrição e o valor");
       return;
     }
-    const input: CapturaInput = {
-      data: despesa.data,
-      tipo: "despesa",
-      categoria: "Outras Despesas",
-      descricao: despesa.descricao,
-      fornecedor: despesa.fornecedor,
-      fatura: despesa.fatura,
-      valor: despesa.valor,
-      pagamento: despesa.pagamento,
-      origem: despesa.conta,
-      observacoes: despesa.observacoes,
-      foto,
-    };
-    afterSave(add(input), null);
-  }
-
-  function submitPropina(e: FormEvent) {
-    e.preventDefault();
-    const m = mensalidades.find((x) => x.id === prop.alunoId);
-    const aluno = alunos.find((a) => a.id === prop.alunoId || a.nome === m?.nome);
-    const nome = m?.nome || aluno?.nome || "Aluno";
-    const valor = prop.valor || m?.propina || aluno?.propina || 0;
-    if (!valor) {
-      toast.error("Indique o valor da propina");
-      return;
-    }
-    if (m) setMensalidade(m.id, prop.mes, valor);
-    const mesLabel = MESES_LABEL[prop.mes] || prop.mes;
-    const row = add({
-      data: prop.data,
-      tipo: "entrada",
-      categoria: "Propina / Mensalidade",
-      descricao: `Propina ${mesLabel} — ${nome}${aluno?.turma ? ` · ${aluno.turma}` : ""}`,
-      fornecedor: aluno?.encarregado || nome,
-      fatura: "",
-      valor,
-      pagamento: prop.pagamento,
-      origem: "propina",
-      observacoes: `Mês: ${prop.mes}`,
-    });
-    const mid = m?.id || prop.alunoId;
-    afterSave(row, `prop:${mid}:${prop.mes}`);
-  }
-
-
-  function submitMatricula(e: FormEvent) {
-    e.preventDefault();
-    const nome = matricula.nome.trim();
-    if (!nome) {
-      toast.error("Indique o nome do aluno");
-      return;
-    }
-    if (!matricula.turma) {
-      toast.error("Seleccione a classe");
-      return;
-    }
-    const valor = totalMatricula();
-    if (!valor) {
-      toast.error("Indique o valor");
-      return;
-    }
-
-    const nExtra = alunosExtra.length + 1;
-    const id = `N-${String(nExtra).padStart(3, "0")}`;
-    const recibo = `EF/N${String(nExtra).padStart(3, "0")}`;
-    const seguro = matricula.temSeguroProprio ? 0 : matricula.valorSeguro;
-    const bruto = matricula.valorInscricao + seguro;
-    const encarregado = [matricula.pai.trim(), matricula.mae.trim()].filter(Boolean).join(" / ") || "—";
-    const obsParts = [
-      matricula.morada.trim() ? `Morada: ${matricula.morada.trim()}` : "",
-      matricula.temSeguroProprio
-        ? "Seguro próprio do encarregado — isento na escola"
-        : seguro
-          ? `Inclui seguro escolar ${seguro} Kz`
-          : "",
-    ].filter(Boolean);
-
-    const novo: Aluno = {
-      id,
-      nome,
-      turma: matricula.turma,
-      grupo: matricula.turma,
-      inscricao: matricula.valorInscricao,
-      manuais: 0,
-      uniforme: 0,
-      seguro,
-      extras: 0,
-      curso: 0,
-      mensalidade1: 0,
-      dataPag: matricula.data,
-      bruto,
-      descPct: 0,
-      liquido: valor,
-      encarregado,
-      telefone: matricula.telefone.trim(),
-      bi: "",
-      familia: matricula.pai.trim() || matricula.mae.trim() || "",
-      recibo,
-      obs: obsParts.join(" · "),
-      propina: 170000,
-      statusPag: "pago",
-    };
-    addAluno(novo);
-
-    const row = add({
-      data: matricula.data,
-      tipo: "entrada",
-      categoria: "Inscrição / Matrícula",
-      descricao: `Inscrição — ${nome} · ${matricula.turma}`,
-      fornecedor: encarregado,
-      fatura: recibo,
-      valor,
-      pagamento: matricula.pagamento,
-      origem: "inscricao",
-      observacoes: obsParts.join(" · "),
-    });
-    afterSave(row, recibo);
-    setMatricula({
-      nome: "",
-      pai: "",
-      mae: "",
-      telefone: "",
-      morada: "",
-      turma: TURMAS_ESCOLA[0],
-      data: todayIso(),
-      pagamento: "Transferência bancária",
-      temSeguroProprio: false,
-      valorInscricao: MATRICULA_INSCRICAO,
-      valorSeguro: MATRICULA_SEGURO,
-    });
-  }
-
-  function submitReceitaEscolar(e: FormEvent, kind: "manuais" | "extra") {
-    e.preventDefault();
-    const aluno = alunoById(receita.alunoId);
-    if (!aluno) {
-      toast.error("Seleccione o aluno");
-      return;
-    }
-    const valor = receita.valor || defaultValor(kind, aluno);
-    if (!valor) {
-      toast.error("Indique o valor recebido");
-      return;
-    }
-
-    const meta = {
-      manuais: {
-        categoria: "Manuais Escolares",
-        titulo: `Manuais escolares — ${aluno.nome} · ${aluno.turma}`,
-        reciboKey: `man:${aluno.id}`,
-      },
-      extra: {
-        categoria: "Actividades extra",
-        titulo: receita.detalhe
-          ? `${receita.detalhe} — ${aluno.nome} · ${aluno.turma}`
-          : `Actividades extra — ${aluno.nome} · ${aluno.turma}`,
-        reciboKey: `ext:${aluno.id}:${encodeURIComponent(receita.detalhe || "extra")}`,
-      },
-    }[kind];
-
-    const row = add({
-      data: receita.data,
-      tipo: "entrada",
-      categoria: meta.categoria,
-      descricao: meta.titulo,
-      fornecedor: aluno.encarregado || "",
-      fatura: aluno.recibo || "",
-      valor,
-      pagamento: receita.pagamento,
-      origem: "inscricao",
-      observacoes: kind === "extra" ? receita.detalhe : aluno.turma,
-    });
-    afterSave(row, meta.reciboKey);
-  }
-
-  function saveEdit() {
-    if (!lastSaved) return;
-    try {
-      updateExtra(lastSaved.id, {
-        descricao: lastSaved.descricao,
-        valor: lastSaved.valor,
-        data: lastSaved.data,
-        pagamento: lastSaved.pagamento,
-        fornecedor: lastSaved.fornecedor,
-        observacoes: lastSaved.observacoes,
-      });
-      setEditing(false);
-      toast.success("Lançamento actualizado");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sem permissão para editar");
-    }
-  }
-
-  function resetAll() {
-    setLastSaved(null);
-    setReciboSel(null);
-    setEditing(false);
-    setFoto(undefined);
-  }
-
-  function openRecibo() {
-    if (!reciboSel) return;
-    try {
-      sessionStorage.setItem("ecc-recibo-sel", reciboSel);
-    } catch {
-      /* ignore */
-    }
-    void nav({ to: "/recibos" });
+    const row = add({ ...form, foto });
+    toast.success(`${row.id} registado`);
+    void nav({ to: "/lancamentos" });
   }
 
   return (
     <div>
-      {lastSaved ? (
-        <div className="mb-6">
-          <div className="no-print mb-3 flex flex-wrap items-center gap-2">
-            <p className="text-sm text-[var(--color-muted)]">
-              <strong className="text-[var(--color-ink)]">{lastSaved.id}</strong> gravado.
-            </p>
-            <Button type="button" variant="secondary" onClick={() => setEditing((v) => !v)}>
-              <Pencil className="size-4" /> {editing ? "Cancelar edição" : "Editar"}
-            </Button>
-            <Button type="button" onClick={() => window.print()}>
-              <Printer className="size-4" /> Imprimir
-            </Button>
-            {reciboSel ? (
-              <Button type="button" variant="secondary" onClick={openRecibo}>
-                Abrir recibo
-              </Button>
+      <PageHeader
+        kicker="Entrada remota"
+        title="Capturar fatura"
+        description="Fotografe o talão ou a fatura e preencha os campos. O número interno (FRM-xxx) gera-se sozinho — escreva-o no papel. O mesmo modelo serve para o Google Forms."
+      />
+      <p className="no-print mb-4 text-sm text-[var(--color-muted)]">
+        A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
+        <span className="text-[var(--color-faint)]"> · altere no menu lateral se for outra pessoa</span>
+      </p>
+
+      <form onSubmit={submit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-line-strong)] bg-[var(--color-bg)] px-4 py-8 text-center">
+            {foto ? (
+              <img src={foto} alt="Fatura" className="max-h-56 rounded-[var(--radius-sm)] object-contain" />
+            ) : (
+              <>
+                <span className="flex size-12 items-center justify-center rounded-full bg-[var(--color-forest-soft)] text-[var(--color-forest)]">
+                  <Camera className="size-5" />
+                </span>
+                <span className="text-sm font-medium">Fotografar ou carregar fatura</span>
+                <span className="text-xs text-[var(--color-muted)]">JPEG / PNG · comprimido automaticamente</span>
+              </>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={(e) => void onFile(e.target.files?.[0])}
+            />
+            {foto ? (
+              <span className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--color-forest)]">
+                <ImagePlus className="size-3" /> Substituir foto
+              </span>
             ) : null}
-            <Button type="button" variant="secondary" onClick={resetAll}>
-              Novo registo
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => void nav({ to: "/lancamentos" })}>
-              Lançamentos
-            </Button>
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Data">
+              <Input
+                type="date"
+                value={form.data}
+                onChange={(e) => setForm({ ...form, data: e.target.value })}
+                required
+              />
+            </Field>
+            <Field label="Tipo">
+              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v as "entrada" | "despesa" })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="despesa">Despesa</SelectItem>
+                  <SelectItem value="entrada">Entrada</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Categoria">
+              <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {seed.categorias.map((c) => (
+                    <SelectItem key={c.nome} value={c.nome}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Origem do dinheiro">
+              <Select value={form.origem} onValueChange={(v) => setForm({ ...form, origem: v as Origem })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="formulario">Formulário / Foto</SelectItem>
+                  <SelectItem value="cartao">Cartão BAI</SelectItem>
+                  <SelectItem value="fundo">Fundo de maneio</SelectItem>
+                  <SelectItem value="banco">Transferência / Banco</SelectItem>
+                  <SelectItem value="socio">Empréstimo sócio</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Descrição / detalhe" className="sm:col-span-2">
+              <Input
+                value={form.descricao}
+                onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                placeholder="Ex: Tintas exterior, panfletos, almoço…"
+                required
+              />
+            </Field>
+            <Field label="Fornecedor">
+              <Input
+                value={form.fornecedor}
+                onChange={(e) => setForm({ ...form, fornecedor: e.target.value })}
+                placeholder="Nome no talão"
+              />
+            </Field>
+            <Field label="Nº fatura fornecedor">
+              <Input value={form.fatura} onChange={(e) => setForm({ ...form, fatura: e.target.value })} />
+            </Field>
+            <Field label="Valor (Kz)">
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.valor || ""}
+                onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })}
+                required
+              />
+            </Field>
+            <Field label="Forma de pagamento">
+              <Select value={form.pagamento} onValueChange={(v) => setForm({ ...form, pagamento: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {seed.formasPagamento.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Observações" className="sm:col-span-2">
+              <Textarea
+                value={form.observacoes}
+                onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+                rows={3}
+              />
+            </Field>
           </div>
 
-          {editing ? (
-            <div className="no-print mb-4 grid gap-3 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4 sm:grid-cols-2">
-              <Field label="Data">
-                <Input value={lastSaved.data} onChange={(e) => setLastSaved({ ...lastSaved, data: e.target.value })} />
-              </Field>
-              <Field label="Valor (KZ)">
-                <Input
-                  type="number"
-                  value={lastSaved.valor}
-                  onChange={(e) => setLastSaved({ ...lastSaved, valor: Number(e.target.value) || 0 })}
-                />
-              </Field>
-              <Field label="Descrição" className="sm:col-span-2">
-                <Input value={lastSaved.descricao} onChange={(e) => setLastSaved({ ...lastSaved, descricao: e.target.value })} />
-              </Field>
-              <Field label="Método de pagamento">
-                <Input value={lastSaved.pagamento} onChange={(e) => setLastSaved({ ...lastSaved, pagamento: e.target.value })} />
-              </Field>
-              <Field label="Encarregado / fornecedor">
-                <Input value={lastSaved.fornecedor} onChange={(e) => setLastSaved({ ...lastSaved, fornecedor: e.target.value })} />
-              </Field>
-              <div className="sm:col-span-2">
-                <Button type="button" onClick={saveEdit}>
-                  Guardar alterações
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
-            <PrintHeader title="Comprovativo de lançamento" />
-            <div className="mt-3 flex justify-between text-sm">
-              <span>
-                N.º <strong>{lastSaved.docInterno || lastSaved.id}</strong>
-              </span>
-              <span>{formatDateLong(lastSaved.data)}</span>
-            </div>
-            <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <div className="col-span-2">
-                <dt className="text-xs text-[var(--color-muted)]">Descrição</dt>
-                <dd className="font-medium">{lastSaved.descricao}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--color-muted)]">Método de pagamento</dt>
-                <dd>{lastSaved.pagamento || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--color-muted)]">Categoria</dt>
-                <dd>{lastSaved.categoria}</dd>
-              </div>
-              {lastSaved.fornecedor ? (
-                <div className="col-span-2">
-                  <dt className="text-xs text-[var(--color-muted)]">Encarregado de educação</dt>
-                  <dd>{lastSaved.fornecedor}</dd>
-                </div>
-              ) : null}
-              <div className="col-span-2 border-t border-[var(--color-line)] pt-2 font-medium">
-                Valor: {formatKz(lastSaved.valor)}
-              </div>
-            </dl>
-            <p className="mt-3 text-[10px] text-[var(--color-muted)]">
-              Registado por {lastSaved.criadoPor || "—"} · {seed.escola.notaFiscal}
-            </p>
-          </article>
+          <Button type="submit" className="w-full sm:w-auto" disabled={busy}>
+            <Check /> Guardar lançamento
+          </Button>
         </div>
-      ) : null}
 
-      <div className={lastSaved ? "no-print" : ""}>
-        <PageHeader
-          kicker="Registo"
-          title="Novo lançamento"
-          description="Receitas: propina, matrícula (+seguro opcional), manuais, extra. Despesa/fatura à parte (numeração FRM-AAAA-MM-001)."
-        />
-        <p className="mb-4 text-sm text-[var(--color-muted)]">
-          A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
-        </p>
-
-        <div className="no-print mb-5 flex flex-wrap gap-2">
-          {RECEITA_MODES.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => selectMode(id)}
-              className={
-                mode === id
-                  ? "rounded-full bg-[var(--color-forest)] px-3 py-1.5 text-sm text-[var(--color-forest-fg)]"
-                  : "rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm"
-              }
+        <aside className="space-y-3 text-sm text-[var(--color-ink-soft)]">
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-bg-elevated)] p-4">
+            <p className="font-medium text-[var(--color-ink)]">Como usar no terreno</p>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-4">
+              <li>Fotografe a fatura ainda na loja.</li>
+              <li>Preencha categoria, valor e fornecedor.</li>
+              <li>O sistema gera FRM-001, FRM-002…</li>
+              <li>Escreva esse número no papel físico.</li>
+              <li>Exporte depois para o Google Sheets master.</li>
+            </ol>
+          </div>
+          <div className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+            <p className="font-medium text-[var(--color-ink)]">Google Forms</p>
+            <p className="mt-1">
+              O formulário já existente continua válido. As respostas devem cair na folha «Lançamentos Financeiros» com as mesmas colunas.
+            </p>
+            <a
+              className="mt-3 inline-flex text-[var(--color-forest)] underline-offset-4 hover:underline"
+              href={seed.escola.formsUrl}
+              target="_blank"
+              rel="noreferrer"
             >
-              {label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => selectMode("despesa")}
-            className={
-              mode === "despesa"
-                ? "rounded-full bg-[var(--color-clay)] px-3 py-1.5 text-sm text-white"
-                : "rounded-full border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-muted)]"
-            }
-          >
-            Despesa / fatura
-          </button>
-        </div>
-
-        {mode === "despesa" ? (
-          <form
-            onSubmit={submitDespesa}
-            className="max-w-xl space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
-          >
-            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-line-strong)] bg-[var(--color-bg)] px-4 py-6 text-center">
-              {foto ? (
-                <img src={foto} alt="Fatura" className="max-h-40 object-contain" />
-              ) : (
-                <>
-                  <Camera className="size-6 text-[var(--color-forest)]" />
-                  <span className="text-sm">Fotografar fatura (opcional)</span>
-                </>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="sr-only"
-                onChange={(e) => void onFile(e.target.files?.[0])}
-              />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Data">
-                <Input value={despesa.data} onChange={(e) => setDespesa({ ...despesa, data: e.target.value })} />
-              </Field>
-              <Field label="Valor (KZ)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={despesa.valor || ""}
-                  onChange={(e) => setDespesa({ ...despesa, valor: Number(e.target.value) || 0 })}
-                  required
-                />
-              </Field>
-              <Field label="Descrição" className="sm:col-span-2">
-                <Input
-                  value={despesa.descricao}
-                  onChange={(e) => setDespesa({ ...despesa, descricao: e.target.value })}
-                  required
-                />
-              </Field>
-              <Field label="Fornecedor">
-                <Input value={despesa.fornecedor} onChange={(e) => setDespesa({ ...despesa, fornecedor: e.target.value })} />
-              </Field>
-              <Field label="N.º fatura">
-                <Input value={despesa.fatura} onChange={(e) => setDespesa({ ...despesa, fatura: e.target.value })} />
-              </Field>
-              <Field label="Método de pagamento">
-                <Select value={despesa.pagamento} onValueChange={(v) => setDespesa({ ...despesa, pagamento: v })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[...new Set([...METODOS, ...(seed.formasPagamento || [])])].map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Conta / fonte">
-                <Select value={despesa.conta} onValueChange={(v) => setDespesa({ ...despesa, conta: v as Origem })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="formulario">Caixa / geral</SelectItem>
-                    <SelectItem value="cartao">Cartão BAI</SelectItem>
-                    <SelectItem value="fundo">Fundo de maneio</SelectItem>
-                    <SelectItem value="banco">Banco / transferência</SelectItem>
-                    <SelectItem value="socio">Sócio</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Observações" className="sm:col-span-2">
-                <Textarea rows={2} value={despesa.observacoes} onChange={(e) => setDespesa({ ...despesa, observacoes: e.target.value })} />
-              </Field>
-            </div>
-            <Button type="submit" disabled={busy}>
-              <Check className="size-4" /> Guardar despesa
-            </Button>
-          </form>
-        ) : null}
-
-        {mode === "propina" ? (
-          <form
-            onSubmit={submitPropina}
-            className="max-w-md space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
-          >
-            <p className="text-sm text-[var(--color-muted)]">Formulário curto · ligado a Recibos.</p>
-            <Field label="Aluno">
-              <select
-                className="h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-                value={prop.alunoId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  const m = mensalidades.find((x) => x.id === id);
-                  const a = alunos.find((x) => x.id === id || x.nome === m?.nome);
-                  setProp({ ...prop, alunoId: id, valor: m?.propina || a?.propina || 0 });
-                }}
-              >
-                {mensalidades.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nome} · {m.turma}
-                  </option>
-                ))}
-                {alunos
-                  .filter((a) => !mensalidades.some((m) => m.nome === a.nome))
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.nome} · {a.turma}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-            <Field label="Mês">
-              <select
-                className="h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-                value={prop.mes}
-                onChange={(e) => setProp({ ...prop, mes: e.target.value })}
-              >
-                {MESES_LETIVOS.map((m) => (
-                  <option key={m} value={m}>
-                    {MESES_LABEL[m] || m}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Valor (KZ)">
-              <Input
-                type="number"
-                min={0}
-                value={prop.valor || ""}
-                onChange={(e) => setProp({ ...prop, valor: Number(e.target.value) || 0 })}
-                required
-              />
-            </Field>
-            <Field label="Data de pagamento">
-              <Input value={prop.data} onChange={(e) => setProp({ ...prop, data: e.target.value })} />
-            </Field>
-            <Field label="Método de pagamento">
-              <Select value={prop.pagamento} onValueChange={(v) => setProp({ ...prop, pagamento: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {METODOS.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Button type="submit">
-              <Check className="size-4" /> Guardar propina
-            </Button>
-          </form>
-        ) : null}
-
-        {mode === "inscricao" ? (
-          <form
-            onSubmit={submitMatricula}
-            className="max-w-lg space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
-          >
-            <p className="text-sm text-[var(--color-muted)]">
-              Registo de <strong>novo aluno</strong>. Matrícula = inscrição + seguro (isento se o encarregado já tiver seguro próprio).
-            </p>
-            <Field label="Nome do aluno">
-              <Input
-                value={matricula.nome}
-                onChange={(e) => setMatricula({ ...matricula, nome: e.target.value })}
-                placeholder="Nome completo"
-                required
-              />
-            </Field>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Nome do pai">
-                <Input
-                  value={matricula.pai}
-                  onChange={(e) => setMatricula({ ...matricula, pai: e.target.value })}
-                  placeholder="Pai"
-                />
-              </Field>
-              <Field label="Nome da mãe">
-                <Input
-                  value={matricula.mae}
-                  onChange={(e) => setMatricula({ ...matricula, mae: e.target.value })}
-                  placeholder="Mãe"
-                />
-              </Field>
-            </div>
-            <Field label="Telefone">
-              <Input
-                value={matricula.telefone}
-                onChange={(e) => setMatricula({ ...matricula, telefone: e.target.value })}
-                placeholder="9xx xxx xxx"
-                inputMode="tel"
-              />
-            </Field>
-            <Field label="Morada">
-              <Input
-                value={matricula.morada}
-                onChange={(e) => setMatricula({ ...matricula, morada: e.target.value })}
-                placeholder="Bairro, rua, município…"
-              />
-            </Field>
-            <Field label="Classe">
-              <select
-                className="h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-                value={matricula.turma}
-                onChange={(e) => setMatricula({ ...matricula, turma: e.target.value })}
-              >
-                {TURMAS_ESCOLA.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <label className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={matricula.temSeguroProprio}
-                onChange={(e) => setMatricula({ ...matricula, temSeguroProprio: e.target.checked })}
-              />
-              <span>
-                Encarregado já tem <strong>seguro próprio</strong> — não cobrar seguro escolar (
-                {formatKz(matricula.valorSeguro)}).
-              </span>
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Valor inscrição (KZ)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={matricula.valorInscricao || ""}
-                  onChange={(e) =>
-                    setMatricula({ ...matricula, valorInscricao: Number(e.target.value) || 0 })
-                  }
-                />
-              </Field>
-              <Field label="Valor seguro (KZ)">
-                <Input
-                  type="number"
-                  min={0}
-                  disabled={matricula.temSeguroProprio}
-                  value={matricula.temSeguroProprio ? 0 : matricula.valorSeguro || ""}
-                  onChange={(e) =>
-                    setMatricula({ ...matricula, valorSeguro: Number(e.target.value) || 0 })
-                  }
-                />
-              </Field>
-            </div>
-            <p className="text-sm font-medium">
-              Total a receber: <span className="tabular-nums text-[var(--color-forest)]">{formatKz(totalMatricula())}</span>
-            </p>
-            <Field label="Data de pagamento">
-              <Input
-                value={matricula.data}
-                onChange={(e) => setMatricula({ ...matricula, data: e.target.value })}
-              />
-            </Field>
-            <Field label="Método de pagamento">
-              <Select
-                value={matricula.pagamento}
-                onValueChange={(v) => setMatricula({ ...matricula, pagamento: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {METODOS.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Button type="submit">
-              <Check className="size-4" /> Guardar matrícula
-            </Button>
-          </form>
-        ) : null}
-
-        {mode === "manuais" || mode === "extra" ? (
-          <form
-            onSubmit={(e) => submitReceitaEscolar(e, mode)}
-            className="max-w-md space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
-          >
-            <p className="text-sm text-[var(--color-muted)]">
-              {mode === "manuais" && "Manuais escolares · valor sugerido do cadastro."}
-              {mode === "extra" && "Actividades extra / curso · indique o detalhe se quiser."}
-            </p>
-            <Field label="Aluno">
-              <select
-                className="h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-                value={receita.alunoId}
-                onChange={(e) => {
-                  const a = alunoById(e.target.value);
-                  setReceita({
-                    ...receita,
-                    alunoId: e.target.value,
-                    valor: defaultValor(mode, a),
-                  });
-                }}
-              >
-                {alunos.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nome} · {a.turma}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {alunoById(receita.alunoId) ? (
-              <p className="text-sm text-[var(--color-muted)]">
-                Classe:{" "}
-                <strong className="text-[var(--color-ink)]">{alunoById(receita.alunoId)?.turma}</strong>
-              </p>
-            ) : null}
-            {mode === "extra" ? (
-              <Field label="Actividade / detalhe">
-                <Input
-                  value={receita.detalhe}
-                  onChange={(e) => setReceita({ ...receita, detalhe: e.target.value })}
-                  placeholder="Ex.: Visita de estudo, curso intensivo…"
-                />
-              </Field>
-            ) : null}
-            <Field label="Valor recebido (KZ)">
-              <Input
-                type="number"
-                min={0}
-                value={receita.valor || ""}
-                onChange={(e) => setReceita({ ...receita, valor: Number(e.target.value) || 0 })}
-                required
-              />
-            </Field>
-            <Field label="Data de pagamento">
-              <Input value={receita.data} onChange={(e) => setReceita({ ...receita, data: e.target.value })} />
-            </Field>
-            <Field label="Método de pagamento">
-              <Select value={receita.pagamento} onValueChange={(v) => setReceita({ ...receita, pagamento: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {METODOS.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Button type="submit">
-              <Check className="size-4" />{" "}
-              {mode === "manuais" ? "Guardar manuais" : "Guardar actividade extra"}
-            </Button>
-          </form>
-        ) : null}
-      </div>
+              Abrir formulário Google
+            </a>
+          </div>
+        </aside>
+      </form>
     </div>
   );
 }

@@ -145,3 +145,117 @@ export function csvPreview(rows: Lancamento[], n = 3): string {
     .map((r) => `${r.docInterno} · ${r.data} · ${r.descricao} · ${formatKz(r.valor)}`)
     .join("\n");
 }
+
+/** Colunas esperadas no CSV do extrato BAI (exportado do Excel Movimentos). */
+export const BAI_COLUMNS = [
+  "Data",
+  "Banco",
+  "Descrição",
+  "Entrada",
+  "Saída",
+  "Saldo",
+  "Observações",
+];
+
+export function baiToCsv(rows: import("@/data/types").MovimentoBai[]): string {
+  const header = BAI_COLUMNS.join(";");
+  const body = rows
+    .map((m) =>
+      [m.data, m.banco, m.descricao, m.entrada, m.saida, m.saldo, m.observacoes]
+        .map(escapeCsv)
+        .join(";"),
+    )
+    .join("\n");
+  return `${header}\n${body}`;
+}
+
+export function parseBaiCsv(text: string): import("@/data/types").MovimentoBai[] {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const sep = lines[0].includes(";") ? ";" : ",";
+  const headers = splitCsvLine(lines[0], sep).map((h) => h.trim().toLowerCase());
+  const idx = (names: string[]) => headers.findIndex((h) => names.some((n) => h.includes(n)));
+  const iData = idx(["data"]);
+  const iBanco = idx(["banco", "tipo"]);
+  const iDesc = idx(["descri", "pessoal"]);
+  const iEnt = idx(["entrada", "crédito", "credito"]);
+  const iSai = idx(["saída", "saida", "débito", "debito"]);
+  const iSal = idx(["saldo"]);
+  const iObs = idx(["observ", "obs"]);
+
+  let linha = 0;
+  const out: import("@/data/types").MovimentoBai[] = [];
+  for (const line of lines.slice(1)) {
+    const c = splitCsvLine(line, sep);
+    const ent = parseNum(c[iEnt]);
+    const sai = parseNum(c[iSai]);
+    if (!c[iData] && !ent && !sai) continue;
+    if (String(c[iData] || "").toUpperCase().includes("TOTAL")) continue;
+    linha++;
+    out.push({
+      id: `BAI-IMP-${linha}`,
+      linha,
+      data: normalizeDate(c[iData] || ""),
+      banco: c[iBanco] || "",
+      descricao: c[iDesc] || "",
+      entrada: ent,
+      saida: sai,
+      saldo: parseNum(c[iSal]),
+      observacoes: c[iObs] || "",
+    });
+  }
+  return out;
+}
+
+function parseNum(s: string | undefined): number {
+  if (!s) return 0;
+  const t = String(s)
+    .replace(/\s/g, "")
+    .replace("Kz", "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  // if both . and , handled wrong: try PT format 1.064.700,56
+  const pt = String(s).replace(/\s/g, "").replace(/Kz/gi, "");
+  if (/\d+\.\d{3}/.test(pt) || pt.includes(",")) {
+    const n = Number(pt.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+  }
+  const n = Number(t);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export type ReconcileResult = {
+  saldoApp: number;
+  saldoCsv: number;
+  entradasApp: number;
+  entradasCsv: number;
+  saidasApp: number;
+  saidasCsv: number;
+  diffSaldo: number;
+  ok: boolean;
+};
+
+export function reconcileBai(
+  app: import("@/data/types").MovimentoBai[],
+  csv: import("@/data/types").MovimentoBai[],
+): ReconcileResult {
+  const sum = (rows: import("@/data/types").MovimentoBai[], key: "entrada" | "saida") =>
+    rows.reduce((s, r) => s + (r[key] || 0), 0);
+  const saldoApp = app.length ? app[app.length - 1].saldo : 0;
+  const saldoCsv = csv.length ? csv[csv.length - 1].saldo : 0;
+  const entradasApp = sum(app, "entrada");
+  const entradasCsv = sum(csv, "entrada");
+  const saidasApp = sum(app, "saida");
+  const saidasCsv = sum(csv, "saida");
+  const diffSaldo = Math.round((saldoCsv - saldoApp) * 100) / 100;
+  return {
+    saldoApp,
+    saldoCsv,
+    entradasApp,
+    entradasCsv,
+    saidasApp,
+    saidasCsv,
+    diffSaldo,
+    ok: Math.abs(diffSaldo) < 0.5,
+  };
+}

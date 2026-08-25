@@ -72,26 +72,16 @@
   }
 }
 
-/* ——— Impressão ——— */
-/* Visível só na impressão */
-.print-only {
-  display: none !important;
-}
-
+/* ——— Impressão A4 limpa (menus, filtros e botões ocultos) ——— */
 @media print {
-  .print-only {
-    display: block !important;
-  }
-
   @page {
     size: A4;
     margin: 12mm 10mm;
   }
 
-
   nav,
   aside,
-  header.no-print,
+  header,
   .no-print {
     display: none !important;
   }
@@ -105,6 +95,7 @@
     print-color-adjust: exact;
   }
 
+  /* Conteúdo a largura total, sem sidebar */
   .min-h-dvh,
   .flex.min-h-dvh,
   .flex.min-w-0.flex-1.flex-col {
@@ -125,6 +116,7 @@
     page-break-inside: avoid;
   }
 
+  /* Tabelas: não cortar linhas no meio da página */
   table {
     width: 100% !important;
     min-width: 0 !important;
@@ -168,78 +160,5 @@
   [data-sonner-toaster],
   [data-sonner-toast] {
     display: none !important;
-  }
-
-  /* Logo sempre visível na impressão */
-  .print-header {
-    display: flex !important;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 8mm !important;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 4mm;
-  }
-
-  .print-header img {
-    display: block !important;
-    height: 56px !important;
-    width: 56px !important;
-    object-fit: contain !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* Dois recibos A5 na mesma folha A4 — sem desperdício */
-  .recibos-print-area {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: flex-start !important;
-    gap: 0 !important;
-    width: 100% !important;
-    height: auto !important;
-  }
-
-  .recibo-a5 {
-    width: 100% !important;
-    max-width: none !important;
-    height: auto !important;
-    max-height: 48% !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
-    border: 1px solid #888 !important;
-    padding: 4mm 5mm !important;
-    margin: 0 0 3mm 0 !important;
-    border-radius: 0 !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    page-break-after: avoid !important;
-    page-break-before: avoid !important;
-  }
-
-  .recibo-a5:last-child {
-    margin-bottom: 0 !important;
-  }
-
-  .recibo-a5 .print-header {
-    margin-bottom: 2mm !important;
-    padding-bottom: 1.5mm !important;
-    gap: 8px !important;
-  }
-
-  .recibo-a5 .print-header img {
-    height: 36px !important;
-    width: 36px !important;
-  }
-
-  .recibo-a5 .print-header .font-display,
-  .recibo-a5 .font-display {
-    font-size: 11pt !important;
-  }
-
-  .recibo-a5 table,
-  .recibo-a5 dl,
-  .recibo-a5 p {
-    font-size: 9pt !important;
   }
 }

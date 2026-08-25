@@ -2,14 +2,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/kpi"
-import { PrintHeader } from "@/components/print-header";
+import { PageHeader } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EDIT_PIN, isAdminSession } from "@/lib/can-edit";
+import { EDIT_PIN, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
 import type { Aluno } from "@/data/types";
@@ -41,8 +40,7 @@ function Alunos() {
   const updateAluno = useFinance((s) => s.updateAluno);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
-  const adminUnlocked = useFinance((s) => s.adminUnlocked);
-  const canEdit = isAdminSession(activeOperator, operators, adminUnlocked);
+  const canEdit = isCollaborator1(activeOperator, operators);
 
   const alunos = alunosAll(extra, overrides);
   const [q, setQ] = useState("");
@@ -115,7 +113,7 @@ function Alunos() {
       return;
     }
     if (pin !== EDIT_PIN) {
-      toast.error("Código de autorização incorrecto.");
+      toast.error("Código incorrecto. Introduza 1977.");
       return;
     }
 
@@ -162,13 +160,12 @@ function Alunos() {
 
   return (
     <div>
-      <div className="print-only mb-4"><PrintHeader /></div>
       <PageHeader
         kicker="Matrículas 2026/2027"
         title="Alunos"
         description={
           canEdit
-            ? "Cadastro unificado. Edição de valores e dados de contacto apenas para o Colaborador 1, Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
+            ? "Cadastro unificado. Edição de valores e dados de contacto apenas para o Colaborador 1, com código 1977. Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
             : undefined
         }
         actions={
@@ -249,7 +246,7 @@ function Alunos() {
         <DialogContent>
           <DialogTitle>Editar aluno {editing?.id}</DialogTitle>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
-            Colaborador 1 · introduza o código de autorização para gravar.
+            Colaborador 1 · introduza o código <strong>1977</strong> para gravar.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Field label="Nome do aluno" value={form.nome} onChange={(v) => setForm({ ...form, nome: v })} />
@@ -298,7 +295,7 @@ function Alunos() {
                 className="mt-1.5 max-w-[160px]"
                 autoComplete="off"
               />
-              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Obrigatório para gravar.</p>
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Obrigatório para gravar (1977).</p>
             </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">

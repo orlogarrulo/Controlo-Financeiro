@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader } from "@/components/kpi"
-import { PrintHeader } from "@/components/print-header";
+import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
 import { salariosAll } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
@@ -19,7 +18,6 @@ function Salarios() {
 
   return (
     <div>
-      <div className="print-only mb-4"><PrintHeader /></div>
       <PageHeader
         kicker="Pessoal"
         title="Salários"

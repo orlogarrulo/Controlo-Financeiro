@@ -13,7 +13,6 @@ import type {
   Seed,
 } from "@/data/types";
 import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
-import { EDIT_PIN } from "@/lib/can-edit";
 
 const seed = seedJson as Seed;
 
@@ -38,13 +37,15 @@ type ExtraState = {
   alunosOverrides: Record<string, Partial<Aluno>>;
   mensalidades: Mensalidade[];
   fundoExtra: FundoPagamento[];
+  /** Movimentos BAI importados (CSV) — substituem ou complementam o seed. */
+  movimentosBaiExtra: MovimentoBai[];
+  /** Se true, usa só movimentosBaiExtra (import completo do extrato). */
+  baiOverride: boolean;
   fotos: Record<string, string>;
   /** Nome do colaborador ativo neste browser (escritório, até 5). */
-  activeOperator: string; // "" = ainda não escolheu membro da equipa
+  activeOperator: string;
   /** Lista editável dos 5 nomes do escritório. */
   operators: string[];
-  /** Sessão Colaborador 1 desbloqueada com PIN (não persistir em claro como segredo). */
-  adminUnlocked: boolean;
   /** Registo de auditoria local: quem fez o quê. */
   auditLog: { at: string; by: string; action: string; detail: string }[];
 };
@@ -56,13 +57,12 @@ type Store = ExtraState & {
   setMensalidade: (id: string, mes: string, valor: number) => void;
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
-  updateExtra: (id: string, patch: Partial<Lancamento>) => void;
   resetLocal: () => void;
   setActiveOperator: (name: string) => void;
   setOperatorName: (index: number, name: string) => void;
-  unlockAdmin: (pin: string) => boolean;
-  lockAdmin: () => void;
   pushAudit: (action: string, detail: string) => void;
+  importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
+  importLancamentos: (rows: CapturaInput[]) => number;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -75,30 +75,13 @@ export const useFinance = create<Store>()(
       alunosOverrides: {},
       mensalidades: initialMensalidades,
       fundoExtra: [],
+      movimentosBaiExtra: [],
+      baiOverride: false,
       fotos: {},
-      activeOperator: "",
+      activeOperator: DEFAULT_OPERATORS[0],
       operators: [...DEFAULT_OPERATORS],
-      adminUnlocked: false,
       auditLog: [],
-      setActiveOperator: (name) => {
-        const ops = get().operators;
-        // Trocar para não-admin → sempre trancar privilégios
-        if (!ops[0] || name !== ops[0]) {
-          set({ activeOperator: name, adminUnlocked: false });
-        } else {
-          // Seleccionar Colaborador 1 sem PIN → ainda sem privilégios até unlockAdmin
-          set({ activeOperator: name, adminUnlocked: false });
-        }
-      },
-      unlockAdmin: (pin) => {
-        const ops = get().operators;
-        if (!ops[0]) return false;
-        if (pin !== EDIT_PIN) return false;
-        set({ activeOperator: ops[0], adminUnlocked: true });
-        get().pushAudit("desbloquear_admin", "Colaborador 1");
-        return true;
-      },
-      lockAdmin: () => set({ adminUnlocked: false }),
+      setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
         const ops = [...get().operators];
         if (index < 0 || index >= ops.length) return;
@@ -115,21 +98,10 @@ export const useFinance = create<Store>()(
       },
       addCaptura: (input) => {
         const extras = get().extras;
+        const n = extras.length + 1;
+        const id = `FRM-${String(n).padStart(3, "0")}`;
         const by = get().activeOperator || "—";
         const now = new Date().toISOString();
-        // Numeração mensal: FRM-AAAA-MM-001 … reinicia em cada mês
-        const dataRef = (input.data || now.slice(0, 10)).slice(0, 7); // YYYY-MM
-        const prefix = `FRM-${dataRef}-`;
-        let maxN = 0;
-        for (const e of extras) {
-          const doc = e.docInterno || e.id || "";
-          if (doc.startsWith(prefix)) {
-            const tail = doc.slice(prefix.length);
-            const num = parseInt(tail, 10);
-            if (Number.isFinite(num) && num > maxN) maxN = num;
-          }
-        }
-        const id = `${prefix}${String(maxN + 1).padStart(3, "0")}`;
         const row: Lancamento = {
           id,
           data: input.data,
@@ -164,8 +136,8 @@ export const useFinance = create<Store>()(
         const ops = get().operators;
         const by = get().activeOperator || "—";
         // Apenas o Colaborador 1 (primeiro da lista) pode editar alunos
-        if (by !== ops[0] || !get().adminUnlocked) {
-          throw new Error("Apenas o Colaborador 1 (com código) pode editar dados de alunos.");
+        if (by !== ops[0]) {
+          throw new Error("Apenas o Colaborador 1 pode editar dados de alunos.");
         }
         const inExtra = get().alunosExtra.some((a) => a.id === id);
         if (inExtra) {
@@ -197,28 +169,27 @@ export const useFinance = create<Store>()(
       },
       setFoto: (id, dataUrl) => set({ fotos: { ...get().fotos, [id]: dataUrl } }),
       removeExtra: (id) => {
-        const ops = get().operators;
-        const by = get().activeOperator || "—";
-        if (!ops[0] || by !== ops[0] || !get().adminUnlocked) {
-          throw new Error("Apenas o Colaborador 1 (com código) pode apagar lançamentos.");
-        }
         get().pushAudit("apagar_lancamento", id);
         set({ extras: get().extras.filter((e) => e.id !== id) });
       },
-      updateExtra: (id, patch) => {
-        const ops = get().operators;
-        const by = get().activeOperator || "—";
-        if (!ops[0] || by !== ops[0] || !get().adminUnlocked) {
-          throw new Error("Apenas o Colaborador 1 (com código) pode editar lançamentos.");
-        }
+      importBaiMovimentos: (rows, replace) => {
         set({
-          extras: get().extras.map((e) =>
-            e.id === id
-              ? { ...e, ...patch, editadoPor: by, updatedAt: new Date().toISOString() }
-              : e,
-          ),
+          movimentosBaiExtra: rows,
+          baiOverride: replace,
         });
-        get().pushAudit("editar_lancamento", `${id} · ${Object.keys(patch).join(", ")}`);
+        get().pushAudit(
+          "import_bai",
+          `${rows.length} movimentos BAI (${replace ? "substituição" : "extra"})`,
+        );
+      },
+      importLancamentos: (rows) => {
+        let n = 0;
+        for (const r of rows) {
+          get().addCaptura(r);
+          n++;
+        }
+        get().pushAudit("import_lancamentos", `${n} lançamentos CSV`);
+        return n;
       },
       resetLocal: () =>
         set({
@@ -227,6 +198,8 @@ export const useFinance = create<Store>()(
           alunosOverrides: {},
           mensalidades: initialMensalidades,
           fundoExtra: [],
+          movimentosBaiExtra: [],
+          baiOverride: false,
           fotos: {},
           auditLog: [],
         }),
@@ -241,6 +214,8 @@ export const useFinance = create<Store>()(
         alunosOverrides: s.alunosOverrides,
         mensalidades: s.mensalidades,
         fundoExtra: s.fundoExtra,
+        movimentosBaiExtra: s.movimentosBaiExtra,
+        baiOverride: s.baiOverride,
         fotos: s.fotos,
         activeOperator: s.activeOperator,
         operators: s.operators,
@@ -388,6 +363,8 @@ export function computeTotals(
   mensalidades: Mensalidade[],
   alunosExtra: Aluno[],
   alunosOverrides: Record<string, Partial<Aluno>> = {},
+  movimentosBaiExtra: MovimentoBai[] = [],
+  baiOverride = false,
 ): Totals {
   const alunos = alunosAll(alunosExtra, alunosOverrides);
   const inscricoesLiquido = alunos.reduce((s, a) => s + a.liquido, 0);
@@ -415,7 +392,8 @@ export function computeTotals(
 
   const proveitos = inscricoesLiquido - mensal1 + propinasRecebidas + extraEntradas;
   const custosTotais = socioDespesas + custosOperacionais;
-  const lastBai = seed.movimentosBai[seed.movimentosBai.length - 1];
+  const baiRows = movimentosAll(movimentosBaiExtra, baiOverride);
+  const lastBai = baiRows[baiRows.length - 1];
   const fundoLevantado = seed.fundoAtm.reduce((s, a) => s + a.valor, 0);
   const fundoGasto =
     seed.fundoPagamentos.reduce((s, p) => s + p.valor, 0) +
@@ -458,7 +436,14 @@ export function salariosAll(): Salario[] {
   return seed.salarios;
 }
 
-export function movimentosAll(): MovimentoBai[] {
+export function movimentosAll(extra: MovimentoBai[] = [], override = false): MovimentoBai[] {
+  if (override && extra.length) return extra;
+  if (extra.length) {
+    const ids = new Set(extra.map((m) => m.id));
+    return [...seed.movimentosBai.filter((m) => !ids.has(m.id)), ...extra].sort((a, b) =>
+      a.data === b.data ? a.linha - b.linha : a.data.localeCompare(b.data),
+    );
+  }
   return seed.movimentosBai;
 }
 

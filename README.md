@@ -1,34 +1,66 @@
-# Controlo Financeiro — École Consulaire du Congo (Luanda)
+# Controlo Financeiro · École Consulaire (Luanda)
 
-Aplicação de controlo financeiro da escola (lançamentos, propinas, recibos, dashboard, captura de faturas).
+Aplicação de controlo financeiro escolar (lançamentos, propinas, cartão BAI, fundo de maneio, recibos).
 
-## Arranque
+## Stack
+
+- Vite + React + TypeScript
+- TanStack Router
+- Zustand (persistência local)
+- Deploy: Vercel
+
+## Desenvolvimento local
 
 ```bash
 npm install
 npm run dev
 ```
 
-A app corre em ambiente Grok / Vite (TanStack Start). Ver `package.json` para scripts.
+## Build / Vercel
 
-## Segurança — Colaborador 1
+```bash
+npm install
+npm run build
+```
 
-- A edição de alunos e lançamentos exige o **código de autorização** do Colaborador 1.
-- O código **não** é mostrado na interface.
-- Em caso de esquecimento, consultar o ficheiro local **`SENHA_COLABORADOR1.txt`** (não publicar este ficheiro em repositórios públicos).
+O output de produção fica em `dist/` (ou conforme `vite.config.ts`).
 
-## Google Drive / Sheets / Forms
+### Vercel
 
-Ver a página **Google Drive** na app: estrutura de pastas sugerida, exportação CSV e importação do Forms.
+1. Criar repositório no GitHub e fazer push desta pasta (raiz = `APP_1`).
+2. Em [vercel.com](https://vercel.com) → **Add New Project** → importar o repo.
+3. Framework: Vite (detectado automaticamente).
+4. Build Command: `npm run build`
+5. Output Directory: conforme o projecto (geralmente `dist`).
+6. Deploy.
 
-## Estrutura principal
+## Importação CSV / Google Sheets
 
-- `src/routes/` — ecrãs (Quadro, Lançamentos, Alunos, Capturar, Recibos, Google, …)
-- `src/lib/store.ts` — estado e totais
-- `src/lib/can-edit.ts` — PIN e papel do Colaborador 1
-- `public/logo-escola.png` — logótipo oficial (impressões)
-- `SENHA_COLABORADOR1.txt` — recuperação do PIN (privado)
+Na app: **Google Sheets + Forms**
 
-## Nota para GitHub
+- **Exportar** lançamentos (master) ou movimentos BAI.
+- **Importar** CSV do Forms, do extrato BAI (Excel) ou lançamentos.
+- Modo **Extrato BAI**: substitui o extrato na app e mostra reconciliação de saldo.
 
-Não inclua `node_modules/`, `.env` com segredos, nem partilhe `SENHA_COLABORADOR1.txt` em repositório **público**. Em repositório privado da escola pode manter o ficheiro para a equipa administrativa.
+Ficheiro de exemplo (reconciliado com Excel, saldo **1 064 700,56 Kz**):
+
+`data-export/BAI_Movimentos_para_importar_APP.csv`
+
+## Acesso
+
+Ecrã inicial: escolher colaborador. **Colaborador 1** usa o código de acesso configurado na equipa.
+
+## Dados
+
+- Seed em `src/data/seed.json` (movimentos BAI, alunos, lançamentos sócio, etc.).
+- Dados locais (extras, imports) em `localStorage` (`ecc-financeiro-v1`).
+
+## Notas Evento 50 Anos (Ago/2026)
+
+Incluído no seed / CSV de importação:
+
+- Levantamentos ATM e TPA do evento
+- Transferências (compras, DJ, funcionários, Inês Passi 20k)
+- Matrículas Késane (20-08) e Belangela (21-08 + curso 40k)
+- Vendas evento 30 666 Kz
+- Entrada 40 000 Kz a identificar

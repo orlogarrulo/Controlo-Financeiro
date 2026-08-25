@@ -1,61 +1,59 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  Cloud,
-  Download,
-  ExternalLink,
-  FileSpreadsheet,
-  FolderOpen,
-  Upload,
-} from "lucide-react";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { SHEET_COLUMNS, downloadCsv, ledgerToCsv, parseFormsCsv } from "@/lib/csv";
-import { buildLedger, getSeed, useFinance } from "@/lib/store";
-import { todayIso } from "@/lib/format";
+import {
+  SHEET_COLUMNS,
+  downloadCsv,
+  ledgerToCsv,
+  parseFormsCsv,
+  parseBaiCsv,
+  baiToCsv,
+  reconcileBai,
+  type ReconcileResult,
+} from "@/lib/csv";
+import {
+  buildLedger,
+  getSeed,
+  useFinance,
+  movimentosAll,
+} from "@/lib/store";
+import { todayIso, formatKz } from "@/lib/format";
+import type { MovimentoBai } from "@/data/types";
 
 export const Route = createFileRoute("/google")({ component: GooglePage });
-
-/** Estrutura de pastas sugerida no Google Drive da escola */
-const DRIVE_FOLDERS = [
-  { nome: "01_Lançamentos", uso: "CSV master e backups mensais" },
-  { nome: "02_Faturas", uso: "Fotos e PDFs das faturas (por mês)" },
-  { nome: "03_Recibos", uso: "Recibos de inscrição e fundo de maneio" },
-  { nome: "04_Propinas", uso: "Listagens e comprovativos de mensalidades" },
-  { nome: "05_Relatórios", uso: "DRE, fluxo de caixa, balanço (PDF/impressão)" },
-  { nome: "06_Forms", uso: "Exportações CSV das respostas do Google Forms" },
-];
 
 function GooglePage() {
   const seed = getSeed();
   const extras = useFinance((s) => s.extras);
   const add = useFinance((s) => s.addCaptura);
+  const importBai = useFinance((s) => s.importBaiMovimentos);
+  const importLanc = useFinance((s) => s.importLancamentos);
+  const baiExtra = useFinance((s) => s.movimentosBaiExtra);
+  const baiOverride = useFinance((s) => s.baiOverride);
   const ledger = buildLedger(extras);
+  const movsApp = movimentosAll(baiExtra, baiOverride);
+
   const [paste, setPaste] = useState("");
-  const formsUrl = seed.escola.formsUrl;
+  const [mode, setMode] = useState<"forms" | "bai" | "lancamentos">("forms");
+  const [previewBai, setPreviewBai] = useState<MovimentoBai[]>([]);
+  const [recon, setRecon] = useState<ReconcileResult | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   function exportMaster() {
-    const name = `Controlo_Financeiro_Lancamentos_${todayIso()}.csv`;
-    downloadCsv(name, ledgerToCsv(ledger));
-    toast.success("CSV descarregado — carregue-o para a pasta 01_Lançamentos no Drive");
+    downloadCsv("Controlo_Financeiro_Escola_master_Lancamentos.csv", ledgerToCsv(ledger));
+    toast.success("CSV do master descarregado");
   }
 
-  function exportTemplate() {
-    const header = SHEET_COLUMNS.join(";");
-    downloadCsv("Modelo_Lançamentos_Sheets.csv", header + "\n");
-    toast.success("Modelo CSV descarregado (só cabeçalhos)");
+  function exportBai() {
+    downloadCsv("BAI_Movimentos_export.csv", baiToCsv(movsApp));
+    toast.success("CSV BAI descarregado");
   }
 
-  function copyColumns() {
-    void navigator.clipboard.writeText(SHEET_COLUMNS.join("\t"));
-    toast.success("Colunas copiadas — cole na 1.ª linha do Sheets");
-  }
-
-  function importPaste() {
-    const rows = parseFormsCsv(paste);
+  function importFormsText(text: string) {
+    const rows = parseFormsCsv(text);
     if (!rows.length) {
       toast.error("Não encontrei linhas. Cole o CSV exportado das respostas do Forms.");
       return;
@@ -77,230 +75,205 @@ function GooglePage() {
       });
       n++;
     }
-    toast.success(`${n} linhas importadas`);
+    toast.success(`${n} linhas Forms importadas`);
+  }
+
+  function importBaiText(text: string, replace: boolean) {
+    const rows = parseBaiCsv(text);
+    if (!rows.length) {
+      toast.error("CSV BAI sem linhas válidas. Use colunas: Data;Banco;Descrição;Entrada;Saída;Saldo;Observações");
+      return;
+    }
+    setPreviewBai(rows);
+    const r = reconcileBai(movsApp, rows);
+    setRecon(r);
+    importBai(rows, replace);
+    toast.success(
+      `${rows.length} movimentos BAI importados (${replace ? "substituíram o extrato" : "em modo extra"}). Saldo CSV: ${formatKz(r.saldoCsv)}`,
+    );
+  }
+
+  function importLancamentosText(text: string) {
+    const rows = parseFormsCsv(text);
+    if (!rows.length) {
+      toast.error("Sem linhas de lançamentos.");
+      return;
+    }
+    const n = importLanc(
+      rows.map((r) => ({
+        data: r.data || todayIso(),
+        tipo: (r.tipo === "entrada" ? "entrada" : "despesa") as "entrada" | "despesa",
+        categoria: r.categoria || "Outras Despesas",
+        descricao: r.descricao || "Import CSV",
+        fornecedor: r.fornecedor || "",
+        fatura: r.fatura || "",
+        valor: r.valor || 0,
+        pagamento: r.pagamento || "",
+        origem: "formulario" as const,
+        observacoes: r.observacoes || "Importado CSV / Sheets",
+      })),
+    );
+    toast.success(`${n} lançamentos importados`);
+  }
+
+  function onPasteImport() {
+    if (mode === "forms") importFormsText(paste);
+    else if (mode === "bai") importBaiText(paste, true);
+    else importLancamentosText(paste);
     setPaste("");
+  }
+
+  function onFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || "");
+      if (mode === "forms") importFormsText(text);
+      else if (mode === "bai") importBaiText(text, true);
+      else importLancamentosText(text);
+    };
+    reader.readAsText(file, "UTF-8");
   }
 
   return (
     <div>
       <PageHeader
         kicker="Sistema remoto"
-        title="Google Drive, Sheets e Forms"
-        description="Backup no Drive, histórico no Sheets e captura no telemóvel via Forms. Tudo liga ao livro de lançamentos desta app."
-        actions={
-          <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir
-          </Button>
-        }
+        title="Google Sheets e Forms · Import / Export"
+        description="Exporte o master ou o extrato BAI. Importe CSV do Forms, do Excel BAI ou de lançamentos para reconciliar com a app."
       />
 
-      {/* Passo 0 — Drive */}
-      <section className="mb-5 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 print-sheet">
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-forest-soft)] text-[var(--color-forest)]">
-            <FolderOpen className="size-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-xl">0. Google Drive — pastas da escola</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">
-              Crie uma pasta no Drive (ex.: <strong>École Consulaire — Controlo Financeiro</strong>) e dentro dela
-              estas subpastas. Assim todos os backups e faturas ficam organizados.
-            </p>
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[480px] text-left text-sm">
-                <thead className="text-xs uppercase text-[var(--color-muted)]">
-                  <tr>
-                    <th className="pb-2 pr-3 font-medium">Pasta</th>
-                    <th className="pb-2 font-medium">Para quê</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {DRIVE_FOLDERS.map((f) => (
-                    <tr key={f.nome} className="border-t border-[var(--color-line)]">
-                      <td className="py-2 pr-3 font-mono text-xs">{f.nome}</td>
-                      <td className="py-2 text-[var(--color-muted)]">{f.uso}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-3 text-xs text-[var(--color-muted)]">
-              Dica: partilhe a pasta principal com a equipa (só leitura ou edição, conforme o cargo). O Colaborador 1
-              deve ter permissão de edição.
-            </p>
-          </div>
-        </div>
-      </section>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {([
+          ["forms", "Forms / respostas"],
+          ["bai", "Extrato BAI"],
+          ["lancamentos", "Lançamentos master"],
+        ] as const).map(([id, label]) => (
+          <Button
+            key={id}
+            size="sm"
+            variant={mode === id ? "default" : "secondary"}
+            onClick={() => setMode(id)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Sheets */}
-        <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 print-sheet">
-          <div className="flex items-start gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-forest-soft)] text-[var(--color-forest)]">
-              <FileSpreadsheet className="size-5" />
-            </span>
-            <div>
-              <h2 className="font-display text-xl">1. Folha master (Sheets)</h2>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">
-                Crie (ou abra) a folha <strong>Controlo Financeiro Escola — master</strong> e guarde-a na pasta{" "}
-                <code className="text-xs">01_Lançamentos</code> do Drive.
-              </p>
-            </div>
-          </div>
-
-          <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-[var(--color-ink-soft)]">
-            <li>
-              No Sheets, 1.ª linha = cabeçalhos. Use o botão <strong>Copiar colunas</strong> ou o modelo CSV.
-            </li>
-            <li>
-              Exporte o master desta app (botão abaixo) e importe o CSV no Sheets (Ficheiro → Importar → Carregar).
-            </li>
-            <li>
-              Guarde o ficheiro CSV também na pasta Drive <code className="text-xs">01_Lançamentos</code> como
-              backup mensal.
-            </li>
-          </ol>
-
+        <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
+          <h2 className="font-display text-xl">Exportar</h2>
+          <p className="mt-2 text-sm text-[var(--color-muted)]">
+            Descarregue CSV para Excel, Google Sheets ou arquivo. Colunas do master:{" "}
+            {SHEET_COLUMNS.join(", ")}.
+          </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={exportMaster}>
-              <Download /> Exportar lançamentos (CSV)
-            </Button>
-            <Button variant="secondary" onClick={exportTemplate}>
-              Modelo vazio
-            </Button>
-            <Button variant="secondary" onClick={copyColumns}>
-              Copiar colunas
+            <Button onClick={exportMaster}>Exportar lançamentos (master)</Button>
+            <Button variant="secondary" onClick={exportBai}>
+              Exportar movimentos BAI
             </Button>
           </div>
-
           <p className="mt-3 text-xs text-[var(--color-muted)]">
-            {ledger.length} linhas no livro · formato com ponto e vírgula (Excel / Sheets em português)
+            Saldo BAI na app: <strong>{formatKz(movsApp[movsApp.length - 1]?.saldo ?? 0)}</strong> ·{" "}
+            {movsApp.length} linhas
+            {baiOverride ? " (extrato importado)" : ""}. Conta {seed.escola.contaBai}.
           </p>
         </section>
 
-        {/* Forms */}
-        <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 print-sheet">
-          <div className="flex items-start gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-forest-soft)] text-[var(--color-forest)]">
-              <Upload className="size-5" />
-            </span>
-            <div>
-              <h2 className="font-display text-xl">2. Google Forms (telemóvel)</h2>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">
-                A equipa regista despesas no telemóvel pelo Forms. Depois exporta as respostas em CSV e cola aqui
-                (ou importa no Sheets e descarrega).
-              </p>
-            </div>
+        <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
+          <h2 className="font-display text-xl">Importar CSV</h2>
+          <p className="mt-2 text-sm text-[var(--color-muted)]">
+            {mode === "bai" &&
+              "Cole ou carregue o CSV do Excel Movimentos (Data;Banco;Descrição;Entrada;Saída;Saldo;Observações). Substitui o extrato na app para reconciliar."}
+            {mode === "forms" &&
+              "Cole o CSV exportado do Google Forms (respostas)."}
+            {mode === "lancamentos" &&
+              "CSV no formato master (mesmas colunas do export)."}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
+              Carregar ficheiro CSV
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onFile(f);
+                e.target.value = "";
+              }}
+            />
           </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {formsUrl ? (
-              <Button asChild>
-                <a href={formsUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink /> Abrir formulário
-                </a>
-              </Button>
-            ) : (
-              <Badge variant="muted">URL do Forms não configurado</Badge>
-            )}
-          </div>
-
-          <label className="mt-4 block text-sm font-medium">Colar CSV das respostas do Forms</label>
           <Textarea
-            className="mt-1.5 min-h-[120px] font-mono text-xs"
-            placeholder={"Data;Tipo;Categoria;Descrição;Valor;...\n2026-08-20;Despesa;Limpeza;Detergente;3500;..."}
+            className="mt-3 min-h-[140px] font-mono text-xs"
+            placeholder="Cole aqui o conteúdo CSV…"
             value={paste}
             onChange={(e) => setPaste(e.target.value)}
           />
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button onClick={importPaste} disabled={!paste.trim()}>
-              Importar para a app
-            </Button>
-            <Button variant="secondary" onClick={() => setPaste("")} disabled={!paste.trim()}>
-              Limpar
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-[var(--color-muted)]">
-            Guarde também o CSV exportado do Forms na pasta Drive <code className="text-xs">06_Forms</code>.
-          </p>
+          <Button className="mt-3" onClick={onPasteImport} disabled={!paste.trim()}>
+            Importar texto colado
+          </Button>
         </section>
       </div>
 
-      {/* Backup Drive — instruções */}
-      <section className="mt-5 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 print-sheet">
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-forest-soft)] text-[var(--color-forest)]">
-            <Cloud className="size-5" />
-          </span>
-          <div>
-            <h2 className="font-display text-xl">3. Backup no Google Drive (manual, fiável)</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">
-              Enquanto o envio automático via conector não estiver activo, use este ritual mensal (ou semanal):
-            </p>
-            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-[var(--color-ink-soft)]">
-              <li>
-                Clique em <strong>Exportar lançamentos (CSV)</strong> acima.
-              </li>
-              <li>
-                No telemóvel ou PC, abra o <strong>Google Drive</strong> → pasta{" "}
-                <code className="text-xs">01_Lançamentos</code> → Carregar o ficheiro CSV.
-              </li>
-              <li>
-                Fotos de faturas da aba <strong>Capturar</strong>: descarregue ou partilhe para a pasta{" "}
-                <code className="text-xs">02_Faturas / AAAA-MM</code>.
-              </li>
-              <li>
-                Relatórios (DRE, fluxo): use <strong>Imprimir</strong> no Quadro → Guardar como PDF → pasta{" "}
-                <code className="text-xs">05_Relatórios</code>.
-              </li>
-            </ol>
-            <p className="mt-3 text-xs text-[var(--color-muted)]">
-              A app guarda os dados no browser (local). O Drive é a cópia de segurança da escola. Faça backup antes
-              de limpar dados do telemóvel ou mudar de aparelho.
-            </p>
+      {recon && (
+        <section className="mt-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
+          <h2 className="font-display text-xl">Reconciliação BAI</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            <div>
+              <span className="text-[var(--color-muted)]">Saldo app</span>
+              <div className="tabular-nums font-medium">{formatKz(recon.saldoApp)}</div>
+            </div>
+            <div>
+              <span className="text-[var(--color-muted)]">Saldo CSV</span>
+              <div className="tabular-nums font-medium">{formatKz(recon.saldoCsv)}</div>
+            </div>
+            <div>
+              <span className="text-[var(--color-muted)]">Diferença</span>
+              <div
+                className={`tabular-nums font-medium ${recon.ok ? "text-[var(--color-forest)]" : "text-red-700"}`}
+              >
+                {formatKz(recon.diffSaldo)} {recon.ok ? "✓" : "≠"}
+              </div>
+            </div>
+            <div>
+              <span className="text-[var(--color-muted)]">Entradas / Saídas CSV</span>
+              <div className="tabular-nums text-xs">
+                {formatKz(recon.entradasCsv)} / {formatKz(recon.saidasCsv)}
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+          {previewBai.length > 0 && (
+            <p className="mt-2 text-xs text-[var(--color-muted)]">
+              Últimas linhas importadas:{" "}
+              {previewBai
+                .slice(-3)
+                .map((m) => `${m.data} ${m.descricao.slice(0, 40)} (${m.entrada || m.saida})`)
+                .join(" · ")}
+            </p>
+          )}
+        </section>
+      )}
 
-      {/* Mapa Excel antigo → app */}
-      <section className="mt-5 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5 print-sheet">
-        <h2 className="font-display text-xl">Mapa: folhas Excel antigas → esta app</h2>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-left text-sm">
-            <thead className="text-xs uppercase text-[var(--color-muted)]">
-              <tr>
-                <th className="pb-2 pr-3 font-medium">Folha Excel</th>
-                <th className="pb-2 font-medium">Onde na app</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-t border-[var(--color-line)]">
-                <td className="py-2 pr-3">Lançamentos / Adiantamentos Sócio</td>
-                <td>Lançamentos (origem Sócio)</td>
-              </tr>
-              <tr className="border-t border-[var(--color-line)]">
-                <td className="py-2 pr-3">Cartão BAI + faturas CX</td>
-                <td>Lançamentos (origem Cartão) · Banco</td>
-              </tr>
-              <tr className="border-t border-[var(--color-line)]">
-                <td className="py-2 pr-3">Fundo de Maneio</td>
-                <td>Fundo · recibos RM</td>
-              </tr>
-              <tr className="border-t border-[var(--color-line)]">
-                <td className="py-2 pr-3">Controlo de Propinas / Cadastro / Mensalidades</td>
-                <td>Alunos e Propinas</td>
-              </tr>
-              <tr className="border-t border-[var(--color-line)]">
-                <td className="py-2 pr-3">Salários / Recibos / Vales</td>
-                <td>Salários e Recibos</td>
-              </tr>
-              <tr className="border-t border-[var(--color-line)]">
-                <td className="py-2 pr-3">Dashboard / DRE / Fluxo</td>
-                <td>Quadro financeiro (calculado ao vivo)</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <section className="mt-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-bg)] p-5 text-sm text-[var(--color-muted)]">
+        <h2 className="font-display text-lg text-[var(--color-ink)]">Como reconciliar com o Excel</h2>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>
+            No Excel <strong>BAI Express</strong>, guarde a folha Movimentos como CSV (separador{" "}
+            <code>;</code>).
+          </li>
+          <li>
+            Aqui escolha <strong>Extrato BAI</strong> → Carregar ficheiro CSV (ou colar).
+          </li>
+          <li>
+            A app substitui o extrato e mostra o painel de reconciliação (saldo deve ser{" "}
+            <strong>1 064 700,56 Kz</strong> se estiver alinhado com o ficheiro reconciliado).
+          </li>
+          <li>
+            Opcional: exporte o master da app e compare com a Contabilidade Dinâmica.
+          </li>
+        </ol>
       </section>
     </div>
   );

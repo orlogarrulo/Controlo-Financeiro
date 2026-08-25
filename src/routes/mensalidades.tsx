@@ -1,6 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/kpi";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { MESES_LABEL, MESES_LETIVOS } from "@/data/types";
@@ -19,11 +18,6 @@ function Mensalidades() {
   return (
     <div>
       <PageHeader
-        actions={
-          <Button asChild variant="secondary" className="no-print">
-            <Link to="/recibos">Imprimir recibos de propina</Link>
-          </Button>
-        }
         kicker="Setembro a Junho"
         title="Mensalidades"
         description="Células amarelas: valor pago no mês. Wendy já tem Setembro liquidado com a inscrição (170.000 Kz). Status calcula-se sozinho."

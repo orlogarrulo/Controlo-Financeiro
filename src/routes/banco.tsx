@@ -1,15 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader, Kpi } from "@/components/kpi"
-import { PrintHeader } from "@/components/print-header";
+import { PageHeader, Kpi } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
-import { getSeed, movimentosAll } from "@/lib/store";
+import { getSeed, movimentosAll, useFinance } from "@/lib/store";
 import { formatDate, formatKz } from "@/lib/format";
 
 export const Route = createFileRoute("/banco")({ component: Banco });
 
 function Banco() {
   const escola = getSeed().escola;
-  const movs = movimentosAll();
+  const baiExtra = useFinance((s) => s.movimentosBaiExtra);
+  const baiOverride = useFinance((s) => s.baiOverride);
+  const movs = movimentosAll(baiExtra, baiOverride);
   const last = movs[movs.length - 1];
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
   const saidas = movs.reduce((s, m) => s + m.saida, 0);
@@ -17,7 +18,6 @@ function Banco() {
 
   return (
     <div>
-      <div className="print-only mb-4"><PrintHeader /></div>
       <PageHeader
         kicker="BAI Express · Cartão 9"
         title="Movimentos do cartão"
