@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,17 +23,35 @@ const MES_LABEL: Record<string, string> = {
   jun: "Junho",
 };
 
+type ReceitaKind = "seguro" | "manuais" | "extra";
+
 type Slot =
   | { kind: "inscricao"; id: string }
   | { kind: "propina"; id: string; mes: string }
+  | { kind: "receita"; receita: ReceitaKind; id: string; detalhe?: string }
   | { kind: "maneio"; id: string }
   | { kind: "none" };
 
 function parseSlot(raw: string): Slot {
   if (!raw) return { kind: "none" };
   if (raw.startsWith("prop:")) {
-    const [, id, mes] = raw.split(":");
-    return { kind: "propina", id, mes };
+    const parts = raw.split(":");
+    return { kind: "propina", id: parts[1], mes: parts[2] };
+  }
+  if (raw.startsWith("seg:")) return { kind: "receita", receita: "seguro", id: raw.slice(4) };
+  if (raw.startsWith("man:")) return { kind: "receita", receita: "manuais", id: raw.slice(4) };
+  if (raw.startsWith("ext:")) {
+    const rest = raw.slice(4);
+    const i = rest.indexOf(":");
+    if (i >= 0) {
+      return {
+        kind: "receita",
+        receita: "extra",
+        id: rest.slice(0, i),
+        detalhe: decodeURIComponent(rest.slice(i + 1)),
+      };
+    }
+    return { kind: "receita", receita: "extra", id: rest };
   }
   if (raw.startsWith("rm:")) return { kind: "maneio", id: raw.slice(3) };
   return { kind: "inscricao", id: raw };
@@ -42,6 +60,11 @@ function parseSlot(raw: string): Slot {
 function slotKey(s: Slot): string {
   if (s.kind === "propina") return `prop:${s.id}:${s.mes}`;
   if (s.kind === "maneio") return `rm:${s.id}`;
+  if (s.kind === "receita") {
+    if (s.receita === "seguro") return `seg:${s.id}`;
+    if (s.receita === "manuais") return `man:${s.id}`;
+    return `ext:${s.id}:${encodeURIComponent(s.detalhe || "extra")}`;
+  }
   if (s.kind === "inscricao") return s.id;
   return "";
 }
@@ -58,11 +81,39 @@ function Recibos() {
   const [sel, setSel] = useState<string>(alunos[0]?.recibo ? alunos[0].recibo : "");
   const [sel2, setSel2] = useState<string>("");
 
+  useEffect(() => {
+    try {
+      const pre = sessionStorage.getItem("ecc-recibo-sel");
+      if (pre) {
+        setSel(pre);
+        sessionStorage.removeItem("ecc-recibo-sel");
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   const list = useMemo(() => {
     const insc = alunos.map((x) => ({
       id: x.recibo,
       label: `Inscrição · ${x.recibo} · ${x.nome}`,
     }));
+    const seg = alunos
+      .filter((x) => x.seguro > 0)
+      .map((x) => ({
+        id: `seg:${x.id}`,
+        label: `Seguro · ${x.nome} · ${formatKz(x.seguro)}`,
+      }));
+    const man = alunos
+      .filter((x) => x.manuais > 0)
+      .map((x) => ({
+        id: `man:${x.id}`,
+        label: `Manuais · ${x.nome} · ${formatKz(x.manuais)}`,
+      }));
+    const ext = alunos
+      .filter((x) => (x.extras || 0) > 0 || (x.curso || 0) > 0)
+      .map((x) => ({
+        id: `ext:${x.id}:extra`,
+        label: `Extra · ${x.nome} · ${formatKz((x.extras || 0) + (x.curso || 0))}`,
+      }));
     const prop: { id: string; label: string }[] = [];
     for (const m of mensalidades) {
       for (const mes of MESES_LETIVOS) {
@@ -98,7 +149,7 @@ function Recibos() {
       }
     }
     const f = fundo.map((x) => ({ id: `rm:${x.id}`, label: `Fundo · ${x.id} · ${x.descricao}` }));
-    const all = [...insc, ...prop, ...f];
+    const all = [...insc, ...seg, ...man, ...ext, ...prop, ...f];
     if (!q) return all;
     const qq = q.toLowerCase();
     return all.filter((x) => x.label.toLowerCase().includes(qq));
@@ -129,6 +180,50 @@ function Recibos() {
           encarregado={aluno?.encarregado || ""}
           telefone={aluno?.telefone || ""}
           nRecibo={`RP-${s.id}-${s.mes.toUpperCase()}`}
+          escola={escola}
+        />
+      );
+    }
+    if (s.kind === "receita") {
+      const aluno = alunos.find((a) => a.id === s.id);
+      if (!aluno) return null;
+      const titulo =
+        s.receita === "seguro"
+          ? "Recibo de seguro escolar"
+          : s.receita === "manuais"
+            ? "Recibo de manuais escolares"
+            : "Recibo de actividades extra";
+      const linha =
+        s.receita === "seguro"
+          ? "Seguro escolar"
+          : s.receita === "manuais"
+            ? "Manuais escolares"
+            : s.detalhe && s.detalhe !== "extra"
+              ? s.detalhe
+              : "Actividades extra";
+      const valor =
+        s.receita === "seguro"
+          ? aluno.seguro
+          : s.receita === "manuais"
+            ? aluno.manuais
+            : (aluno.extras || 0) + (aluno.curso || 0) || aluno.extras || aluno.curso || 0;
+      return (
+        <ReciboReceitaEscolar
+          key={slotKey(s)}
+          titulo={titulo}
+          linha={linha}
+          nRecibo={
+            s.receita === "seguro"
+              ? `RS-${aluno.id}`
+              : s.receita === "manuais"
+                ? `RMN-${aluno.id}`
+                : `REX-${aluno.id}`
+          }
+          nome={aluno.nome}
+          turma={aluno.turma}
+          valor={valor}
+          encarregado={aluno.encarregado || ""}
+          telefone={aluno.telefone || ""}
           escola={escola}
         />
       );
@@ -326,6 +421,85 @@ function ReciboPropina({
         <tbody>
           <tr className="border-t border-[var(--color-line)]">
             <td className="py-1">Propina mensal — {mesNome}</td>
+            <td className="py-1 text-right tabular-nums">{formatKz(valor)}</td>
+          </tr>
+          <tr className="border-t-2 border-[var(--color-ink)] font-medium">
+            <td className="py-1.5">Total recebido</td>
+            <td className="py-1.5 text-right tabular-nums">{formatKz(valor)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="mt-2 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
+      <div className="mt-4 grid grid-cols-2 gap-4 text-[11px]">
+        <div>
+          <p>Recebido pela escola</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
+        </div>
+        <div>
+          <p>Encarregado de educação</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ReciboReceitaEscolar({
+  titulo,
+  linha,
+  nRecibo,
+  nome,
+  turma,
+  valor,
+  encarregado,
+  telefone,
+  escola,
+}: {
+  titulo: string;
+  linha: string;
+  nRecibo: string;
+  nome: string;
+  turma: string;
+  valor: number;
+  encarregado: string;
+  telefone: string;
+  escola: ReturnType<typeof getSeed>["escola"];
+}) {
+  return (
+    <article className="recibo-a5 print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
+      <PrintHeader title={titulo} subtitle={escola.subtitulo} />
+      <div className="mt-3 flex justify-between text-sm">
+        <span>
+          N.º <strong>{nRecibo}</strong>
+        </span>
+        <span>{formatDateLong(todayIso())}</span>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <div className="col-span-2">
+          <dt className="text-xs text-[var(--color-muted)]">Aluno</dt>
+          <dd className="font-medium">{nome}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Classe</dt>
+          <dd>{turma}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Ano letivo</dt>
+          <dd>{escola.ano}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Encarregado de educação</dt>
+          <dd>{encarregado || "________________"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--color-muted)]">Telefone</dt>
+          <dd>{telefone || "________________"}</dd>
+        </div>
+      </dl>
+      <table className="mt-3 w-full text-sm">
+        <tbody>
+          <tr className="border-t border-[var(--color-line)]">
+            <td className="py-1">{linha}</td>
             <td className="py-1 text-right tabular-nums">{formatKz(valor)}</td>
           </tr>
           <tr className="border-t-2 border-[var(--color-ink)] font-medium">
