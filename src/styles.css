@@ -164,43 +164,63 @@
 }
 
 
-/* Recibos: 2 × A5 numa folha A4 */
+/* Recibos: exactamente 1 folha A4 com 1 ou 2 meias-páginas */
 @media print {
   @page {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 6mm;
+  }
+
+  html, body {
+    height: auto !important;
+    overflow: hidden !important;
   }
 
   .print-a4-page {
     display: flex !important;
     flex-direction: column !important;
-    gap: 0 !important;
-    height: auto !important;
+    gap: 3mm !important;
+    width: 100% !important;
+    max-height: 285mm !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .print-a5-half {
-    height: 140mm !important; /* ~ meia A4 com margens */
-    max-height: 140mm !important;
+    flex: 0 0 auto !important;
+    height: 138mm !important;
+    max-height: 138mm !important;
     overflow: hidden !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
   }
 
   .print-a5-half + .print-a5-half {
-    margin-top: 4mm;
-    border-top: 1px dashed #ccc;
-    padding-top: 4mm;
+    margin-top: 0 !important;
+    border-top: 1px dashed #bbb;
+    padding-top: 2mm;
   }
 
   .print-sheet {
     max-width: none !important;
     margin: 0 !important;
-    padding: 4mm !important;
+    padding: 3mm !important;
     border: 1px solid #999 !important;
+    box-shadow: none !important;
+    font-size: 9pt !important;
   }
 
   .print-sheet img {
+    max-height: 40px !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  /* Evitar páginas em branco extra */
+  .print-a4-page::after {
+    display: none !important;
   }
 }

@@ -161,11 +161,11 @@ function Alunos() {
   return (
     <div>
       <PageHeader
-        kicker="Matrículas 2026/2027"
-        title="Alunos"
+        kicker="Cadastro de alunos · 2026/2027"
+        title="Matrículas · cadastro"
         description={
           canEdit
-            ? "Cadastro unificado. Edição de valores e dados de contacto apenas para o Colaborador 1, com código de autorização. Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
+            ? "Cadastro de alunos (inscrição, seguro, manuais, uniforme, curso, ATL). Não é despesa de fatura — valores de matrícula.  Edição de valores e dados de contacto apenas para o Colaborador 1, com código de autorização. Desconto: 2 irmãos 10% · 3 = 15% · 4+ = 20%."
             : undefined
         }
         actions={

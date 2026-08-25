@@ -3,7 +3,7 @@ import { Lock, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useFinance } from "@/lib/store";
+import { useFinance, getSeed } from "@/lib/store";
 import {
   EDIT_PIN,
   isCollaborator1,
@@ -11,7 +11,6 @@ import {
   writeSession,
   type OperatorSession,
 } from "@/lib/can-edit";
-import { getSeed } from "@/lib/store";
 
 /**
  * Bloqueia a app até escolher colaborador.
@@ -21,6 +20,7 @@ import { getSeed } from "@/lib/store";
 export function OperatorGate({ children }: { children: React.ReactNode }) {
   const operators = useFinance((s) => s.operators);
   const setActiveOperator = useFinance((s) => s.setActiveOperator);
+  const pushSession = useFinance((s) => s.pushSession);
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<OperatorSession | null>(null);
   const [pick, setPick] = useState<string | null>(null);
@@ -69,6 +69,7 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
       };
       writeSession(s);
       setActiveOperator(pick);
+      pushSession("entrada", pick);
       setSession(s);
       return;
     }
@@ -79,6 +80,7 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
     };
     writeSession(s);
     setActiveOperator(pick);
+    pushSession("entrada", pick);
     setSession(s);
   }
 

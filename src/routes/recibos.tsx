@@ -95,7 +95,7 @@ function Recibos() {
       </div>
 
       {/* Área de impressão: 1 ou 2 blocos A5 */}
-      <div className="print-a4-page space-y-4 lg:space-y-0">
+      <div className="print-a4-page space-y-4 lg:space-y-0 print:space-y-0">
         <div className="print-a5-half">
           {aluno ? (
             <ReciboInscricao aluno={aluno} escola={escola} />

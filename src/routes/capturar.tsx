@@ -1,5 +1,5 @@
 import type { FormEvent, ReactNode } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Camera, ImagePlus, Check } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -23,6 +23,14 @@ import type { Origem } from "@/data/types";
 
 export const Route = createFileRoute("/capturar")({ component: Capturar });
 
+const ORIGENS_DESPESA: { value: Origem; label: string }[] = [
+  { value: "cartao", label: "Cartão Multicaixa (BAI)" },
+  { value: "banco", label: "Transferência bancária BAI" },
+  { value: "fundo", label: "Dinheiro (fundo de maneio)" },
+  { value: "socio", label: "Pago pelo sócio" },
+  { value: "formulario", label: "Outra origem" },
+];
+
 function Capturar() {
   const seed = getSeed();
   const add = useFinance((s) => s.addCaptura);
@@ -30,16 +38,17 @@ function Capturar() {
   const nav = useNavigate();
   const [foto, setFoto] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const cats = seed.categorias.filter((c) => c.tipo === "despesa");
   const [form, setForm] = useState<CapturaInput>({
     data: todayIso(),
     tipo: "despesa",
-    categoria: "Outras Despesas",
+    categoria: cats[0]?.nome || "Outras Despesas",
     descricao: "",
     fornecedor: "",
     fatura: "",
     valor: 0,
     pagamento: "Cartão Multicaixa",
-    origem: "formulario",
+    origem: "cartao",
     observacoes: "",
   });
 
@@ -59,11 +68,10 @@ function Capturar() {
           fatura: parsed.fatura || f.fatura,
           fornecedor: parsed.fornecedor || f.fornecedor,
           data: parsed.data || f.data,
-          observacoes: f.observacoes || (text ? `OCR: ${text.slice(0, 180)}…` : ""),
         }));
-        toast.success("OCR concluído — verifique os campos");
+        toast.success("OCR concluído — confira os campos");
       } catch {
-        toast.message("Foto ok. OCR indisponível; preencha manualmente.");
+        toast.message("Foto ok. Preencha os campos manualmente.");
       }
     } catch {
       toast.error("Não foi possível ler a imagem");
@@ -78,68 +86,78 @@ function Capturar() {
       toast.error("Preencha a descrição e o valor");
       return;
     }
-    const row = add({ ...form, foto });
-    toast.success(`${row.id} registado`);
+    const row = add({ ...form, tipo: "despesa", foto });
+    toast.success(`Despesa ${row.docInterno} registada`);
     void nav({ to: "/lancamentos" });
   }
 
   return (
     <div>
       <PageHeader
-        kicker="Entrada remota"
-        title="Capturar fatura"
-        description="Fotografe a fatura (OCR preenche valor/n.º se possível). Escolha a origem: Sócio, Cartão BAI, Dinheiro (fundo) ou Outras — não misture. Numeração mensal automática (ex. FRM-2026-08-001)."
+        kicker="Só despesas"
+        title="Nova despesa"
+        description="Faturas e pagamentos da escola. Matrículas e propinas não entram aqui — use Matrículas / Propinas."
       />
       <p className="no-print mb-4 text-sm text-[var(--color-muted)]">
         A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
-        <span className="text-[var(--color-faint)]"> · altere no menu lateral se for outra pessoa</span>
+        {" · "}
+        <Link to="/alunos" className="text-[var(--color-forest)] underline-offset-2 hover:underline">
+          Ir para cadastro de matrículas
+        </Link>
       </p>
 
-      <form onSubmit={submit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="space-y-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--color-line-strong)] bg-[var(--color-bg)] px-4 py-8 text-center">
+      <form onSubmit={submit} className="grid gap-6 lg:grid-cols-[1fr_280px]">
+        <div className="space-y-4">
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-[var(--color-line-strong)] bg-[var(--color-surface)] p-6 text-center">
             {foto ? (
-              <img src={foto} alt="Fatura" className="max-h-56 rounded-[var(--radius-sm)] object-contain" />
+              <img src={foto} alt="" className="max-h-40 rounded-md object-contain" />
             ) : (
               <>
-                <span className="flex size-12 items-center justify-center rounded-full bg-[var(--color-forest-soft)] text-[var(--color-forest)]">
-                  <Camera className="size-5" />
-                </span>
-                <span className="text-sm font-medium">Fotografar ou carregar fatura</span>
-                <span className="text-xs text-[var(--color-muted)]">JPEG / PNG · comprimido automaticamente</span>
+                <ImagePlus className="size-8 text-[var(--color-muted)]" />
+                <span className="text-sm">Foto da fatura (opcional · OCR)</span>
               </>
             )}
             <input
               type="file"
               accept="image/*"
               capture="environment"
-              className="sr-only"
+              className="hidden"
               onChange={(e) => void onFile(e.target.files?.[0])}
             />
-            {foto ? (
-              <span className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--color-forest)]">
-                <ImagePlus className="size-3" /> Substituir foto
+            <Button type="button" variant="secondary" size="sm" disabled={busy} asChild>
+              <span>
+                <Camera className="mr-1 size-4" /> {busy ? "A processar…" : "Anexar foto"}
               </span>
-            ) : null}
+            </Button>
           </label>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Data">
+              <Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+            </Field>
+            <Field label="Valor (Kz)">
               <Input
-                type="date"
-                value={form.data}
-                onChange={(e) => setForm({ ...form, data: e.target.value })}
-                required
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.valor || ""}
+                onChange={(e) => setForm({ ...form, valor: Number(e.target.value) || 0 })}
               />
             </Field>
-            <Field label="Tipo">
-              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v as "entrada" | "despesa" })}>
+            <Field label="Pago com / origem">
+              <Select
+                value={form.origem}
+                onValueChange={(v) => setForm({ ...form, origem: v as Origem })}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="despesa">Despesa</SelectItem>
-                  <SelectItem value="entrada">Entrada</SelectItem>
+                  {ORIGENS_DESPESA.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
@@ -149,7 +167,7 @@ function Capturar() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {seed.categorias.map((c) => (
+                  {cats.map((c) => (
                     <SelectItem key={c.nome} value={c.nome}>
                       {c.nome}
                     </SelectItem>
@@ -157,102 +175,47 @@ function Capturar() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Origem do dinheiro">
-              <Select value={form.origem} onValueChange={(v) => setForm({ ...form, origem: v as Origem })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="formulario">Outras (formulário)</SelectItem>
-                  <SelectItem value="cartao">Despesa · Cartão Multicaixa BAI</SelectItem>
-                  <SelectItem value="fundo">Despesa · Dinheiro (fundo maneio)</SelectItem>
-                  <SelectItem value="banco">Despesa · Transferência BAI</SelectItem>
-                  <SelectItem value="inscricao">Entrada · Matrícula / inscrição</SelectItem>
-                  <SelectItem value="propina">Entrada · Propina</SelectItem>
-                  <SelectItem value="socio">Empréstimo sócio</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Descrição / detalhe" className="sm:col-span-2">
+            <Field label="Descrição" className="sm:col-span-2">
               <Input
                 value={form.descricao}
                 onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                placeholder="Ex: Tintas exterior, panfletos, almoço…"
-                required
+                placeholder="Ex. Tinta parede · Gasóleo · DJ evento"
               />
             </Field>
             <Field label="Fornecedor">
-              <Input
-                value={form.fornecedor}
-                onChange={(e) => setForm({ ...form, fornecedor: e.target.value })}
-                placeholder="Nome no talão"
-              />
+              <Input value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} />
             </Field>
-            <Field label="Nº fatura fornecedor">
+            <Field label="N.º fatura">
               <Input value={form.fatura} onChange={(e) => setForm({ ...form, fatura: e.target.value })} />
-            </Field>
-            <Field label="Valor (Kz)">
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.valor || ""}
-                onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })}
-                required
-              />
-            </Field>
-            <Field label="Forma de pagamento">
-              <Select value={form.pagamento} onValueChange={(v) => setForm({ ...form, pagamento: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {seed.formasPagamento.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </Field>
             <Field label="Observações" className="sm:col-span-2">
               <Textarea
                 value={form.observacoes}
                 onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
-                rows={3}
+                rows={2}
               />
             </Field>
           </div>
-
-          <Button type="submit" className="w-full sm:w-auto" disabled={busy}>
-            <Check /> Guardar lançamento
+          <Button type="submit" disabled={busy}>
+            <Check className="mr-1 size-4" /> Guardar despesa
           </Button>
         </div>
 
-        <aside className="space-y-3 text-sm text-[var(--color-ink-soft)]">
+        <aside className="space-y-3 text-sm text-[var(--color-muted)]">
           <div className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-bg-elevated)] p-4">
-            <p className="font-medium text-[var(--color-ink)]">Como usar no terreno</p>
-            <ol className="mt-2 list-decimal space-y-1.5 pl-4">
-              <li>Fotografe a fatura ainda na loja.</li>
-              <li>Preencha categoria, valor e fornecedor.</li>
-              <li>O sistema gera FRM-001, FRM-002…</li>
-              <li>Escreva esse número no papel físico.</li>
-              <li>Exporte depois para o Google Sheets master.</li>
-            </ol>
-          </div>
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-            <p className="font-medium text-[var(--color-ink)]">Google Forms</p>
-            <p className="mt-1">
-              O formulário já existente continua válido. As respostas devem cair na folha «Lançamentos Financeiros» com as mesmas colunas.
+            <p className="font-medium text-[var(--color-ink)]">O que NÃO registar aqui</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              <li>Matrículas / inscrição + seguro</li>
+              <li>Manuais, uniforme, curso, ATL</li>
+              <li>Propinas mensais</li>
+            </ul>
+            <p className="mt-2">
+              Isso é <strong className="text-[var(--color-ink)]">cadastro do aluno</strong> em{" "}
+              <Link to="/alunos" className="text-[var(--color-forest)] underline">
+                Matrículas
+              </Link>
+              .
             </p>
-            <a
-              className="mt-3 inline-flex text-[var(--color-forest)] underline-offset-4 hover:underline"
-              href={seed.escola.formsUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Abrir formulário Google
-            </a>
           </div>
         </aside>
       </form>
@@ -260,15 +223,7 @@ function Capturar() {
   );
 }
 
-function Field({
-  label,
-  children,
-  className,
-}: {
-  label: string;
-  children: ReactNode;
-  className?: string;
-}) {
+function Field({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <div className={`grid gap-1.5 ${className ?? ""}`}>
       <Label>{label}</Label>

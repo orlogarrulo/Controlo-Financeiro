@@ -67,6 +67,8 @@ type ExtraState = {
   operators: string[];
   /** Registo de auditoria local: quem fez o quê. */
   auditLog: { at: string; by: string; action: string; detail: string }[];
+  /** Entradas e saídas de sessão dos colaboradores. */
+  sessionLog: { at: string; by: string; action: "entrada" | "saida"; detail: string }[];
 };
 
 type Store = ExtraState & {
@@ -81,6 +83,10 @@ type Store = ExtraState & {
   setActiveOperator: (name: string) => void;
   setOperatorName: (index: number, name: string) => void;
   pushAudit: (action: string, detail: string) => void;
+  pushSession: (action: "entrada" | "saida", detail?: string) => void;
+  addFundoPagamento: (p: Omit<import("@/data/types").FundoPagamento, "id"> & { id?: string }) => void;
+  updateFundoPagamento: (id: string, patch: Partial<import("@/data/types").FundoPagamento>) => void;
+  removeFundoPagamento: (id: string) => void;
   importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
   importLancamentos: (rows: CapturaInput[]) => number;
 };
@@ -101,6 +107,7 @@ export const useFinance = create<Store>()(
       activeOperator: DEFAULT_OPERATORS[0],
       operators: [...DEFAULT_OPERATORS],
       auditLog: [],
+      sessionLog: [],
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
         const ops = [...get().operators];
@@ -115,6 +122,56 @@ export const useFinance = create<Store>()(
         const by = get().activeOperator || "—";
         const entry = { at: new Date().toISOString(), by, action, detail };
         set({ auditLog: [entry, ...get().auditLog].slice(0, 500) });
+      },
+      pushSession: (action, detail = "") => {
+        const by = get().activeOperator || "—";
+        const entry = {
+          at: new Date().toISOString(),
+          by,
+          action,
+          detail: detail || (action === "entrada" ? "Início de sessão" : "Fim de sessão"),
+        };
+        set({ sessionLog: [entry, ...get().sessionLog].slice(0, 1000) });
+      },
+      addFundoPagamento: (p) => {
+        const id = p.id || `RM-${Date.now().toString(36).slice(-6).toUpperCase()}`;
+        const by = get().activeOperator || "—";
+        const row = {
+          id,
+          data: p.data,
+          descricao: p.descricao,
+          valor: p.valor,
+          recebeu: p.recebeu || "",
+          obs: p.obs || "",
+          atm: p.atm || "",
+          criadoPor: by,
+          createdAt: new Date().toISOString(),
+        };
+        set({ fundoExtra: [...get().fundoExtra, row] });
+        get().pushAudit("fundo_criar", id);
+      },
+      updateFundoPagamento: (id, patch) => {
+        const inExtra = get().fundoExtra.some((x) => x.id === id);
+        if (inExtra) {
+          set({
+            fundoExtra: get().fundoExtra.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+          });
+        } else {
+          const base = seed.fundoPagamentos.find((x) => x.id === id);
+          if (base) {
+            set({
+              fundoExtra: [
+                ...get().fundoExtra.filter((x) => x.id !== id),
+                { ...base, ...patch, id },
+              ],
+            });
+          }
+        }
+        get().pushAudit("fundo_editar", id);
+      },
+      removeFundoPagamento: (id) => {
+        set({ fundoExtra: get().fundoExtra.filter((x) => x.id !== id) });
+        get().pushAudit("fundo_apagar", id);
       },
       addCaptura: (input) => {
         const extras = get().extras;
@@ -244,6 +301,7 @@ export const useFinance = create<Store>()(
           baiOverride: false,
           fotos: {},
           auditLog: [],
+          sessionLog: [],
         }),
     }),
     {
@@ -262,6 +320,7 @@ export const useFinance = create<Store>()(
         activeOperator: s.activeOperator,
         operators: s.operators,
         auditLog: s.auditLog,
+        sessionLog: s.sessionLog,
       }),
     },
   ),

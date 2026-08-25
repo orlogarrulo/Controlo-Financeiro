@@ -1,9 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader, Kpi } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
-import { Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
+import { Pencil, Printer } from "lucide-react";
+import { toast } from "sonner";
 import { getSeed, movimentosAll, useFinance } from "@/lib/store";
+import { isCollaborator1 } from "@/lib/can-edit";
+import type { MovimentoBai } from "@/data/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatDate, formatKz } from "@/lib/format";
 
 export const Route = createFileRoute("/banco")({ component: Banco });
@@ -12,8 +19,13 @@ function Banco() {
   const escola = getSeed().escola;
   const baiExtra = useFinance((s) => s.movimentosBaiExtra);
   const baiOverride = useFinance((s) => s.baiOverride);
+  const importBai = useFinance((s) => s.importBaiMovimentos);
+  const operators = useFinance((s) => s.operators);
+  const active = useFinance((s) => s.activeOperator);
+  const canEdit = isCollaborator1(active, operators);
   const movs = movimentosAll(baiExtra, baiOverride);
   const last = movs[movs.length - 1];
+  const [editM, setEditM] = useState<MovimentoBai | null>(null);
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
   const saidas = movs.reduce((s, m) => s + m.saida, 0);
   const faturas = getSeed().faturasCartao;
@@ -77,6 +89,7 @@ function Banco() {
               <th className="px-3 py-2 text-right">Entrada</th>
               <th className="px-3 py-2 text-right">Saída</th>
               <th className="px-3 py-2 text-right">Saldo</th>
+              <th className="no-print px-2 py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -95,6 +108,13 @@ function Banco() {
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{m.saida ? formatKz(m.saida) : ""}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatKz(m.saldo)}</td>
+                <td className="no-print px-2 py-2">
+                  {canEdit ? (
+                    <Button size="sm" variant="secondary" onClick={() => setEditM(m)}>
+                      <Pencil className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -106,6 +126,45 @@ function Banco() {
           Panfletos Tamaco já estão no empréstimo do sócio — não se somam duas vezes no DRE.
         </span>
       </p>
+      <Dialog open={!!editM} onOpenChange={(o) => !o && setEditM(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar movimento BAI</DialogTitle>
+          </DialogHeader>
+          {editM ? (
+            <div className="grid gap-3">
+              <div>
+                <Label>Descrição</Label>
+                <Input value={editM.descricao} onChange={(e) => setEditM({ ...editM, descricao: e.target.value })} />
+              </div>
+              <div>
+                <Label>Observações</Label>
+                <Input value={editM.observacoes} onChange={(e) => setEditM({ ...editM, observacoes: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Entrada</Label>
+                  <Input type="number" value={editM.entrada} onChange={(e) => setEditM({ ...editM, entrada: Number(e.target.value) || 0 })} />
+                </div>
+                <div>
+                  <Label>Saída</Label>
+                  <Input type="number" value={editM.saida} onChange={(e) => setEditM({ ...editM, saida: Number(e.target.value) || 0 })} />
+                </div>
+              </div>
+              <Button
+                onClick={() => {
+                  const next = movs.map((x) => (x.id === editM.id ? editM : x));
+                  importBai(next, true);
+                  toast.success("Extrato BAI actualizado");
+                  setEditM(null);
+                }}
+              >
+                Guardar
+              </Button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

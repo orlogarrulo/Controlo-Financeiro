@@ -35,6 +35,7 @@ function Dashboard() {
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const isAdmin = isCollaborator1(activeOperator, operators);
+  const sessionLog = useFinance((s) => s.sessionLog);
   const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides, movimentosBaiExtra, baiOverride);
   const ledger = buildLedger(extras);
   const cats = categoriaTotals(ledger.filter((l) => l.tipo === "despesa" && l.origem !== "inscricao"))
@@ -152,6 +153,23 @@ function Dashboard() {
           body={isAdmin ? "Matrículas, descontos de irmãos e recibos EF." : undefined}
         />
       </div>
+      {isAdmin && sessionLog.length > 0 ? (
+        <Card className="mt-6 no-print">
+          <CardHeader>
+            <CardTitle className="text-base">Sessões (entrada / saída)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-[var(--color-muted)]">
+              {sessionLog.slice(0, 20).map((s, i) => (
+                <li key={i}>
+                  {new Date(s.at).toLocaleString("pt-PT")} · <strong>{s.by}</strong> · {s.action}
+                  {s.detail ? ` — ${s.detail}` : ""}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

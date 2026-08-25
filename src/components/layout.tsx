@@ -22,9 +22,9 @@ import { clearOperatorSession, isCollaborator1 } from "@/lib/can-edit";
 
 const NAV = [
   { to: "/", label: "Quadro", icon: LayoutDashboard },
-  { to: "/capturar", label: "Capturar", icon: Camera },
-  { to: "/lancamentos", label: "Lançamentos", icon: BookOpen },
-  { to: "/alunos", label: "Alunos", icon: Users },
+  { to: "/capturar", label: "Despesas", icon: Camera },
+  { to: "/lancamentos", label: "Despesas lista", icon: BookOpen },
+  { to: "/alunos", label: "Matrículas", icon: Users },
   { to: "/mensalidades", label: "Propinas", icon: Receipt },
   { to: "/banco", label: "Cartão BAI", icon: Landmark },
   { to: "/fundo", label: "Fundo", icon: Wallet },
@@ -59,13 +59,27 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium tracking-[0.12em] text-[var(--color-muted)] uppercase">
               <UserRound className="size-3" /> A trabalhar como
             </p>
-            <button
-              type="button"
-              className="mb-2 text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
-              onClick={() => clearOperatorSession()}
-            >
-              Trocar colaborador
-            </button>
+            <div className="mb-2 flex flex-col gap-1">
+              <button
+                type="button"
+                className="text-left text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
+                onClick={() => {
+                  try {
+                    useFinance.getState().pushSession("saida");
+                  } catch { /* ignore */ }
+                  clearOperatorSession();
+                }}
+              >
+                Terminar sessão
+              </button>
+              <button
+                type="button"
+                className="text-left text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
+                onClick={() => clearOperatorSession()}
+              >
+                Trocar colaborador
+              </button>
+            </div>
             <select
               className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
               value={activeOperator}
