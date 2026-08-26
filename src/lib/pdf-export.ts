@@ -182,31 +182,28 @@ function prepareClone(source: HTMLElement): HTMLElement {
   return clone;
 }
 
-/** Coloca o carimbo dentro do 1.º recibo / folha, sem sair da caixa. */
-function injectStampInFirstReceipt(root: HTMLElement, when: string): void {
-  const stamp = document.createElement("div");
-  stamp.setAttribute("data-pdf-stamp", "1");
-  stamp.innerHTML = `<strong>A secretaria</strong> · Documento gerado em ${when}`;
+/** Carimbo «A secretaria» em CADA recibo (e no fim do documento se não houver recibos). */
+function injectStamps(root: HTMLElement, when: string): void {
+  const makeStamp = () => {
+    const stamp = document.createElement("div");
+    stamp.setAttribute("data-pdf-stamp", "1");
+    stamp.innerHTML = `<strong>A secretaria</strong> · Documento gerado em ${when}`;
+    return stamp;
+  };
 
-  const firstHalf = root.querySelector(".print-a5-half");
-  const article =
-    (firstHalf?.querySelector("article") as HTMLElement | null) ||
-    (root.querySelector("article.print-sheet, article") as HTMLElement | null) ||
-    (root.querySelector(".print-sheet") as HTMLElement | null);
-
-  if (article) {
-    // Preferir bloco de assinatura existente
-    const sig =
-      (article.querySelector("[data-assinatura-escola]") as HTMLElement | null) ||
-      null;
-    if (sig) {
-      sig.appendChild(stamp);
-    } else {
-      article.appendChild(stamp);
+  const articles = Array.from(root.querySelectorAll("article"));
+  if (articles.length > 0) {
+    for (const article of articles) {
+      const stamp = makeStamp();
+      const sig = article.querySelector("[data-assinatura-escola]") as HTMLElement | null;
+      if (sig) sig.appendChild(stamp);
+      else article.appendChild(stamp);
     }
     return;
   }
-  root.appendChild(stamp);
+
+  // Documentos sem recibo (ex.: Quadro): carimbo no final
+  root.appendChild(makeStamp());
 }
 
 async function waitImages(root: HTMLElement) {
@@ -280,7 +277,7 @@ export async function elementToPdfBlob(
 
   // Carimbo dentro do 1.º recibo (não fora da caixa)
   if (wantStamp) {
-    injectStampInFirstReceipt(clone, when);
+    injectStamps(clone, when);
   }
 
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
