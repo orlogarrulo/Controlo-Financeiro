@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowUpRight, Printer } from "lucide-react";
 import {
   Bar,
@@ -55,8 +55,7 @@ function Dashboard() {
         <img
           src="/logo-escola.jpg"
           alt=""
-          className="mb-6 h-84 w-84 object-contain"
-          style={{ width: 336, height: 336 }}
+          className="mb-6 h-[336px] w-[336px] object-contain"
           width={336}
           height={336}
         />

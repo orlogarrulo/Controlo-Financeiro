@@ -41,8 +41,8 @@ function emptyForm(): FormState {
 }
 
 function Salarios() {
-  const salariosExtra = useFinance((s) => s.salariosExtra);
-  const salariosOverrides = useFinance((s) => s.salariosOverrides);
+  const salariosExtra = useFinance((s) => s.salariosExtra ?? []);
+  const salariosOverrides = useFinance((s) => s.salariosOverrides ?? {});
   const addSalario = useFinance((s) => s.addSalario);
   const updateSalario = useFinance((s) => s.updateSalario);
   const operators = useFinance((s) => s.operators);

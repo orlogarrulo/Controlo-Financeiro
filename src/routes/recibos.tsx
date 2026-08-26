@@ -4,51 +4,118 @@ import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { alunosAll, fundoPagAll, getSeed, useFinance } from "@/lib/store";
+import {
+  alunosAll,
+  fundoPagAll,
+  getSeed,
+  salariosAll,
+  useFinance,
+} from "@/lib/store";
 import { formatDateLong, formatKz } from "@/lib/format";
 
 export const Route = createFileRoute("/recibos")({ component: Recibos });
 
-type ListItem = { id: string; label: string; kind: "aluno" | "fundo" };
+type ListItem = {
+  id: string;
+  label: string;
+  search: string;
+  kind: "aluno" | "fundo" | "salario";
+};
+
+/** descPct no seed pode ser 10 (=10%) ou 0.1 (=10%). */
+function pctDisplay(descPct: number): number {
+  if (!descPct) return 0;
+  return descPct > 1 ? Math.round(descPct) : Math.round(descPct * 100);
+}
+
+function anoLectivo(ano: string): string {
+  return (ano || "2026/2027").replace(/\//g, "-");
+}
 
 function Recibos() {
   const extraA = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const extraF = useFinance((s) => s.fundoExtra);
+  const salariosExtra = useFinance((s) => s.salariosExtra ?? []);
+  const salariosOverrides = useFinance((s) => s.salariosOverrides ?? {});
   const alunos = alunosAll(extraA, alunosOverrides);
   const fundo = fundoPagAll(extraF);
+  const salarios = salariosAll(salariosExtra, salariosOverrides);
   const escola = getSeed().escola;
   const [q, setQ] = useState("");
+  const [q2, setQ2] = useState("");
   const [sel, setSel] = useState<string>(alunos[0]?.recibo ?? "");
   const [sel2, setSel2] = useState<string>("");
 
   const list: ListItem[] = useMemo(() => {
-    const a: ListItem[] = alunos.map((x) => ({
-      id: x.recibo,
-      label: `${x.recibo} · ${x.nome}`,
-      kind: "aluno",
-    }));
-    const f: ListItem[] = fundo.map((x) => ({
-      id: x.id,
-      label: `${x.id} · ${x.descricao}`,
-      kind: "fundo",
-    }));
-    const all = [...a, ...f];
-    if (!q) return all;
-    return all.filter((x) => x.label.toLowerCase().includes(q.toLowerCase()));
-  }, [alunos, fundo, q]);
+    const a: ListItem[] = alunos.map((x) => {
+      const search = [
+        x.recibo,
+        x.nome,
+        x.id,
+        x.encarregado,
+        x.pai,
+        x.mae,
+        x.familia,
+        x.turma,
+        x.metodoPagamento,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return {
+        id: x.recibo,
+        label: `${x.recibo} · ${x.nome}${x.encarregado ? ` · EE: ${x.encarregado}` : ""}`,
+        search,
+        kind: "aluno" as const,
+      };
+    });
+    const f: ListItem[] = fundo.map((x) => {
+      const search = [x.id, x.descricao, x.recebeu, x.obs, x.atm].filter(Boolean).join(" ").toLowerCase();
+      return {
+        id: x.id,
+        label: `${x.id} · ${x.descricao}${x.recebeu ? ` · ${x.recebeu}` : ""}`,
+        search,
+        kind: "fundo" as const,
+      };
+    });
+    const s: ListItem[] = salarios.map((x) => {
+      const search = [x.id, x.nome, x.funcao, x.categoria, x.mes].filter(Boolean).join(" ").toLowerCase();
+      return {
+        id: `SALREC-${x.id}`,
+        label: `${x.id} · ${x.nome} · ${x.funcao} · ${x.mes}`,
+        search,
+        kind: "salario" as const,
+      };
+    });
+    return [...a, ...f, ...s];
+  }, [alunos, fundo, salarios]);
+
+  function filterList(query: string, excludeId?: string) {
+    const qq = query.trim().toLowerCase();
+    return list.filter((x) => {
+      if (excludeId && x.id === excludeId) return false;
+      if (!qq) return true;
+      return x.search.includes(qq) || x.label.toLowerCase().includes(qq);
+    });
+  }
+
+  const list1 = filterList(q);
+  const list2 = filterList(q2, sel);
 
   const aluno = alunos.find((a) => a.recibo === sel);
   const rm = fundo.find((p) => p.id === sel);
+  const sal = salarios.find((s) => `SALREC-${s.id}` === sel);
   const aluno2 = alunos.find((a) => a.recibo === sel2);
   const rm2 = fundo.find((p) => p.id === sel2);
+  const sal2 = salarios.find((s) => `SALREC-${s.id}` === sel2);
 
   return (
     <div>
       <PageHeader
         kicker="Impressão A5 · 2 por A4"
         title="Recibos"
-        description="Escolha até dois recibos para imprimir numa folha A4 (dois A5). Rentabiliza papel e custos."
+        description="Pesquise por nome do aluno, ID do recibo, encarregado, fornecedor, funcionário ou descrição. Até dois recibos por folha A4."
         actions={
           <Button variant="secondary" className="no-print" onClick={() => window.print()}>
             Imprimir
@@ -59,34 +126,45 @@ function Recibos() {
       <div className="no-print mb-4 grid gap-3 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>1.º recibo (obrigatório)</Label>
-          <Input placeholder="Pesquisar…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input
+            placeholder="Pesquisar: aluno, ID, encarregado, fornecedor…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
           <select
             className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
             value={sel}
             onChange={(e) => setSel(e.target.value)}
           >
-            {list.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
+            {list1.length === 0 ? (
+              <option value="">Nenhum resultado</option>
+            ) : (
+              list1.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                </option>
+              ))
+            )}
           </select>
         </div>
         <div className="space-y-2">
           <Label>2.º recibo (opcional — mesma folha A4)</Label>
+          <Input
+            placeholder="Pesquisar: aluno, ID, encarregado, fornecedor…"
+            value={q2}
+            onChange={(e) => setQ2(e.target.value)}
+          />
           <select
             className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
             value={sel2}
             onChange={(e) => setSel2(e.target.value)}
           >
             <option value="">— Só um recibo —</option>
-            {list
-              .filter((x) => x.id !== sel)
-              .map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.label}
-                </option>
-              ))}
+            {list2.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.label}
+              </option>
+            ))}
           </select>
           <p className="text-[11px] text-[var(--color-muted)]">
             Na impressão: orientação vertical, tamanho A4. Cada recibo ocupa meia página (A5).
@@ -94,13 +172,14 @@ function Recibos() {
         </div>
       </div>
 
-      {/* Área de impressão: 1 ou 2 blocos A5 */}
       <div className="print-a4-page space-y-4 lg:space-y-0 print:space-y-0">
         <div className="print-a5-half">
           {aluno ? (
             <ReciboInscricao aluno={aluno} escola={escola} />
           ) : rm ? (
             <ReciboManeio pag={rm} escola={escola} />
+          ) : sal ? (
+            <ReciboSalario row={sal} escola={escola} />
           ) : (
             <p className="no-print text-sm text-[var(--color-muted)]">Seleccione um recibo.</p>
           )}
@@ -111,6 +190,8 @@ function Recibos() {
               <ReciboInscricao aluno={aluno2} escola={escola} />
             ) : rm2 ? (
               <ReciboManeio pag={rm2} escola={escola} />
+            ) : sal2 ? (
+              <ReciboSalario row={sal2} escola={escola} />
             ) : null}
           </div>
         ) : null}
@@ -135,7 +216,7 @@ function PrintHeader({ escola }: { escola: ReturnType<typeof getSeed>["escola"] 
         </p>
         <p className="font-display text-lg leading-tight">{escola.nomeCurto}</p>
         <p className="text-[10px] text-[var(--color-muted)]">
-          Luanda · Angola · {escola.ano}
+          Luanda · Angola · Ano lectivo {anoLectivo(escola.ano)}
         </p>
       </div>
     </div>
@@ -159,11 +240,19 @@ function ReciboInscricao({
     { label: "1.ª mensalidade", value: aluno.mensalidade1 },
   ].filter((l) => l.value > 0);
 
+  const encarregado =
+    aluno.encarregado?.trim() ||
+    aluno.pai?.trim() ||
+    aluno.mae?.trim() ||
+    aluno.nome;
+
+  const pct = pctDisplay(aluno.descPct || 0);
+
   return (
     <article className="print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
       <PrintHeader escola={escola} />
       <p className="text-[10px] font-medium tracking-[0.18em] text-[var(--color-forest)] uppercase">
-        Recibo de inscrição
+        Recibo de inscrição · {anoLectivo(escola.ano)}
       </p>
       <div className="mt-2 flex justify-between text-sm">
         <span>
@@ -172,18 +261,20 @@ function ReciboInscricao({
         <span>{aluno.dataPag ? formatDateLong(aluno.dataPag) : "—"}</span>
       </div>
       <p className="mt-3 text-sm">
-        Recebemos de <strong>{aluno.encarregado || aluno.nome}</strong>
-        {aluno.encarregado ? (
+        Recebemos de <strong>{encarregado}</strong>
+        {encarregado !== aluno.nome ? (
           <>
             {" "}
             (aluno/a <strong>{aluno.nome}</strong>)
           </>
         ) : null}{" "}
-        a quantia de <strong>{formatKz(aluno.liquido)}</strong>.
+        a quantia de <strong>{formatKz(aluno.liquido)}</strong>, referente ao ano lectivo{" "}
+        <strong>{anoLectivo(escola.ano)}</strong>.
       </p>
       <p className="mt-1 text-xs text-[var(--color-muted)]">
         Turma: {aluno.turma}
         {aluno.seguro === 0 ? " · Seguro próprio" : ""}
+        {aluno.metodoPagamento ? ` · ${aluno.metodoPagamento}` : ""}
       </p>
       <table className="mt-3 w-full text-sm">
         <tbody>
@@ -193,9 +284,9 @@ function ReciboInscricao({
               <td className="py-1.5 text-right tabular-nums">{formatKz(l.value)}</td>
             </tr>
           ))}
-          {aluno.descPct > 0 ? (
+          {pct > 0 ? (
             <tr className="border-t border-[var(--color-line)]">
-              <td className="py-1.5">Desconto ({Math.round(aluno.descPct * 100)}%)</td>
+              <td className="py-1.5">Desconto ({pct}%)</td>
               <td className="py-1.5 text-right tabular-nums">
                 −{formatKz(aluno.bruto - aluno.liquido)}
               </td>
@@ -253,6 +344,73 @@ function ReciboManeio({
       <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
         <div>
           <p>O recebedor</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
+        </div>
+        <div>
+          <p>Pela escola</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ReciboSalario({
+  row,
+  escola,
+}: {
+  row: ReturnType<typeof salariosAll>[number];
+  escola: ReturnType<typeof getSeed>["escola"];
+}) {
+  const falta = Math.max(0, row.diasUteis - row.diasTrab);
+  const desc = row.diasUteis ? (row.salario / row.diasUteis) * falta : 0;
+  const liquido = row.salario - desc - (row.outrosDesc || 0);
+  return (
+    <article className="print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
+      <PrintHeader escola={escola} />
+      <p className="text-[10px] font-medium tracking-[0.18em] text-[var(--color-forest)] uppercase">
+        Recibo de salário
+      </p>
+      <div className="mt-2 flex justify-between text-sm">
+        <span>
+          N.º <strong>{row.id}</strong>
+        </span>
+        <span>{row.dataPag ? formatDateLong(row.dataPag) : "—"}</span>
+      </div>
+      <p className="mt-3 text-sm">
+        Pagámos a <strong>{row.nome}</strong> ({row.funcao}) a quantia de{" "}
+        <strong>{formatKz(liquido)}</strong> referente a {row.mes}.
+      </p>
+      <table className="mt-3 w-full text-sm">
+        <tbody>
+          <tr className="border-t border-[var(--color-line)]">
+            <td className="py-1.5">Salário bruto</td>
+            <td className="py-1.5 text-right tabular-nums">{formatKz(row.salario)}</td>
+          </tr>
+          {desc > 0 ? (
+            <tr className="border-t border-[var(--color-line)]">
+              <td className="py-1.5">
+                Desconto faltas ({row.diasTrab}/{row.diasUteis} dias)
+              </td>
+              <td className="py-1.5 text-right tabular-nums">−{formatKz(desc)}</td>
+            </tr>
+          ) : null}
+          {(row.outrosDesc || 0) > 0 ? (
+            <tr className="border-t border-[var(--color-line)]">
+              <td className="py-1.5">Outros descontos</td>
+              <td className="py-1.5 text-right tabular-nums">−{formatKz(row.outrosDesc)}</td>
+            </tr>
+          ) : null}
+          <tr className="border-t-2 border-[var(--color-ink)] font-medium">
+            <td className="py-2">Líquido</td>
+            <td className="py-2 text-right tabular-nums">{formatKz(liquido)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="mt-3 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
+      <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
+        <div>
+          <p>O funcionário</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
         <div>

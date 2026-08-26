@@ -14,6 +14,7 @@ import {
   Cloud,
   X,
   UserRound,
+  ListChecks,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ const NAV = [
   { to: "/salarios", label: "Salários", icon: Banknote },
   { to: "/recibos", label: "Recibos", icon: FileSpreadsheet },
   { to: "/google", label: "Google Sheets", icon: Cloud },
+  { to: "/pendencias", label: "Pendências", icon: ListChecks, adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -46,6 +48,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const operators = useFinance((s) => s.operators);
   const setActiveOperator = useFinance((s) => s.setActiveOperator);
   const setOperatorName = useFinance((s) => s.setOperatorName);
+  const isAdmin = isCollaborator1(activeOperator, operators);
+  const navItems = NAV.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin);
 
   return (
     <div className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-ink)]">
@@ -53,8 +57,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <aside className="no-print sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-bg-elevated)] lg:flex">
           <Brand />
           <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-4">
-            {NAV.map((item) => (
-              <NavLink key={item.to} {...item} active={pathname === item.to} />
+            {navItems.map(({ to, label, icon }) => (
+              <NavLink key={to} to={to} label={label} icon={icon} active={pathname === to} />
             ))}
           </nav>
 
@@ -191,11 +195,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </button>
                 </div>
                 <nav className="flex flex-col gap-0.5 px-3 pb-8">
-                  {NAV.map((item) => (
+                  {navItems.map(({ to, label, icon }) => (
                     <NavLink
-                      key={item.to}
-                      {...item}
-                      active={pathname === item.to}
+                      key={to}
+                      to={to}
+                      label={label}
+                      icon={icon}
+                      active={pathname === to}
                       onClick={() => setOpen(false)}
                     />
                   ))}

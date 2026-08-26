@@ -22,6 +22,7 @@ import {
 } from "@/lib/store";
 import { todayIso, formatKz } from "@/lib/format";
 import type { MovimentoBai } from "@/data/types";
+import { isCollaborator1 } from "@/lib/can-edit";
 
 export const Route = createFileRoute("/google")({ component: GooglePage });
 
@@ -33,6 +34,9 @@ function GooglePage() {
   const importLanc = useFinance((s) => s.importLancamentos);
   const baiExtra = useFinance((s) => s.movimentosBaiExtra);
   const baiOverride = useFinance((s) => s.baiOverride);
+  const operators = useFinance((s) => s.operators);
+  const activeOperator = useFinance((s) => s.activeOperator);
+  const canImport = isCollaborator1(activeOperator, operators);
   const ledger = buildLedger(extras);
   const movsApp = movimentosAll(baiExtra, baiOverride);
 
@@ -52,7 +56,16 @@ function GooglePage() {
     toast.success("CSV BAI descarregado");
   }
 
+  function guardImport(): boolean {
+    if (!canImport) {
+      toast.error("Apenas o Colaborador 1 pode importar CSV.");
+      return false;
+    }
+    return true;
+  }
+
   function importFormsText(text: string) {
+    if (!guardImport()) return;
     const rows = parseFormsCsv(text);
     if (!rows.length) {
       toast.error("Não encontrei linhas. Cole o CSV exportado das respostas do Forms.");
@@ -79,6 +92,7 @@ function GooglePage() {
   }
 
   function importBaiText(text: string, replace: boolean) {
+    if (!guardImport()) return;
     const rows = parseBaiCsv(text);
     if (!rows.length) {
       toast.error("CSV BAI sem linhas válidas. Use colunas: Data;Banco;Descrição;Entrada;Saída;Saldo;Observações");
@@ -94,6 +108,7 @@ function GooglePage() {
   }
 
   function importLancamentosText(text: string) {
+    if (!guardImport()) return;
     const rows = parseFormsCsv(text);
     if (!rows.length) {
       toast.error("Sem linhas de lançamentos.");
@@ -124,6 +139,7 @@ function GooglePage() {
   }
 
   function onFile(file: File) {
+    if (!guardImport()) return;
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result || "");
@@ -139,15 +155,21 @@ function GooglePage() {
       <PageHeader
         kicker="Sistema remoto"
         title="Google Sheets e Forms · Import / Export"
-        description="Exporte o master ou o extrato BAI. Importe CSV do Forms, do Excel BAI ou de lançamentos para reconciliar com a app."
+        description={
+          canImport
+            ? "Exporte o master ou o extrato BAI. Importe CSV do Forms, do Excel BAI ou de lançamentos para reconciliar com a app."
+            : "Pode exportar CSV. A importação está reservada ao Colaborador 1."
+        }
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
-        {([
-          ["forms", "Forms / respostas"],
-          ["bai", "Extrato BAI"],
-          ["lancamentos", "Lançamentos master"],
-        ] as const).map(([id, label]) => (
+        {(
+          [
+            ["forms", "Forms / respostas"],
+            ["bai", "Extrato BAI"],
+            ["lancamentos", "Lançamentos master"],
+          ] as const
+        ).map(([id, label]) => (
           <Button
             key={id}
             size="sm"
@@ -179,45 +201,53 @@ function GooglePage() {
           </p>
         </section>
 
-        <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
-          <h2 className="font-display text-xl">Importar CSV</h2>
-          <p className="mt-2 text-sm text-[var(--color-muted)]">
-            {mode === "bai" &&
-              "Cole ou carregue o CSV do Excel Movimentos (Data;Banco;Descrição;Entrada;Saída;Saldo;Observações). Substitui o extrato na app para reconciliar."}
-            {mode === "forms" &&
-              "Cole o CSV exportado do Google Forms (respostas)."}
-            {mode === "lancamentos" &&
-              "CSV no formato master (mesmas colunas do export)."}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
-              Carregar ficheiro CSV
-            </Button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv,text/plain"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onFile(f);
-                e.target.value = "";
-              }}
+        {canImport ? (
+          <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
+            <h2 className="font-display text-xl">Importar CSV</h2>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">
+              {mode === "bai" &&
+                "Cole ou carregue o CSV do Excel Movimentos (Data;Banco;Descrição;Entrada;Saída;Saldo;Observações). Substitui o extrato na app para reconciliar."}
+              {mode === "forms" && "Cole o CSV exportado do Google Forms (respostas)."}
+              {mode === "lancamentos" && "CSV no formato master (mesmas colunas do export)."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
+                Carregar ficheiro CSV
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+            <Textarea
+              className="mt-3 min-h-[140px] font-mono text-xs"
+              placeholder="Cole aqui o conteúdo CSV…"
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
             />
-          </div>
-          <Textarea
-            className="mt-3 min-h-[140px] font-mono text-xs"
-            placeholder="Cole aqui o conteúdo CSV…"
-            value={paste}
-            onChange={(e) => setPaste(e.target.value)}
-          />
-          <Button className="mt-3" onClick={onPasteImport} disabled={!paste.trim()}>
-            Importar texto colado
-          </Button>
-        </section>
+            <Button className="mt-3" onClick={onPasteImport} disabled={!paste.trim()}>
+              Importar texto colado
+            </Button>
+          </section>
+        ) : (
+          <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-bg)] p-5">
+            <h2 className="font-display text-xl">Importar CSV</h2>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">
+              A importação de CSV (Forms, BAI e lançamentos) está disponível apenas para o{" "}
+              <strong>Colaborador 1</strong>. Pode continuar a exportar dados.
+            </p>
+          </section>
+        )}
       </div>
 
-      {recon && (
+      {recon && canImport && (
         <section className="mt-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
           <h2 className="font-display text-xl">Reconciliação BAI</h2>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-sm">
@@ -270,9 +300,7 @@ function GooglePage() {
             A app substitui o extrato e mostra o painel de reconciliação (saldo deve ser{" "}
             <strong>1 064 700,56 Kz</strong> se estiver alinhado com o ficheiro reconciliado).
           </li>
-          <li>
-            Opcional: exporte o master da app e compare com a Contabilidade Dinâmica.
-          </li>
+          <li>Opcional: exporte o master da app e compare com a Contabilidade Dinâmica.</li>
         </ol>
       </section>
     </div>

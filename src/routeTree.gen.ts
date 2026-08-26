@@ -19,6 +19,7 @@ import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as MensalidadesRouteImport } from './routes/mensalidades'
 import { Route as RecibosRouteImport } from './routes/recibos'
 import { Route as SalariosRouteImport } from './routes/salarios'
+import { Route as PendenciasRouteImport } from './routes/pendencias'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,6 +71,11 @@ const SalariosRoute = SalariosRouteImport.update({
   path: '/salarios',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PendenciasRoute = PendenciasRouteImport.update({
+  id: '/pendencias',
+  path: '/pendencias',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/mensalidades': typeof MensalidadesRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
+  '/pendencias': typeof PendenciasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/mensalidades': typeof MensalidadesRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
+  '/pendencias': typeof PendenciasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/mensalidades': typeof MensalidadesRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
+  '/pendencias': typeof PendenciasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/mensalidades'
     | '/recibos'
     | '/salarios'
+    | '/pendencias'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/mensalidades'
     | '/recibos'
     | '/salarios'
+    | '/pendencias'
   id:
     | '__root__'
     | '/'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/mensalidades'
     | '/recibos'
     | '/salarios'
+    | '/pendencias'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +170,7 @@ export interface RootRouteChildren {
   MensalidadesRoute: typeof MensalidadesRoute
   RecibosRoute: typeof RecibosRoute
   SalariosRoute: typeof SalariosRoute
+  PendenciasRoute: typeof PendenciasRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -232,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SalariosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pendencias': {
+      id: '/pendencias'
+      path: '/pendencias'
+      fullPath: '/pendencias'
+      preLoaderRoute: typeof PendenciasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -246,6 +266,7 @@ const rootRouteChildren: RootRouteChildren = {
   MensalidadesRoute: MensalidadesRoute,
   RecibosRoute: RecibosRoute,
   SalariosRoute: SalariosRoute,
+  PendenciasRoute: PendenciasRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
