@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pencil, Plus, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
+import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import type { FundoPagamento } from "@/data/types";
 export const Route = createFileRoute("/fundo")({ component: Fundo });
 
 function Fundo() {
+  const printRef = useRef<HTMLDivElement>(null);
   const extra = useFinance((s) => s.fundoExtra);
   const add = useFinance((s) => s.addFundoPagamento);
   const update = useFinance((s) => s.updateFundoPagamento);
@@ -79,9 +81,12 @@ function Fundo() {
                 <Plus className="mr-1 size-4" /> Novo pagamento
               </Button>
             ) : null}
-            <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-              <Printer className="mr-1 size-4" /> Imprimir
-            </Button>
+            <PrintActions
+              targetRef={printRef}
+              filename="fundo-maneio.pdf"
+              shareTitle="Fundo de maneio · École Consulaire"
+              shareText="Documento gerado pela secretaria da École Consulaire."
+            />
           </div>
         }
       />
@@ -126,7 +131,7 @@ function Fundo() {
       </div>
 
       <h2 className="font-display mb-2 text-xl">Pagamentos em dinheiro</h2>
-      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[700px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] text-[var(--color-muted)] uppercase">
             <tr>

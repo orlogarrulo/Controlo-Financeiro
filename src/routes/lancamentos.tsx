@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Download, Pencil, Search, Trash2, Printer } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
+import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,7 @@ function Lancamentos() {
   const update = useFinance((s) => s.updateExtra);
   const operators = useFinance((s) => s.operators);
   const activeOperator = useFinance((s) => s.activeOperator);
+  const printRef = useRef<HTMLDivElement>(null);
   const canEdit = isCollaborator1(activeOperator, operators);
   // Só despesas operacionais (sem matrículas/propinas do seed inscrição)
   const rows = useMemo(
@@ -93,9 +95,12 @@ function Lancamentos() {
         description="Pagamentos da escola por fonte (cartão, transferência, dinheiro, sócio). Matrículas e propinas estão em Matrículas / Propinas — não misturar."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-              <Printer className="mr-1 size-4" /> Imprimir
-            </Button>
+            <PrintActions
+              targetRef={printRef}
+              filename="lancamentos.pdf"
+              shareTitle="Lançamentos · École Consulaire"
+              shareText="Documento gerado pela secretaria da École Consulaire."
+            />
             <Button
               variant="secondary"
               className="no-print"
@@ -140,7 +145,7 @@ function Lancamentos() {
         {filtered.length} despesas · Total {formatKz(total)}
       </p>
 
-      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[800px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] text-[var(--color-muted)] uppercase">
             <tr>

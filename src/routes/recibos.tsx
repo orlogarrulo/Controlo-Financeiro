@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/kpi";
-import { Button } from "@/components/ui/button";
+import { PrintActions } from "@/components/print-actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -41,7 +41,6 @@ function Picker({
   selectedLabel,
   onSelect,
   allowClear,
-  emptyHint,
 }: {
   title: string;
   query: string;
@@ -51,15 +50,34 @@ function Picker({
   selectedLabel?: string;
   onSelect: (id: string) => void;
   allowClear?: boolean;
-  emptyHint?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const showSuggest = open && query.trim().length > 0;
+
   return (
-    <div className="space-y-2">
+    <div className="relative space-y-2">
       <Label>{title}</Label>
       <Input
-        placeholder="Pesquisar: aluno, ID, encarregado, fornecedor…"
+        placeholder="Pesquisar por nome, ID recibo, pai/mãe…"
         value={query}
-        onChange={(e) => onQuery(e.target.value)}
+        onChange={(e) => {
+          onQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          // pequeno atraso para permitir clique na sugestão
+          window.setTimeout(() => setOpen(false), 150);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && items[0]) {
+            e.preventDefault();
+            onSelect(items[0].id);
+            onQuery("");
+            setOpen(false);
+          }
+          if (e.key === "Escape") setOpen(false);
+        }}
       />
       {selectedId ? (
         <div className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-forest)] bg-[var(--color-forest-soft)] px-3 py-2 text-sm">
@@ -76,33 +94,35 @@ function Picker({
         </div>
       ) : allowClear ? (
         <p className="text-[11px] text-[var(--color-muted)]">Nenhum segundo recibo seleccionado.</p>
-      ) : null}
-      <div className="max-h-44 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-        {items.length === 0 ? (
-          <p className="px-3 py-3 text-xs text-[var(--color-muted)]">{emptyHint || "Sem resultados."}</p>
-        ) : (
-          <ul className="divide-y divide-[var(--color-line)]">
-            {items.slice(0, 40).map((x) => {
-              const active = x.id === selectedId;
-              return (
+      ) : (
+        <p className="text-[11px] text-[var(--color-muted)]">Escreva para pesquisar e escolha um recibo.</p>
+      )}
+      {showSuggest ? (
+        <div className="absolute z-20 mt-0 max-h-48 w-full overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]">
+          {items.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-[var(--color-muted)]">Sem resultados.</p>
+          ) : (
+            <ul>
+              {items.slice(0, 12).map((x) => (
                 <li key={x.id}>
                   <button
                     type="button"
-                    onClick={() => onSelect(x.id)}
-                    className={`flex w-full px-3 py-2 text-left text-sm transition-colors ${
-                      active
-                        ? "bg-[var(--color-forest-soft)] font-medium text-[var(--color-forest)]"
-                        : "hover:bg-[var(--color-bg)]"
-                    }`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onSelect(x.id);
+                      onQuery("");
+                      setOpen(false);
+                    }}
+                    className="flex w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-forest-soft)]"
                   >
                     {x.label}
                   </button>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -138,9 +158,10 @@ function Recibos() {
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
+      const ee = x.encarregado?.trim() || x.pai?.trim() || x.mae?.trim() || "";
       return {
         id: x.recibo,
-        label: `${x.recibo} · ${x.nome}${x.encarregado ? ` · EE: ${x.encarregado}` : ""}`,
+        label: `${x.recibo} · ${x.nome}${ee ? ` · EE: ${ee}` : ""}`,
         search,
         kind: "aluno" as const,
       };
@@ -168,9 +189,9 @@ function Recibos() {
 
   function filterList(query: string, excludeId?: string) {
     const qq = query.trim().toLowerCase();
+    if (!qq) return [];
     return list.filter((x) => {
       if (excludeId && x.id === excludeId) return false;
-      if (!qq) return true;
       return x.search.includes(qq) || x.label.toLowerCase().includes(qq);
     });
   }
@@ -184,17 +205,22 @@ function Recibos() {
   const aluno2 = alunos.find((a) => a.recibo === sel2);
   const rm2 = fundo.find((p) => p.id === sel2);
   const sal2 = salarios.find((s) => `SALREC-${s.id}` === sel2);
+  const printRef = useRef<HTMLDivElement>(null);
+  const pdfName = `recibo-${(sel || "doc").replace(/[^\w\-]+/g, "_")}.pdf`;
 
   return (
     <div>
       <PageHeader
         kicker="Impressão A5 · 2 por A4"
         title="Recibos"
-        description="Pesquise por nome do aluno, ID do recibo, encarregado, fornecedor, funcionário ou descrição. Até dois recibos por folha A4."
+        description="Pesquise por nome do aluno, ID do recibo, encarregado, fornecedor, funcionário ou descrição. Até dois recibos por folha A4. No telemóvel use Enviar / Exportar PDF para WhatsApp ou e-mail."
         actions={
-          <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-            Imprimir
-          </Button>
+          <PrintActions
+            targetRef={printRef}
+            filename={pdfName}
+            shareTitle="Recibo · École Consulaire"
+            shareText="Recibo gerado pela secretaria da École Consulaire du Congo de Luanda."
+          />
         }
       />
 
@@ -207,7 +233,6 @@ function Recibos() {
           selectedId={sel}
           selectedLabel={list.find((x) => x.id === sel)?.label}
           onSelect={setSel}
-          emptyHint="Escreva para filtrar e clique num resultado."
         />
         <Picker
           title="2.º recibo (opcional — mesma folha A4)"
@@ -218,14 +243,13 @@ function Recibos() {
           selectedLabel={list.find((x) => x.id === sel2)?.label}
           onSelect={setSel2}
           allowClear
-          emptyHint="Opcional. Pesquise e clique, ou deixe vazio para um só recibo."
         />
       </div>
       <p className="no-print mb-4 text-[11px] text-[var(--color-muted)]">
         Na impressão: orientação vertical, tamanho A4. Cada recibo ocupa meia página (A5).
       </p>
 
-      <div className="print-a4-page space-y-4 lg:space-y-0 print:space-y-0">
+      <div ref={printRef} className="print-a4-page space-y-4 lg:space-y-0 print:space-y-0">
         <div className="print-a5-half">
           {aluno ? (
             <ReciboInscricao aluno={aluno} escola={escola} />
@@ -293,11 +317,9 @@ function ReciboInscricao({
     { label: "1.ª mensalidade", value: aluno.mensalidade1 },
   ].filter((l) => l.value > 0);
 
-  const encarregado =
-    aluno.encarregado?.trim() ||
-    aluno.pai?.trim() ||
-    aluno.mae?.trim() ||
-    aluno.nome;
+  const pagador =
+    aluno.encarregado?.trim() || aluno.pai?.trim() || aluno.mae?.trim() || "";
+  const temPagador = Boolean(pagador);
 
   const pct = pctDisplay(aluno.descPct || 0);
 
@@ -314,15 +336,22 @@ function ReciboInscricao({
         <span>{aluno.dataPag ? formatDateLong(aluno.dataPag) : "—"}</span>
       </div>
       <p className="mt-3 text-sm">
-        Recebemos de <strong>{encarregado}</strong>
-        {encarregado !== aluno.nome ? (
+        {temPagador ? (
           <>
-            {" "}
-            (aluno/a <strong>{aluno.nome}</strong>)
+            Recebemos de <strong>{pagador}</strong> a quantia de{" "}
+            <strong>{formatKz(aluno.liquido)}</strong>, referente à matrícula do(a) aluno(a){" "}
+            <strong>{aluno.nome}</strong>, ano lectivo <strong>{anoLectivo(escola.ano)}</strong>.
           </>
-        ) : null}{" "}
-        a quantia de <strong>{formatKz(aluno.liquido)}</strong>, referente ao ano lectivo{" "}
-        <strong>{anoLectivo(escola.ano)}</strong>.
+        ) : (
+          <>
+            Recebemos a quantia de <strong>{formatKz(aluno.liquido)}</strong>, referente à matrícula
+            do(a) aluno(a) <strong>{aluno.nome}</strong>, ano lectivo{" "}
+            <strong>{anoLectivo(escola.ano)}</strong>.
+            <span className="mt-1 block text-xs text-[var(--color-muted)]">
+              (Indique o nome do pai ou da mãe no cadastro do aluno para constar neste recibo.)
+            </span>
+          </>
+        )}
       </p>
       <p className="mt-1 text-xs text-[var(--color-muted)]">
         Turma: {aluno.turma}
@@ -363,8 +392,8 @@ function ReciboInscricao({
       <p className="mt-3 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
       <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
         <div>
-          <p>Recebido pela escola</p>
-          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Nome e assinatura</p>
+          <p>A secretaria</p>
+          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
         <div>
           <p>Encarregado de educação</p>
@@ -409,7 +438,7 @@ function ReciboManeio({
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
         <div>
-          <p>Pela escola</p>
+          <p>A secretaria</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
       </div>
@@ -476,7 +505,7 @@ function ReciboSalario({
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
         <div>
-          <p>Pela escola</p>
+          <p>A secretaria</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
       </div>

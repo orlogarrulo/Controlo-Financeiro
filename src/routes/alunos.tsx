@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Pencil, Printer, Plus, UserPlus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
+import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -195,6 +196,7 @@ function Alunos() {
   const canEdit = isCollaborator1(activeOperator, operators);
   const alunos = alunosAll(extraA, overrides);
   const escola = getSeed().escola;
+  const printRef = useRef<HTMLDivElement>(null);
 
   const [q, setQ] = useState("");
   const [grupo, setGrupo] = useState("todos");
@@ -611,9 +613,12 @@ function Alunos() {
                 <UserPlus className="mr-1 size-4" /> Nova matrícula
               </Button>
             ) : null}
-            <Button variant="secondary" className="no-print" onClick={() => window.print()}>
-              <Printer className="mr-1 size-4" /> Imprimir
-            </Button>
+            <PrintActions
+              targetRef={printRef}
+              filename="matriculas.pdf"
+              shareTitle="Matrículas · École Consulaire"
+              shareText="Documento gerado pela secretaria da École Consulaire."
+            />
           </div>
         }
       />
@@ -671,7 +676,7 @@ function Alunos() {
         </div>
       </header>
 
-      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>

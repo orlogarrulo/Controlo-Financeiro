@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowUpRight, Printer } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { useRef } from "react";
 import {
   Bar,
   BarChart,
@@ -10,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { PageHeader, Kpi } from "@/components/kpi";
-import { Button } from "@/components/ui/button";
+import { PrintActions } from "@/components/print-actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,6 +43,7 @@ function Dashboard() {
     .filter((c) => c.despesas > 0)
     .slice(0, 8);
   const escola = getSeed().escola;
+  const printRef = useRef<HTMLDivElement>(null);
 
   return (
     <div>
@@ -81,15 +83,17 @@ function Dashboard() {
               : undefined
           }
           actions={
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => window.print()}>
-                <Printer className="mr-1 size-4" /> Imprimir
-              </Button>
-            </div>
+            <PrintActions
+              targetRef={printRef}
+              filename="quadro-financeiro.pdf"
+              shareTitle="Quadro financeiro · École Consulaire"
+              shareText="Resumo financeiro gerado pela secretaria."
+            />
           }
         />
       </div>
 
+      <div ref={printRef}>
       {/* Cabeçalho simplificado só na impressão (página 2) */}
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
         <img src="/logo-escola.jpg" alt="" className="h-12 w-12 object-contain" width={48} height={48} />
@@ -199,6 +203,8 @@ function Dashboard() {
           body={isAdmin ? "Cadastro e recibos EF." : undefined}
         />
       </div>
+      </div>
+
       {isAdmin && sessionLog.length > 0 ? (
         <Card className="mt-6 no-print">
           <CardHeader>
