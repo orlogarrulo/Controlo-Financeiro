@@ -367,6 +367,7 @@ function Salarios() {
           </tbody>
         </table>
       </div>
+      </div>
       <p className="mt-3 text-sm text-[var(--color-muted)]">
         Adelaide e Teresa: meio mês de Julho (11/22 dias) = 45.000 Kz cada, pagos a 6 de Agosto (FAT-051).
       </p>
