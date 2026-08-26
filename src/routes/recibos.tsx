@@ -32,6 +32,81 @@ function anoLectivo(ano: string): string {
   return (ano || "2026/2027").replace(/\//g, "-");
 }
 
+function Picker({
+  title,
+  query,
+  onQuery,
+  items,
+  selectedId,
+  selectedLabel,
+  onSelect,
+  allowClear,
+  emptyHint,
+}: {
+  title: string;
+  query: string;
+  onQuery: (v: string) => void;
+  items: ListItem[];
+  selectedId: string;
+  selectedLabel?: string;
+  onSelect: (id: string) => void;
+  allowClear?: boolean;
+  emptyHint?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{title}</Label>
+      <Input
+        placeholder="Pesquisar: aluno, ID, encarregado, fornecedor…"
+        value={query}
+        onChange={(e) => onQuery(e.target.value)}
+      />
+      {selectedId ? (
+        <div className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--color-forest)] bg-[var(--color-forest-soft)] px-3 py-2 text-sm">
+          <span className="min-w-0 truncate font-medium">{selectedLabel || selectedId}</span>
+          {allowClear ? (
+            <button
+              type="button"
+              className="shrink-0 text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
+              onClick={() => onSelect("")}
+            >
+              Limpar
+            </button>
+          ) : null}
+        </div>
+      ) : allowClear ? (
+        <p className="text-[11px] text-[var(--color-muted)]">Nenhum segundo recibo seleccionado.</p>
+      ) : null}
+      <div className="max-h-44 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+        {items.length === 0 ? (
+          <p className="px-3 py-3 text-xs text-[var(--color-muted)]">{emptyHint || "Sem resultados."}</p>
+        ) : (
+          <ul className="divide-y divide-[var(--color-line)]">
+            {items.slice(0, 40).map((x) => {
+              const active = x.id === selectedId;
+              return (
+                <li key={x.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(x.id)}
+                    className={`flex w-full px-3 py-2 text-left text-sm transition-colors ${
+                      active
+                        ? "bg-[var(--color-forest-soft)] font-medium text-[var(--color-forest)]"
+                        : "hover:bg-[var(--color-bg)]"
+                    }`}
+                  >
+                    {x.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Recibos() {
   const extraA = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
@@ -124,53 +199,31 @@ function Recibos() {
       />
 
       <div className="no-print mb-4 grid gap-3 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>1.º recibo (obrigatório)</Label>
-          <Input
-            placeholder="Pesquisar: aluno, ID, encarregado, fornecedor…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <select
-            className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
-            value={sel}
-            onChange={(e) => setSel(e.target.value)}
-          >
-            {list1.length === 0 ? (
-              <option value="">Nenhum resultado</option>
-            ) : (
-              list1.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.label}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
-        <div className="space-y-2">
-          <Label>2.º recibo (opcional — mesma folha A4)</Label>
-          <Input
-            placeholder="Pesquisar: aluno, ID, encarregado, fornecedor…"
-            value={q2}
-            onChange={(e) => setQ2(e.target.value)}
-          />
-          <select
-            className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm"
-            value={sel2}
-            onChange={(e) => setSel2(e.target.value)}
-          >
-            <option value="">— Só um recibo —</option>
-            {list2.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-          <p className="text-[11px] text-[var(--color-muted)]">
-            Na impressão: orientação vertical, tamanho A4. Cada recibo ocupa meia página (A5).
-          </p>
-        </div>
+        <Picker
+          title="1.º recibo (obrigatório)"
+          query={q}
+          onQuery={setQ}
+          items={list1}
+          selectedId={sel}
+          selectedLabel={list.find((x) => x.id === sel)?.label}
+          onSelect={setSel}
+          emptyHint="Escreva para filtrar e clique num resultado."
+        />
+        <Picker
+          title="2.º recibo (opcional — mesma folha A4)"
+          query={q2}
+          onQuery={setQ2}
+          items={list2}
+          selectedId={sel2}
+          selectedLabel={list.find((x) => x.id === sel2)?.label}
+          onSelect={setSel2}
+          allowClear
+          emptyHint="Opcional. Pesquise e clique, ou deixe vazio para um só recibo."
+        />
       </div>
+      <p className="no-print mb-4 text-[11px] text-[var(--color-muted)]">
+        Na impressão: orientação vertical, tamanho A4. Cada recibo ocupa meia página (A5).
+      </p>
 
       <div className="print-a4-page space-y-4 lg:space-y-0 print:space-y-0">
         <div className="print-a5-half">
@@ -275,7 +328,16 @@ function ReciboInscricao({
         Turma: {aluno.turma}
         {aluno.seguro === 0 ? " · Seguro próprio" : ""}
         {aluno.metodoPagamento ? ` · ${aluno.metodoPagamento}` : ""}
+        {aluno.transferidoCampusCidade ? " · Transferido Campus Cidade" : ""}
       </p>
+      {aluno.transferidoCampusCidade ? (
+        <p className="mt-2 rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-[11px] leading-snug text-[var(--color-ink)]">
+          <strong>Excepção ano lectivo {anoLectivo(escola.ano)}:</strong> aluno transferido do
+          Campus Cidade. Inscrição e seguro conforme tarifário especial; propina mensal mantida em{" "}
+          <strong>{formatKz(aluno.propina || 50000)}</strong> (valor da outra filial), apenas neste
+          ano lectivo.
+        </p>
+      ) : null}
       <table className="mt-3 w-full text-sm">
         <tbody>
           {lines.map((l) => (

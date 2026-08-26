@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUpRight, Printer } from "lucide-react";
+import { ArrowUpRight, Printer } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -42,11 +42,6 @@ function Dashboard() {
     .filter((c) => c.despesas > 0)
     .slice(0, 8);
   const escola = getSeed().escola;
-  const alerts: string[] = [];
-  if (t.pendentesSeguro) alerts.push(`${t.pendentesSeguro} alunos sem seguro escolar`);
-  if (t.pendentesData) alerts.push(`${t.pendentesData} inscrições sem data de pagamento`);
-  if (t.docsSemFicheiro) alerts.push(`${t.docsSemFicheiro} faturas FAT sem ficheiro digital`);
-  if (t.resultado < 0) alerts.push("Resultado líquido negativo — arranque ainda a ser absorvido pelas matrículas");
 
   return (
     <div>
@@ -126,20 +121,6 @@ function Dashboard() {
         <Kpi label="Fundo de maneio" value={t.fundoRestante} />
         <Kpi label="Propinas recebidas" value={t.propinasRecebidas} />
       </div>
-
-      {/* Pontos a tratar: só no ecrã, nunca na impressão */}
-      {isAdmin && alerts.length ? (
-        <div className="no-print mt-5 rounded-[var(--radius-md)] border border-[var(--color-amber)]/30 bg-[var(--color-amber-soft)] px-4 py-3">
-          <p className="flex items-center gap-2 text-sm font-medium text-[var(--color-amber)]">
-            <AlertTriangle className="size-4" /> Pontos a tratar
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-[var(--color-ink-soft)]">
-            {alerts.map((a) => (
-              <li key={a}>· {a}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-5">
         <Card className="no-print lg:col-span-3">

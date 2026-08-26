@@ -58,20 +58,36 @@ function Capturar() {
     try {
       const data = await compressImage(file);
       setFoto(data);
-      toast.success("Foto anexada — a tentar OCR…");
+      toast.message("Foto anexada — a ler com OCR…");
       try {
         const text = await ocrImage(data);
         const parsed = parseOcrText(text);
         setForm((f) => ({
           ...f,
-          valor: parsed.valor || f.valor,
+          valor: parsed.valor ?? f.valor,
           fatura: parsed.fatura || f.fatura,
           fornecedor: parsed.fornecedor || f.fornecedor,
           data: parsed.data || f.data,
+          descricao: parsed.descricao || f.descricao,
+          pagamento: parsed.pagamento || f.pagamento,
+          observacoes: parsed.texto
+            ? `OCR: ${parsed.texto.replace(/\s+/g, " ").slice(0, 240)}`
+            : f.observacoes,
         }));
-        toast.success("OCR concluído — confira os campos");
+        const filled = [
+          parsed.valor != null ? "valor" : null,
+          parsed.fatura ? "fatura" : null,
+          parsed.fornecedor ? "fornecedor" : null,
+          parsed.data ? "data" : null,
+          parsed.descricao ? "descrição" : null,
+        ].filter(Boolean);
+        if (filled.length) {
+          toast.success(`OCR preencheu: ${filled.join(", ")}. Confira e ajuste se precisar.`);
+        } else {
+          toast.message("OCR não detectou campos claros — preencha manualmente.");
+        }
       } catch {
-        toast.message("Foto ok. Preencha os campos manualmente.");
+        toast.message("Foto ok. OCR indisponível — preencha os campos manualmente.");
       }
     } catch {
       toast.error("Não foi possível ler a imagem");
@@ -96,7 +112,7 @@ function Capturar() {
       <PageHeader
         kicker="Só despesas"
         title="Nova despesa"
-        description="Faturas e pagamentos da escola. Matrículas e propinas não entram aqui — use Matrículas / Propinas."
+        description="Tire ou anexe foto do recibo: o OCR tenta preencher valor, data, fornecedor, n.º de fatura e descrição. Confira sempre antes de guardar. Matrículas e propinas → separador Matrículas / Propinas."
       />
       <p className="no-print mb-4 text-sm text-[var(--color-muted)]">
         A registar como <strong className="text-[var(--color-ink)]">{activeOperator}</strong>
@@ -114,7 +130,7 @@ function Capturar() {
             ) : (
               <>
                 <ImagePlus className="size-8 text-[var(--color-muted)]" />
-                <span className="text-sm">Foto da fatura (opcional · OCR)</span>
+                <span className="text-sm">Foto da fatura — OCR preenche os campos</span>
               </>
             )}
             <input

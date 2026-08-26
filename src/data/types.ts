@@ -116,6 +116,12 @@ export type Aluno = {
   statusPag: "pago" | "registado" | "pendente";
   /** Método de pagamento da inscrição / liquidação. */
   metodoPagamento?: string;
+  /**
+   * Aluno transferido da filial Campus Cidade.
+   * No ano 2026-2027 mantém propina da outra escola (50.000 Kz);
+   * inscrição 50.000 + seguro 30.000.
+   */
+  transferidoCampusCidade?: boolean;
   criadoPor?: string;
   createdAt?: string;
   editadoPor?: string;

@@ -37,6 +37,13 @@ const TURMAS = [
 const DEFAULT_INSCRICAO = 150000;
 const DEFAULT_SEGURO_ESCOLA = 30000;
 
+/** Tarifário especial — transferidos do Campus Cidade (só 2026-2027). */
+const CAMPUS_CIDADE_INSCRICAO = 50000;
+const CAMPUS_CIDADE_SEGURO = 30000;
+const CAMPUS_CIDADE_PROPINA = 50000;
+const CAMPUS_CIDADE_NOTA =
+  "Transferido do Campus Cidade · propina mantida 50.000 Kz (ano lectivo 2026-2027)";
+
 const METODOS_PAGAMENTO = [
   "Dinheiro",
   "Cartão Multicaixa",
@@ -52,6 +59,7 @@ type FormState = {
   inscricao: string;
   seguro: string;
   seguroExterno: boolean;
+  transferidoCampusCidade: boolean;
   manuais: string;
   uniforme: string;
   extras: string;
@@ -77,6 +85,7 @@ function emptyForm(): FormState {
     inscricao: String(DEFAULT_INSCRICAO),
     seguro: String(DEFAULT_SEGURO_ESCOLA),
     seguroExterno: false,
+    transferidoCampusCidade: false,
     manuais: "0",
     uniforme: "0",
     extras: "0",
@@ -91,6 +100,28 @@ function emptyForm(): FormState {
     metodoPagamento: "Dinheiro",
     pin: "",
   };
+}
+
+/** Monta observações com notas de seguro externo e Campus Cidade. */
+function buildObs(form: FormState): string {
+  const parts: string[] = [];
+  const base = form.obs.trim();
+  if (base && !base.includes("Transferido do Campus Cidade") && !base.includes("Seguro próprio")) {
+    parts.push(base);
+  } else if (base) {
+    // manter texto livre do utilizador, mas evitar duplicar as etiquetas automáticas
+    const cleaned = base
+      .replace(/\s*·?\s*Transferido do Campus Cidade[^.·]*/gi, "")
+      .replace(/\s*·?\s*Seguro próprio \(externo\)/gi, "")
+      .replace(/\s*·\s*·/g, " · ")
+      .trim()
+      .replace(/^·\s*/, "")
+      .replace(/\s*·$/, "");
+    if (cleaned) parts.push(cleaned);
+  }
+  if (form.transferidoCampusCidade) parts.push(CAMPUS_CIDADE_NOTA);
+  if (form.seguroExterno) parts.push("Seguro próprio (externo)");
+  return parts.join(" · ");
 }
 
 function num(s: string): number {
@@ -221,6 +252,7 @@ function Alunos() {
       inscricao: String(a.inscricao ?? DEFAULT_INSCRICAO),
       seguro: String(a.seguro === 0 ? DEFAULT_SEGURO_ESCOLA : a.seguro ?? DEFAULT_SEGURO_ESCOLA),
       seguroExterno: (a.seguro ?? 0) === 0,
+      transferidoCampusCidade: Boolean(a.transferidoCampusCidade),
       manuais: String(a.manuais ?? 0),
       uniforme: String(a.uniforme ?? 0),
       extras: String(a.extras ?? 0),
@@ -275,12 +307,11 @@ function Alunos() {
       bi: form.bi.trim(),
       familia: form.familia.trim() || form.nome.trim().split(" ").slice(-2).join(" "),
       recibo,
-      obs:
-        form.obs.trim() +
-        (form.seguroExterno ? (form.obs.trim() ? " · " : "") + "Seguro próprio (externo)" : ""),
+      obs: buildObs(form),
       propina: num(form.propina),
       statusPag: t.liquido > 0 ? "pago" : "registado",
       metodoPagamento: form.metodoPagamento || "Dinheiro",
+      transferidoCampusCidade: form.transferidoCampusCidade,
     };
     addAluno(aluno);
     toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
@@ -308,11 +339,7 @@ function Alunos() {
         morada: form.morada.trim(),
         bi: form.bi.trim(),
         familia: form.familia.trim(),
-        obs:
-          form.obs.trim() +
-          (form.seguroExterno && !form.obs.includes("Seguro próprio")
-            ? (form.obs.trim() ? " · " : "") + "Seguro próprio (externo)"
-            : ""),
+        obs: buildObs(form),
         inscricao: t.inscricao,
         seguro: t.seguro,
         manuais: t.manuais,
@@ -325,6 +352,7 @@ function Alunos() {
         bruto: t.bruto,
         liquido: t.liquido,
         metodoPagamento: form.metodoPagamento || "Dinheiro",
+        transferidoCampusCidade: form.transferidoCampusCidade,
       });
       toast.success(`Aluno ${editing.id} actualizado`);
       setEditing(null);
@@ -413,9 +441,51 @@ function Alunos() {
           <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
         </div>
 
+        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-forest)]/40 bg-[var(--color-forest-soft)]/40 p-3">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.transferidoCampusCidade}
+              onChange={(e) => {
+                const on = e.target.checked;
+                if (on) {
+                  setForm({
+                    ...form,
+                    transferidoCampusCidade: true,
+                    seguroExterno: false,
+                    inscricao: String(CAMPUS_CIDADE_INSCRICAO),
+                    seguro: String(CAMPUS_CIDADE_SEGURO),
+                    propina: String(CAMPUS_CIDADE_PROPINA),
+                  });
+                } else {
+                  setForm({
+                    ...form,
+                    transferidoCampusCidade: false,
+                    inscricao: String(DEFAULT_INSCRICAO),
+                    seguro: form.seguroExterno ? "0" : String(DEFAULT_SEGURO_ESCOLA),
+                    propina: "0",
+                  });
+                }
+              }}
+            />
+            <span>
+              <strong>Transferido do Campus Cidade</strong>
+              <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
+                Ao marcar, preenche automaticamente inscrição {formatKz(CAMPUS_CIDADE_INSCRICAO)},
+                seguro {formatKz(CAMPUS_CIDADE_SEGURO)} e propina mensal{" "}
+                {formatKz(CAMPUS_CIDADE_PROPINA)} (tarifário da outra filial, ano 2026-2027).{" "}
+                <strong className="text-[var(--color-ink)]">Pode editar estes valores</strong> nos
+                campos abaixo, se necessário.
+              </span>
+            </span>
+          </label>
+        </div>
+
         <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
           <p className="mb-2 text-xs font-medium text-[var(--color-muted)] uppercase tracking-wide">
             Valores da matrícula
+            {form.transferidoCampusCidade ? " · Campus Cidade (editáveis)" : ""}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -440,7 +510,11 @@ function Alunos() {
                     setForm({
                       ...form,
                       seguroExterno: e.target.checked,
-                      seguro: e.target.checked ? "0" : String(DEFAULT_SEGURO_ESCOLA),
+                      seguro: e.target.checked
+                        ? "0"
+                        : form.transferidoCampusCidade
+                          ? String(CAMPUS_CIDADE_SEGURO)
+                          : String(DEFAULT_SEGURO_ESCOLA),
                     })
                   }
                 />
@@ -478,6 +552,9 @@ function Alunos() {
           <p className="mt-3 text-sm font-medium text-[var(--color-forest)]">
             Total a pagar: {formatKz(totais.liquido)}
             {form.seguroExterno ? " (sem seguro da escola)" : ""}
+            {form.transferidoCampusCidade
+              ? ` · propina mensal ref. ${formatKz(CAMPUS_CIDADE_PROPINA)} (Campus Cidade)`
+              : ""}
           </p>
         </div>
 
@@ -614,7 +691,12 @@ function Alunos() {
               <tr key={a.id} className="border-t border-[var(--color-line)]">
                 <td className="px-3 py-2 font-mono text-xs">{a.id}</td>
                 <td className="px-3 py-2">
-                  {a.nome}
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    {a.nome}
+                    {a.transferidoCampusCidade ? (
+                      <Badge variant="outline">Campus Cidade</Badge>
+                    ) : null}
+                  </span>
                   {a.pai || a.mae ? (
                     <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
                       {[a.pai && `Pai: ${a.pai}`, a.mae && `Mãe: ${a.mae}`].filter(Boolean).join(" · ")}
