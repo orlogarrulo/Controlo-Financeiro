@@ -96,7 +96,7 @@ function Dashboard() {
 
             {/* Cabeçalho simplificado só na impressão (página 2) */}
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
-        <img src="/logo-escola.jpg" alt="" className="h-12 w-12 object-contain" width={48} height={48} />
+        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
         <div>
           <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
             {escola.nomeCurto}
@@ -162,6 +162,55 @@ function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Balanço patrimonial — ecrã, impressão e PDF */}
+      <Card className="mt-4 print-sheet">
+        <CardHeader>
+          <CardTitle>Balanço patrimonial</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 sm:grid-cols-2 text-sm">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold tracking-wide text-[var(--color-forest)] uppercase">
+                Ativo
+              </p>
+              <div className="space-y-2">
+                <Row k="Cartão Multicaixa BAI" v={t.saldoBai} />
+                <Row k="Fundo de maneio" v={t.fundoRestante} />
+                <div className="my-1 h-px bg-[var(--color-line)]" />
+                <Row k="Total do ativo" v={t.saldoBai + t.fundoRestante} bold />
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[11px] font-semibold tracking-wide text-[var(--color-forest)] uppercase">
+                Passivo e capital próprio
+              </p>
+              <div className="space-y-2">
+                <Row k="A reembolsar ao sócio" v={t.socioEntradas} />
+                <Row
+                  k="Resultado líquido do exercício"
+                  v={t.resultado}
+                  danger={t.resultado < 0}
+                />
+                <Row
+                  k="Capital / equilíbrio"
+                  v={(t.saldoBai + t.fundoRestante) - t.socioEntradas - t.resultado}
+                />
+                <div className="my-1 h-px bg-[var(--color-line)]" />
+                <Row
+                  k="Total passivo + capital"
+                  v={t.saldoBai + t.fundoRestante}
+                  bold
+                />
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-[var(--color-muted)]">
+            Balanço simplificado com base nas disponibilidades (BAI + fundo) e obrigações ao sócio.
+            O total do ativo iguala o total do passivo e capital próprio.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Tabela simples de despesas (impressão) */}
       {cats.length > 0 ? (

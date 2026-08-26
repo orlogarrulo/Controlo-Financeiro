@@ -153,7 +153,7 @@ function Fundo() {
       <h2 className="font-display mb-2 text-xl">Pagamentos em dinheiro</h2>
       <div ref={printRef}>
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
-        <img src="/logo-escola.jpg" alt="" className="h-14 w-14 object-contain" width={56} height={56} />
+        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
         <div>
           <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
             {escola.nomeCurto}

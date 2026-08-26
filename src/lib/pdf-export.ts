@@ -72,21 +72,43 @@ const A4_WIDTH_PX = 794;
 const A4_HEIGHT_PX = 1123;
 
 const STAGE_CSS = `
+  [data-pdf-stage] {
+    color: #111 !important;
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   [data-pdf-stage] .no-print { display: none !important; }
   [data-pdf-stage] nav, [data-pdf-stage] aside { display: none !important; }
   [data-pdf-stage] .print-only { display: block !important; visibility: visible !important; }
-  [data-pdf-stage] header.print-only {
+  [data-pdf-stage] header.print-only,
+  [data-pdf-stage] [data-pdf-logo-header] {
     display: flex !important;
     align-items: center !important;
-    gap: 12px !important;
-    margin-bottom: 12px !important;
-    padding-bottom: 8px !important;
-    border-bottom: 1px solid #333 !important;
+    gap: 14px !important;
+    margin-bottom: 14px !important;
+    padding-bottom: 10px !important;
+    border-bottom: 1.5px solid #222 !important;
   }
-  [data-pdf-stage] header.print-only img {
-    width: 56px !important;
-    height: 56px !important;
+  [data-pdf-stage] header.print-only img,
+  [data-pdf-stage] [data-pdf-logo-header] img {
+    width: 64px !important;
+    height: 64px !important;
     object-fit: contain !important;
+    flex-shrink: 0 !important;
+  }
+  [data-pdf-stage] header.print-only .font-display,
+  [data-pdf-stage] [data-pdf-logo-header] .pdf-title {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+    color: #111 !important;
+  }
+  [data-pdf-stage] header.print-only p,
+  [data-pdf-stage] [data-pdf-logo-header] p {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
   }
   [data-pdf-stage] .print-only.hidden { display: block !important; }
   [data-pdf-stage] .print-cover,
@@ -96,53 +118,105 @@ const STAGE_CSS = `
     align-items: center !important;
     justify-content: center !important;
     width: 100% !important;
-    min-height: ${A4_HEIGHT_PX - 48}px !important;
-    height: ${A4_HEIGHT_PX - 48}px !important;
-    max-height: ${A4_HEIGHT_PX - 48}px !important;
+    min-height: 1075px !important;
+    height: 1075px !important;
+    max-height: 1075px !important;
     overflow: hidden !important;
     background: #fff !important;
     visibility: visible !important;
     box-sizing: border-box !important;
   }
   [data-pdf-stage] .print-cover.hidden { display: flex !important; }
+  [data-pdf-stage] .print-cover h1 {
+    font-size: 28px !important;
+    font-weight: 600 !important;
+  }
+  [data-pdf-stage] .print-cover p {
+    font-size: 14px !important;
+  }
   [data-pdf-stage] .print-sheet {
     box-shadow: none !important;
-    border: 1px solid #ccc !important;
+    border: 1px solid #bbb !important;
     background: #fff !important;
     max-width: none !important;
+    padding: 10px !important;
   }
   [data-pdf-stage] .print-a4-page {
     display: flex !important;
     flex-direction: column !important;
     width: 100% !important;
-    gap: 8px !important;
+    gap: 10px !important;
   }
   [data-pdf-stage] .print-a5-half {
     min-height: 480px !important;
     overflow: hidden !important;
   }
+  [data-pdf-stage] .print-a5-half article,
+  [data-pdf-stage] article.print-sheet {
+    font-size: 12.5px !important;
+    line-height: 1.4 !important;
+  }
+  [data-pdf-stage] .print-a5-half article p,
+  [data-pdf-stage] article.print-sheet p {
+    font-size: 12.5px !important;
+  }
+  [data-pdf-stage] .print-a5-half article strong,
+  [data-pdf-stage] article.print-sheet strong {
+    font-size: 13px !important;
+  }
   [data-pdf-stage] .overflow-x-auto { overflow: visible !important; }
-  [data-pdf-stage] table { width: 100% !important; min-width: 0 !important; border-collapse: collapse; }
-  [data-pdf-stage] th, [data-pdf-stage] td { padding: 4px 6px !important; border-bottom: 1px solid #ddd; }
+  [data-pdf-stage] table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse;
+    font-size: 12px !important;
+  }
+  [data-pdf-stage] th {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 7px 8px !important;
+    border-bottom: 1.5px solid #333 !important;
+    text-align: left;
+  }
+  [data-pdf-stage] td {
+    font-size: 12px !important;
+    padding: 6px 8px !important;
+    border-bottom: 1px solid #ccc !important;
+    vertical-align: top;
+  }
+  [data-pdf-stage] .print-sheet table { font-size: 12px !important; }
+  [data-pdf-stage] .print-sheet th,
+  [data-pdf-stage] .print-sheet td { padding: 6px 8px !important; }
   [data-pdf-stage] img { max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   [data-pdf-stage] .print-cover img { height: 280px !important; width: 280px !important; object-fit: contain; }
+  [data-pdf-stage] h1, [data-pdf-stage] .font-display {
+    font-size: 20px !important;
+    line-height: 1.25 !important;
+  }
+  [data-pdf-stage] h2 {
+    font-size: 16px !important;
+    margin: 10px 0 6px !important;
+  }
+  [data-pdf-stage] .text-sm { font-size: 12.5px !important; }
+  [data-pdf-stage] .text-xs,
+  [data-pdf-stage] .text-\[11px\],
+  [data-pdf-stage] .text-\[10px\] {
+    font-size: 11.5px !important;
+  }
   [data-pdf-stage] [data-pdf-stamp] {
-    margin-top: 10px;
-    padding-top: 6px;
+    margin-top: 12px;
+    padding-top: 8px;
     border-top: 1px solid #999;
-    font-size: 9px;
+    font-size: 11px !important;
     text-align: right;
     color: #222;
-    line-height: 1.3;
+    line-height: 1.35;
   }
-  /* Gráficos no PDF: limitar altura */
   [data-pdf-stage] .recharts-responsive-container,
-  [data-pdf-stage] .print-sheet table { font-size: 9px !important; }
-  [data-pdf-stage] .print-sheet th,
-  [data-pdf-stage] .print-sheet td { padding: 2px 4px !important; }
-  [data-pdf-stage] .print-sheet { margin-bottom: 6px !important; }
   [data-pdf-stage] .recharts-wrapper {
-    max-height: 220px !important;
+    max-height: 200px !important;
   }
 `;
 
@@ -159,9 +233,9 @@ function makeStage(): HTMLElement {
     "z-index:-1",
     "overflow:visible",
     "box-sizing:border-box",
-    "padding:24px",
-    "font-size:11px",
-    "line-height:1.35",
+    "padding:28px",
+    "font-size:13px",
+    "line-height:1.45",
     "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
   ].join(";");
   const style = document.createElement("style");
@@ -169,6 +243,25 @@ function makeStage(): HTMLElement {
   stage.appendChild(style);
   document.body.appendChild(stage);
   return stage;
+}
+
+
+/** Garante logotipo no topo de qualquer PDF (se a página não tiver). */
+function ensureLogoHeader(root: HTMLElement, title?: string): void {
+  const hasLogo = root.querySelector('img[src*="logo"], img[src*="escola"]');
+  if (hasLogo) return;
+  const header = document.createElement("div");
+  header.setAttribute("data-pdf-logo-header", "1");
+  const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  header.innerHTML = `
+    <img src="${logoSrc}" alt="" width="64" height="64" crossorigin="anonymous" />
+    <div>
+      <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;font-weight:600;">École Consulaire</p>
+      <p class="pdf-title" style="margin:2px 0 0;font-size:17px;font-weight:600;">${title || "Controlo Financeiro"}</p>
+      <p style="margin:2px 0 0;font-size:12px;color:#444;">${new Date().toLocaleDateString("pt-PT")}</p>
+    </div>
+  `;
+  root.insertBefore(header, root.firstChild);
 }
 
 function prepareClone(source: HTMLElement): HTMLElement {
@@ -190,7 +283,12 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.querySelectorAll("img").forEach((img) => {
     const i = img as HTMLImageElement;
     try {
-      if (i.src) i.src = i.src;
+      const src = i.getAttribute("src") || i.src;
+      if (src && src.startsWith("/")) {
+        i.src = `${location.origin}${src}`;
+      } else if (i.src) {
+        i.src = i.src;
+      }
     } catch {
       /* ignore */
     }
@@ -284,6 +382,7 @@ export async function elementToPdfBlob(
   const wantStamp = opts?.stamp !== false;
 
   const clone = prepareClone(el);
+  ensureLogoHeader(clone);
   const covers = Array.from(clone.querySelectorAll<HTMLElement>(".print-cover"));
 
   const coverNodes: HTMLElement[] = [];

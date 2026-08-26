@@ -7,13 +7,14 @@ import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { MESES_LABEL, MESES_LETIVOS } from "@/data/types";
-import { useFinance } from "@/lib/store";
+import { getSeed, useFinance } from "@/lib/store";
 import { formatKz } from "@/lib/format";
 
 export const Route = createFileRoute("/mensalidades")({ component: Mensalidades });
 
 function Mensalidades() {
   const printRef = useRef<HTMLDivElement>(null);
+  const escola = getSeed().escola;
   const rows = useFinance((s) => s.mensalidades);
   const setMensalidade = useFinance((s) => s.setMensalidade);
 
@@ -37,7 +38,20 @@ function Mensalidades() {
         description="Células amarelas: valor pago no mês. Wendy já tem Setembro liquidado com a inscrição (170.000 Kz). Status calcula-se sozinho."
       />
       <p className="mb-3 text-sm text-[var(--color-muted)]">Total recebido em propinas: {formatKz(grand)}</p>
-      <div ref={printRef} className="overflow-x-auto print-sheet rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
+      <div ref={printRef}>
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
+        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
+        <div>
+          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+            {escola.nomeCurto}
+          </p>
+          <p className="font-display text-lg leading-tight">Propinas · mensalidades</p>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
+          </p>
+        </div>
+      </header>
+      <div className="overflow-x-auto print-sheet rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
         <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
@@ -98,6 +112,7 @@ function Mensalidades() {
             </tr>
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );
