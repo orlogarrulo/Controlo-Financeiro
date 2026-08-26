@@ -1,7 +1,0 @@
-{
-  "buildCommand": "npm run build",
-  "framework": "vite",
-  "rewrites": [
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
-  ]
-}

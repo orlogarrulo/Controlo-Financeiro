@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EDIT_PIN, isCollaborator1 } from "@/lib/can-edit";
+import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import type { Aluno } from "@/data/types";
@@ -37,6 +37,12 @@ const TURMAS = [
 const DEFAULT_INSCRICAO = 150000;
 const DEFAULT_SEGURO_ESCOLA = 30000;
 
+const METODOS_PAGAMENTO = [
+  "Dinheiro",
+  "Cartão Multicaixa",
+  "Transferência bancária",
+] as const;
+
 type FormState = {
   nome: string;
   pai: string;
@@ -57,6 +63,7 @@ type FormState = {
   bi: string;
   familia: string;
   obs: string;
+  metodoPagamento: string;
   pin: string;
 };
 
@@ -81,6 +88,7 @@ function emptyForm(): FormState {
     bi: "",
     familia: "",
     obs: "",
+    metodoPagamento: "Dinheiro",
     pin: "",
   };
 }
@@ -159,18 +167,33 @@ function Alunos() {
 
   const [q, setQ] = useState("");
   const [grupo, setGrupo] = useState("todos");
+  const [turmaFiltro, setTurmaFiltro] = useState("todas");
   const [editing, setEditing] = useState<Aluno | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
 
   const grupos = useMemo(() => ["todos", ...new Set(alunos.map((a) => a.grupo))], [alunos]);
+  const turmasDisponiveis = useMemo(
+    () => ["todas", ...TURMAS.filter((t) => alunos.some((a) => a.turma === t))],
+    [alunos],
+  );
   const filtered = alunos.filter((a) => {
     if (grupo !== "todos" && a.grupo !== grupo) return false;
+    if (turmaFiltro !== "todas" && a.turma !== turmaFiltro) return false;
     if (!q) return true;
     return `${a.nome} ${a.id} ${a.familia} ${a.encarregado} ${a.pai || ""} ${a.mae || ""}`
       .toLowerCase()
       .includes(q.toLowerCase());
   });
+  /** Ordenado por turma para visualização / impressão por classes. */
+  const filteredByClass = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const ia = TURMAS.indexOf(a.turma as (typeof TURMAS)[number]);
+      const ib = TURMAS.indexOf(b.turma as (typeof TURMAS)[number]);
+      if (ia !== ib) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      return a.nome.localeCompare(b.nome, "pt");
+    });
+  }, [filtered]);
   const total = filtered.reduce((s, a) => s + a.liquido, 0);
   const totais = calcTotais(form);
 
@@ -209,13 +232,14 @@ function Alunos() {
       bi: a.bi || "",
       familia: a.familia || "",
       obs: a.obs || "",
+      metodoPagamento: a.metodoPagamento || "Dinheiro",
       pin: "",
     });
   }
 
   function saveNew() {
     if (!canEdit) return;
-    if (form.pin !== EDIT_PIN) {
+    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
       toast.error("Código incorrecto.");
       return;
     }
@@ -256,6 +280,7 @@ function Alunos() {
         (form.seguroExterno ? (form.obs.trim() ? " · " : "") + "Seguro próprio (externo)" : ""),
       propina: num(form.propina),
       statusPag: t.liquido > 0 ? "pago" : "registado",
+      metodoPagamento: form.metodoPagamento || "Dinheiro",
     };
     addAluno(aluno);
     toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
@@ -265,7 +290,7 @@ function Alunos() {
 
   function saveEdit() {
     if (!editing || !canEdit) return;
-    if (form.pin !== EDIT_PIN) {
+    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
       toast.error("Código incorrecto.");
       return;
     }
@@ -299,6 +324,7 @@ function Alunos() {
         dataPag: form.dataPag.trim(),
         bruto: t.bruto,
         liquido: t.liquido,
+        metodoPagamento: form.metodoPagamento || "Dinheiro",
       });
       toast.success(`Aluno ${editing.id} actualizado`);
       setEditing(null);
@@ -347,6 +373,20 @@ function Alunos() {
             value={form.dataPag}
             onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
           />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Método de pagamento</Label>
+          <select
+            className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+            value={form.metodoPagamento}
+            onChange={(e) => setForm({ ...form, metodoPagamento: e.target.value })}
+          >
+            {METODOS_PAGAMENTO.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="space-y-1.5">
           <Label>Telefone</Label>
@@ -446,18 +486,24 @@ function Alunos() {
           <Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} />
         </div>
 
-        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
-          <Label>Código de autorização (Colaborador 1)</Label>
-          <Input
-            type="password"
-            inputMode="numeric"
-            placeholder="••••"
-            value={form.pin}
-            onChange={(e) => setForm({ ...form, pin: e.target.value })}
-            className="mt-1.5 max-w-[160px]"
-            autoComplete="off"
-          />
-        </div>
+        {!isAdminUnlocked() ? (
+          <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+            <Label>Código de autorização (Colaborador 1)</Label>
+            <Input
+              type="password"
+              inputMode="numeric"
+              placeholder="••••"
+              value={form.pin}
+              onChange={(e) => setForm({ ...form, pin: e.target.value })}
+              className="mt-1.5 max-w-[160px]"
+              autoComplete="off"
+            />
+          </div>
+        ) : (
+          <p className="sm:col-span-2 text-[11px] text-[var(--color-muted)]">
+            Sessão do Colaborador 1 já autorizada — não é necessário voltar a digitar o código.
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 sm:col-span-2">
           <Button type="button" variant="secondary" onClick={onCancel}>
@@ -504,11 +550,26 @@ function Alunos() {
         <select
           className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
           value={grupo}
-          onChange={(e) => setGrupo(e.target.value)}
+          onChange={(e) => {
+            setGrupo(e.target.value);
+            setTurmaFiltro("todas");
+          }}
         >
           {grupos.map((g) => (
             <option key={g} value={g}>
               {g === "todos" ? "Todos os grupos" : g}
+            </option>
+          ))}
+        </select>
+        <select
+          className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+          value={turmaFiltro}
+          onChange={(e) => setTurmaFiltro(e.target.value)}
+          aria-label="Filtrar por classe"
+        >
+          {turmasDisponiveis.map((t) => (
+            <option key={t} value={t}>
+              {t === "todas" ? "Todas as classes" : t}
             </option>
           ))}
         </select>
@@ -517,6 +578,21 @@ function Alunos() {
       <p className="mb-2 text-sm text-[var(--color-muted)]">
         {filtered.length} alunos · Total liquidado {formatKz(total)} · {escola.ano}
       </p>
+
+      {/* Cabeçalho de impressão com logotipo */}
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
+        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
+        <div>
+          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+            {escola.nome}
+          </p>
+          <p className="font-display text-lg leading-tight">Matrículas · lista por classes</p>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
+            {turmaFiltro !== "todas" ? ` · ${turmaFiltro}` : grupo !== "todos" ? ` · ${grupo}` : ""}
+          </p>
+        </div>
+      </header>
 
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[900px] text-sm">
@@ -528,12 +604,13 @@ function Alunos() {
               <th className="px-3 py-2 text-left">Data</th>
               <th className="px-3 py-2 text-right">Líquido</th>
               <th className="px-3 py-2 text-left">Seguro</th>
+              <th className="px-3 py-2 text-left">Pagamento</th>
               <th className="px-3 py-2 text-left">Recibo</th>
               <th className="no-print px-3 py-2 text-right"> </th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((a) => (
+            {filteredByClass.map((a) => (
               <tr key={a.id} className="border-t border-[var(--color-line)]">
                 <td className="px-3 py-2 font-mono text-xs">{a.id}</td>
                 <td className="px-3 py-2">
@@ -558,6 +635,7 @@ function Alunos() {
                     formatKz(a.seguro)
                   )}
                 </td>
+                <td className="px-3 py-2 text-xs">{a.metodoPagamento || "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{a.recibo}</td>
                 <td className="no-print px-3 py-2 text-right">
                   {canEdit ? (

@@ -18,7 +18,11 @@ import {
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { getSeed, useFinance } from "@/lib/store";
-import { clearOperatorSession, isCollaborator1 } from "@/lib/can-edit";
+import {
+  clearOperatorSession,
+  isCollaborator1,
+  switchOperatorSession,
+} from "@/lib/can-edit";
 
 const NAV = [
   { to: "/", label: "Quadro", icon: LayoutDashboard },
@@ -83,7 +87,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <select
               className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
               value={activeOperator}
-              onChange={(e) => setActiveOperator(e.target.value)}
+              onChange={(e) => {
+                const name = e.target.value;
+                switchOperatorSession(name, operators);
+                setActiveOperator(name);
+              }}
               aria-label="Colaborador ativo"
             >
               {operators.map((name) => (
@@ -148,7 +156,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <select
               className="h-8 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
               value={activeOperator}
-              onChange={(e) => setActiveOperator(e.target.value)}
+              onChange={(e) => {
+                const name = e.target.value;
+                switchOperatorSession(name, operators);
+                setActiveOperator(name);
+              }}
               aria-label="Colaborador ativo"
             >
               {operators.map((name) => (

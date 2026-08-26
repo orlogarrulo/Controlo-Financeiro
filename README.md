@@ -36,7 +36,10 @@ No Vercel: importar o repo (framework Vite, `npm run build`, output `dist`). Exi
 
 ## Funcionalidades recentes
 
-- **Gate de colaborador** + PIN só para Colaborador 1
+- **Gate de colaborador** + PIN só para Colaborador 1 (sessão mantida ao trocar de membro e voltar)
+- **Matrículas**: método de pagamento (Dinheiro / Cartão Multicaixa / Transferência), filtro por classe, impressão com logotipo
+- **Quadro**: valores sempre com casas decimais; logotipo da capa de impressão 3× maior; sem botão «Nova despesa»
+- **Salários**: adicionar funcionários e editar todos os registos (Colaborador 1)
 - **Logotipo oficial** no login, barra e **recibos impressos**
 - **Recibos**: 1 ou 2 por folha A4 (dois A5), para poupar papel
 - **Import/export CSV** (Google Sheets + Forms / extrato BAI) com reconciliação

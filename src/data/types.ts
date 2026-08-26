@@ -114,6 +114,8 @@ export type Aluno = {
   obs: string;
   propina: number;
   statusPag: "pago" | "registado" | "pendente";
+  /** Método de pagamento da inscrição / liquidação. */
+  metodoPagamento?: string;
   criadoPor?: string;
   createdAt?: string;
   editadoPor?: string;

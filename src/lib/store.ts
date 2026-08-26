@@ -69,6 +69,10 @@ type ExtraState = {
   auditLog: { at: string; by: string; action: string; detail: string }[];
   /** Entradas e saídas de sessão dos colaboradores. */
   sessionLog: { at: string; by: string; action: "entrada" | "saida"; detail: string }[];
+  /** Funcionários / folhas de salário adicionados na app. */
+  salariosExtra: Salario[];
+  /** Sobrescritas de salários do seed (por id). */
+  salariosOverrides: Record<string, Partial<Salario>>;
 };
 
 type Store = ExtraState & {
@@ -89,6 +93,8 @@ type Store = ExtraState & {
   removeFundoPagamento: (id: string) => void;
   importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
   importLancamentos: (rows: CapturaInput[]) => number;
+  addSalario: (s: Salario) => void;
+  updateSalario: (id: string, patch: Partial<Salario>) => void;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -108,6 +114,8 @@ export const useFinance = create<Store>()(
       operators: [...DEFAULT_OPERATORS],
       auditLog: [],
       sessionLog: [],
+      salariosExtra: [],
+      salariosOverrides: {},
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
         const ops = [...get().operators];
@@ -290,6 +298,36 @@ export const useFinance = create<Store>()(
         get().pushAudit("import_lancamentos", `${n} lançamentos CSV`);
         return n;
       },
+      addSalario: (s) => {
+        const by = get().activeOperator || "—";
+        const row = { ...s };
+        set({ salariosExtra: [...get().salariosExtra, row] });
+        get().pushAudit("criar_salario", `${row.id} · ${row.nome} · ${row.mes}`);
+      },
+      updateSalario: (id, patch) => {
+        const ops = get().operators;
+        const by = get().activeOperator || "—";
+        if (by !== ops[0]) {
+          throw new Error("Apenas o Colaborador 1 pode editar salários.");
+        }
+        const inExtra = get().salariosExtra.some((r) => r.id === id);
+        if (inExtra) {
+          set({
+            salariosExtra: get().salariosExtra.map((r) =>
+              r.id === id ? { ...r, ...patch } : r,
+            ),
+          });
+        } else {
+          const prev = get().salariosOverrides[id] ?? {};
+          set({
+            salariosOverrides: {
+              ...get().salariosOverrides,
+              [id]: { ...prev, ...patch },
+            },
+          });
+        }
+        get().pushAudit("editar_salario", `${id} · ${Object.keys(patch).join(", ")}`);
+      },
       resetLocal: () =>
         set({
           extras: [],
@@ -302,6 +340,8 @@ export const useFinance = create<Store>()(
           fotos: {},
           auditLog: [],
           sessionLog: [],
+          salariosExtra: [],
+          salariosOverrides: {},
         }),
     }),
     {
@@ -321,6 +361,8 @@ export const useFinance = create<Store>()(
         operators: s.operators,
         auditLog: s.auditLog,
         sessionLog: s.sessionLog,
+        salariosExtra: s.salariosExtra,
+        salariosOverrides: s.salariosOverrides,
       }),
     },
   ),
@@ -533,8 +575,16 @@ export function alunosAll(
   return [...seed.alunos.map(apply), ...alunosExtra.map(apply)];
 }
 
-export function salariosAll(): Salario[] {
-  return seed.salarios;
+export function salariosAll(
+  extra: Salario[] = [],
+  overrides: Record<string, Partial<Salario>> = {},
+): Salario[] {
+  const fromSeed = seed.salarios.map((s) => {
+    const o = overrides[s.id];
+    return o ? { ...s, ...o } : s;
+  });
+  const extraIds = new Set(extra.map((s) => s.id));
+  return [...fromSeed.filter((s) => !extraIds.has(s.id)), ...extra];
 }
 
 export function movimentosAll(extra: MovimentoBai[] = [], override = false): MovimentoBai[] {

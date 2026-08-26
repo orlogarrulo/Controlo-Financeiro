@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Camera, AlertTriangle, ArrowUpRight, Printer } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { AlertTriangle, ArrowUpRight, Printer } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -52,7 +52,14 @@ function Dashboard() {
     <div>
       {/* —— CAPA DE IMPRESSÃO —— */}
       <section className="print-only print-cover hidden print:flex print:min-h-[260mm] print:flex-col print:items-center print:justify-center print:break-after-page">
-        <img src="/logo-escola.jpg" alt="" className="mb-6 h-28 w-28 object-contain" width={112} height={112} />
+        <img
+          src="/logo-escola.jpg"
+          alt=""
+          className="mb-6 h-84 w-84 object-contain"
+          style={{ width: 336, height: 336 }}
+          width={336}
+          height={336}
+        />
         <p className="text-[11px] font-medium tracking-[0.2em] text-[var(--color-forest)] uppercase">
           {escola.nome}
         </p>
@@ -84,11 +91,6 @@ function Dashboard() {
               <Button variant="secondary" onClick={() => window.print()}>
                 <Printer className="mr-1 size-4" /> Imprimir
               </Button>
-              <Button asChild>
-                <Link to="/capturar">
-                  <Camera /> Nova despesa
-                </Link>
-              </Button>
             </div>
           }
         />
@@ -110,21 +112,20 @@ function Dashboard() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 print-sheet">
         <Kpi label="Alunos inscritos" value={String(t.alunos)} />
-        <Kpi label="Proveitos" value={t.proveitos} compact tone="forest" />
-        <Kpi label="Custos" value={t.custosTotais} compact />
+        <Kpi label="Proveitos" value={t.proveitos} tone="forest" />
+        <Kpi label="Custos" value={t.custosTotais} />
         <Kpi
           label="Resultado líquido"
           value={t.resultado}
-          compact
           tone={t.resultado < 0 ? "clay" : "forest"}
         />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 print-sheet">
-        <Kpi label="A reembolsar ao sócio" value={t.socioEntradas} compact tone="amber" />
-        <Kpi label="Saldo cartão BAI" value={t.saldoBai} compact tone="forest" />
-        <Kpi label="Fundo de maneio" value={t.fundoRestante} compact />
-        <Kpi label="Propinas recebidas" value={t.propinasRecebidas} compact />
+        <Kpi label="A reembolsar ao sócio" value={t.socioEntradas} tone="amber" />
+        <Kpi label="Saldo cartão BAI" value={t.saldoBai} tone="forest" />
+        <Kpi label="Fundo de maneio" value={t.fundoRestante} />
+        <Kpi label="Propinas recebidas" value={t.propinasRecebidas} />
       </div>
 
       {/* Pontos a tratar: só no ecrã, nunca na impressão */}

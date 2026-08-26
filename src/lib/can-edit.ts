@@ -30,6 +30,27 @@ export function writeSession(s: OperatorSession | null) {
   else localStorage.setItem(SESSION_KEY, JSON.stringify(s));
 }
 
+/** True se o Colaborador 1 já desbloqueou com PIN nesta sessão do browser. */
+export function isAdminUnlocked(): boolean {
+  const s = readSession();
+  return Boolean(s?.adminUnlocked);
+}
+
+/**
+ * Troca o colaborador ativo sem forçar novo login.
+ * Se voltar ao Colaborador 1 e a sessão já tinha sido desbloqueada, mantém adminUnlocked.
+ */
+export function switchOperatorSession(name: string, operators: string[]) {
+  const prev = readSession();
+  const isFirst = isCollaborator1(name, operators);
+  const s: OperatorSession = {
+    name,
+    adminUnlocked: isFirst ? Boolean(prev?.adminUnlocked) : false,
+    at: new Date().toISOString(),
+  };
+  writeSession(s);
+}
+
 export function clearOperatorSession() {
   writeSession(null);
   if (typeof window !== "undefined") {
