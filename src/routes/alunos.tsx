@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import {createFileRoute, useNavigate} from "@tanstack/react-router";
+// navigate used to clear deep-link search
 import { Pencil, Printer, Plus, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -204,6 +205,13 @@ function Alunos() {
   const escola = getSeed().escola;
   const printRef = useRef<HTMLDivElement>(null);
   const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  function clearDeepLink() {
+    if (search.edit || search.focus) {
+      void navigate({ search: { edit: undefined, focus: undefined }, replace: true });
+    }
+  }
+
 
   const [q, setQ] = useState("");
   const [grupo, setGrupo] = useState("todos");
@@ -278,22 +286,23 @@ function Alunos() {
     });
   }
 
-  // Deep-link desde Pendências: ?edit=ID&focus=campo
+  // Deep-link desde Pendências: ?edit=ID&focus=campo (só uma vez; limpa a URL)
   useEffect(() => {
     if (!search.edit) return;
     const a = alunos.find((x) => x.id === search.edit);
     if (!a) return;
-    if (editing?.id === a.id) return;
     openEdit(a);
     const focus = search.focus;
-    if (focus) {
-      window.setTimeout(() => {
+    window.setTimeout(() => {
+      if (focus) {
         const el = document.querySelector<HTMLElement>(`[data-focus="${focus}"]`);
         el?.focus();
         el?.scrollIntoView({ block: "center", behavior: "smooth" });
-      }, 250);
-    }
-  }, [search.edit, search.focus, alunos]);
+      }
+      clearDeepLink();
+    }, 250);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.edit]);
 
   function saveNew() {
     if (!canEdit) return;
@@ -382,6 +391,8 @@ function Alunos() {
       });
       toast.success(`Aluno ${editing.id} actualizado`);
       setEditing(null);
+      clearDeepLink();
+      clearDeepLink();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
     }
@@ -777,12 +788,12 @@ function Alunos() {
       </Dialog>
 
       {/* Editar */}
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); clearDeepLink(); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Editar {editing?.id}</DialogTitle>
           </DialogHeader>
-          <MatriculaForm onSave={saveEdit} onCancel={() => setEditing(null)} />
+          <MatriculaForm onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
         </DialogContent>
       </Dialog>
     </div>

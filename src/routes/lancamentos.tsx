@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import {createFileRoute, Link, useNavigate} from "@tanstack/react-router";
+// navigate used to clear deep-link search
 import { Download, Pencil, Search, Trash2, Printer } from "lucide-react";
 import { useMemo, useRef, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -44,6 +45,13 @@ const ORIGEM_LABEL: Record<string, string> = {
 
 function Lancamentos() {
   const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  function clearDeepLink() {
+    if (search.edit || search.focus) {
+      void navigate({ search: { edit: undefined, focus: undefined }, replace: true });
+    }
+  }
+
   const extras = useFinance((s) => s.extras);
   const remove = useFinance((s) => s.removeExtra);
   const update = useFinance((s) => s.updateExtra);
@@ -67,14 +75,15 @@ function Lancamentos() {
     if (!search.edit) return;
     const row = rows.find((x) => x.id === search.edit || x.docInterno === search.edit);
     if (!row) return;
-    if (editing?.id === row.id) return;
     setEditing(row);
-    if (search.focus) {
-      window.setTimeout(() => {
+    window.setTimeout(() => {
+      if (search.focus) {
         document.querySelector<HTMLElement>(`[data-focus="${search.focus}"]`)?.focus();
-      }, 250);
-    }
-  }, [search.edit, search.focus, rows]);
+      }
+      clearDeepLink();
+    }, 250);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.edit]);
 
 
   const filtered = rows.filter((r) => {
@@ -104,6 +113,7 @@ function Lancamentos() {
       toast.message("Linha do seed: altere via Nova despesa ou importe CSV. Valores de arranque são fixos no seed.");
     }
     setEditing(null);
+    clearDeepLink();
   }
 
   const total = filtered.reduce((s, r) => s + r.valor, 0);
@@ -229,7 +239,7 @@ function Lancamentos() {
         </table>
       </div>
 
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); clearDeepLink(); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Editar {editing?.docInterno}</DialogTitle>
@@ -267,7 +277,7 @@ function Lancamentos() {
                 <Input value={editing.fatura} onChange={(e) => setEditing({ ...editing, fatura: e.target.value })} />
               </div>
               <div className="flex justify-end gap-2 sm:col-span-2">
-                <Button variant="secondary" onClick={() => setEditing(null)}>
+                <Button variant="secondary" onClick={() => { setEditing(null); clearDeepLink(); }}>
                   Cancelar
                 </Button>
                 <Button onClick={saveEdit}>Guardar</Button>

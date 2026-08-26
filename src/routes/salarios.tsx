@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import {createFileRoute, useNavigate} from "@tanstack/react-router";
+// navigate used to clear deep-link search
 import { Pencil, Plus, UserPlus } from "lucide-react";
 import { useRef, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -50,6 +51,13 @@ function emptyForm(): FormState {
 function Salarios() {
   const printRef = useRef<HTMLDivElement>(null);
   const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  function clearDeepLink() {
+    if (search.edit || search.focus) {
+      void navigate({ search: { edit: undefined, focus: undefined }, replace: true });
+    }
+  }
+
   const salariosExtra = useFinance((s) => s.salariosExtra ?? []);
   const salariosOverrides = useFinance((s) => s.salariosOverrides ?? {});
   const addSalario = useFinance((s) => s.addSalario);
@@ -103,14 +111,15 @@ function Salarios() {
     if (!search.edit) return;
     const r = rows.find((x) => x.id === search.edit);
     if (!r) return;
-    if (editing?.id === r.id) return;
     openEdit(r);
-    if (search.focus) {
-      window.setTimeout(() => {
+    window.setTimeout(() => {
+      if (search.focus) {
         document.querySelector<HTMLElement>(`[data-focus="${search.focus}"]`)?.focus();
-      }, 250);
-    }
-  }, [search.edit, search.focus, rows]);
+      }
+      clearDeepLink();
+    }, 250);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.edit]);
 
 
   function nextId(): string {
@@ -172,6 +181,7 @@ function Salarios() {
       });
       toast.success(`Salário ${editing.id} actualizado`);
       setEditing(null);
+      clearDeepLink();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
     }
@@ -371,12 +381,12 @@ function Salarios() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); clearDeepLink(); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Editar {editing?.id}</DialogTitle>
           </DialogHeader>
-          <FormFields onSave={saveEdit} onCancel={() => setEditing(null)} />
+          <FormFields onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
         </DialogContent>
       </Dialog>
     </div>
