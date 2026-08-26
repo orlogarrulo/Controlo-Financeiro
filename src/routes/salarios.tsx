@@ -305,6 +305,7 @@ function Salarios() {
         }
       />
 
+      <div ref={printRef}>
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
         <img src="/logo-escola.jpg" alt="" className="h-12 w-12 object-contain" width={48} height={48} />
         <div>
@@ -318,7 +319,7 @@ function Salarios() {
         </div>
       </header>
 
-      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[800px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>

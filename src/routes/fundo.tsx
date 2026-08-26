@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { fundoAtmAll, fundoPagAll, useFinance } from "@/lib/store";
+import {fundoAtmAll, fundoPagAll, useFinance, getSeed} from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { isCollaborator1 } from "@/lib/can-edit";
 import type { FundoPagamento } from "@/data/types";
@@ -37,6 +37,7 @@ function Fundo() {
     }, 200);
   }, [search.edit, search.focus]);
   const printRef = useRef<HTMLDivElement>(null);
+  const escola = getSeed().escola;
   const extra = useFinance((s) => s.fundoExtra);
   const add = useFinance((s) => s.addFundoPagamento);
   const update = useFinance((s) => s.updateFundoPagamento);
@@ -150,7 +151,20 @@ function Fundo() {
       </div>
 
       <h2 className="font-display mb-2 text-xl">Pagamentos em dinheiro</h2>
-      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div ref={printRef}>
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
+        <img src="/logo-escola.jpg" alt="" className="h-14 w-14 object-contain" width={56} height={56} />
+        <div>
+          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+            {escola.nomeCurto}
+          </p>
+          <p className="font-display text-lg leading-tight">Fundo de maneio</p>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
+          </p>
+        </div>
+      </header>
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[700px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] text-[var(--color-muted)] uppercase">
             <tr>
@@ -181,6 +195,7 @@ function Fundo() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
 
       <Dialog open={creating} onOpenChange={setCreating}>

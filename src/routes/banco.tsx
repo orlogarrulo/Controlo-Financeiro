@@ -85,7 +85,20 @@ function Banco() {
       </div>
 
       <h2 className="font-display mb-2 text-xl">Extrato</h2>
-      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div ref={printRef}>
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
+        <img src="/logo-escola.jpg" alt="" className="h-14 w-14 object-contain" width={56} height={56} />
+        <div>
+          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+            {escola.nomeCurto}
+          </p>
+          <p className="font-display text-lg leading-tight">Cartão Multicaixa BAI</p>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
+          </p>
+        </div>
+      </header>
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
@@ -125,6 +138,7 @@ function Banco() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
       <p className="mt-3">
         <Badge variant="outline">CX-001 = FAT-050</Badge>

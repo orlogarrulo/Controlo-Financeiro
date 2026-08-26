@@ -75,6 +75,19 @@ const STAGE_CSS = `
   [data-pdf-stage] .no-print { display: none !important; }
   [data-pdf-stage] nav, [data-pdf-stage] aside { display: none !important; }
   [data-pdf-stage] .print-only { display: block !important; visibility: visible !important; }
+  [data-pdf-stage] header.print-only {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    margin-bottom: 12px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid #333 !important;
+  }
+  [data-pdf-stage] header.print-only img {
+    width: 56px !important;
+    height: 56px !important;
+    object-fit: contain !important;
+  }
   [data-pdf-stage] .print-only.hidden { display: block !important; }
   [data-pdf-stage] .print-cover,
   [data-pdf-stage] .print-only.print-cover {
@@ -124,6 +137,10 @@ const STAGE_CSS = `
   }
   /* Gráficos no PDF: limitar altura */
   [data-pdf-stage] .recharts-responsive-container,
+  [data-pdf-stage] .print-sheet table { font-size: 9px !important; }
+  [data-pdf-stage] .print-sheet th,
+  [data-pdf-stage] .print-sheet td { padding: 2px 4px !important; }
+  [data-pdf-stage] .print-sheet { margin-bottom: 6px !important; }
   [data-pdf-stage] .recharts-wrapper {
     max-height: 220px !important;
   }
@@ -311,15 +328,15 @@ export async function elementToPdfBlob(
       stage.appendChild(clone);
       await waitImages(stage);
       // Quadro com gráficos: scale um pouco menor = ficheiro mais leve (partilha WhatsApp)
-      const scale = coverNodes.length > 0 ? 1.35 : 1.6;
+      const scale = coverNodes.length > 0 ? 1.25 : 1.55;
       const canvas = await capture(stage, html2canvas, scale);
 
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 8;
+      const margin = coverNodes.length > 0 ? 6 : 8;
       const contentW = pageW - margin * 2;
       const contentH = pageH - margin * 2;
-      const pxPerPage = (contentH * canvas.width) / contentW;
+      const pxPerPage = ((contentH * canvas.width) / contentW) * (coverNodes.length > 0 ? 1.02 : 1);
       const pageCanvas = document.createElement("canvas");
       const ctx = pageCanvas.getContext("2d");
       if (!ctx) throw new Error("Canvas indisponível");

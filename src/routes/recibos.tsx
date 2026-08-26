@@ -362,9 +362,9 @@ function ReciboInscricao({
       {aluno.transferidoCampusCidade ? (
         <p className="mt-2 rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-[11px] leading-snug text-[var(--color-ink)]">
           <strong>Excepção ano lectivo {anoLectivo(escola.ano)}:</strong> aluno transferido do
-          Campus Cidade. Inscrição e seguro conforme tarifário especial; propina mensal mantida em{" "}
-          <strong>{formatKz(aluno.propina || 50000)}</strong> (valor da outra filial), apenas neste
-          ano lectivo.
+          Campus Cidade. Inscrição e seguro no tarifário normal; propina mensal{" "}
+          <strong>{formatKz(aluno.propina || 100000)}</strong> (100.000 Kz para 1 aluno ou 75.000 Kz
+          para 2+ irmãos do mesmo agregado), apenas neste ano lectivo.
         </p>
       ) : null}
       <table className="mt-3 w-full text-sm">

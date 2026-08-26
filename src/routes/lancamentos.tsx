@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { buildLedger, useFinance } from "@/lib/store";
+import {buildLedger, useFinance, getSeed} from "@/lib/store";
 import { downloadCsv, ledgerToCsv } from "@/lib/csv";
 import { formatDate, formatKz } from "@/lib/format";
 import type { Lancamento, Origem } from "@/data/types";
@@ -58,6 +58,7 @@ function Lancamentos() {
   const operators = useFinance((s) => s.operators);
   const activeOperator = useFinance((s) => s.activeOperator);
   const printRef = useRef<HTMLDivElement>(null);
+  const escola = getSeed().escola;
   const canEdit = isCollaborator1(activeOperator, operators);
   // Só despesas operacionais (sem matrículas/propinas do seed inscrição)
   const rows = useMemo(
@@ -176,7 +177,20 @@ function Lancamentos() {
         {filtered.length} despesas · Total {formatKz(total)}
       </p>
 
-      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div ref={printRef}>
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
+        <img src="/logo-escola.jpg" alt="" className="h-14 w-14 object-contain" width={56} height={56} />
+        <div>
+          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+            {escola.nomeCurto}
+          </p>
+          <p className="font-display text-lg leading-tight">Despesas · lançamentos</p>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
+          </p>
+        </div>
+      </header>
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[800px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] text-[var(--color-muted)] uppercase">
             <tr>
@@ -237,6 +251,7 @@ function Lancamentos() {
             })}
           </tbody>
         </table>
+      </div>
       </div>
 
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); clearDeepLink(); } }}>

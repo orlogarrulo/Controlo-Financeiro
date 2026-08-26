@@ -46,11 +46,12 @@ const DEFAULT_INSCRICAO = 150000;
 const DEFAULT_SEGURO_ESCOLA = 30000;
 
 /** Tarifário especial — transferidos do Campus Cidade (só 2026-2027). */
-const CAMPUS_CIDADE_INSCRICAO = 50000;
+const CAMPUS_CIDADE_INSCRICAO = 150000;
 const CAMPUS_CIDADE_SEGURO = 30000;
-const CAMPUS_CIDADE_PROPINA = 50000;
+const CAMPUS_CIDADE_PROPINA_1 = 100000;
+const CAMPUS_CIDADE_PROPINA_IRMAOS = 75000;
 const CAMPUS_CIDADE_NOTA =
-  "Transferido do Campus Cidade · propina mantida 50.000 Kz (ano lectivo 2026-2027)";
+  "Transferido do Campus Cidade · inscrição/seguro tarifário normal · propina 100.000 Kz (1 aluno) ou 75.000 Kz (2+ irmãos do mesmo agregado) · 2026-2027";
 
 const METODOS_PAGAMENTO = [
   "Dinheiro",
@@ -68,6 +69,8 @@ type FormState = {
   seguro: string;
   seguroExterno: boolean;
   transferidoCampusCidade: boolean;
+  /** 2+ irmãos no mesmo agregado (propina 75.000). */
+  agregadoIrmaos: boolean;
   manuais: string;
   uniforme: string;
   extras: string;
@@ -94,6 +97,7 @@ function emptyForm(): FormState {
     seguro: String(DEFAULT_SEGURO_ESCOLA),
     seguroExterno: false,
     transferidoCampusCidade: false,
+    agregadoIrmaos: false,
     manuais: "0",
     uniforme: "0",
     extras: "0",
@@ -270,6 +274,9 @@ function Alunos() {
       seguro: String(a.seguro === 0 ? DEFAULT_SEGURO_ESCOLA : a.seguro ?? DEFAULT_SEGURO_ESCOLA),
       seguroExterno: (a.seguro ?? 0) === 0,
       transferidoCampusCidade: Boolean(a.transferidoCampusCidade),
+      agregadoIrmaos: Boolean(
+        a.transferidoCampusCidade && (a.propina === CAMPUS_CIDADE_PROPINA_IRMAOS || (a.obs || "").includes("75.000")),
+      ),
       manuais: String(a.manuais ?? 0),
       uniforme: String(a.uniforme ?? 0),
       extras: String(a.extras ?? 0),
@@ -491,14 +498,16 @@ function Alunos() {
                     ...form,
                     transferidoCampusCidade: true,
                     seguroExterno: false,
+                    agregadoIrmaos: false,
                     inscricao: String(CAMPUS_CIDADE_INSCRICAO),
                     seguro: String(CAMPUS_CIDADE_SEGURO),
-                    propina: String(CAMPUS_CIDADE_PROPINA),
+                    propina: String(CAMPUS_CIDADE_PROPINA_1),
                   });
                 } else {
                   setForm({
                     ...form,
                     transferidoCampusCidade: false,
+                    agregadoIrmaos: false,
                     inscricao: String(DEFAULT_INSCRICAO),
                     seguro: form.seguroExterno ? "0" : String(DEFAULT_SEGURO_ESCOLA),
                     propina: "0",
@@ -509,14 +518,48 @@ function Alunos() {
             <span>
               <strong>Transferido do Campus Cidade</strong>
               <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-                Ao marcar, preenche automaticamente inscrição {formatKz(CAMPUS_CIDADE_INSCRICAO)},
-                seguro {formatKz(CAMPUS_CIDADE_SEGURO)} e propina mensal{" "}
-                {formatKz(CAMPUS_CIDADE_PROPINA)} (tarifário da outra filial, ano 2026-2027).{" "}
-                <strong className="text-[var(--color-ink)]">Pode editar estes valores</strong> nos
-                campos abaixo, se necessário.
+                Inscrição e seguro iguais aos restantes alunos ({formatKz(CAMPUS_CIDADE_INSCRICAO)} +{" "}
+                {formatKz(CAMPUS_CIDADE_SEGURO)}). Propina mensal:{" "}
+                <strong>{formatKz(CAMPUS_CIDADE_PROPINA_1)}</strong> (1 aluno) ou{" "}
+                <strong>{formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}</strong> (2 ou mais irmãos do mesmo
+                agregado). Pode editar os valores nos campos abaixo.
               </span>
             </span>
           </label>
+          {form.transferidoCampusCidade ? (
+            <div className="mt-3 flex flex-wrap gap-4 border-t border-[var(--color-line)] pt-3 text-xs">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="agregadoCampus"
+                  checked={!form.agregadoIrmaos}
+                  onChange={() =>
+                    setForm({
+                      ...form,
+                      agregadoIrmaos: false,
+                      propina: String(CAMPUS_CIDADE_PROPINA_1),
+                    })
+                  }
+                />
+                1 aluno no agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_1)}
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="agregadoCampus"
+                  checked={form.agregadoIrmaos}
+                  onChange={() =>
+                    setForm({
+                      ...form,
+                      agregadoIrmaos: true,
+                      propina: String(CAMPUS_CIDADE_PROPINA_IRMAOS),
+                    })
+                  }
+                />
+                2+ irmãos no mesmo agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
+              </label>
+            </div>
+          ) : null}
         </div>
 
         <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
@@ -590,7 +633,7 @@ function Alunos() {
             Total a pagar: {formatKz(totais.liquido)}
             {form.seguroExterno ? " (sem seguro da escola)" : ""}
             {form.transferidoCampusCidade
-              ? ` · propina mensal ref. ${formatKz(CAMPUS_CIDADE_PROPINA)} (Campus Cidade)`
+              ? ` · propina mensal ref. ${formatKz(form.agregadoIrmaos ? CAMPUS_CIDADE_PROPINA_IRMAOS : CAMPUS_CIDADE_PROPINA_1)} (Campus Cidade)`
               : ""}
           </p>
         </div>
@@ -696,6 +739,7 @@ function Alunos() {
         {filtered.length} alunos · Total liquidado {formatKz(total)} · {escola.ano}
       </p>
 
+      <div ref={printRef}>
       {/* Cabeçalho de impressão com logotipo */}
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
         <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
@@ -711,7 +755,7 @@ function Alunos() {
         </div>
       </header>
 
-      <div ref={printRef} className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
@@ -770,6 +814,7 @@ function Alunos() {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Nova matrícula */}

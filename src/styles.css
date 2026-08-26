@@ -335,3 +335,64 @@ html.pdf-export [data-pdf-root="1"] {
   padding: 10mm !important;
   box-sizing: border-box !important;
 }
+
+
+/* ——— Mobile UX ——— */
+@media (max-width: 1023px) {
+  /* Evitar zoom iOS em inputs */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Botões e campos mais fáceis de tocar */
+  button,
+  [role="button"],
+  a.inline-flex {
+    min-height: 2.5rem;
+  }
+
+  /* Tabelas: scroll horizontal claro */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .overflow-x-auto table {
+    font-size: 13px;
+  }
+
+  .overflow-x-auto th,
+  .overflow-x-auto td {
+    padding: 0.5rem 0.6rem !important;
+    white-space: nowrap;
+  }
+
+  /* Cards / diálogos */
+  [data-slot="dialog-content"],
+  [role="dialog"] {
+    max-height: min(92dvh, 920px) !important;
+    width: calc(100vw - 1rem) !important;
+    max-width: calc(100vw - 1rem) !important;
+    margin: 0.5rem !important;
+    border-radius: 1rem !important;
+  }
+
+  /* Print actions em coluna no telemóvel */
+  .no-print.flex.flex-wrap.gap-2 {
+    width: 100%;
+  }
+  .no-print.flex.flex-wrap.gap-2 > button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Filtros em coluna */
+  .mobile-main .flex.flex-wrap.gap-2 {
+    gap: 0.5rem;
+  }
+}
