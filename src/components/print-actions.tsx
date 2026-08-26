@@ -17,6 +17,7 @@ export function PrintActions({
   shareText,
   printLabel = "Imprimir",
   pdfLabel,
+  landscape = false,
 }: {
   targetRef: RefObject<HTMLElement | null>;
   filename: string;
@@ -24,6 +25,8 @@ export function PrintActions({
   shareText?: string;
   printLabel?: string;
   pdfLabel?: string;
+  /** PDF em A4 horizontal (tabelas largas: BAI, Fundo) */
+  landscape?: boolean;
 }) {
   const mobile = typeof navigator !== "undefined" ? isMobileDevice() : false;
   const label = pdfLabel ?? (mobile ? "Preparar PDF" : "Ver / Exportar PDF");
@@ -39,6 +42,7 @@ export function PrintActions({
       const { blob, filename: name } = await elementToPdfBlob(targetRef.current, {
         filename,
         stamp: true,
+        landscape,
       });
 
       if (!isMobileDevice()) {

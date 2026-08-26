@@ -104,6 +104,7 @@ function Fundo() {
             <PrintActions
               targetRef={printRef}
               filename="fundo-maneio.pdf"
+            landscape
               shareTitle="Fundo de maneio · École Consulaire"
               shareText="Documento gerado pela secretaria da École Consulaire."
             />

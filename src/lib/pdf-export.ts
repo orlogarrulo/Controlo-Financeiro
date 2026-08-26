@@ -70,6 +70,9 @@ function wait(ms: number) {
 
 const A4_WIDTH_PX = 794;
 const A4_HEIGHT_PX = 1123;
+/** A4 horizontal ≈ 297mm em px */
+const A4_LANDSCAPE_WIDTH_PX = 1123;
+const A4_LANDSCAPE_HEIGHT_PX = 794;
 
 const STAGE_CSS = `
   [data-pdf-stage] {
@@ -187,6 +190,21 @@ const STAGE_CSS = `
     vertical-align: top;
   }
   [data-pdf-stage] .print-sheet table { font-size: 12px !important; }
+  [data-pdf-landscape] table {
+    font-size: 11px !important;
+    min-width: 0 !important;
+  }
+  [data-pdf-landscape] th,
+  [data-pdf-landscape] td {
+    padding: 5px 6px !important;
+    white-space: nowrap !important;
+  }
+  [data-pdf-landscape] .overflow-x-auto {
+    overflow: visible !important;
+  }
+  [data-pdf-landscape] .print-sheet {
+    overflow: visible !important;
+  }
   [data-pdf-stage] .print-sheet th,
   [data-pdf-stage] .print-sheet td { padding: 6px 8px !important; }
   [data-pdf-stage] img { max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -220,22 +238,24 @@ const STAGE_CSS = `
   }
 `;
 
-function makeStage(): HTMLElement {
+function makeStage(landscape = false): HTMLElement {
   const stage = document.createElement("div");
   stage.setAttribute("data-pdf-stage", "1");
+  if (landscape) stage.setAttribute("data-pdf-landscape", "1");
+  const w = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
   stage.style.cssText = [
     "position:fixed",
     "left:-12000px",
     "top:0",
-    `width:${A4_WIDTH_PX}px`,
+    `width:${w}px`,
     "background:#ffffff",
     "color:#111111",
     "z-index:-1",
     "overflow:visible",
     "box-sizing:border-box",
-    "padding:28px",
-    "font-size:13px",
-    "line-height:1.45",
+    "padding:24px",
+    "font-size:12px",
+    "line-height:1.4",
     "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
   ].join(";");
   const style = document.createElement("style");
@@ -340,15 +360,21 @@ async function waitImages(root: HTMLElement) {
   await wait(60);
 }
 
-async function capture(el: HTMLElement, html2canvas: Html2CanvasFn, scale = 1.5): Promise<HTMLCanvasElement> {
+async function capture(
+  el: HTMLElement,
+  html2canvas: Html2CanvasFn,
+  scale = 1.5,
+  landscape = false,
+): Promise<HTMLCanvasElement> {
+  const w = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
   return html2canvas(el, {
     scale,
     useCORS: true,
     allowTaint: true,
     backgroundColor: "#ffffff",
     logging: false,
-    width: A4_WIDTH_PX,
-    windowWidth: A4_WIDTH_PX,
+    width: w,
+    windowWidth: w,
     scrollX: 0,
     scrollY: 0,
   });
@@ -375,9 +401,10 @@ function addCoverPage(
 
 export async function elementToPdfBlob(
   el: HTMLElement,
-  opts?: { filename?: string; stamp?: boolean },
+  opts?: { filename?: string; stamp?: boolean; landscape?: boolean },
 ): Promise<{ blob: Blob; filename: string }> {
   const { html2canvas, jsPDF } = await ensureLibs();
+  const landscape = Boolean(opts?.landscape);
   const when = agoraPdfLabel();
   const wantStamp = opts?.stamp !== false;
 
@@ -396,11 +423,11 @@ export async function elementToPdfBlob(
     injectStamps(clone, when);
   }
 
-  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  const pdf = new jsPDF({ orientation: landscape ? "l" : "p", unit: "mm", format: "a4" });
   let pageCount = 0;
 
   for (const cover of coverNodes) {
-    const stage = makeStage();
+    const stage = makeStage(landscape);
     try {
       const wrap = document.createElement("div");
       wrap.style.width = "100%";
@@ -409,7 +436,7 @@ export async function elementToPdfBlob(
       wrap.appendChild(cover);
       stage.appendChild(wrap);
       await waitImages(stage);
-      const canvas = await capture(stage, html2canvas, 1.5);
+      const canvas = await capture(stage, html2canvas, 1.5, landscape);
       addCoverPage(pdf, canvas, pageCount === 0);
       pageCount++;
     } finally {
@@ -422,13 +449,12 @@ export async function elementToPdfBlob(
     !!clone.querySelector("table, img, .print-sheet, .print-a4-page, article");
 
   if (hasBody) {
-    const stage = makeStage();
+    const stage = makeStage(landscape);
     try {
       stage.appendChild(clone);
       await waitImages(stage);
-      // Quadro com gráficos: scale um pouco menor = ficheiro mais leve (partilha WhatsApp)
-      const scale = coverNodes.length > 0 ? 1.25 : 1.55;
-      const canvas = await capture(stage, html2canvas, scale);
+      const scale = landscape ? 1.4 : coverNodes.length > 0 ? 1.25 : 1.55;
+      const canvas = await capture(stage, html2canvas, scale, landscape);
 
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
@@ -465,11 +491,11 @@ export async function elementToPdfBlob(
       stage.remove();
     }
   } else if (pageCount === 0) {
-    const stage = makeStage();
+    const stage = makeStage(landscape);
     try {
       stage.appendChild(clone);
       await waitImages(stage);
-      const canvas = await capture(stage, html2canvas);
+      const canvas = await capture(stage, html2canvas, 1.5, landscape);
       addCoverPage(pdf, canvas, true);
     } finally {
       stage.remove();

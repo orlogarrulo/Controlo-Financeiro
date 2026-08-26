@@ -42,6 +42,7 @@ function Banco() {
           <PrintActions
             targetRef={printRef}
             filename="extrato-bai.pdf"
+            landscape
             shareTitle="Extrato BAI · École Consulaire"
             shareText="Documento gerado pela secretaria da École Consulaire."
             printLabel="Imprimir extrato"
