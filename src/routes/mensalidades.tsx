@@ -28,6 +28,7 @@ function Mensalidades() {
           <PrintActions
             targetRef={printRef}
             filename="propinas.pdf"
+            landscape
             shareTitle="Propinas · École Consulaire"
             shareText="Documento gerado pela secretaria da École Consulaire."
           />

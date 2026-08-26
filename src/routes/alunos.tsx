@@ -694,6 +694,7 @@ function Alunos() {
             <PrintActions
               targetRef={printRef}
               filename="matriculas.pdf"
+              landscape
               shareTitle="Matrículas · École Consulaire"
               shareText="Documento gerado pela secretaria da École Consulaire."
             />

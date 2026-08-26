@@ -130,6 +130,7 @@ function Lancamentos() {
             <PrintActions
               targetRef={printRef}
               filename="lancamentos.pdf"
+              landscape
               shareTitle="Lançamentos · École Consulaire"
               shareText="Documento gerado pela secretaria da École Consulaire."
             />
