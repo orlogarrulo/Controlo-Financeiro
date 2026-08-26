@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Download, Pencil, Search, Trash2, Printer } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { PrintActions } from "@/components/print-actions";
@@ -15,7 +15,13 @@ import { formatDate, formatKz } from "@/lib/format";
 import type { Lancamento, Origem } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
 
-export const Route = createFileRoute("/lancamentos")({ component: Lancamentos });
+export const Route = createFileRoute("/lancamentos")({
+  component: Lancamentos,
+  validateSearch: (s: Record<string, unknown>) => ({
+    edit: typeof s.edit === "string" ? s.edit : undefined,
+    focus: typeof s.focus === "string" ? s.focus : undefined,
+  }),
+});
 
 const FONTES: { id: Origem | "todas"; label: string }[] = [
   { id: "todas", label: "Todas as fontes" },
@@ -37,6 +43,7 @@ const ORIGEM_LABEL: Record<string, string> = {
 };
 
 function Lancamentos() {
+  const search = Route.useSearch();
   const extras = useFinance((s) => s.extras);
   const remove = useFinance((s) => s.removeExtra);
   const update = useFinance((s) => s.updateExtra);
@@ -55,6 +62,20 @@ function Lancamentos() {
   const [q, setQ] = useState("");
   const [fonte, setFonte] = useState<Origem | "todas">("todas");
   const [editing, setEditing] = useState<Lancamento | null>(null);
+
+  useEffect(() => {
+    if (!search.edit) return;
+    const row = rows.find((x) => x.id === search.edit || x.docInterno === search.edit);
+    if (!row) return;
+    if (editing?.id === row.id) return;
+    setEditing(row);
+    if (search.focus) {
+      window.setTimeout(() => {
+        document.querySelector<HTMLElement>(`[data-focus="${search.focus}"]`)?.focus();
+      }, 250);
+    }
+  }, [search.edit, search.focus, rows]);
+
 
   const filtered = rows.filter((r) => {
     if (fonte !== "todas" && r.origem !== fonte) return false;
@@ -162,7 +183,7 @@ function Lancamentos() {
             {filtered.map((r) => {
               const editable = canEdit && (extras.some((e) => e.id === r.id) || r.fonte?.includes("Formulário"));
               return (
-                <tr key={r.id} className="border-t border-[var(--color-line)]">
+                <tr key={r.id} data-row-id={r.id} className="border-t border-[var(--color-line)]">
                   <td className="px-3 py-2 font-mono text-[11px]">{r.docInterno || r.id}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.data)}</td>
                   <td className="px-3 py-2">
@@ -237,8 +258,8 @@ function Lancamentos() {
               <div className="space-y-1">
                 <Label>Categoria</Label>
                 <Input
-                  value={editing.categoria}
-                  onChange={(e) => setEditing({ ...editing, categoria: e.target.value })}
+                  data-focus="categoria" value={editing.categoria}
+                  data-focus="categoria" onChange={(e) => setEditing({ ...editing, categoria: e.target.value })}
                 />
               </div>
               <div className="space-y-1">

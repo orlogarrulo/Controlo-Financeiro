@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Pencil, Printer, Plus, UserPlus } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { PrintActions } from "@/components/print-actions";
@@ -14,7 +14,13 @@ import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import type { Aluno } from "@/data/types";
 
-export const Route = createFileRoute("/alunos")({ component: Alunos });
+export const Route = createFileRoute("/alunos")({
+  component: Alunos,
+  validateSearch: (s: Record<string, unknown>) => ({
+    edit: typeof s.edit === "string" ? s.edit : undefined,
+    focus: typeof s.focus === "string" ? s.focus : undefined,
+  }),
+});
 
 /** Classes / turmas da escola. */
 const TURMAS = [
@@ -197,6 +203,7 @@ function Alunos() {
   const alunos = alunosAll(extraA, overrides);
   const escola = getSeed().escola;
   const printRef = useRef<HTMLDivElement>(null);
+  const search = Route.useSearch();
 
   const [q, setQ] = useState("");
   const [grupo, setGrupo] = useState("todos");
@@ -270,6 +277,23 @@ function Alunos() {
       pin: "",
     });
   }
+
+  // Deep-link desde Pendências: ?edit=ID&focus=campo
+  useEffect(() => {
+    if (!search.edit) return;
+    const a = alunos.find((x) => x.id === search.edit);
+    if (!a) return;
+    if (editing?.id === a.id) return;
+    openEdit(a);
+    const focus = search.focus;
+    if (focus) {
+      window.setTimeout(() => {
+        const el = document.querySelector<HTMLElement>(`[data-focus="${focus}"]`);
+        el?.focus();
+        el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      }, 250);
+    }
+  }, [search.edit, search.focus, alunos]);
 
   function saveNew() {
     if (!canEdit) return;
@@ -376,11 +400,11 @@ function Alunos() {
         </div>
         <div className="space-y-1.5">
           <Label>Nome do pai</Label>
-          <Input value={form.pai} onChange={(e) => setForm({ ...form, pai: e.target.value })} />
+          <Input data-focus="pai" value={form.pai} onChange={(e) => setForm({ ...form, pai: e.target.value })} />
         </div>
         <div className="space-y-1.5">
           <Label>Nome da mãe</Label>
-          <Input value={form.mae} onChange={(e) => setForm({ ...form, mae: e.target.value })} />
+          <Input data-focus="mae" value={form.mae} onChange={(e) => setForm({ ...form, mae: e.target.value })} />
         </div>
         <div className="space-y-1.5">
           <Label>Classe / turma *</Label>
@@ -400,7 +424,7 @@ function Alunos() {
           <Label>Data da inscrição</Label>
           <Input
             type="date"
-            value={form.dataPag}
+            data-focus="dataPag" value={form.dataPag}
             onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
           />
         </div>
@@ -408,7 +432,7 @@ function Alunos() {
           <Label>Método de pagamento</Label>
           <select
             className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-            value={form.metodoPagamento}
+            data-focus="metodoPagamento" value={form.metodoPagamento}
             onChange={(e) => setForm({ ...form, metodoPagamento: e.target.value })}
           >
             {METODOS_PAGAMENTO.map((m) => (
@@ -421,7 +445,7 @@ function Alunos() {
         <div className="space-y-1.5">
           <Label>Telefone</Label>
           <Input
-            value={form.telefone}
+            data-focus="telefone" value={form.telefone}
             onChange={(e) => setForm({ ...form, telefone: e.target.value })}
             placeholder="9xx xxx xxx"
           />
@@ -500,7 +524,7 @@ function Alunos() {
             <div className="space-y-1.5">
               <Label>Seguro escolar (Kz)</Label>
               <Input
-                value={form.seguro}
+                data-focus="seguro" value={form.seguro}
                 disabled={form.seguroExterno}
                 onChange={(e) => setForm({ ...form, seguro: e.target.value })}
               />

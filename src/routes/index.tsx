@@ -47,6 +47,7 @@ function Dashboard() {
 
   return (
     <div>
+      <div ref={printRef}>
       {/* —— CAPA DE IMPRESSÃO —— */}
       <section className="print-only print-cover hidden print:flex print:min-h-[260mm] print:flex-col print:items-center print:justify-center print:break-after-page">
         <img
@@ -93,8 +94,7 @@ function Dashboard() {
         />
       </div>
 
-      <div ref={printRef}>
-      {/* Cabeçalho simplificado só na impressão (página 2) */}
+            {/* Cabeçalho simplificado só na impressão (página 2) */}
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
         <img src="/logo-escola.jpg" alt="" className="h-12 w-12 object-contain" width={48} height={48} />
         <div>
@@ -203,6 +203,7 @@ function Dashboard() {
           body={isAdmin ? "Cadastro e recibos EF." : undefined}
         />
       </div>
+
       </div>
 
       {isAdmin && sessionLog.length > 0 ? (

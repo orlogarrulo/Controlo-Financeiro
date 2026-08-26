@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Pencil, Plus, UserPlus } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { PrintActions } from "@/components/print-actions";
@@ -13,7 +13,13 @@ import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { getSeed, salariosAll, useFinance } from "@/lib/store";
 import type { Salario } from "@/data/types";
 
-export const Route = createFileRoute("/salarios")({ component: Salarios });
+export const Route = createFileRoute("/salarios")({
+  component: Salarios,
+  validateSearch: (s: Record<string, unknown>) => ({
+    edit: typeof s.edit === "string" ? s.edit : undefined,
+    focus: typeof s.focus === "string" ? s.focus : undefined,
+  }),
+});
 
 type FormState = {
   nome: string;
@@ -43,6 +49,7 @@ function emptyForm(): FormState {
 
 function Salarios() {
   const printRef = useRef<HTMLDivElement>(null);
+  const search = Route.useSearch();
   const salariosExtra = useFinance((s) => s.salariosExtra ?? []);
   const salariosOverrides = useFinance((s) => s.salariosOverrides ?? {});
   const addSalario = useFinance((s) => s.addSalario);
@@ -91,6 +98,20 @@ function Salarios() {
       dataPag: r.dataPag || todayIso(),
     });
   }
+
+  useEffect(() => {
+    if (!search.edit) return;
+    const r = rows.find((x) => x.id === search.edit);
+    if (!r) return;
+    if (editing?.id === r.id) return;
+    openEdit(r);
+    if (search.focus) {
+      window.setTimeout(() => {
+        document.querySelector<HTMLElement>(`[data-focus="${search.focus}"]`)?.focus();
+      }, 250);
+    }
+  }, [search.edit, search.focus, rows]);
+
 
   function nextId(): string {
     const nums = rows
@@ -162,7 +183,7 @@ function Salarios() {
         <div className="space-y-1.5 sm:col-span-2">
           <Label>Nome do funcionário *</Label>
           <Input
-            value={form.nome}
+            data-focus="nome" value={form.nome}
             onChange={(e) => setForm({ ...form, nome: e.target.value })}
             placeholder="Nome completo"
           />
@@ -170,7 +191,7 @@ function Salarios() {
         <div className="space-y-1.5">
           <Label>Função</Label>
           <Input
-            value={form.funcao}
+            data-focus="funcao" value={form.funcao}
             onChange={(e) => setForm({ ...form, funcao: e.target.value })}
             placeholder="Ex.: Auxiliar, Professora…"
           />
@@ -229,7 +250,7 @@ function Salarios() {
           <Label>Data de pagamento</Label>
           <Input
             type="date"
-            value={form.dataPag}
+            data-focus="dataPag" value={form.dataPag}
             onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
           />
         </div>

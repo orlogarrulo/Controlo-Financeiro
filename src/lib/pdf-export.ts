@@ -1,4 +1,4 @@
-/** Geração e partilha de PDF no browser (html2canvas + jsPDF via CDN). */
+/** Geração de PDF fiel ao layout de impressão A4 (html2canvas + jsPDF via CDN). */
 
 type Html2CanvasFn = (
   el: HTMLElement,
@@ -57,7 +57,6 @@ async function ensureLibs(): Promise<{ html2canvas: Html2CanvasFn; jsPDF: JsPdfC
   return { html2canvas: w.html2canvas, jsPDF: w.jspdf.jsPDF };
 }
 
-/** Data/hora local legível para carimbo no PDF. */
 export function agoraPdfLabel(): string {
   const d = new Date();
   return d.toLocaleString("pt-PT", {
@@ -70,9 +69,19 @@ export function agoraPdfLabel(): string {
   });
 }
 
+function waitFrames(n = 2): Promise<void> {
+  return new Promise((resolve) => {
+    const step = (left: number) => {
+      if (left <= 0) resolve();
+      else requestAnimationFrame(() => step(left - 1));
+    };
+    step(n);
+  });
+}
+
 /**
- * Gera PDF a partir de um elemento DOM (ex.: área do recibo).
- * Inclui carimbo "A secretaria · gerado em …" no rodapé da captura se `stamp` for true.
+ * Activa CSS de impressão (.pdf-export), captura o elemento em páginas A4
+ * e restabelece o ecrã. Inclui capa print-only e carimbo «A secretaria».
  */
 export async function elementToPdfBlob(
   el: HTMLElement,
@@ -81,71 +90,124 @@ export async function elementToPdfBlob(
   const { html2canvas, jsPDF } = await ensureLibs();
   const stamp = opts?.stamp !== false;
   const when = agoraPdfLabel();
+  const root = document.documentElement;
 
-  // Carimbo temporário no elemento (só durante a captura)
+  // Marca raiz e activa layout de impressão
+  el.setAttribute("data-pdf-root", "1");
+  root.classList.add("pdf-export");
+
+  // Forçar visibilidade de elementos print-only dentro do alvo
+  const forced: HTMLElement[] = [];
+  el.querySelectorAll<HTMLElement>(".print-only, .print-cover").forEach((node) => {
+    forced.push(node);
+    node.style.setProperty("display", node.classList.contains("print-cover") || node.classList.contains("print:flex") ? "flex" : "block", "important");
+    node.style.setProperty("visibility", "visible", "important");
+    if (node.classList.contains("hidden")) {
+      node.style.setProperty("display", "flex", "important");
+    }
+  });
+
+  // Carimbo secretaria
   let stampNode: HTMLDivElement | null = null;
   if (stamp) {
     stampNode = document.createElement("div");
     stampNode.setAttribute("data-pdf-stamp", "1");
     stampNode.style.cssText =
-      "margin-top:16px;padding-top:10px;border-top:1px solid #ccc;font-size:10px;color:#333;text-align:right;";
+      "margin-top:12px;padding-top:8px;border-top:1px solid #999;font-size:9pt;color:#222;text-align:right;font-family:inherit;";
     stampNode.innerHTML = `<strong>A secretaria</strong> · Documento gerado em ${when}`;
     el.appendChild(stampNode);
   }
 
+  // Ocultar no-print dentro do alvo (reforço)
+  const hiddenNoPrint: HTMLElement[] = [];
+  el.querySelectorAll<HTMLElement>(".no-print").forEach((node) => {
+    hiddenNoPrint.push(node);
+    node.style.setProperty("display", "none", "important");
+  });
+
   try {
+    await waitFrames(3);
+    // Pequena pausa para fontes/imagens
+    await new Promise((r) => setTimeout(r, 120));
+
     const canvas = await html2canvas(el, {
       scale: 2,
       useCORS: true,
+      allowTaint: true,
       backgroundColor: "#ffffff",
       logging: false,
+      windowWidth: el.scrollWidth,
+      windowHeight: el.scrollHeight,
+      scrollX: 0,
+      scrollY: 0,
     });
-    const img = canvas.toDataURL("image/jpeg", 0.92);
+
+    // A4 em mm; jsPDF default A4 portrait
     const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 10;
-    const maxW = pageW - margin * 2;
-    const maxH = pageH - margin * 2;
-    const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
-    const w = canvas.width * ratio;
-    const h = canvas.height * ratio;
-    // Se a imagem for mais alta que uma página, dividir
-    if (h <= maxH) {
-      pdf.addImage(img, "JPEG", margin + (maxW - w) / 2, margin, w, h);
-    } else {
-      // multi-page: cortar canvas em fatias
-      const sliceH = (maxH / ratio);
-      let y = 0;
-      let page = 0;
-      while (y < canvas.height) {
-        if (page > 0) pdf.addPage();
-        const sh = Math.min(sliceH, canvas.height - y);
-        const slice = document.createElement("canvas");
-        slice.width = canvas.width;
-        slice.height = sh;
-        const ctx = slice.getContext("2d");
-        if (ctx) {
-          ctx.fillStyle = "#fff";
-          ctx.fillRect(0, 0, slice.width, slice.height);
-          ctx.drawImage(canvas, 0, y, canvas.width, sh, 0, 0, canvas.width, sh);
-        }
-        const sliceImg = slice.toDataURL("image/jpeg", 0.92);
-        const slicePdfH = sh * ratio;
-        pdf.addImage(sliceImg, "JPEG", margin, margin, w, slicePdfH);
-        y += sh;
-        page++;
-      }
+    const pageW = pdf.internal.pageSize.getWidth(); // 210
+    const pageH = pdf.internal.pageSize.getHeight(); // 297
+    const margin = 8;
+    const contentW = pageW - margin * 2;
+    const contentH = pageH - margin * 2;
+
+    // Largura da imagem na página = contentW; altura proporcional
+    const imgW = contentW;
+    const imgH = (canvas.height * contentW) / canvas.width;
+
+    // Cortar em páginas A4
+    const pageCanvas = document.createElement("canvas");
+    const pageCtx = pageCanvas.getContext("2d");
+    if (!pageCtx) throw new Error("Canvas indisponível");
+
+    // Altura em pixels do canvas original correspondente a uma página
+    const pxPerPage = (contentH / imgH) * canvas.height;
+    let srcY = 0;
+    let pageIndex = 0;
+
+    while (srcY < canvas.height - 1) {
+      const sliceH = Math.min(pxPerPage, canvas.height - srcY);
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = Math.max(1, Math.ceil(sliceH));
+      pageCtx.fillStyle = "#ffffff";
+      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      pageCtx.drawImage(
+        canvas,
+        0,
+        srcY,
+        canvas.width,
+        sliceH,
+        0,
+        0,
+        canvas.width,
+        sliceH,
+      );
+      const sliceData = pageCanvas.toDataURL("image/jpeg", 0.95);
+      const sliceImgH = (sliceH * contentW) / canvas.width;
+      if (pageIndex > 0) pdf.addPage();
+      pdf.addImage(sliceData, "JPEG", margin, margin, contentW, sliceImgH);
+      srcY += sliceH;
+      pageIndex++;
+      // segurança
+      if (pageIndex > 40) break;
     }
+
     const blob = pdf.output("blob");
     const filename = opts?.filename || `documento-${Date.now()}.pdf`;
     return { blob, filename };
   } finally {
+    root.classList.remove("pdf-export");
+    el.removeAttribute("data-pdf-root");
     if (stampNode?.parentNode) stampNode.parentNode.removeChild(stampNode);
+    forced.forEach((node) => {
+      node.style.removeProperty("display");
+      node.style.removeProperty("visibility");
+    });
+    hiddenNoPrint.forEach((node) => {
+      node.style.removeProperty("display");
+    });
   }
 }
 
-/** Partilha via Web Share API (WhatsApp, e-mail no telemóvel) ou descarrega. */
 export async function shareOrDownloadPdf(
   blob: Blob,
   filename: string,
@@ -167,10 +229,8 @@ export async function shareOrDownloadPdf(
       return "shared";
     }
   } catch (e) {
-    // utilizador cancelou ou partilha falhou → fallback download
     if (e instanceof Error && e.name === "AbortError") throw e;
   }
-  // Download
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

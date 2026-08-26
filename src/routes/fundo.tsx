@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Pencil, Plus, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
@@ -14,9 +14,28 @@ import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { isCollaborator1 } from "@/lib/can-edit";
 import type { FundoPagamento } from "@/data/types";
 
-export const Route = createFileRoute("/fundo")({ component: Fundo });
+export const Route = createFileRoute("/fundo")({
+  component: Fundo,
+  validateSearch: (s: Record<string, unknown>) => ({
+    edit: typeof s.edit === "string" ? s.edit : undefined,
+    focus: typeof s.focus === "string" ? s.focus : undefined,
+  }),
+});
 
 function Fundo() {
+  const search = Route.useSearch();
+
+  useEffect(() => {
+    if (!search.edit) return;
+    window.setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`[data-row-id="${search.edit}"]`);
+      row?.scrollIntoView({ block: "center", behavior: "smooth" });
+      row?.classList.add("ring-2", "ring-[var(--color-forest)]");
+      if (search.focus) {
+        document.querySelector<HTMLElement>(`[data-focus="${search.focus}"]`)?.focus();
+      }
+    }, 200);
+  }, [search.edit, search.focus]);
   const printRef = useRef<HTMLDivElement>(null);
   const extra = useFinance((s) => s.fundoExtra);
   const add = useFinance((s) => s.addFundoPagamento);

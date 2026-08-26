@@ -242,3 +242,96 @@
     page-break-after: always;
   }
 }
+
+
+/* ——— Modo captura PDF (= layout de impressão A4) ——— */
+html.pdf-export,
+html.pdf-export body {
+  background: white !important;
+  color: black !important;
+  font-size: 10pt;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+html.pdf-export nav,
+html.pdf-export aside,
+html.pdf-export header.no-print,
+html.pdf-export .no-print,
+html.pdf-export [data-sonner-toaster],
+html.pdf-export [data-sonner-toast] {
+  display: none !important;
+}
+
+html.pdf-export .print-only {
+  display: block !important;
+}
+
+html.pdf-export .print-only.print\:flex,
+html.pdf-export .print-cover,
+html.pdf-export .print-only.print-cover {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+html.pdf-export .print-cover {
+  min-height: 260mm !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  page-break-after: always;
+  break-after: page;
+  background: white !important;
+}
+
+html.pdf-export .print-cover.hidden {
+  display: flex !important;
+}
+
+html.pdf-export .print-sheet {
+  box-shadow: none !important;
+  border: 1px solid #ccc !important;
+  background: white !important;
+}
+
+html.pdf-export .print-a4-page {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3mm !important;
+  width: 210mm !important;
+  max-width: 210mm !important;
+  background: white !important;
+}
+
+html.pdf-export .print-a5-half {
+  flex: 0 0 auto !important;
+  min-height: 130mm !important;
+  overflow: hidden !important;
+  background: white !important;
+}
+
+html.pdf-export .overflow-x-auto {
+  overflow: visible !important;
+}
+
+html.pdf-export table {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html.pdf-export main {
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Área de captura isolada */
+html.pdf-export [data-pdf-root="1"] {
+  background: white !important;
+  color: black !important;
+  width: 210mm !important;
+  max-width: 210mm !important;
+  margin: 0 auto !important;
+  padding: 10mm !important;
+  box-sizing: border-box !important;
+}

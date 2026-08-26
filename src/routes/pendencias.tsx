@@ -21,6 +21,10 @@ type Item = {
   titulo: string;
   detalhe: string;
   to?: string;
+  /** ID do registo no separador de destino */
+  editId?: string;
+  /** Campo a focar no formulário */
+  focus?: string;
   prioridade: "alta" | "media" | "baixa";
 };
 
@@ -49,6 +53,8 @@ function Pendencias() {
           titulo: `${a.id} · ${a.nome}`,
           detalhe: "Falta nome do encarregado de educação (pai/mãe).",
           to: "/alunos",
+          editId: a.id,
+          focus: "pai",
           prioridade: "alta",
         });
       }
@@ -58,6 +64,8 @@ function Pendencias() {
           titulo: `${a.id} · ${a.nome}`,
           detalhe: "Sem data de pagamento da inscrição.",
           to: "/alunos",
+          editId: a.id,
+          focus: "dataPag",
           prioridade: "alta",
         });
       }
@@ -67,6 +75,8 @@ function Pendencias() {
           titulo: `${a.id} · ${a.nome}`,
           detalhe: "Telefone em falta.",
           to: "/alunos",
+          editId: a.id,
+          focus: "telefone",
           prioridade: "media",
         });
       }
@@ -76,6 +86,8 @@ function Pendencias() {
           titulo: `${a.id} · ${a.nome}`,
           detalhe: "Método de pagamento não indicado.",
           to: "/alunos",
+          editId: a.id,
+          focus: "metodoPagamento",
           prioridade: "media",
         });
       }
@@ -85,6 +97,8 @@ function Pendencias() {
           titulo: `${a.id} · ${a.nome}`,
           detalhe: "Seguro escolar por confirmar.",
           to: "/alunos",
+          editId: a.id,
+          focus: "seguro",
           prioridade: "media",
         });
       }
@@ -99,6 +113,8 @@ function Pendencias() {
         titulo: `${l.docInterno || l.id} · ${l.descricao?.slice(0, 40) || "—"}`,
         detalhe: `Fatura sem ficheiro digital · ${formatKz(l.valor)} · ${l.fornecedor || "sem fornecedor"}`,
         to: "/lancamentos",
+        editId: l.id,
+        focus: "observacoes",
         prioridade: "alta",
       });
     }
@@ -109,6 +125,8 @@ function Pendencias() {
         titulo: l.id,
         detalhe: "Despesa sem categoria.",
         to: "/lancamentos",
+        editId: l.id,
+        focus: "categoria",
         prioridade: "media",
       });
     }
@@ -120,6 +138,8 @@ function Pendencias() {
           titulo: `${s.id} · ${s.nome}`,
           detalhe: `Sem data de pagamento (${s.mes}).`,
           to: "/salarios",
+          editId: s.id,
+          focus: "dataPag",
           prioridade: "media",
         });
       }
@@ -129,6 +149,8 @@ function Pendencias() {
           titulo: `${s.id} · ${s.nome}`,
           detalhe: "Função em falta.",
           to: "/salarios",
+          editId: s.id,
+          focus: "funcao",
           prioridade: "baixa",
         });
       }
@@ -141,6 +163,8 @@ function Pendencias() {
           titulo: f.id,
           detalhe: `Pagamento sem beneficiário: ${f.descricao}`,
           to: "/fundo",
+          editId: f.id,
+          focus: "recebeu",
           prioridade: "media",
         });
       }
@@ -175,7 +199,7 @@ function Pendencias() {
       <PageHeader
         kicker={`Só Colaborador 1 · ${escola.ano}`}
         title="Pendências e dados em falta"
-        description="Lista consolidada do que falta completar em Matrículas, Lançamentos, Salários e Fundo. Use os atalhos para ir directamente ao separador."
+        description="Lista consolidada do que falta completar. «Abrir» vai ao registo e destaca o campo em falta."
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -232,7 +256,16 @@ function Pendencias() {
                   <td className="px-3 py-2 text-right">
                     {i.to ? (
                       <Button asChild size="sm" variant="secondary">
-                        <Link to={i.to}>Abrir</Link>
+                        <Link
+                          to={i.to}
+                          search={
+                            i.editId
+                              ? { edit: i.editId, focus: i.focus || undefined }
+                              : undefined
+                          }
+                        >
+                          Abrir
+                        </Link>
                       </Button>
                     ) : null}
                   </td>
