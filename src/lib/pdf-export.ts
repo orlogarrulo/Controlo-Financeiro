@@ -190,20 +190,57 @@ const STAGE_CSS = `
     vertical-align: top;
   }
   [data-pdf-stage] .print-sheet table { font-size: 12px !important; }
+  [data-pdf-landscape] {
+    overflow: visible !important;
+  }
+  [data-pdf-landscape] .overflow-x-auto,
+  [data-pdf-landscape] .print-sheet {
+    overflow: visible !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
   [data-pdf-landscape] table {
-    font-size: 11px !important;
+    width: 100% !important;
     min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    font-size: 9.5px !important;
+    border-collapse: collapse !important;
   }
   [data-pdf-landscape] th,
   [data-pdf-landscape] td {
-    padding: 5px 6px !important;
+    padding: 3px 4px !important;
+    font-size: 9.5px !important;
+    line-height: 1.25 !important;
+    vertical-align: top !important;
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+    border: 0.5px solid #ccc !important;
+  }
+  [data-pdf-landscape] th {
+    font-size: 8.5px !important;
+    font-weight: 700 !important;
+  }
+  /* Colunas de valores/datas: não partir números */
+  [data-pdf-landscape] td.tabular-nums,
+  [data-pdf-landscape] .tabular-nums {
     white-space: nowrap !important;
   }
-  [data-pdf-landscape] .overflow-x-auto {
-    overflow: visible !important;
+  [data-pdf-landscape] .min-w-\[800px\],
+  [data-pdf-landscape] .min-w-\[700px\],
+  [data-pdf-landscape] .min-w-\[900px\],
+  [data-pdf-landscape] [class*="min-w-"] {
+    min-width: 0 !important;
   }
-  [data-pdf-landscape] .print-sheet {
-    overflow: visible !important;
+  [data-pdf-landscape] header.print-only img,
+  [data-pdf-landscape] [data-pdf-logo-header] img {
+    width: 48px !important;
+    height: 48px !important;
+  }
+  [data-pdf-landscape] header.print-only .font-display,
+  [data-pdf-landscape] [data-pdf-logo-header] .pdf-title {
+    font-size: 14px !important;
   }
   [data-pdf-stage] .print-sheet th,
   [data-pdf-stage] .print-sheet td { padding: 6px 8px !important; }
@@ -290,6 +327,23 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.style.maxWidth = "100%";
   clone.style.background = "#ffffff";
   clone.querySelectorAll(".no-print").forEach((n) => n.remove());
+  // Tabelas largas: forçar caber na página (PDF paisagem / A4)
+  clone.querySelectorAll("table").forEach((table) => {
+    const el = table as HTMLElement;
+    el.style.minWidth = "0";
+    el.style.width = "100%";
+    el.style.maxWidth = "100%";
+    el.style.tableLayout = "fixed";
+    el.className = el.className
+      .split(/\s+/)
+      .filter((c) => !c.startsWith("min-w"))
+      .join(" ");
+  });
+  clone.querySelectorAll(".overflow-x-auto").forEach((node) => {
+    const el = node as HTMLElement;
+    el.style.overflow = "visible";
+    el.style.maxWidth = "100%";
+  });
   clone.querySelectorAll(".print-only, .print-cover").forEach((node) => {
     const el = node as HTMLElement;
     el.classList.remove("hidden");
@@ -458,34 +512,59 @@ export async function elementToPdfBlob(
 
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const margin = coverNodes.length > 0 ? 6 : 8;
+      const margin = landscape ? 7 : coverNodes.length > 0 ? 6 : 8;
       const contentW = pageW - margin * 2;
       const contentH = pageH - margin * 2;
-      const pxPerPage = ((contentH * canvas.width) / contentW) * (coverNodes.length > 0 ? 1.02 : 1);
-      const pageCanvas = document.createElement("canvas");
-      const ctx = pageCanvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas indisponível");
 
-      let srcY = 0;
-      let bodyPage = 0;
-      while (srcY < canvas.height - 1) {
-        const sliceH = Math.min(pxPerPage, canvas.height - srcY);
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = Math.max(1, Math.ceil(sliceH));
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-        const data = pageCanvas.toDataURL("image/jpeg", 0.86);
-        const sliceMmH = (sliceH * contentW) / canvas.width;
+      // Largura: sempre encaixar a página inteira (sem corte horizontal)
+      const imgW = contentW;
+      const imgFullH = (canvas.height * contentW) / canvas.width;
 
-        if (pageCount > 0 || bodyPage > 0) {
-          pdf.addPage();
-        }
-        pdf.addImage(data, "JPEG", margin, margin, contentW, sliceMmH);
-        srcY += sliceH;
-        bodyPage++;
+      // Se couber numa página (com pequena margem), escalar para caber tudo
+      if (imgFullH <= contentH * 1.02) {
+        const h = Math.min(imgFullH, contentH);
+        if (pageCount > 0) pdf.addPage();
+        pdf.addImage(
+          canvas.toDataURL("image/jpeg", 0.9),
+          "JPEG",
+          margin,
+          margin,
+          imgW,
+          h,
+        );
         pageCount++;
-        if (bodyPage > 50) break;
+      } else {
+        // Multipágina: cortar em fatias; alinhar ao passo de linha (~22px * scale)
+        const rowStep = Math.max(16, Math.round((landscape ? 18 : 22) * (landscape ? 1.4 : 1.5)));
+        const pxPerPage = (contentH * canvas.width) / contentW;
+        const pageCanvas = document.createElement("canvas");
+        const ctx = pageCanvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas indisponível");
+
+        let srcY = 0;
+        let bodyPage = 0;
+        while (srcY < canvas.height - 1) {
+          let sliceH = Math.min(pxPerPage, canvas.height - srcY);
+          // Evitar cortar linha a meio: recuar até múltiplo de rowStep (exceto última página)
+          if (srcY + sliceH < canvas.height - 2) {
+            const snapped = Math.floor(sliceH / rowStep) * rowStep;
+            if (snapped > pxPerPage * 0.55) sliceH = snapped;
+          }
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = Math.max(1, Math.ceil(sliceH));
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+          ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+          const data = pageCanvas.toDataURL("image/jpeg", 0.9);
+          const sliceMmH = (sliceH * contentW) / canvas.width;
+
+          if (pageCount > 0 || bodyPage > 0) pdf.addPage();
+          pdf.addImage(data, "JPEG", margin, margin, contentW, sliceMmH);
+          srcY += sliceH;
+          bodyPage++;
+          pageCount++;
+          if (bodyPage > 50) break;
+        }
       }
     } finally {
       stage.remove();
