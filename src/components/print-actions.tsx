@@ -34,9 +34,9 @@ export function PrintActions({
         text: shareText,
       });
       if (result === "shared") {
-        toast.success("PDF partilhado (WhatsApp, e-mail, …)");
+        toast.success("Escolha WhatsApp, Gmail ou outra app para enviar o PDF");
       } else {
-        toast.success("PDF descarregado — pode anexar no WhatsApp ou e-mail");
+        toast.message("PDF descarregado. No telemóvel: abra o ficheiro e partilhe por WhatsApp/e-mail.");
       }
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {

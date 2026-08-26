@@ -391,7 +391,7 @@ function ReciboInscricao({
       </table>
       <p className="mt-3 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
       <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
-        <div>
+        <div data-assinatura-escola="1">
           <p>A secretaria</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
@@ -437,7 +437,7 @@ function ReciboManeio({
           <p>O recebedor</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
-        <div>
+        <div data-assinatura-escola="1">
           <p>A secretaria</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
@@ -504,7 +504,7 @@ function ReciboSalario({
           <p>O funcionário</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
-        <div>
+        <div data-assinatura-escola="1">
           <p>A secretaria</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
