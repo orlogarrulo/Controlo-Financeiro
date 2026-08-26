@@ -366,6 +366,7 @@ export async function elementToPdfBlob(
   };
 }
 
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -378,15 +379,48 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
 
+/** Telemóvel / tablet táctil — usa caixa de partilha do sistema. */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  if (nav.userAgentData?.mobile) return true;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(
+    navigator.userAgent,
+  );
+}
+
+/** Abre o PDF numa nova separador (PC) para visualizar e depois partilhar/guardar. */
+function openPdfInNewTab(blob: Blob, filename: string): "opened" | "downloaded" {
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (!win) {
+    // Pop-up bloqueado → descarregar
+    downloadBlob(blob, filename);
+    window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+    return "downloaded";
+  }
+  // Manter URL válida enquanto o separador está aberto
+  window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+  return "opened";
+}
+
+export type PdfDelivery = "shared" | "opened" | "downloaded";
+
 /**
- * Tenta sempre a folha de partilha do sistema (WhatsApp, Gmail, …).
- * Se não for possível, descarrega o PDF.
+ * PC: abre o PDF no browser (ver → guardar / imprimir / enviar).
+ * Telemóvel: caixa de partilha (WhatsApp, Gmail, …).
  */
 export async function shareOrDownloadPdf(
   blob: Blob,
   filename: string,
   meta?: { title?: string; text?: string },
-): Promise<"shared" | "downloaded"> {
+): Promise<PdfDelivery> {
+  // ——— Ambiente desktop: abrir PDF primeiro ———
+  if (!isMobileDevice()) {
+    return openPdfInNewTab(blob, filename);
+  }
+
+  // ——— Telemóvel: partilha nativa ———
   const file = new File([blob], filename, { type: "application/pdf" });
   const nav = navigator as Navigator & {
     canShare?: (data: ShareData) => boolean;
@@ -399,50 +433,37 @@ export async function shareOrDownloadPdf(
     text: meta?.text || "Documento da École Consulaire",
   };
 
-  // 1) Partilha com ficheiro (ideal no telemóvel)
   if (typeof nav.share === "function") {
     try {
       const okFiles =
-        typeof nav.canShare !== "function" || nav.canShare({ files: [file] }) || nav.canShare(payload);
+        typeof nav.canShare !== "function" ||
+        nav.canShare({ files: [file] }) ||
+        nav.canShare(payload);
       if (okFiles) {
         await nav.share(payload);
         return "shared";
       }
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") throw e;
-      // continua para tentativas seguintes
     }
-
-    // 2) Alguns browsers aceitam share sem validar canShare
     try {
       await nav.share(payload);
       return "shared";
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") throw e;
     }
-
-    // 3) Partilha só texto + título (último recurso antes do download)
-    try {
-      await nav.share({
-        title: payload.title,
-        text: `${payload.text}\n\n(O PDF foi descarregado — anexe-o a esta conversa.)`,
-      });
-      downloadBlob(blob, filename);
-      return "downloaded";
-    } catch (e) {
-      if (e instanceof Error && e.name === "AbortError") throw e;
-    }
   }
 
-  downloadBlob(blob, filename);
-  return "downloaded";
+  // Fallback telemóvel: abrir / descarregar
+  const opened = openPdfInNewTab(blob, filename);
+  return opened;
 }
 
 export async function exportElementPdf(
   el: HTMLElement | null,
   filename: string,
   meta?: { title?: string; text?: string },
-): Promise<"shared" | "downloaded"> {
+): Promise<PdfDelivery> {
   if (!el) throw new Error("Área de impressão não encontrada");
   const { blob, filename: name } = await elementToPdfBlob(el, { filename, stamp: true });
   return shareOrDownloadPdf(blob, name, meta);

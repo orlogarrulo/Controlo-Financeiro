@@ -1,14 +1,17 @@
-import { FileDown, Printer, Share2 } from "lucide-react";
+import { ExternalLink, FileDown, Printer, Share2 } from "lucide-react";
 import { useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { elementToPdfBlob, shareOrDownloadPdf } from "@/lib/pdf-export";
+import {
+  elementToPdfBlob,
+  isMobileDevice,
+  shareOrDownloadPdf,
+} from "@/lib/pdf-export";
 
 /**
- * Botões Imprimir + Exportar / Enviar PDF.
- * Gera o PDF e abre a partilha do sistema (WhatsApp, Gmail…).
- * Se a partilha automática falhar (gesto do utilizador expirado após geração longa),
- * mostra um botão «Partilhar agora» com gesto fresco.
+ * Imprimir + Exportar PDF.
+ * — PC: gera e abre o PDF num novo separador (pode ver, guardar, enviar).
+ * — Telemóvel: abre a caixa de partilha (WhatsApp, Gmail, …).
  */
 export function PrintActions({
   targetRef,
@@ -16,7 +19,7 @@ export function PrintActions({
   shareTitle,
   shareText,
   printLabel = "Imprimir",
-  pdfLabel = "Enviar / Exportar PDF",
+  pdfLabel,
 }: {
   targetRef: RefObject<HTMLElement | null>;
   filename: string;
@@ -25,6 +28,8 @@ export function PrintActions({
   printLabel?: string;
   pdfLabel?: string;
 }) {
+  const mobile = typeof navigator !== "undefined" ? isMobileDevice() : false;
+  const label = pdfLabel ?? (mobile ? "Enviar / Exportar PDF" : "Ver / Exportar PDF");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<{ blob: Blob; name: string } | null>(null);
 
@@ -38,6 +43,21 @@ export function PrintActions({
         filename,
         stamp: true,
       });
+
+      if (!isMobileDevice()) {
+        const result = await shareOrDownloadPdf(blob, name, {
+          title: shareTitle,
+          text: shareText,
+        });
+        if (result === "opened") {
+          toast.success("PDF aberto num novo separador — pode ver, guardar ou enviar");
+        } else {
+          toast.message("PDF descarregado (o browser bloqueou a nova janela)");
+        }
+        return;
+      }
+
+      // Telemóvel
       try {
         const result = await shareOrDownloadPdf(blob, name, {
           title: shareTitle,
@@ -46,9 +66,8 @@ export function PrintActions({
         if (result === "shared") {
           toast.success("Escolha WhatsApp, Gmail ou outra app para enviar o PDF");
         } else {
-          // Guardar para partilha com gesto fresco (comum no Quadro — PDF mais demorado)
           setPending({ blob, name });
-          toast.message("PDF pronto. Toque em «Partilhar agora» para abrir WhatsApp/Gmail.");
+          toast.message("PDF pronto. Toque em «Partilhar agora».");
         }
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") {
@@ -76,6 +95,9 @@ export function PrintActions({
       if (result === "shared") {
         toast.success("Escolha WhatsApp, Gmail ou outra app");
         setPending(null);
+      } else if (result === "opened") {
+        toast.success("PDF aberto");
+        setPending(null);
       } else {
         toast.message("PDF descarregado — anexe no WhatsApp ou e-mail");
       }
@@ -100,13 +122,17 @@ export function PrintActions({
           <>A gerar PDF…</>
         ) : (
           <>
-            <Share2 className="mr-1 size-4" />
+            {mobile ? (
+              <Share2 className="mr-1 size-4" />
+            ) : (
+              <ExternalLink className="mr-1 size-4" />
+            )}
             <FileDown className="mr-1 hidden size-4 sm:inline" />
-            {pdfLabel}
+            {label}
           </>
         )}
       </Button>
-      {pending ? (
+      {pending && mobile ? (
         <Button type="button" onClick={() => void onSharePending()} disabled={busy}>
           <Share2 className="mr-1 size-4" /> Partilhar agora
         </Button>
