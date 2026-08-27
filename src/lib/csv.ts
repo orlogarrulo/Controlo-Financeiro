@@ -70,8 +70,14 @@ export function downloadCsv(filename: string, csv: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 1500);
 }
 
 export function parseFormsCsv(text: string): Partial<Lancamento>[] {
@@ -162,7 +168,7 @@ export function baiToCsv(rows: import("@/data/types").MovimentoBai[]): string {
   const body = rows
     .map((m) =>
       [m.data, m.banco, m.descricao, m.entrada, m.saida, m.saldo, m.observacoes]
-        .map(escapeCsv)
+        .map(esc)
         .join(";"),
     )
     .join("\n");

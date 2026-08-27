@@ -76,44 +76,55 @@ const A4_LANDSCAPE_HEIGHT_PX = 794;
 
 const STAGE_CSS = `
   [data-pdf-stage] {
-    color: #111 !important;
-    font-size: 13px !important;
-    line-height: 1.45 !important;
+    color: #1a1a1a !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    box-sizing: border-box !important;
+  }
+  [data-pdf-stage] *,
+  [data-pdf-stage] *::before,
+  [data-pdf-stage] *::after {
+    box-sizing: border-box !important;
   }
   [data-pdf-stage] .no-print { display: none !important; }
-  [data-pdf-stage] nav, [data-pdf-stage] aside { display: none !important; }
+  [data-pdf-stage] nav,
+  [data-pdf-stage] aside,
+  [data-pdf-stage] button,
+  [data-pdf-stage] [role="dialog"] { display: none !important; }
+
   [data-pdf-stage] .print-only { display: block !important; visibility: visible !important; }
   [data-pdf-stage] header.print-only,
   [data-pdf-stage] [data-pdf-logo-header] {
     display: flex !important;
     align-items: center !important;
-    gap: 14px !important;
-    margin-bottom: 14px !important;
-    padding-bottom: 10px !important;
-    border-bottom: 1.5px solid #222 !important;
+    gap: 12px !important;
+    margin: 0 0 12px 0 !important;
+    padding: 0 0 10px 0 !important;
+    border-bottom: 1.5px solid #1f5c4a !important;
   }
   [data-pdf-stage] header.print-only img,
   [data-pdf-stage] [data-pdf-logo-header] img {
-    width: 64px !important;
-    height: 64px !important;
+    width: 56px !important;
+    height: 56px !important;
     object-fit: contain !important;
     flex-shrink: 0 !important;
   }
   [data-pdf-stage] header.print-only .font-display,
   [data-pdf-stage] [data-pdf-logo-header] .pdf-title {
-    font-size: 18px !important;
-    font-weight: 600 !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
     line-height: 1.25 !important;
     color: #111 !important;
   }
   [data-pdf-stage] header.print-only p,
   [data-pdf-stage] [data-pdf-logo-header] p {
-    font-size: 12px !important;
+    font-size: 11px !important;
+    margin: 0 !important;
     line-height: 1.35 !important;
   }
-  [data-pdf-stage] .print-only.hidden { display: block !important; }
+
   [data-pdf-stage] .print-cover,
   [data-pdf-stage] .print-only.print-cover {
     display: flex !important;
@@ -121,157 +132,126 @@ const STAGE_CSS = `
     align-items: center !important;
     justify-content: center !important;
     width: 100% !important;
-    min-height: 1075px !important;
-    height: 1075px !important;
-    max-height: 1075px !important;
+    min-height: 1000px !important;
+    height: 1000px !important;
     overflow: hidden !important;
     background: #fff !important;
-    visibility: visible !important;
-    box-sizing: border-box !important;
   }
-  [data-pdf-stage] .print-cover.hidden { display: flex !important; }
-  [data-pdf-stage] .print-cover h1 {
-    font-size: 28px !important;
-    font-weight: 600 !important;
+  [data-pdf-stage] .print-cover img {
+    width: 240px !important;
+    height: 240px !important;
+    object-fit: contain !important;
   }
-  [data-pdf-stage] .print-cover p {
-    font-size: 14px !important;
-  }
+  [data-pdf-stage] .print-cover h1 { font-size: 26px !important; font-weight: 700 !important; }
+  [data-pdf-stage] .print-cover p { font-size: 13px !important; }
+
   [data-pdf-stage] .print-sheet {
     box-shadow: none !important;
-    border: 1px solid #bbb !important;
+    border: 1px solid #ccc !important;
     background: #fff !important;
-    max-width: none !important;
-    padding: 10px !important;
-  }
-  [data-pdf-stage] .print-a4-page {
-    display: flex !important;
-    flex-direction: column !important;
+    max-width: 100% !important;
     width: 100% !important;
-    gap: 10px !important;
-  }
-  [data-pdf-stage] .print-a5-half {
-    min-height: 480px !important;
-    overflow: hidden !important;
-  }
-  [data-pdf-stage] .print-a5-half article,
-  [data-pdf-stage] article.print-sheet {
-    font-size: 12.5px !important;
-    line-height: 1.4 !important;
-  }
-  [data-pdf-stage] .print-a5-half article p,
-  [data-pdf-stage] article.print-sheet p {
-    font-size: 12.5px !important;
-  }
-  [data-pdf-stage] .print-a5-half article strong,
-  [data-pdf-stage] article.print-sheet strong {
-    font-size: 13px !important;
-  }
-  [data-pdf-stage] .overflow-x-auto { overflow: visible !important; }
-  [data-pdf-stage] table {
-    width: 100% !important;
-    min-width: 0 !important;
-    border-collapse: collapse;
-    font-size: 12px !important;
-  }
-  [data-pdf-stage] th {
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    padding: 7px 8px !important;
-    border-bottom: 1.5px solid #333 !important;
-    text-align: left;
-  }
-  [data-pdf-stage] td {
-    font-size: 12px !important;
-    padding: 6px 8px !important;
-    border-bottom: 1px solid #ccc !important;
-    vertical-align: top;
-  }
-  [data-pdf-stage] .print-sheet table { font-size: 12px !important; }
-  [data-pdf-landscape] {
     overflow: visible !important;
+    padding: 8px !important;
+    margin: 0 0 10px 0 !important;
   }
-  [data-pdf-landscape] .overflow-x-auto,
-  [data-pdf-landscape] .print-sheet {
+  [data-pdf-stage] .overflow-x-auto {
     overflow: visible !important;
     max-width: 100% !important;
     width: 100% !important;
   }
-  [data-pdf-landscape] table {
+
+  /* Tabelas — sempre dentro da página */
+  [data-pdf-stage] table {
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
     table-layout: fixed !important;
-    font-size: 9.5px !important;
     border-collapse: collapse !important;
+    font-size: 11px !important;
   }
-  [data-pdf-landscape] th,
-  [data-pdf-landscape] td {
-    padding: 3px 4px !important;
-    font-size: 9.5px !important;
-    line-height: 1.25 !important;
+  [data-pdf-stage] th,
+  [data-pdf-stage] td {
+    padding: 5px 6px !important;
+    border: 0.6px solid #bbb !important;
     vertical-align: top !important;
     word-wrap: break-word !important;
     overflow-wrap: anywhere !important;
     white-space: normal !important;
-    border: 0.5px solid #ccc !important;
+    line-height: 1.3 !important;
+    font-size: 11px !important;
   }
-  [data-pdf-landscape] th {
-    font-size: 8.5px !important;
+  [data-pdf-stage] th {
+    background: #f3efe6 !important;
     font-weight: 700 !important;
+    font-size: 10px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.02em !important;
   }
-  /* Colunas de valores/datas: não partir números */
-  [data-pdf-landscape] td.tabular-nums,
-  [data-pdf-landscape] .tabular-nums {
+  [data-pdf-stage] .tabular-nums,
+  [data-pdf-stage] td.tabular-nums {
     white-space: nowrap !important;
+    font-variant-numeric: tabular-nums !important;
   }
-  [data-pdf-landscape] .min-w-\[800px\],
-  [data-pdf-landscape] .min-w-\[700px\],
-  [data-pdf-landscape] .min-w-\[900px\],
-  [data-pdf-landscape] [class*="min-w-"] {
+  [data-pdf-stage] [class*="min-w-"] {
     min-width: 0 !important;
   }
+
+  /* Paisagem: tabelas densas mas legíveis */
+  [data-pdf-landscape] table { font-size: 9.5px !important; }
+  [data-pdf-landscape] th,
+  [data-pdf-landscape] td {
+    padding: 3px 4px !important;
+    font-size: 9.5px !important;
+  }
+  [data-pdf-landscape] th { font-size: 8.5px !important; }
   [data-pdf-landscape] header.print-only img,
   [data-pdf-landscape] [data-pdf-logo-header] img {
-    width: 48px !important;
-    height: 48px !important;
+    width: 44px !important;
+    height: 44px !important;
   }
   [data-pdf-landscape] header.print-only .font-display,
   [data-pdf-landscape] [data-pdf-logo-header] .pdf-title {
     font-size: 14px !important;
   }
-  [data-pdf-stage] .print-sheet th,
-  [data-pdf-stage] .print-sheet td { padding: 6px 8px !important; }
-  [data-pdf-stage] img { max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  [data-pdf-stage] .print-cover img { height: 280px !important; width: 280px !important; object-fit: contain; }
-  [data-pdf-stage] h1, [data-pdf-stage] .font-display {
-    font-size: 20px !important;
-    line-height: 1.25 !important;
+
+  /* Recibos */
+  [data-pdf-stage] article.print-sheet,
+  [data-pdf-stage] .print-a5-half article {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    border: 1px solid #999 !important;
+    padding: 12px !important;
   }
-  [data-pdf-stage] h2 {
-    font-size: 16px !important;
-    margin: 10px 0 6px !important;
+  [data-pdf-stage] .print-a4-page {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
   }
-  [data-pdf-stage] .text-sm { font-size: 12.5px !important; }
+  [data-pdf-stage] .print-a5-half {
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  [data-pdf-stage] h1 { font-size: 18px !important; margin: 0 0 8px !important; }
+  [data-pdf-stage] h2 { font-size: 14px !important; margin: 8px 0 6px !important; }
+  [data-pdf-stage] .text-sm { font-size: 12px !important; }
   [data-pdf-stage] .text-xs,
-  [data-pdf-stage] .text-\[11px\],
-  [data-pdf-stage] .text-\[10px\] {
-    font-size: 11.5px !important;
-  }
+  [data-pdf-stage] .text-\[10px\],
+  [data-pdf-stage] .text-\[11px\] { font-size: 11px !important; }
+
   [data-pdf-stage] [data-pdf-stamp] {
-    margin-top: 12px;
-    padding-top: 8px;
-    border-top: 1px solid #999;
-    font-size: 11px !important;
-    text-align: right;
-    color: #222;
-    line-height: 1.35;
+    margin-top: 10px !important;
+    padding-top: 6px !important;
+    border-top: 1px solid #888 !important;
+    font-size: 10px !important;
+    text-align: right !important;
+    color: #222 !important;
   }
   [data-pdf-stage] .recharts-responsive-container,
   [data-pdf-stage] .recharts-wrapper {
-    max-height: 200px !important;
+    max-height: 180px !important;
   }
 `;
 
@@ -327,22 +307,34 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.style.maxWidth = "100%";
   clone.style.background = "#ffffff";
   clone.querySelectorAll(".no-print").forEach((n) => n.remove());
-  // Tabelas largas: forçar caber na página (PDF paisagem / A4)
+  clone.querySelectorAll("button, [data-sonner-toaster]").forEach((n) => n.remove());
+  // Tabelas: sempre dentro da largura da página
   clone.querySelectorAll("table").forEach((table) => {
     const el = table as HTMLElement;
     el.style.minWidth = "0";
     el.style.width = "100%";
     el.style.maxWidth = "100%";
     el.style.tableLayout = "fixed";
+    el.removeAttribute("width");
     el.className = el.className
       .split(/\s+/)
-      .filter((c) => !c.startsWith("min-w"))
+      .filter((c) => c && !c.startsWith("min-w"))
       .join(" ");
   });
-  clone.querySelectorAll(".overflow-x-auto").forEach((node) => {
+  clone.querySelectorAll("th, td").forEach((cell) => {
+    const el = cell as HTMLElement;
+    el.style.maxWidth = "none";
+    if (!el.classList.contains("tabular-nums")) {
+      el.style.whiteSpace = "normal";
+      el.style.wordBreak = "break-word";
+    }
+  });
+  clone.querySelectorAll(".overflow-x-auto, .print-sheet").forEach((node) => {
     const el = node as HTMLElement;
     el.style.overflow = "visible";
     el.style.maxWidth = "100%";
+    el.style.width = "100%";
+    el.style.minWidth = "0";
   });
   clone.querySelectorAll(".print-only, .print-cover").forEach((node) => {
     const el = node as HTMLElement;
@@ -453,6 +445,74 @@ function addCoverPage(
   pdf.addImage(canvas.toDataURL("image/jpeg", 0.88), "JPEG", x, y, w, h);
 }
 
+
+/** Desenha o canvas no PDF: largura total da página; fatias verticais sem cortar linhas a meio. */
+function addCanvasToPdf(
+  pdf: InstanceType<JsPdfCtor>,
+  canvas: HTMLCanvasElement,
+  opts: { landscape?: boolean; hasPriorPages?: boolean; tighter?: boolean },
+): number {
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = opts.landscape ? 8 : opts.tighter ? 7 : 10;
+  const contentW = pageW - margin * 2;
+  const contentH = pageH - margin * 2;
+
+  // Escala: a largura do canvas mapeia SEMPRE para contentW (sem crop lateral)
+  const scale = contentW / canvas.width;
+  const fullH = canvas.height * scale;
+
+  let pages = 0;
+  const ensurePage = () => {
+    if (pages > 0 || opts.hasPriorPages) pdf.addPage();
+    pages++;
+  };
+
+  // Cabe numa página (com 3% de folga): desenhar tudo
+  if (fullH <= contentH * 1.03) {
+    ensurePage();
+    const h = Math.min(fullH, contentH);
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", margin, margin, contentW, h);
+    return pages;
+  }
+
+  // Multipágina — fatias em coordenadas do canvas
+  const pxPerPage = contentH / scale;
+  const rowStep = Math.max(14, Math.round((opts.landscape ? 16 : 20) * (opts.landscape ? 1.35 : 1.5)));
+  const pageCanvas = document.createElement("canvas");
+  const ctx = pageCanvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas indisponível");
+
+  let srcY = 0;
+  while (srcY < canvas.height - 1) {
+    let sliceH = Math.min(pxPerPage, canvas.height - srcY);
+    const isLast = srcY + sliceH >= canvas.height - 2;
+    if (!isLast) {
+      const snapped = Math.floor(sliceH / rowStep) * rowStep;
+      if (snapped > pxPerPage * 0.5) sliceH = snapped;
+    }
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = Math.max(1, Math.ceil(sliceH));
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+    ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+    ensurePage();
+    const sliceMmH = sliceH * scale;
+    pdf.addImage(
+      pageCanvas.toDataURL("image/jpeg", 0.92),
+      "JPEG",
+      margin,
+      margin,
+      contentW,
+      Math.min(sliceMmH, contentH),
+    );
+    srcY += sliceH;
+    if (pages > 60) break;
+  }
+  return pages;
+}
+
 export async function elementToPdfBlob(
   el: HTMLElement,
   opts?: { filename?: string; stamp?: boolean; landscape?: boolean },
@@ -510,62 +570,12 @@ export async function elementToPdfBlob(
       const scale = landscape ? 1.4 : coverNodes.length > 0 ? 1.25 : 1.55;
       const canvas = await capture(stage, html2canvas, scale, landscape);
 
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = landscape ? 7 : coverNodes.length > 0 ? 6 : 8;
-      const contentW = pageW - margin * 2;
-      const contentH = pageH - margin * 2;
-
-      // Largura: sempre encaixar a página inteira (sem corte horizontal)
-      const imgW = contentW;
-      const imgFullH = (canvas.height * contentW) / canvas.width;
-
-      // Se couber numa página (com pequena margem), escalar para caber tudo
-      if (imgFullH <= contentH * 1.02) {
-        const h = Math.min(imgFullH, contentH);
-        if (pageCount > 0) pdf.addPage();
-        pdf.addImage(
-          canvas.toDataURL("image/jpeg", 0.9),
-          "JPEG",
-          margin,
-          margin,
-          imgW,
-          h,
-        );
-        pageCount++;
-      } else {
-        // Multipágina: cortar em fatias; alinhar ao passo de linha (~22px * scale)
-        const rowStep = Math.max(16, Math.round((landscape ? 18 : 22) * (landscape ? 1.4 : 1.5)));
-        const pxPerPage = (contentH * canvas.width) / contentW;
-        const pageCanvas = document.createElement("canvas");
-        const ctx = pageCanvas.getContext("2d");
-        if (!ctx) throw new Error("Canvas indisponível");
-
-        let srcY = 0;
-        let bodyPage = 0;
-        while (srcY < canvas.height - 1) {
-          let sliceH = Math.min(pxPerPage, canvas.height - srcY);
-          // Evitar cortar linha a meio: recuar até múltiplo de rowStep (exceto última página)
-          if (srcY + sliceH < canvas.height - 2) {
-            const snapped = Math.floor(sliceH / rowStep) * rowStep;
-            if (snapped > pxPerPage * 0.55) sliceH = snapped;
-          }
-          pageCanvas.width = canvas.width;
-          pageCanvas.height = Math.max(1, Math.ceil(sliceH));
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-          ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-          const data = pageCanvas.toDataURL("image/jpeg", 0.9);
-          const sliceMmH = (sliceH * contentW) / canvas.width;
-
-          if (pageCount > 0 || bodyPage > 0) pdf.addPage();
-          pdf.addImage(data, "JPEG", margin, margin, contentW, sliceMmH);
-          srcY += sliceH;
-          bodyPage++;
-          pageCount++;
-          if (bodyPage > 50) break;
-        }
-      }
+      const used = addCanvasToPdf(pdf, canvas, {
+        landscape,
+        hasPriorPages: pageCount > 0,
+        tighter: coverNodes.length > 0,
+      });
+      pageCount += used;
     } finally {
       stage.remove();
     }

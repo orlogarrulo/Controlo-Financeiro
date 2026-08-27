@@ -57,6 +57,7 @@ function GooglePage() {
   const salarios = salariosAll(salariosExtra, salariosOverrides);
   const [cloudStatus, setCloudStatus] = useState<string>("");
   const [cloudBusy, setCloudBusy] = useState(false);
+  const [lastExport, setLastExport] = useState<string | null>(null);
 
   const [paste, setPaste] = useState("");
   const [mode, setMode] = useState<"forms" | "bai" | "lancamentos">("forms");
@@ -64,50 +65,64 @@ function GooglePage() {
   const [recon, setRecon] = useState<ReconcileResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  function runExport(id: string, filename: string, build: () => string) {
+    try {
+      const csv = build();
+      downloadCsv(filename, csv);
+      setLastExport(id);
+      toast.success(`CSV descarregado: ${filename}`);
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : `Falha ao exportar ${filename}`);
+    }
+  }
+
   function exportMaster() {
-    downloadCsv("Controlo_Financeiro_Escola_master_Lancamentos.csv", ledgerToCsv(ledger));
-    toast.success("CSV do master descarregado");
+    runExport("master", "Controlo_Financeiro_Escola_master_Lancamentos.csv", () =>
+      ledgerToCsv(ledger),
+    );
   }
 
   function exportBai() {
-    downloadCsv("BAI_Movimentos_export.csv", baiToCsv(movsApp));
-    toast.success("CSV BAI descarregado");
+    runExport("bai", "BAI_Movimentos_export.csv", () => baiToCsv(movsApp || []));
   }
 
   function exportAlunos() {
-    downloadCsv("Matriculas_alunos.csv", alunosToCsv(alunos));
-    toast.success("CSV Matrículas descarregado");
+    runExport("alunos", "Matriculas_alunos.csv", () => alunosToCsv(alunos || []));
   }
 
   function exportPropinas() {
-    downloadCsv(
-      "Propinas_mensalidades.csv",
-      mensalidadesToCsv(mensalidades, [...MESES_LETIVOS]),
+    runExport("propinas", "Propinas_mensalidades.csv", () =>
+      mensalidadesToCsv(mensalidades || [], [...MESES_LETIVOS]),
     );
-    toast.success("CSV Propinas descarregado");
   }
 
   function exportSalarios() {
-    downloadCsv("Salarios.csv", salariosToCsv(salarios));
-    toast.success("CSV Salários descarregado");
+    runExport("salarios", "Salarios.csv", () => salariosToCsv(salarios || []));
   }
 
   function exportFundo() {
-    const seedFundo = seed.fundoPagamentos || [];
-    const seedAtm = seed.fundoAtm || [];
-    const pags = [...seedFundo, ...fundoExtra];
-    downloadCsv("Fundo_maneio.csv", fundoToCsv(pags, seedAtm));
-    toast.success("CSV Fundo descarregado");
+    runExport("fundo", "Fundo_maneio.csv", () => {
+      const seedFundo = seed.fundoPagamentos || [];
+      const seedAtm = seed.fundoAtm || [];
+      const pags = [...seedFundo, ...(fundoExtra || [])];
+      return fundoToCsv(pags, seedAtm);
+    });
   }
 
   function exportTudo() {
-    exportMaster();
-    exportBai();
-    exportAlunos();
-    exportPropinas();
-    exportSalarios();
-    exportFundo();
-    toast.message("Exportação de todos os CSV iniciada");
+    try {
+      exportMaster();
+      exportBai();
+      exportAlunos();
+      exportPropinas();
+      exportSalarios();
+      exportFundo();
+      setLastExport("tudo");
+      toast.message("Exportação de todos os CSV concluída");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha na exportação completa");
+    }
   }
 
   async function syncFromCloud() {
@@ -270,14 +285,59 @@ function GooglePage() {
             Descarregue CSV para Excel ou Google Sheets. Master: {SHEET_COLUMNS.slice(0, 6).join(", ")}…
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={exportMaster}>Lançamentos / despesas</Button>
-            <Button variant="secondary" onClick={exportBai}>Cartão BAI</Button>
-            <Button variant="secondary" onClick={exportAlunos}>Matrículas</Button>
-            <Button variant="secondary" onClick={exportPropinas}>Propinas</Button>
-            <Button variant="secondary" onClick={exportSalarios}>Salários</Button>
-            <Button variant="secondary" onClick={exportFundo}>Fundo de maneio</Button>
-            <Button onClick={exportTudo}>Exportar tudo</Button>
+            <Button
+              type="button"
+              variant={lastExport === "master" ? "default" : "secondary"}
+              onClick={() => exportMaster()}
+            >
+              Lançamentos / despesas
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "bai" ? "default" : "secondary"}
+              onClick={() => exportBai()}
+            >
+              Cartão BAI
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "alunos" ? "default" : "secondary"}
+              onClick={() => exportAlunos()}
+            >
+              Matrículas
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "propinas" ? "default" : "secondary"}
+              onClick={() => exportPropinas()}
+            >
+              Propinas
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "salarios" ? "default" : "secondary"}
+              onClick={() => exportSalarios()}
+            >
+              Salários
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "fundo" ? "default" : "secondary"}
+              onClick={() => exportFundo()}
+            >
+              Fundo de maneio
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "tudo" ? "default" : "default"}
+              onClick={() => exportTudo()}
+            >
+              Exportar tudo
+            </Button>
           </div>
+          <p className="mt-2 text-xs text-[var(--color-muted)]">
+            Clique num botão para descarregar o CSV. O botão fica verde após a exportação.
+          </p>
           <p className="mt-3 text-xs text-[var(--color-muted)]">
             Saldo BAI: <strong>{formatKz(movsApp[movsApp.length - 1]?.saldo ?? 0)}</strong> ·{" "}
             {movsApp.length} linhas · {alunos.length} alunos · Conta {seed.escola.contaBai}.
