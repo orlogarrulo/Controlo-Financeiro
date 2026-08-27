@@ -90,24 +90,18 @@ const STAGE_CSS = `
   }
   [data-pdf-stage] .no-print { display: none !important; }
   [data-pdf-stage] nav, [data-pdf-stage] aside { display: none !important; }
-  [data-pdf-stage] .print-only { display: block !important; visibility: visible !important; }
+  /* Cabeçalhos de logo no HTML ficam ocultos — logo vai via jsPDF em todas as páginas */
   [data-pdf-stage] header.print-only,
   [data-pdf-stage] [data-pdf-logo-header] {
-    display: flex !important;
-    align-items: center !important;
-    gap: 14px !important;
-    margin-bottom: 14px !important;
-    padding-bottom: 10px !important;
-    border-bottom: 1.5px solid #222 !important;
+    display: none !important;
   }
-  [data-pdf-stage] header.print-only img,
-  [data-pdf-stage] [data-pdf-logo-header] img {
-    width: 56px !important;
-    height: 56px !important;
-    object-fit: contain !important;
-    flex-shrink: 0 !important;
+  [data-pdf-stage] .print-only.print-cover,
+  [data-pdf-stage] .print-cover {
+    /* capa tratada à parte */
   }
-  [data-pdf-stage] .print-only.hidden { display: block !important; }
+  [data-pdf-stage] .print-only.hidden:not(.print-cover) {
+    display: none !important;
+  }
   [data-pdf-stage] .print-cover,
   [data-pdf-stage] .print-only.print-cover {
     display: flex !important;
@@ -142,12 +136,16 @@ const STAGE_CSS = `
     border-collapse: collapse !important;
     font-size: 12px !important;
   }
+  [data-pdf-stage] table {
+    border: 1px solid #888 !important;
+  }
   [data-pdf-stage] th {
     font-size: 11px !important;
     font-weight: 600 !important;
     text-transform: uppercase;
     letter-spacing: 0.03em;
     padding: 7px 8px !important;
+    border: 0.5px solid #aaa !important;
     border-bottom: 1.5px solid #333 !important;
     text-align: left;
     background: #f3f4f6 !important;
@@ -156,9 +154,12 @@ const STAGE_CSS = `
   [data-pdf-stage] td {
     font-size: 12px !important;
     padding: 6px 8px !important;
-    border-bottom: 1px solid #ccc !important;
+    border: 0.5px solid #ccc !important;
     vertical-align: top;
     color: #111 !important;
+  }
+  [data-pdf-stage] tbody tr:last-child td {
+    border-bottom: 1px solid #888 !important;
   }
   [data-pdf-landscape] table {
     width: 100% !important;
@@ -261,11 +262,23 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.style.maxHeight = "none";
   clone.style.height = "auto";
   clone.querySelectorAll(".no-print").forEach((n) => n.remove());
+
+  // Remover cabeçalhos com logo do HTML — o logo é desenhado em CADA página pelo jsPDF.
+  // Evita duplicar o logotipo na mesma folha (HTML + cabeçalho PDF).
+  clone.querySelectorAll("[data-pdf-logo-header]").forEach((n) => n.remove());
+  clone.querySelectorAll("header.print-only").forEach((n) => n.remove());
+  clone.querySelectorAll("header").forEach((h) => {
+    if (h.querySelector("img[src*='logo'], img[src*='escola']")) h.remove();
+  });
+
   clone.querySelectorAll("table").forEach((table) => {
     const el = table as HTMLElement;
     el.style.minWidth = "0";
     el.style.width = "100%";
     el.style.maxWidth = "100%";
+    el.style.borderCollapse = "collapse";
+    // Borda exterior visível (limites completos na última página)
+    if (!el.style.border) el.style.border = "1px solid #999";
     el.className = el.className
       .split(/\s+/)
       .filter((c) => !c.startsWith("min-w"))
@@ -278,14 +291,11 @@ function prepareClone(source: HTMLElement): HTMLElement {
     el.style.maxHeight = "none";
     el.style.height = "auto";
   });
-  clone.querySelectorAll(".print-only, .print-cover").forEach((node) => {
+  // Só capas .print-cover (não cabeçalhos de logo)
+  clone.querySelectorAll(".print-cover").forEach((node) => {
     const el = node as HTMLElement;
     el.classList.remove("hidden");
-    if (el.classList.contains("print-cover") || el.className.includes("print:flex")) {
-      el.style.setProperty("display", "flex", "important");
-    } else {
-      el.style.setProperty("display", "block", "important");
-    }
+    el.style.setProperty("display", "flex", "important");
     el.style.setProperty("visibility", "visible", "important");
   });
   clone.querySelectorAll("img").forEach((img) => {
@@ -448,7 +458,8 @@ function sliceAtBreaks(
     const remaining = totalH - srcY;
     let sliceH: number;
 
-    if (remaining <= pageHeightCanvas + 4) {
+    if (remaining <= pageHeightCanvas + 8) {
+      // Última página: incluir tudo até ao fim (bordas inferiores da tabela)
       sliceH = remaining;
     } else {
       const ideal = srcY + pageHeightCanvas;
@@ -609,6 +620,11 @@ export async function elementToPdfBlob(
     const stage = makeStage(landscape);
     try {
       stage.appendChild(clone);
+      // Espaço extra no fundo para a borda inferior da tabela não ser cortada
+      const spacer = document.createElement("div");
+      spacer.style.height = "12px";
+      spacer.setAttribute("aria-hidden", "true");
+      stage.appendChild(spacer);
       await waitImages(stage);
       await wait(100);
 
