@@ -145,6 +145,14 @@ const STAGE_CSS = `
   [data-pdf-stage] .print-cover h1 { font-size: 26px !important; font-weight: 700 !important; }
   [data-pdf-stage] .print-cover p { font-size: 13px !important; }
 
+  [data-pdf-stage] .print\:break-before-page,
+  [data-pdf-stage] [style*="break-before"] {
+    break-before: page !important;
+    page-break-before: always !important;
+    margin-top: 24px !important;
+    padding-top: 16px !important;
+    border-top: 2px solid #1f5c4a !important;
+  }
   [data-pdf-stage] .print-sheet {
     box-shadow: none !important;
     border: 1.5px solid #555 !important;
@@ -308,6 +316,13 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.style.maxWidth = "100%";
   clone.style.background = "#ffffff";
   clone.querySelectorAll(".no-print").forEach((n) => n.remove());
+  clone.querySelectorAll('[class*="break-before"], [style*="break-before"]').forEach((node) => {
+    const el = node as HTMLElement;
+    const spacer = document.createElement("div");
+    spacer.setAttribute("data-pdf-page-break", "1");
+    spacer.style.cssText = "width:100%;height:48px;margin:20px 0 12px;border-top:2px solid #1f5c4a;clear:both;";
+    el.parentElement?.insertBefore(spacer, el);
+  });
   clone.querySelectorAll("button, [data-sonner-toaster]").forEach((n) => n.remove());
   // Tabelas: sempre dentro da largura da página
   clone.querySelectorAll("table").forEach((table) => {

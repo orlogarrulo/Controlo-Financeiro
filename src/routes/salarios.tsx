@@ -1,7 +1,7 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
 import { Pencil, Plus, UserPlus } from "lucide-react";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { PrintActions } from "@/components/print-actions";
@@ -35,6 +35,8 @@ type FormState = {
   telefone: string;
   email: string;
   morada: string;
+  documento: string;
+  nacionalidade: string;
 };
 
 function emptyForm(): FormState {
@@ -51,8 +53,156 @@ function emptyForm(): FormState {
     telefone: "",
     email: "",
     morada: "",
+    documento: "",
+    nacionalidade: "Angolana",
   };
 }
+
+
+function SalarioFormFields({
+  form,
+  setForm,
+  onSave,
+  onCancel,
+}: {
+  form: FormState;
+  setForm: Dispatch<SetStateAction<FormState>>;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label>Nome do funcionário *</Label>
+        <Input
+          data-focus="nome" value={form.nome}
+          onChange={(e) => setForm({ ...form, nome: e.target.value })}
+          placeholder="Nome completo"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Função</Label>
+        <Input
+          data-focus="funcao" value={form.funcao}
+          onChange={(e) => setForm({ ...form, funcao: e.target.value })}
+          placeholder="Ex.: Auxiliar, Professora…"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Categoria</Label>
+        <Input
+          value={form.categoria}
+          onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+          placeholder="Pessoal"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Salário bruto (Kz)</Label>
+        <Input
+          value={form.salario}
+          onChange={(e) => setForm({ ...form, salario: e.target.value })}
+          inputMode="decimal"
+          placeholder="90000"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Mês de referência</Label>
+        <Input
+          value={form.mes}
+          onChange={(e) => setForm({ ...form, mes: e.target.value })}
+          placeholder="Agosto 2026"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Dias úteis</Label>
+        <Input
+          value={form.diasUteis}
+          onChange={(e) => setForm({ ...form, diasUteis: e.target.value })}
+          inputMode="numeric"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Dias trabalhados</Label>
+        <Input
+          value={form.diasTrab}
+          onChange={(e) => setForm({ ...form, diasTrab: e.target.value })}
+          inputMode="numeric"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Outros descontos (Kz)</Label>
+        <Input
+          value={form.outrosDesc}
+          onChange={(e) => setForm({ ...form, outrosDesc: e.target.value })}
+          inputMode="decimal"
+          placeholder="0"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Data de pagamento</Label>
+        <Input
+          type="date"
+          data-focus="dataPag" value={form.dataPag}
+          onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
+        />
+      </div>
+      <div className="sm:col-span-2 border-t border-[var(--color-line)] pt-2">
+        <p className="mb-2 text-xs font-medium tracking-wide text-[var(--color-muted)] uppercase">
+          Contactos
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Telefone</Label>
+        <Input
+          value={form.telefone}
+          onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+          placeholder="9xx xxx xxx"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>E-mail</Label>
+        <Input
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          placeholder="nome@email.com"
+        />
+      </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label>Morada</Label>
+        <Input
+          value={form.morada}
+          onChange={(e) => setForm({ ...form, morada: e.target.value })}
+          placeholder="Bairro, município…"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Nº BI / Passaporte</Label>
+        <Input
+          value={form.documento}
+          onChange={(e) => setForm({ ...form, documento: e.target.value })}
+          placeholder="Nº do documento de identificação"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Nacionalidade</Label>
+        <Input
+          value={form.nacionalidade}
+          onChange={(e) => setForm({ ...form, nacionalidade: e.target.value })}
+          placeholder="Angolana"
+        />
+      </div>
+      <div className="flex justify-end gap-2 sm:col-span-2">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancelar
+        </Button>
+        <Button type="button" onClick={onSave}>
+          Guardar
+        </Button>
+      </div>
+    </div>
+  );
+  }
 
 function Salarios() {
   const printRef = useRef<HTMLDivElement>(null);
@@ -114,6 +264,8 @@ function Salarios() {
       telefone: r.telefone || "",
       email: r.email || "",
       morada: r.morada || "",
+      documento: r.documento || "",
+      nacionalidade: r.nacionalidade || "Angolana",
     });
   }
 
@@ -167,6 +319,8 @@ function Salarios() {
       telefone: form.telefone.trim(),
       email: form.email.trim(),
       morada: form.morada.trim(),
+      documento: form.documento.trim(),
+      nacionalidade: form.nacionalidade.trim(),
     };
     addSalario(row);
     toast.success(`Funcionário ${row.nome} adicionado (${row.id})`);
@@ -194,6 +348,8 @@ function Salarios() {
         telefone: form.telefone.trim(),
         email: form.email.trim(),
         morada: form.morada.trim(),
+        documento: form.documento.trim(),
+        nacionalidade: form.nacionalidade.trim(),
       });
       toast.success(`Salário ${editing.id} actualizado`);
       setEditing(null);
@@ -203,124 +359,7 @@ function Salarios() {
     }
   }
 
-  function FormFields({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
-    return (
-      <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label>Nome do funcionário *</Label>
-          <Input
-            data-focus="nome" value={form.nome}
-            onChange={(e) => setForm({ ...form, nome: e.target.value })}
-            placeholder="Nome completo"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Função</Label>
-          <Input
-            data-focus="funcao" value={form.funcao}
-            onChange={(e) => setForm({ ...form, funcao: e.target.value })}
-            placeholder="Ex.: Auxiliar, Professora…"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Categoria</Label>
-          <Input
-            value={form.categoria}
-            onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-            placeholder="Pessoal"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Salário bruto (Kz)</Label>
-          <Input
-            value={form.salario}
-            onChange={(e) => setForm({ ...form, salario: e.target.value })}
-            inputMode="decimal"
-            placeholder="90000"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Mês de referência</Label>
-          <Input
-            value={form.mes}
-            onChange={(e) => setForm({ ...form, mes: e.target.value })}
-            placeholder="Agosto 2026"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Dias úteis</Label>
-          <Input
-            value={form.diasUteis}
-            onChange={(e) => setForm({ ...form, diasUteis: e.target.value })}
-            inputMode="numeric"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Dias trabalhados</Label>
-          <Input
-            value={form.diasTrab}
-            onChange={(e) => setForm({ ...form, diasTrab: e.target.value })}
-            inputMode="numeric"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Outros descontos (Kz)</Label>
-          <Input
-            value={form.outrosDesc}
-            onChange={(e) => setForm({ ...form, outrosDesc: e.target.value })}
-            inputMode="decimal"
-            placeholder="0"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Data de pagamento</Label>
-          <Input
-            type="date"
-            data-focus="dataPag" value={form.dataPag}
-            onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
-          />
-        </div>
-        <div className="sm:col-span-2 border-t border-[var(--color-line)] pt-2">
-          <p className="mb-2 text-xs font-medium tracking-wide text-[var(--color-muted)] uppercase">
-            Contactos
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Telefone</Label>
-          <Input
-            value={form.telefone}
-            onChange={(e) => setForm({ ...form, telefone: e.target.value })}
-            placeholder="9xx xxx xxx"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>E-mail</Label>
-          <Input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="nome@email.com"
-          />
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label>Morada</Label>
-          <Input
-            value={form.morada}
-            onChange={(e) => setForm({ ...form, morada: e.target.value })}
-            placeholder="Bairro, município…"
-          />
-        </div>
-        <div className="flex justify-end gap-2 sm:col-span-2">
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            Cancelar
-          </Button>
-          <Button type="button" onClick={onSave}>
-            Guardar
-          </Button>
-        </div>
-      </div>
-    );
-  }
+
 
   const escola = getSeed().escola;
 
@@ -443,6 +482,8 @@ function Salarios() {
               <p><span className="text-[var(--color-muted)]">Telefone:</span> {r.telefone || "—"}</p>
               <p><span className="text-[var(--color-muted)]">E-mail:</span> {r.email || "—"}</p>
               <p className="sm:col-span-2"><span className="text-[var(--color-muted)]">Morada:</span> {r.morada || "—"}</p>
+              <p><span className="text-[var(--color-muted)]">BI / Passaporte:</span> {r.documento || "—"}</p>
+              <p><span className="text-[var(--color-muted)]">Nacionalidade:</span> {r.nacionalidade || "—"}</p>
             </div>
           </div>
         ))}
@@ -460,7 +501,7 @@ function Salarios() {
               <Plus className="size-5" /> Novo funcionário / salário
             </DialogTitle>
           </DialogHeader>
-          <FormFields onSave={saveNew} onCancel={() => setCreating(false)} />
+          <SalarioFormFields form={form} setForm={setForm} onSave={saveNew} onCancel={() => setCreating(false)} />
         </DialogContent>
       </Dialog>
 
@@ -469,7 +510,7 @@ function Salarios() {
           <DialogHeader>
             <DialogTitle>Editar {editing?.id}</DialogTitle>
           </DialogHeader>
-          <FormFields onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
+          <SalarioFormFields form={form} setForm={setForm} onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
         </DialogContent>
       </Dialog>
 
@@ -526,6 +567,16 @@ function Salarios() {
                   <span className="text-[var(--color-muted)]">Morada</span>
                   <br />
                   {viewing.morada || "—"}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">BI / Passaporte</span>
+                  <br />
+                  {viewing.documento || "—"}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">Nacionalidade</span>
+                  <br />
+                  {viewing.nacionalidade || "—"}
                 </p>
               </div>
               <div className="flex justify-end gap-2 border-t border-[var(--color-line)] pt-3">

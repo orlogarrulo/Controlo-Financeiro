@@ -209,6 +209,7 @@ function MatriculaForm({
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const totais = calcTotais(form);
   return (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
       <div className="space-y-1.5 sm:col-span-2">

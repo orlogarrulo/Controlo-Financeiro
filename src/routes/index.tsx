@@ -164,7 +164,7 @@ function Dashboard() {
       </div>
 
       {/* Balanço patrimonial — ecrã, impressão e PDF */}
-      <Card className="mt-4 print-sheet">
+      <Card className="mt-4 print-sheet print:break-before-page" style={{ breakBefore: "page" }}>
         <CardHeader>
           <CardTitle>Balanço patrimonial</CardTitle>
         </CardHeader>

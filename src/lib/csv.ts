@@ -336,6 +336,8 @@ export function salariosToCsv(
     "Telefone",
     "E-mail",
     "Morada",
+    "BI / Passaporte",
+    "Nacionalidade",
   ];
   const lines = rows.map((r) => {
     const diasU = r.diasUteis || 22;
@@ -360,6 +362,8 @@ export function salariosToCsv(
       r.telefone || "",
       r.email || "",
       r.morada || "",
+      r.documento || "",
+      r.nacionalidade || "",
     ].map(String);
   });
   return headerBody(cols, lines);

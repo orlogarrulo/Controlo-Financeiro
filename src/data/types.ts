@@ -148,10 +148,13 @@ export type Salario = {
   diasTrab: number;
   outrosDesc: number;
   dataPag: string;
-  /** Contactos (cadastro completo) */
+  /** Contactos e identificação (cadastro completo) */
   telefone?: string;
   email?: string;
   morada?: string;
+  /** Nº BI ou Passaporte */
+  documento?: string;
+  nacionalidade?: string;
 };
 
 export type Escola = {
