@@ -12,6 +12,10 @@ import {
   parseBaiCsv,
   baiToCsv,
   reconcileBai,
+  alunosToCsv,
+  salariosToCsv,
+  fundoToCsv,
+  mensalidadesToCsv,
   type ReconcileResult,
 } from "@/lib/csv";
 import {
@@ -19,7 +23,11 @@ import {
   getSeed,
   useFinance,
   movimentosAll,
+  alunosAll,
+  salariosAll,
 } from "@/lib/store";
+import { MESES_LETIVOS } from "@/data/types";
+import { loadFinanceCloud, saveFinanceCloud, sliceFromStore } from "@/lib/finance-cloud";
 import { todayIso, formatKz } from "@/lib/format";
 import type { MovimentoBai } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
@@ -36,9 +44,19 @@ function GooglePage() {
   const baiOverride = useFinance((s) => s.baiOverride);
   const operators = useFinance((s) => s.operators);
   const activeOperator = useFinance((s) => s.activeOperator);
+  const alunosExtra = useFinance((s) => s.alunosExtra);
+  const alunosOverrides = useFinance((s) => s.alunosOverrides);
+  const mensalidades = useFinance((s) => s.mensalidades);
+  const fundoExtra = useFinance((s) => s.fundoExtra);
+  const salariosExtra = useFinance((s) => s.salariosExtra);
+  const salariosOverrides = useFinance((s) => s.salariosOverrides);
   const canImport = isCollaborator1(activeOperator, operators);
   const ledger = buildLedger(extras);
   const movsApp = movimentosAll(baiExtra, baiOverride);
+  const alunos = alunosAll(alunosExtra, alunosOverrides);
+  const salarios = salariosAll(salariosExtra, salariosOverrides);
+  const [cloudStatus, setCloudStatus] = useState<string>("");
+  const [cloudBusy, setCloudBusy] = useState(false);
 
   const [paste, setPaste] = useState("");
   const [mode, setMode] = useState<"forms" | "bai" | "lancamentos">("forms");
@@ -54,6 +72,70 @@ function GooglePage() {
   function exportBai() {
     downloadCsv("BAI_Movimentos_export.csv", baiToCsv(movsApp));
     toast.success("CSV BAI descarregado");
+  }
+
+  function exportAlunos() {
+    downloadCsv("Matriculas_alunos.csv", alunosToCsv(alunos));
+    toast.success("CSV Matrículas descarregado");
+  }
+
+  function exportPropinas() {
+    downloadCsv(
+      "Propinas_mensalidades.csv",
+      mensalidadesToCsv(mensalidades, [...MESES_LETIVOS]),
+    );
+    toast.success("CSV Propinas descarregado");
+  }
+
+  function exportSalarios() {
+    downloadCsv("Salarios.csv", salariosToCsv(salarios));
+    toast.success("CSV Salários descarregado");
+  }
+
+  function exportFundo() {
+    const seedFundo = seed.fundoPagamentos || [];
+    const seedAtm = seed.fundoAtm || [];
+    const pags = [...seedFundo, ...fundoExtra];
+    downloadCsv("Fundo_maneio.csv", fundoToCsv(pags, seedAtm));
+    toast.success("CSV Fundo descarregado");
+  }
+
+  function exportTudo() {
+    exportMaster();
+    exportBai();
+    exportAlunos();
+    exportPropinas();
+    exportSalarios();
+    exportFundo();
+    toast.message("Exportação de todos os CSV iniciada");
+  }
+
+  async function syncFromCloud() {
+    setCloudBusy(true);
+    try {
+      const remote = await loadFinanceCloud();
+      setCloudStatus(
+        `Nuvem: ${remote.source} · actualizado ${new Date(remote.updatedAt).toLocaleString("pt-PT")}`,
+      );
+      toast.success("Estado da nuvem lido — recarregue a página se os dados não aparecerem");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao ler a nuvem");
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function forcePushCloud() {
+    setCloudBusy(true);
+    try {
+      const res = await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
+      setCloudStatus(`Enviado · ${new Date(res.updatedAt).toLocaleString("pt-PT")}`);
+      toast.success("Dados enviados para a nuvem");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao enviar para a nuvem");
+    } finally {
+      setCloudBusy(false);
+    }
   }
 
   function guardImport(): boolean {
@@ -183,22 +265,45 @@ function GooglePage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
-          <h2 className="font-display text-xl">Exportar</h2>
+          <h2 className="font-display text-xl">Exportar CSV (todos os separadores)</h2>
           <p className="mt-2 text-sm text-[var(--color-muted)]">
-            Descarregue CSV para Excel, Google Sheets ou arquivo. Colunas do master:{" "}
-            {SHEET_COLUMNS.join(", ")}.
+            Descarregue CSV para Excel ou Google Sheets. Master: {SHEET_COLUMNS.slice(0, 6).join(", ")}…
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={exportMaster}>Exportar lançamentos (master)</Button>
-            <Button variant="secondary" onClick={exportBai}>
-              Exportar movimentos BAI
-            </Button>
+            <Button onClick={exportMaster}>Lançamentos / despesas</Button>
+            <Button variant="secondary" onClick={exportBai}>Cartão BAI</Button>
+            <Button variant="secondary" onClick={exportAlunos}>Matrículas</Button>
+            <Button variant="secondary" onClick={exportPropinas}>Propinas</Button>
+            <Button variant="secondary" onClick={exportSalarios}>Salários</Button>
+            <Button variant="secondary" onClick={exportFundo}>Fundo de maneio</Button>
+            <Button onClick={exportTudo}>Exportar tudo</Button>
           </div>
           <p className="mt-3 text-xs text-[var(--color-muted)]">
-            Saldo BAI na app: <strong>{formatKz(movsApp[movsApp.length - 1]?.saldo ?? 0)}</strong> ·{" "}
-            {movsApp.length} linhas
-            {baiOverride ? " (extrato importado)" : ""}. Conta {seed.escola.contaBai}.
+            Saldo BAI: <strong>{formatKz(movsApp[movsApp.length - 1]?.saldo ?? 0)}</strong> ·{" "}
+            {movsApp.length} linhas · {alunos.length} alunos · Conta {seed.escola.contaBai}.
           </p>
+
+          <h3 className="font-display mt-6 text-lg">Nuvem (Neon)</h3>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            Os dados gravam-se automaticamente na base de dados quando há ligação. Use estes
+            botões para forçar leitura ou envio.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="secondary" disabled={cloudBusy} onClick={() => void syncFromCloud()}>
+              Verificar nuvem
+            </Button>
+            <Button disabled={cloudBusy} onClick={() => void forcePushCloud()}>
+              Enviar dados agora
+            </Button>
+          </div>
+          {cloudStatus ? (
+            <p className="mt-2 text-xs text-[var(--color-muted)]">{cloudStatus}</p>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--color-muted)]">
+              Em produção configure <code className="rounded bg-[var(--color-bg)] px-1">DATABASE_URL</code>{" "}
+              (Neon). Plano gratuito disponível.
+            </p>
+          )}
         </section>
 
         {canImport ? (

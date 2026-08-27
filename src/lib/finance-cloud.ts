@@ -1,0 +1,151 @@
+/**
+ * Sincronização do estado financeiro com Postgres (Neon em produção / PGLite em preview).
+ * Um registo partilhado por escola — todos os dispositivos vêem os mesmos dados.
+ */
+import { createServerFn } from "@tanstack/react-start";
+
+export type FinanceCloudPayload = {
+  extras: unknown[];
+  alunosExtra: unknown[];
+  alunosOverrides: Record<string, unknown>;
+  mensalidades: unknown[];
+  fundoExtra: unknown[];
+  movimentosBaiExtra: unknown[];
+  baiOverride: boolean;
+  fotos: Record<string, string>;
+  operators: string[];
+  auditLog: unknown[];
+  sessionLog: unknown[];
+  salariosExtra: unknown[];
+  salariosOverrides: Record<string, unknown>;
+  clientUpdatedAt?: string;
+};
+
+export type FinanceCloudSnapshot = {
+  payload: FinanceCloudPayload;
+  updatedAt: string;
+  source: "neon" | "pglite" | "empty";
+};
+
+function emptyPayload(): FinanceCloudPayload {
+  return {
+    extras: [],
+    alunosExtra: [],
+    alunosOverrides: {},
+    mensalidades: [],
+    fundoExtra: [],
+    movimentosBaiExtra: [],
+    baiOverride: false,
+    fotos: {},
+    operators: [],
+    auditLog: [],
+    sessionLog: [],
+    salariosExtra: [],
+    salariosOverrides: {},
+  };
+}
+
+export const loadFinanceCloud = createServerFn({ method: "GET" }).handler(
+  async (): Promise<FinanceCloudSnapshot> => {
+    const { getSql, dbSource } = await import("@/lib/db");
+    const sql = await getSql();
+    try {
+      const rows = await sql.query<{
+        payload: FinanceCloudPayload | string;
+        updated_at: string | Date;
+      }>(`SELECT payload, updated_at FROM finance_cloud WHERE id = $1 LIMIT 1`, ["escola"]);
+      if (!rows.length) {
+        return {
+          payload: emptyPayload(),
+          updatedAt: new Date(0).toISOString(),
+          source: "empty",
+        };
+      }
+      const row = rows[0];
+      const updatedAt =
+        typeof row.updated_at === "string"
+          ? row.updated_at
+          : new Date(row.updated_at).toISOString();
+      const payload =
+        typeof row.payload === "string"
+          ? (JSON.parse(row.payload) as FinanceCloudPayload)
+          : (row.payload as FinanceCloudPayload);
+      return {
+        payload: { ...emptyPayload(), ...payload },
+        updatedAt,
+        source: dbSource,
+      };
+    } catch (e) {
+      console.error("[finance-cloud] load failed", e);
+      return {
+        payload: emptyPayload(),
+        updatedAt: new Date(0).toISOString(),
+        source: "empty",
+      };
+    }
+  },
+);
+
+export const saveFinanceCloud = createServerFn({ method: "POST" })
+  .validator((data: FinanceCloudPayload) => data)
+  .handler(async ({ data }): Promise<{ ok: boolean; updatedAt: string }> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const updatedAt = new Date().toISOString();
+    const payload: FinanceCloudPayload = {
+      ...emptyPayload(),
+      ...data,
+      clientUpdatedAt: updatedAt,
+    };
+    try {
+      await sql.query(
+        `INSERT INTO finance_cloud (id, payload, updated_at)
+         VALUES ($1, $2::jsonb, $3::timestamptz)
+         ON CONFLICT (id) DO UPDATE SET
+           payload = EXCLUDED.payload,
+           updated_at = EXCLUDED.updated_at`,
+        ["escola", JSON.stringify(payload), updatedAt],
+      );
+      return { ok: true, updatedAt };
+    } catch (e) {
+      console.error("[finance-cloud] save failed", e);
+      throw new Error(
+        e instanceof Error
+          ? e.message
+          : "Falha ao gravar na nuvem. Verifique DATABASE_URL (Neon).",
+      );
+    }
+  });
+
+/** Extrai o slice persistido do store Zustand. */
+export function sliceFromStore(s: {
+  extras: unknown[];
+  alunosExtra: unknown[];
+  alunosOverrides: Record<string, unknown>;
+  mensalidades: unknown[];
+  fundoExtra: unknown[];
+  movimentosBaiExtra: unknown[];
+  baiOverride: boolean;
+  fotos: Record<string, string>;
+  operators: string[];
+  auditLog: unknown[];
+  sessionLog: unknown[];
+  salariosExtra: unknown[];
+  salariosOverrides: Record<string, unknown>;
+}): FinanceCloudPayload {
+  return {
+    extras: s.extras,
+    alunosExtra: s.alunosExtra,
+    alunosOverrides: s.alunosOverrides,
+    mensalidades: s.mensalidades,
+    fundoExtra: s.fundoExtra,
+    movimentosBaiExtra: s.movimentosBaiExtra,
+    baiOverride: s.baiOverride,
+    fotos: s.fotos,
+    operators: s.operators,
+    auditLog: s.auditLog.slice(-200),
+    sessionLog: s.sessionLog.slice(-100),
+    salariosExtra: s.salariosExtra,
+    salariosOverrides: s.salariosOverrides,
+  };
+}

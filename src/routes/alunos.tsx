@@ -1,7 +1,7 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
 import { Pencil, Printer, Plus, UserPlus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { PrintActions } from "@/components/print-actions";
@@ -195,324 +195,6 @@ function calcTotais(f: FormState) {
   const mensalidade1 = num(f.mensalidade1);
   const bruto = inscricao + seguro + manuais + uniforme + extras + curso + mensalidade1;
   return { inscricao, seguro, manuais, uniforme, extras, curso, mensalidade1, bruto, liquido: bruto };
-}
-
-/** Formulário estável (fora de Alunos) para não remontar os inputs a cada tecla. */
-function MatriculaForm({
-  form,
-  setForm,
-  totais,
-  onSave,
-  onCancel,
-}: {
-  form: FormState;
-  setForm: Dispatch<SetStateAction<FormState>>;
-  totais: ReturnType<typeof calcTotais>;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label>Nome do aluno *</Label>
-        <Input
-          value={form.nome}
-          onChange={(e) => setForm((prev) => ({ ...prev, nome: e.target.value }))}
-          placeholder="Nome completo"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Nome do pai</Label>
-        <Input
-          data-focus="pai"
-          value={form.pai}
-          onChange={(e) => setForm((prev) => ({ ...prev, pai: e.target.value }))}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Nome da mãe</Label>
-        <Input
-          data-focus="mae"
-          value={form.mae}
-          onChange={(e) => setForm((prev) => ({ ...prev, mae: e.target.value }))}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Classe / turma *</Label>
-        <select
-          className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-          value={form.turma}
-          onChange={(e) => setForm((prev) => ({ ...prev, turma: e.target.value }))}
-        >
-          {TURMAS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Data da inscrição</Label>
-        <Input
-          type="date"
-          data-focus="dataPag"
-          value={form.dataPag}
-          onChange={(e) => setForm((prev) => ({ ...prev, dataPag: e.target.value }))}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Método de pagamento</Label>
-        <select
-          className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-          data-focus="metodoPagamento"
-          value={form.metodoPagamento}
-          onChange={(e) => setForm((prev) => ({ ...prev, metodoPagamento: e.target.value }))}
-        >
-          {METODOS_PAGAMENTO.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Telefone</Label>
-        <Input
-          data-focus="telefone"
-          value={form.telefone}
-          onChange={(e) => setForm((prev) => ({ ...prev, telefone: e.target.value }))}
-          placeholder="9xx xxx xxx"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Morada</Label>
-        <Input
-          value={form.morada}
-          onChange={(e) => setForm((prev) => ({ ...prev, morada: e.target.value }))}
-          placeholder="Bairro, município…"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Família / apelido</Label>
-        <Input
-          value={form.familia}
-          onChange={(e) => setForm((prev) => ({ ...prev, familia: e.target.value }))}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>BI (opcional)</Label>
-        <Input
-          value={form.bi}
-          onChange={(e) => setForm((prev) => ({ ...prev, bi: e.target.value }))}
-        />
-      </div>
-
-      <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-forest)]/40 bg-[var(--color-forest-soft)]/40 p-3">
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={form.transferidoCampusCidade}
-            onChange={(e) => {
-              const on = e.target.checked;
-              if (on) {
-                setForm((prev) => ({
-                  ...prev,
-                  transferidoCampusCidade: true,
-                  seguroExterno: false,
-                  agregadoIrmaos: false,
-                  inscricao: String(CAMPUS_CIDADE_INSCRICAO),
-                  seguro: String(CAMPUS_CIDADE_SEGURO),
-                  propina: String(CAMPUS_CIDADE_PROPINA_1),
-                }));
-              } else {
-                setForm((prev) => ({
-                  ...prev,
-                  transferidoCampusCidade: false,
-                  agregadoIrmaos: false,
-                  inscricao: String(DEFAULT_INSCRICAO),
-                  seguro: prev.seguroExterno ? "0" : String(DEFAULT_SEGURO_ESCOLA),
-                  propina: "0",
-                }));
-              }
-            }}
-          />
-          <span>
-            <strong>Transferido do Campus Cidade</strong>
-            <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-              Inscrição e seguro iguais aos restantes alunos ({formatKz(CAMPUS_CIDADE_INSCRICAO)} +{" "}
-              {formatKz(CAMPUS_CIDADE_SEGURO)}). Propina mensal:{" "}
-              <strong>{formatKz(CAMPUS_CIDADE_PROPINA_1)}</strong> (1 aluno) ou{" "}
-              <strong>{formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}</strong> (2 ou mais irmãos do mesmo
-              agregado). Pode editar os valores nos campos abaixo.
-            </span>
-          </span>
-        </label>
-        {form.transferidoCampusCidade ? (
-          <div className="mt-3 flex flex-wrap gap-4 border-t border-[var(--color-line)] pt-3 text-xs">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="agregadoCampus"
-                checked={!form.agregadoIrmaos}
-                onChange={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    agregadoIrmaos: false,
-                    propina: String(CAMPUS_CIDADE_PROPINA_1),
-                  }))
-                }
-              />
-              1 aluno no agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_1)}
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="agregadoCampus"
-                checked={form.agregadoIrmaos}
-                onChange={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    agregadoIrmaos: true,
-                    propina: String(CAMPUS_CIDADE_PROPINA_IRMAOS),
-                  }))
-                }
-              />
-              2+ irmãos no mesmo agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
-            </label>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
-        <p className="mb-2 text-xs font-medium text-[var(--color-muted)] uppercase tracking-wide">
-          Valores da matrícula
-          {form.transferidoCampusCidade ? " · Campus Cidade (editáveis)" : ""}
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Inscrição (Kz)</Label>
-            <Input
-              value={form.inscricao}
-              onChange={(e) => setForm((prev) => ({ ...prev, inscricao: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Seguro escolar (Kz)</Label>
-            <Input
-              data-focus="seguro"
-              value={form.seguro}
-              disabled={form.seguroExterno}
-              onChange={(e) => setForm((prev) => ({ ...prev, seguro: e.target.value }))}
-            />
-            <label className="mt-1 flex items-center gap-2 text-xs text-[var(--color-muted)]">
-              <input
-                type="checkbox"
-                checked={form.seguroExterno}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    seguroExterno: e.target.checked,
-                    seguro: e.target.checked
-                      ? "0"
-                      : prev.transferidoCampusCidade
-                        ? String(CAMPUS_CIDADE_SEGURO)
-                        : String(DEFAULT_SEGURO_ESCOLA),
-                  }))
-                }
-              />
-              Seguro próprio (externo) — não cobrar o da escola
-            </label>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Manuais</Label>
-            <Input
-              value={form.manuais}
-              onChange={(e) => setForm((prev) => ({ ...prev, manuais: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Uniforme</Label>
-            <Input
-              value={form.uniforme}
-              onChange={(e) => setForm((prev) => ({ ...prev, uniforme: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>ATL / extras</Label>
-            <Input
-              value={form.extras}
-              onChange={(e) => setForm((prev) => ({ ...prev, extras: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Curso intensivo</Label>
-            <Input
-              value={form.curso}
-              onChange={(e) => setForm((prev) => ({ ...prev, curso: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>1.ª mensalidade (se incluída)</Label>
-            <Input
-              value={form.mensalidade1}
-              onChange={(e) => setForm((prev) => ({ ...prev, mensalidade1: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Propina mensal (referência)</Label>
-            <Input
-              value={form.propina}
-              onChange={(e) => setForm((prev) => ({ ...prev, propina: e.target.value }))}
-            />
-          </div>
-        </div>
-        <p className="mt-3 text-sm font-medium text-[var(--color-forest)]">
-          Total a pagar: {formatKz(totais.liquido)}
-          {form.seguroExterno ? " (sem seguro da escola)" : ""}
-          {form.transferidoCampusCidade
-            ? ` · propina mensal ref. ${formatKz(form.agregadoIrmaos ? CAMPUS_CIDADE_PROPINA_IRMAOS : CAMPUS_CIDADE_PROPINA_1)} (Campus Cidade)`
-            : ""}
-        </p>
-      </div>
-
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label>Observações</Label>
-        <Input
-          value={form.obs}
-          onChange={(e) => setForm((prev) => ({ ...prev, obs: e.target.value }))}
-        />
-      </div>
-
-      {!isAdminUnlocked() ? (
-        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
-          <Label>Código de autorização (Colaborador 1)</Label>
-          <Input
-            type="password"
-            inputMode="numeric"
-            placeholder="••••"
-            value={form.pin}
-            onChange={(e) => setForm((prev) => ({ ...prev, pin: e.target.value }))}
-            className="mt-1.5 max-w-[160px]"
-            autoComplete="off"
-          />
-        </div>
-      ) : (
-        <p className="sm:col-span-2 text-[11px] text-[var(--color-muted)]">
-          Sessão do Colaborador 1 já autorizada — não é necessário voltar a digitar o código.
-        </p>
-      )}
-
-      <div className="flex justify-end gap-2 sm:col-span-2">
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="button" onClick={onSave}>
-          Guardar matrícula
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 function Alunos() {
@@ -723,6 +405,274 @@ function Alunos() {
     }
   }
 
+  function MatriculaForm({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
+    return (
+      <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Nome do aluno *</Label>
+          <Input
+            value={form.nome}
+            onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            placeholder="Nome completo"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Nome do pai</Label>
+          <Input data-focus="pai" value={form.pai} onChange={(e) => setForm({ ...form, pai: e.target.value })} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Nome da mãe</Label>
+          <Input data-focus="mae" value={form.mae} onChange={(e) => setForm({ ...form, mae: e.target.value })} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Classe / turma *</Label>
+          <select
+            className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+            value={form.turma}
+            onChange={(e) => setForm({ ...form, turma: e.target.value })}
+          >
+            {TURMAS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Data da inscrição</Label>
+          <Input
+            type="date"
+            data-focus="dataPag" value={form.dataPag}
+            onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Método de pagamento</Label>
+          <select
+            className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+            data-focus="metodoPagamento" value={form.metodoPagamento}
+            onChange={(e) => setForm({ ...form, metodoPagamento: e.target.value })}
+          >
+            {METODOS_PAGAMENTO.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Telefone</Label>
+          <Input
+            data-focus="telefone" value={form.telefone}
+            onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+            placeholder="9xx xxx xxx"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Morada</Label>
+          <Input
+            value={form.morada}
+            onChange={(e) => setForm({ ...form, morada: e.target.value })}
+            placeholder="Bairro, município…"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Família / apelido</Label>
+          <Input value={form.familia} onChange={(e) => setForm({ ...form, familia: e.target.value })} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>BI (opcional)</Label>
+          <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
+        </div>
+
+        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-forest)]/40 bg-[var(--color-forest-soft)]/40 p-3">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.transferidoCampusCidade}
+              onChange={(e) => {
+                const on = e.target.checked;
+                if (on) {
+                  setForm({
+                    ...form,
+                    transferidoCampusCidade: true,
+                    seguroExterno: false,
+                    agregadoIrmaos: false,
+                    inscricao: String(CAMPUS_CIDADE_INSCRICAO),
+                    seguro: String(CAMPUS_CIDADE_SEGURO),
+                    propina: String(CAMPUS_CIDADE_PROPINA_1),
+                  });
+                } else {
+                  setForm({
+                    ...form,
+                    transferidoCampusCidade: false,
+                    agregadoIrmaos: false,
+                    inscricao: String(DEFAULT_INSCRICAO),
+                    seguro: form.seguroExterno ? "0" : String(DEFAULT_SEGURO_ESCOLA),
+                    propina: "0",
+                  });
+                }
+              }}
+            />
+            <span>
+              <strong>Transferido do Campus Cidade</strong>
+              <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
+                Inscrição e seguro iguais aos restantes alunos ({formatKz(CAMPUS_CIDADE_INSCRICAO)} +{" "}
+                {formatKz(CAMPUS_CIDADE_SEGURO)}). Propina mensal:{" "}
+                <strong>{formatKz(CAMPUS_CIDADE_PROPINA_1)}</strong> (1 aluno) ou{" "}
+                <strong>{formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}</strong> (2 ou mais irmãos do mesmo
+                agregado). Pode editar os valores nos campos abaixo.
+              </span>
+            </span>
+          </label>
+          {form.transferidoCampusCidade ? (
+            <div className="mt-3 flex flex-wrap gap-4 border-t border-[var(--color-line)] pt-3 text-xs">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="agregadoCampus"
+                  checked={!form.agregadoIrmaos}
+                  onChange={() =>
+                    setForm({
+                      ...form,
+                      agregadoIrmaos: false,
+                      propina: String(CAMPUS_CIDADE_PROPINA_1),
+                    })
+                  }
+                />
+                1 aluno no agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_1)}
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="agregadoCampus"
+                  checked={form.agregadoIrmaos}
+                  onChange={() =>
+                    setForm({
+                      ...form,
+                      agregadoIrmaos: true,
+                      propina: String(CAMPUS_CIDADE_PROPINA_IRMAOS),
+                    })
+                  }
+                />
+                2+ irmãos no mesmo agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
+              </label>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+          <p className="mb-2 text-xs font-medium text-[var(--color-muted)] uppercase tracking-wide">
+            Valores da matrícula
+            {form.transferidoCampusCidade ? " · Campus Cidade (editáveis)" : ""}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Inscrição (Kz)</Label>
+              <Input
+                value={form.inscricao}
+                onChange={(e) => setForm({ ...form, inscricao: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Seguro escolar (Kz)</Label>
+              <Input
+                data-focus="seguro" value={form.seguro}
+                disabled={form.seguroExterno}
+                onChange={(e) => setForm({ ...form, seguro: e.target.value })}
+              />
+              <label className="mt-1 flex items-center gap-2 text-xs text-[var(--color-muted)]">
+                <input
+                  type="checkbox"
+                  checked={form.seguroExterno}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      seguroExterno: e.target.checked,
+                      seguro: e.target.checked
+                        ? "0"
+                        : form.transferidoCampusCidade
+                          ? String(CAMPUS_CIDADE_SEGURO)
+                          : String(DEFAULT_SEGURO_ESCOLA),
+                    })
+                  }
+                />
+                Seguro próprio (externo) — não cobrar o da escola
+              </label>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Manuais</Label>
+              <Input value={form.manuais} onChange={(e) => setForm({ ...form, manuais: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Uniforme</Label>
+              <Input value={form.uniforme} onChange={(e) => setForm({ ...form, uniforme: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>ATL / extras</Label>
+              <Input value={form.extras} onChange={(e) => setForm({ ...form, extras: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Curso intensivo</Label>
+              <Input value={form.curso} onChange={(e) => setForm({ ...form, curso: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>1.ª mensalidade (se incluída)</Label>
+              <Input
+                value={form.mensalidade1}
+                onChange={(e) => setForm({ ...form, mensalidade1: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Propina mensal (referência)</Label>
+              <Input value={form.propina} onChange={(e) => setForm({ ...form, propina: e.target.value })} />
+            </div>
+          </div>
+          <p className="mt-3 text-sm font-medium text-[var(--color-forest)]">
+            Total a pagar: {formatKz(totais.liquido)}
+            {form.seguroExterno ? " (sem seguro da escola)" : ""}
+            {form.transferidoCampusCidade
+              ? ` · propina mensal ref. ${formatKz(form.agregadoIrmaos ? CAMPUS_CIDADE_PROPINA_IRMAOS : CAMPUS_CIDADE_PROPINA_1)} (Campus Cidade)`
+              : ""}
+          </p>
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Observações</Label>
+          <Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} />
+        </div>
+
+        {!isAdminUnlocked() ? (
+          <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+            <Label>Código de autorização (Colaborador 1)</Label>
+            <Input
+              type="password"
+              inputMode="numeric"
+              placeholder="••••"
+              value={form.pin}
+              onChange={(e) => setForm({ ...form, pin: e.target.value })}
+              className="mt-1.5 max-w-[160px]"
+              autoComplete="off"
+            />
+          </div>
+        ) : (
+          <p className="sm:col-span-2 text-[11px] text-[var(--color-muted)]">
+            Sessão do Colaborador 1 já autorizada — não é necessário voltar a digitar o código.
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={onSave}>
+            Guardar matrícula
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -879,13 +829,7 @@ function Alunos() {
           <p className="text-xs text-[var(--color-muted)]">
             O ID e o n.º de recibo (EF/…) são atribuídos automaticamente ao guardar.
           </p>
-          <MatriculaForm
-            form={form}
-            setForm={setForm}
-            totais={totais}
-            onSave={saveNew}
-            onCancel={() => setCreating(false)}
-          />
+          <MatriculaForm onSave={saveNew} onCancel={() => setCreating(false)} />
         </DialogContent>
       </Dialog>
 
@@ -895,13 +839,7 @@ function Alunos() {
           <DialogHeader>
             <DialogTitle>Editar {editing?.id}</DialogTitle>
           </DialogHeader>
-          <MatriculaForm
-            form={form}
-            setForm={setForm}
-            totais={totais}
-            onSave={saveEdit}
-            onCancel={() => { setEditing(null); clearDeepLink(); }}
-          />
+          <MatriculaForm onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
         </DialogContent>
       </Dialog>
     </div>

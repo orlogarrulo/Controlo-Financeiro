@@ -164,16 +164,16 @@
 }
 
 
-/* Recibos: 1 folha A4 com 1 ou 2 meias-páginas (sem cortar o resto da app) */
+/* Recibos: exactamente 1 folha A4 com 1 ou 2 meias-páginas */
 @media print {
   @page {
-    size: A4;
-    margin: 8mm 7mm;
+    size: A4 portrait;
+    margin: 6mm;
   }
 
   html, body {
     height: auto !important;
-    overflow: visible !important;
+    overflow: hidden !important;
   }
 
   .print-a4-page {
@@ -181,20 +181,21 @@
     flex-direction: column !important;
     gap: 3mm !important;
     width: 100% !important;
-    /* Sem max-height rígido: evita cortar recibos longos; o browser pagina */
-    max-height: none !important;
-    overflow: visible !important;
-    page-break-inside: auto !important;
+    max-height: 285mm !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .print-a5-half {
     flex: 0 0 auto !important;
-    min-height: 120mm !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
+    height: 138mm !important;
+    max-height: 138mm !important;
+    overflow: hidden !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    page-break-after: avoid !important;
   }
 
   .print-a5-half + .print-a5-half {
@@ -210,7 +211,6 @@
     border: 1px solid #999 !important;
     box-shadow: none !important;
     font-size: 9pt !important;
-    overflow: visible !important;
   }
 
   .print-sheet img {
@@ -222,18 +222,6 @@
   /* Evitar páginas em branco extra */
   .print-a4-page::after {
     display: none !important;
-  }
-
-  /* Tabelas longas: permitir quebra entre linhas, não no meio da célula */
-  thead {
-    display: table-header-group;
-  }
-  tfoot {
-    display: table-footer-group;
-  }
-  tr, img, .print-sheet article {
-    break-inside: avoid;
-    page-break-inside: avoid;
   }
 }
 
@@ -312,17 +300,13 @@ html.pdf-export .print-a4-page {
   gap: 3mm !important;
   width: 210mm !important;
   max-width: 210mm !important;
-  max-height: none !important;
-  overflow: visible !important;
   background: white !important;
 }
 
 html.pdf-export .print-a5-half {
   flex: 0 0 auto !important;
   min-height: 130mm !important;
-  max-height: none !important;
-  height: auto !important;
-  overflow: visible !important;
+  overflow: hidden !important;
   background: white !important;
 }
 

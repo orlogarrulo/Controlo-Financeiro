@@ -43,7 +43,6 @@ export function PrintActions({
         filename,
         stamp: true,
         landscape,
-        title: shareTitle || filename.replace(/\.pdf$/i, ""),
       });
 
       if (!isMobileDevice()) {

@@ -259,3 +259,128 @@ export function reconcileBai(
     ok: Math.abs(diffSaldo) < 0.5,
   };
 }
+
+/** ——— Exportações por separador ——— */
+
+function headerBody(cols: string[], lines: string[][]): string {
+  return [cols.join(";"), ...lines.map((r) => r.map(esc).join(";"))].join("\n");
+}
+
+export function alunosToCsv(
+  rows: import("@/data/types").Aluno[],
+): string {
+  const cols = [
+    "ID",
+    "Nome",
+    "Turma",
+    "Pai",
+    "Mãe",
+    "Encarregado",
+    "Telefone",
+    "Data pagamento",
+    "Inscrição",
+    "Seguro",
+    "Propina",
+    "Bruto",
+    "Líquido",
+    "Desconto %",
+    "Método pagamento",
+    "Recibo",
+    "Campus Cidade",
+    "Observações",
+  ];
+  const lines = rows.map((a) => [
+    a.id,
+    a.nome,
+    a.turma,
+    a.pai || "",
+    a.mae || "",
+    a.encarregado || "",
+    a.telefone || "",
+    a.dataPag || "",
+    a.inscricao ?? "",
+    a.seguro ?? "",
+    a.propina ?? "",
+    a.bruto ?? "",
+    a.liquido ?? "",
+    a.descPct ?? "",
+    a.metodoPagamento || "",
+    a.recibo || "",
+    a.transferidoCampusCidade ? "Sim" : "Não",
+    a.obs || "",
+  ].map(String));
+  return headerBody(cols, lines);
+}
+
+export function salariosToCsv(
+  rows: import("@/data/types").Salario[],
+): string {
+  const cols = [
+    "ID",
+    "Nome",
+    "Função",
+    "Categoria",
+    "Mês",
+    "Dias úteis",
+    "Dias trabalhados",
+    "Salário",
+    "Outros descontos",
+    "Líquido calculado",
+    "Data pagamento",
+  ];
+  const lines = rows.map((r) => {
+    const diasU = r.diasUteis || 22;
+    const diasT = r.diasTrab ?? diasU;
+    const base = r.salario || 0;
+    const outros = r.outrosDesc || 0;
+    const falta = Math.max(0, diasU - diasT);
+    const descFalta = diasU > 0 ? (base / diasU) * falta : 0;
+    const liq = base - descFalta - outros;
+    return [
+      r.id,
+      r.nome,
+      r.funcao || "",
+      r.categoria || "",
+      r.mes || "",
+      diasU,
+      diasT,
+      base,
+      outros,
+      Math.round(liq),
+      r.dataPag || "",
+    ].map(String);
+  });
+  return headerBody(cols, lines);
+}
+
+export function fundoToCsv(
+  pags: import("@/data/types").FundoPagamento[],
+  atms: import("@/data/types").FundoAtm[] = [],
+): string {
+  const cols = ["Tipo", "ID", "Data", "Descrição", "Recebeu/ATM", "Valor"];
+  const lines: string[][] = [
+    ...atms.map((a) => ["ATM", a.id, a.data, a.descricao || "Levantamento", "", String(a.valor)]),
+    ...pags.map((p) => [
+      "Pagamento",
+      p.id,
+      p.data,
+      p.descricao || "",
+      p.recebeu || "",
+      String(p.valor),
+    ]),
+  ];
+  return headerBody(cols, lines);
+}
+
+export function mensalidadesToCsv(
+  rows: import("@/data/types").Mensalidade[],
+  meses: string[],
+): string {
+  const cols = ["ID", "Aluno", "Turma", ...meses, "Total pago"];
+  const lines = rows.map((m) => {
+    const vals = meses.map((k) => String(m.pagamentos?.[k] || 0));
+    const total = meses.reduce((s, k) => s + (m.pagamentos?.[k] || 0), 0);
+    return [m.id, m.nome || "", m.turma || "", ...vals, String(total)];
+  });
+  return headerBody(cols, lines);
+}
