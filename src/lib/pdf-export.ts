@@ -466,7 +466,13 @@ function addCoverPage(
 function addCanvasToPdf(
   pdf: InstanceType<JsPdfCtor>,
   canvas: HTMLCanvasElement,
-  opts: { landscape?: boolean; hasPriorPages?: boolean; tighter?: boolean },
+  opts: {
+    landscape?: boolean;
+    hasPriorPages?: boolean;
+    tighter?: boolean;
+    /** Escala o conteúdo para caber sempre numa única página (sem fatias). */
+    forceSinglePage?: boolean;
+  },
 ): number {
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
@@ -476,8 +482,16 @@ function addCanvasToPdf(
   const contentH = pageH - margin * 2 - (opts.landscape ? 6 : 8);
 
   // Escala: a largura do canvas mapeia SEMPRE para contentW (sem crop lateral)
-  const scale = contentW / canvas.width;
-  const fullH = canvas.height * scale;
+  let drawW = contentW;
+  let scale = contentW / canvas.width;
+  let fullH = canvas.height * scale;
+
+  // Tabela completa numa página: reduzir escala se for mais alta que a folha
+  if (opts.forceSinglePage && fullH > contentH) {
+    scale = contentH / canvas.height;
+    drawW = canvas.width * scale;
+    fullH = contentH;
+  }
 
   let pages = 0;
   const ensurePage = () => {
@@ -485,11 +499,12 @@ function addCanvasToPdf(
     pages++;
   };
 
-  // Cabe numa página (com 3% de folga): desenhar tudo
-  if (fullH <= contentH * 1.03) {
+  // Cabe numa página (com 3% de folga) ou forceSinglePage
+  if (opts.forceSinglePage || fullH <= contentH * 1.03) {
     ensurePage();
     const h = Math.min(fullH, contentH);
-    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", margin, margin, contentW, h);
+    const x = margin + (contentW - drawW) / 2;
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, margin, drawW, h);
     return pages;
   }
 
@@ -579,6 +594,13 @@ export async function elementToPdfBlob(
     (clone.textContent || "").trim().length > 0 ||
     !!clone.querySelector("table, img, .print-sheet, .print-a4-page, article");
 
+  // Secções que devem ir inteiras na última página (ex.: Balanço patrimonial)
+  const lastPageNodes: HTMLElement[] = [];
+  clone.querySelectorAll<HTMLElement>("[data-pdf-last-page]").forEach((node) => {
+    lastPageNodes.push(node.cloneNode(true) as HTMLElement);
+    node.remove();
+  });
+
   if (hasBody) {
     const stage = makeStage(landscape);
     try {
@@ -591,6 +613,30 @@ export async function elementToPdfBlob(
         landscape,
         hasPriorPages: pageCount > 0,
         tighter: coverNodes.length > 0,
+      });
+      pageCount += used;
+    } finally {
+      stage.remove();
+    }
+  }
+
+  // Cada bloco "last page" numa página própria, tabela completa sem corte
+  for (const block of lastPageNodes) {
+    const stage = makeStage(landscape);
+    try {
+      const wrap = document.createElement("div");
+      wrap.style.width = "100%";
+      wrap.style.background = "#ffffff";
+      wrap.appendChild(block);
+      stage.appendChild(wrap);
+      await waitImages(stage);
+      const canvas = await capture(stage, html2canvas, 1.5, landscape);
+      // Forçar caber numa única página (escala se necessário)
+      const used = addCanvasToPdf(pdf, canvas, {
+        landscape,
+        hasPriorPages: pageCount > 0,
+        tighter: false,
+        forceSinglePage: true,
       });
       pageCount += used;
     } finally {
