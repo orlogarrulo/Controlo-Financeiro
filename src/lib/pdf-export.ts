@@ -1,15 +1,11 @@
-/** PDF em layout A4 de impressão — capa numa página, conteúdo nas seguintes. */
+/** PDF A4 — captura visual fiel + paginação por linhas de tabela + logotipo em todas as páginas. */
 
 type Html2CanvasFn = (
   el: HTMLElement,
   opts?: Record<string, unknown>,
 ) => Promise<HTMLCanvasElement>;
 
-type JsPdfCtor = new (opts?: {
-  orientation?: "p" | "l";
-  unit?: string;
-  format?: string | number[];
-}) => {
+type JsPdfInstance = {
   internal: { pageSize: { getWidth: () => number; getHeight: () => number } };
   addImage: (
     data: string,
@@ -20,8 +16,20 @@ type JsPdfCtor = new (opts?: {
     h: number,
   ) => void;
   addPage: () => void;
+  setFontSize: (n: number) => void;
+  setTextColor: (r: number, g?: number, b?: number) => void;
+  setDrawColor: (r: number, g?: number, b?: number) => void;
+  setFont: (name: string, style?: string) => void;
+  text: (t: string, x: number, y: number) => void;
+  line: (x1: number, y1: number, x2: number, y2: number) => void;
   output: (type: "blob") => Blob;
 };
+
+type JsPdfCtor = new (opts?: {
+  orientation?: "p" | "l";
+  unit?: string;
+  format?: string | number[];
+}) => JsPdfInstance;
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -69,11 +77,9 @@ function wait(ms: number) {
 }
 
 const A4_WIDTH_PX = 794;
-const A4_HEIGHT_PX = 1123;
-/** A4 horizontal ≈ 297mm em px */
 const A4_LANDSCAPE_WIDTH_PX = 1123;
-const A4_LANDSCAPE_HEIGHT_PX = 794;
 
+/** CSS aplicado só no stage de captura — preserva cores e tipografia. */
 const STAGE_CSS = `
   [data-pdf-stage] {
     color: #111 !important;
@@ -96,22 +102,10 @@ const STAGE_CSS = `
   }
   [data-pdf-stage] header.print-only img,
   [data-pdf-stage] [data-pdf-logo-header] img {
-    width: 64px !important;
-    height: 64px !important;
+    width: 56px !important;
+    height: 56px !important;
     object-fit: contain !important;
     flex-shrink: 0 !important;
-  }
-  [data-pdf-stage] header.print-only .font-display,
-  [data-pdf-stage] [data-pdf-logo-header] .pdf-title {
-    font-size: 18px !important;
-    font-weight: 600 !important;
-    line-height: 1.25 !important;
-    color: #111 !important;
-  }
-  [data-pdf-stage] header.print-only p,
-  [data-pdf-stage] [data-pdf-logo-header] p {
-    font-size: 12px !important;
-    line-height: 1.35 !important;
   }
   [data-pdf-stage] .print-only.hidden { display: block !important; }
   [data-pdf-stage] .print-cover,
@@ -121,22 +115,12 @@ const STAGE_CSS = `
     align-items: center !important;
     justify-content: center !important;
     width: 100% !important;
-    min-height: 1075px !important;
-    height: 1075px !important;
-    max-height: 1075px !important;
-    overflow: hidden !important;
+    min-height: 1000px !important;
     background: #fff !important;
     visibility: visible !important;
     box-sizing: border-box !important;
   }
   [data-pdf-stage] .print-cover.hidden { display: flex !important; }
-  [data-pdf-stage] .print-cover h1 {
-    font-size: 28px !important;
-    font-weight: 600 !important;
-  }
-  [data-pdf-stage] .print-cover p {
-    font-size: 14px !important;
-  }
   [data-pdf-stage] .print-sheet {
     box-shadow: none !important;
     border: 1px solid #bbb !important;
@@ -145,41 +129,18 @@ const STAGE_CSS = `
     padding: 10px !important;
     overflow: visible !important;
   }
-  [data-pdf-stage] .print-a4-page {
-    display: flex !important;
-    flex-direction: column !important;
-    width: 100% !important;
-    gap: 10px !important;
-    overflow: visible !important;
-    max-height: none !important;
-  }
+  [data-pdf-stage] .print-a4-page,
   [data-pdf-stage] .print-a5-half {
-    min-height: 480px !important;
-    /* Em PDF: não cortar conteúdo do recibo; o paginador trata o excesso */
     overflow: visible !important;
     max-height: none !important;
     height: auto !important;
-  }
-  [data-pdf-stage] .print-a5-half article,
-  [data-pdf-stage] article.print-sheet {
-    font-size: 12.5px !important;
-    line-height: 1.4 !important;
-  }
-  [data-pdf-stage] .print-a5-half article p,
-  [data-pdf-stage] article.print-sheet p {
-    font-size: 12.5px !important;
-  }
-  [data-pdf-stage] .print-a5-half article strong,
-  [data-pdf-stage] article.print-sheet strong {
-    font-size: 13px !important;
   }
   [data-pdf-stage] .overflow-x-auto { overflow: visible !important; }
   [data-pdf-stage] table {
     width: 100% !important;
     min-width: 0 !important;
-    border-collapse: collapse;
+    border-collapse: collapse !important;
     font-size: 12px !important;
-    table-layout: auto !important;
   }
   [data-pdf-stage] th {
     font-size: 11px !important;
@@ -189,42 +150,27 @@ const STAGE_CSS = `
     padding: 7px 8px !important;
     border-bottom: 1.5px solid #333 !important;
     text-align: left;
-    word-wrap: break-word !important;
-    overflow-wrap: anywhere !important;
+    background: #f3f4f6 !important;
+    color: #111 !important;
   }
   [data-pdf-stage] td {
     font-size: 12px !important;
     padding: 6px 8px !important;
     border-bottom: 1px solid #ccc !important;
     vertical-align: top;
-    word-wrap: break-word !important;
-    overflow-wrap: anywhere !important;
-    white-space: normal !important;
-  }
-  [data-pdf-stage] .print-sheet table { font-size: 12px !important; }
-  [data-pdf-landscape] {
-    overflow: visible !important;
-  }
-  [data-pdf-landscape] .overflow-x-auto,
-  [data-pdf-landscape] .print-sheet {
-    overflow: visible !important;
-    max-width: 100% !important;
-    width: 100% !important;
+    color: #111 !important;
   }
   [data-pdf-landscape] table {
     width: 100% !important;
     min-width: 0 !important;
-    max-width: 100% !important;
     table-layout: fixed !important;
     font-size: 9.5px !important;
-    border-collapse: collapse !important;
   }
   [data-pdf-landscape] th,
   [data-pdf-landscape] td {
     padding: 3px 4px !important;
     font-size: 9.5px !important;
     line-height: 1.25 !important;
-    vertical-align: top !important;
     word-wrap: break-word !important;
     overflow-wrap: anywhere !important;
     white-space: normal !important;
@@ -233,45 +179,20 @@ const STAGE_CSS = `
   [data-pdf-landscape] th {
     font-size: 8.5px !important;
     font-weight: 700 !important;
+    background: #f3f4f6 !important;
   }
-  /* Colunas de valores/datas: não partir números */
   [data-pdf-landscape] td.tabular-nums,
   [data-pdf-landscape] .tabular-nums {
     white-space: nowrap !important;
   }
-  [data-pdf-landscape] .min-w-\[800px\],
-  [data-pdf-landscape] .min-w-\[700px\],
-  [data-pdf-landscape] .min-w-\[900px\],
+  [data-pdf-landscape] .min-w-\\[800px\\],
+  [data-pdf-landscape] .min-w-\\[700px\\],
+  [data-pdf-landscape] .min-w-\\[900px\\],
   [data-pdf-landscape] [class*="min-w-"] {
     min-width: 0 !important;
   }
-  [data-pdf-landscape] header.print-only img,
-  [data-pdf-landscape] [data-pdf-logo-header] img {
-    width: 48px !important;
-    height: 48px !important;
-  }
-  [data-pdf-landscape] header.print-only .font-display,
-  [data-pdf-landscape] [data-pdf-logo-header] .pdf-title {
-    font-size: 14px !important;
-  }
-  [data-pdf-stage] .print-sheet th,
-  [data-pdf-stage] .print-sheet td { padding: 6px 8px !important; }
   [data-pdf-stage] img { max-width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   [data-pdf-stage] .print-cover img { height: 280px !important; width: 280px !important; object-fit: contain; }
-  [data-pdf-stage] h1, [data-pdf-stage] .font-display {
-    font-size: 20px !important;
-    line-height: 1.25 !important;
-  }
-  [data-pdf-stage] h2 {
-    font-size: 16px !important;
-    margin: 10px 0 6px !important;
-  }
-  [data-pdf-stage] .text-sm { font-size: 12.5px !important; }
-  [data-pdf-stage] .text-xs,
-  [data-pdf-stage] .text-\[11px\],
-  [data-pdf-stage] .text-\[10px\] {
-    font-size: 11.5px !important;
-  }
   [data-pdf-stage] [data-pdf-stamp] {
     margin-top: 12px;
     padding-top: 8px;
@@ -279,7 +200,6 @@ const STAGE_CSS = `
     font-size: 11px !important;
     text-align: right;
     color: #222;
-    line-height: 1.35;
   }
   [data-pdf-stage] .recharts-responsive-container,
   [data-pdf-stage] .recharts-wrapper {
@@ -302,7 +222,7 @@ function makeStage(landscape = false): HTMLElement {
     "z-index:-1",
     "overflow:visible",
     "box-sizing:border-box",
-    "padding:24px",
+    "padding:20px",
     "font-size:12px",
     "line-height:1.4",
     "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
@@ -314,20 +234,19 @@ function makeStage(landscape = false): HTMLElement {
   return stage;
 }
 
-
-/** Garante logotipo no topo de qualquer PDF (se a página não tiver). */
 function ensureLogoHeader(root: HTMLElement, title?: string): void {
-  const hasLogo = root.querySelector('img[src*="logo"], img[src*="escola"]');
-  if (hasLogo) return;
+  if (root.querySelector("[data-pdf-logo-header], header.print-only img, img[src*='logo']")) {
+    return;
+  }
   const header = document.createElement("div");
   header.setAttribute("data-pdf-logo-header", "1");
   const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   header.innerHTML = `
-    <img src="${logoSrc}" alt="" width="64" height="64" crossorigin="anonymous" />
+    <img src="${logoSrc}" alt="" width="56" height="56" crossorigin="anonymous" />
     <div>
-      <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;font-weight:600;">École Consulaire</p>
-      <p class="pdf-title" style="margin:2px 0 0;font-size:17px;font-weight:600;">${title || "Controlo Financeiro"}</p>
-      <p style="margin:2px 0 0;font-size:12px;color:#444;">${new Date().toLocaleDateString("pt-PT")}</p>
+      <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;font-weight:600;">École Consulaire</p>
+      <p class="pdf-title" style="margin:2px 0 0;font-size:16px;font-weight:600;">${title || "Controlo Financeiro"}</p>
+      <p style="margin:2px 0 0;font-size:11px;color:#444;">${new Date().toLocaleDateString("pt-PT")}</p>
     </div>
   `;
   root.insertBefore(header, root.firstChild);
@@ -342,13 +261,11 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.style.maxHeight = "none";
   clone.style.height = "auto";
   clone.querySelectorAll(".no-print").forEach((n) => n.remove());
-  // Tabelas largas: forçar caber na página (PDF paisagem / A4)
   clone.querySelectorAll("table").forEach((table) => {
     const el = table as HTMLElement;
     el.style.minWidth = "0";
     el.style.width = "100%";
     el.style.maxWidth = "100%";
-    el.style.tableLayout = "fixed";
     el.className = el.className
       .split(/\s+/)
       .filter((c) => !c.startsWith("min-w"))
@@ -377,8 +294,6 @@ function prepareClone(source: HTMLElement): HTMLElement {
       const src = i.getAttribute("src") || i.src;
       if (src && src.startsWith("/")) {
         i.src = `${location.origin}${src}`;
-      } else if (i.src) {
-        i.src = i.src;
       }
     } catch {
       /* ignore */
@@ -388,7 +303,6 @@ function prepareClone(source: HTMLElement): HTMLElement {
   return clone;
 }
 
-/** Carimbo «A secretaria» em CADA recibo (e no fim do documento se não houver recibos). */
 function injectStamps(root: HTMLElement, when: string): void {
   const makeStamp = () => {
     const stamp = document.createElement("div");
@@ -396,46 +310,42 @@ function injectStamps(root: HTMLElement, when: string): void {
     stamp.innerHTML = `<strong>A secretaria</strong> · Documento gerado em ${when}`;
     return stamp;
   };
-
   const articles = Array.from(root.querySelectorAll("article"));
   if (articles.length > 0) {
     for (const article of articles) {
-      const stamp = makeStamp();
       const sig = article.querySelector("[data-assinatura-escola]") as HTMLElement | null;
-      if (sig) sig.appendChild(stamp);
-      else article.appendChild(stamp);
+      if (sig) sig.appendChild(makeStamp());
+      else article.appendChild(makeStamp());
     }
     return;
   }
-
-  // Documentos sem recibo (ex.: Quadro): carimbo no final
   root.appendChild(makeStamp());
 }
 
 async function waitImages(root: HTMLElement) {
-  await wait(80);
+  await wait(60);
   await Promise.all(
     Array.from(root.querySelectorAll("img")).map(
       (img) =>
         new Promise<void>((resolve) => {
           const i = img as HTMLImageElement;
-          if (i.complete) resolve();
+          if (i.complete && i.naturalWidth > 0) resolve();
           else {
             i.onload = () => resolve();
             i.onerror = () => resolve();
-            setTimeout(() => resolve(), 1200);
+            setTimeout(() => resolve(), 1500);
           }
         }),
     ),
   );
-  await wait(60);
+  await wait(80);
 }
 
 async function capture(
   el: HTMLElement,
   html2canvas: Html2CanvasFn,
-  scale = 1.5,
-  landscape = false,
+  scale: number,
+  landscape: boolean,
 ): Promise<HTMLCanvasElement> {
   const w = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
   const fullH = Math.max(el.scrollHeight, el.offsetHeight, 1);
@@ -447,333 +357,188 @@ async function capture(
     logging: false,
     width: w,
     windowWidth: w,
-    scrollX: 0,
-    scrollY: 0,
     height: fullH,
     windowHeight: fullH,
+    scrollX: 0,
+    scrollY: 0,
   });
 }
 
-/**
- * Y de corte seguros em coordenadas do ELEMENTO (px CSS, antes do scale do canvas).
- * Usa o fundo de cada linha de tabela, artigo, cabeçalho, etc. — nunca a meio do texto.
- */
-function collectDomBreakYs(root: HTMLElement): number[] {
-  const rootRect = root.getBoundingClientRect();
+/** Y (CSS px, relativos ao stage) no fundo de cada linha de tabela e bloco seguro. */
+function measureBreakYs(stage: HTMLElement): number[] {
+  const stageTop = stage.getBoundingClientRect().top;
   const ys = new Set<number>([0]);
 
-  const pushBottom = (node: Element) => {
-    const r = (node as HTMLElement).getBoundingClientRect();
-    if (r.height < 1) return;
-    const bottom = r.bottom - rootRect.top;
-    if (bottom > 1) ys.add(Math.round(bottom));
+  const add = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    if (r.height < 2) return;
+    ys.add(Math.round(r.bottom - stageTop));
   };
 
-  // Linhas de tabela (principal causa de corte)
-  root.querySelectorAll("tr").forEach(pushBottom);
-  // Blocos semânticos
-  root.querySelectorAll(
-    "article, section, header, h1, h2, h3, h4, .print-sheet, .print-a5-half, .print-a4-page, [data-pdf-stamp], [data-pdf-logo-header]",
-  ).forEach(pushBottom);
-  // Filhos diretos e secções com borda
-  root.querySelectorAll(":scope > *, div.rounded-\\[var\\(--radius-lg\\)\\], div.border").forEach(pushBottom);
+  stage.querySelectorAll("tbody tr, thead tr").forEach(add);
+  stage.querySelectorAll(
+    "article, .print-a5-half, .print-sheet, header.print-only, [data-pdf-logo-header], [data-pdf-stamp], h1, h2, h3",
+  ).forEach(add);
 
-  ys.add(Math.round(Math.max(root.scrollHeight, root.getBoundingClientRect().height)));
+  ys.add(Math.round(stage.scrollHeight));
   return Array.from(ys).sort((a, b) => a - b);
 }
 
-/** Escolhe o maior breakY ≤ ideal, com pelo menos minY de avanço. */
-function pickBreakY(breaks: number[], ideal: number, minY: number, absoluteMax: number): number {
+/** Escolhe o maior break ≤ ideal e > minY. */
+function chooseBreak(breaks: number[], ideal: number, minY: number, maxY: number): number {
   let best = -1;
   for (const y of breaks) {
-    if (y > minY + 0.5 && y <= ideal + 0.5) best = y;
+    if (y > minY + 1 && y <= ideal + 1) best = y;
   }
-  if (best > minY) return Math.min(best, absoluteMax);
-  // Nenhum break no intervalo: usar ideal (melhor que loop infinito)
-  return Math.min(Math.max(ideal, minY + 1), absoluteMax);
+  if (best > minY) return Math.min(best, maxY);
+  return Math.min(Math.max(ideal, minY + 1), maxY);
+}
+
+function isNearlyBlankCanvas(c: HTMLCanvasElement): boolean {
+  if (c.height < 8) return true;
+  const ctx = c.getContext("2d");
+  if (!ctx) return false;
+  try {
+    // Amostrar algumas linhas
+    const step = Math.max(1, Math.floor(c.height / 20));
+    let dark = 0;
+    let samples = 0;
+    for (let y = 0; y < c.height; y += step) {
+      const data = ctx.getImageData(0, y, c.width, 1).data;
+      for (let x = 0; x < c.width; x += Math.max(4, Math.floor(c.width / 40))) {
+        const i = x * 4;
+        samples++;
+        if (data[i + 3] > 30 && (data[i] < 250 || data[i + 1] < 250 || data[i + 2] < 250)) {
+          dark++;
+        }
+      }
+    }
+    return samples > 0 && dark / samples < 0.01;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Paginação definitiva por elementos DOM.
- * 1) Mede cada unidade quebrável (linhas de tabela, artigos, blocos)
- * 2) Agrupa unidades em páginas que cabem na altura útil A4
- * 3) Captura CADA página isoladamente (canvas = 1 página exacta)
- * → Impossível cortar texto/células a meio.
+ * Fatia o canvas nos pontos de quebra do DOM (escalados).
+ * Cada fatia tem conteúdo real — páginas em branco são descartadas.
  */
-async function renderPaginatedCanvases(
-  clone: HTMLElement,
-  landscape: boolean,
-  html2canvas: Html2CanvasFn,
+function sliceAtBreaks(
+  canvas: HTMLCanvasElement,
+  breakYsCss: number[],
   scale: number,
-  contentHmm: number,
-  contentWmm: number,
-): Promise<HTMLCanvasElement[]> {
-  const stageW = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
-  // Altura útil em px CSS: proporção mm → px com base na largura do stage
-  // contentWmm corresponde à largura útil; stage tem padding 16px
-  const pad = 16;
-  const usableWpx = stageW - pad * 2;
-  const pxPerMm = usableWpx / contentWmm;
-  const usableHpx = Math.floor(contentHmm * pxPerMm);
+  pageHeightCanvas: number,
+): HTMLCanvasElement[] {
+  const totalH = canvas.height;
+  const breaks = Array.from(
+    new Set([
+      0,
+      ...breakYsCss.map((y) => Math.round(y * scale)).filter((y) => y > 0 && y < totalH),
+      totalH,
+    ]),
+  ).sort((a, b) => a - b);
 
-  // --- Montar clone temporário para medir ---
-  const measureStage = makeStage(landscape);
-  measureStage.style.padding = `${pad}px`;
-  measureStage.style.width = `${stageW}px`;
-  // Sem limite de altura na medição
-  measureStage.style.height = "auto";
-  measureStage.style.overflow = "visible";
-  measureStage.appendChild(clone);
-  await waitImages(measureStage);
-  await wait(100);
+  const pages: HTMLCanvasElement[] = [];
+  let srcY = 0;
+  const minAdvance = Math.floor(pageHeightCanvas * 0.35);
+  let guard = 0;
 
-  const units = collectBreakUnits(clone);
+  while (srcY < totalH - 2 && guard < 100) {
+    guard++;
+    const remaining = totalH - srcY;
+    let sliceH: number;
 
-  // Se não há unidades (conteúdo simples), capturar tudo de uma vez
-  if (units.length === 0) {
-    try {
-      const canvas = await capture(measureStage, html2canvas, scale, landscape);
-      return [canvas];
-    } finally {
-      measureStage.remove();
+    if (remaining <= pageHeightCanvas + 4) {
+      sliceH = remaining;
+    } else {
+      const ideal = srcY + pageHeightCanvas;
+      const end = chooseBreak(breaks, ideal, srcY + minAdvance, totalH);
+      sliceH = Math.max(1, end - srcY);
+      if (sliceH < minAdvance) sliceH = Math.min(pageHeightCanvas, remaining);
     }
+
+    const pageCanvas = document.createElement("canvas");
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = Math.max(1, Math.ceil(sliceH));
+    const ctx = pageCanvas.getContext("2d");
+    if (!ctx) break;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+    ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+    if (!isNearlyBlankCanvas(pageCanvas)) {
+      pages.push(pageCanvas);
+    }
+    srcY += sliceH;
   }
 
-  // Medir + clonar ENQUANTO o DOM ainda está montado (getBoundingClientRect válido)
-  type UnitInfo = {
-    el: HTMLElement;
-    height: number;
-    isTableRow: boolean;
-    tableKey: string;
-    headerHeight: number;
-  };
-  type TableMeta = {
-    colgroup: Node | null;
-    thead: Node | null;
-    headerHeight: number;
-  };
-  const tableMeta = new Map<string, TableMeta>();
-  let tableKeySeq = 0;
-  const tableKeys = new WeakMap<HTMLTableElement, string>();
-
-  const infos: UnitInfo[] = units.map((el) => {
-    const h = Math.ceil(el.getBoundingClientRect().height);
-    const isTableRow = el.tagName === "TR";
-    const table = isTableRow ? (el.closest("table") as HTMLTableElement | null) : null;
-    let tableKey = "";
-    let headerHeight = 0;
-    if (table) {
-      let key = tableKeys.get(table);
-      if (!key) {
-        key = `t${tableKeySeq++}`;
-        tableKeys.set(table, key);
-        const theadRows = Array.from(table.querySelectorAll("thead tr")) as HTMLElement[];
-        headerHeight = theadRows.reduce(
-          (s, r) => s + Math.ceil(r.getBoundingClientRect().height),
-          0,
-        );
-        tableMeta.set(key, {
-          colgroup: table.querySelector("colgroup")?.cloneNode(true) ?? null,
-          thead: table.querySelector("thead")?.cloneNode(true) ?? null,
-          headerHeight,
-        });
-      } else {
-        headerHeight = tableMeta.get(key)?.headerHeight ?? 0;
-      }
-      tableKey = key;
-    }
-    return {
-      el: el.cloneNode(true) as HTMLElement,
-      height: Math.max(h, 1),
-      isTableRow,
-      tableKey,
-      headerHeight,
-    };
-  });
-
-  // Agrupar em páginas
-  type PageSpec = { items: UnitInfo[]; tableKey: string };
-  const pages: PageSpec[] = [];
-  let current: UnitInfo[] = [];
-  let currentH = 0;
-  let activeTableKey = "";
-
-  const flush = () => {
-    if (current.length === 0) return;
-    pages.push({ items: current, tableKey: activeTableKey });
-    current = [];
-    currentH = 0;
-  };
-
-  for (const info of infos) {
-    if (info.isTableRow && info.tableKey && info.tableKey !== activeTableKey) {
-      if (current.length > 0) flush();
-      activeTableKey = info.tableKey;
-    }
-    if (!info.isTableRow) {
-      if (current.length > 0 && activeTableKey) flush();
-      activeTableKey = "";
-    }
-
-    const headerExtra =
-      info.isTableRow && current.length === 0 && info.headerHeight > 0 ? info.headerHeight : 0;
-    const need = info.height + headerExtra + 4;
-
-    if (current.length > 0 && currentH + need > usableHpx) {
-      flush();
-    }
-    if (current.length === 0 && need > usableHpx) {
-      current.push(info);
-      currentH = need;
-      flush();
-      continue;
-    }
-    const isFirstOnPage = current.length === 0;
-    current.push(info);
-    currentH += info.height + (isFirstOnPage ? headerExtra : 0) + 4;
-  }
-  flush();
-
-  // DOM de medição já não é necessário (tudo clonado)
-  measureStage.remove();
-
-  // --- Capturar cada página ---
-  const canvases: HTMLCanvasElement[] = [];
-
-  for (const page of pages) {
-    const pageStage = makeStage(landscape);
-    pageStage.style.padding = `${pad}px`;
-    pageStage.style.width = `${stageW}px`;
-    pageStage.style.minHeight = `${usableHpx}px`;
-    pageStage.style.height = "auto";
-    pageStage.style.overflow = "visible";
-    pageStage.style.background = "#ffffff";
-
-    const pageRoot = document.createElement("div");
-    pageRoot.style.width = "100%";
-    pageRoot.style.background = "#ffffff";
-
-    // Reconstruir tabelas com thead repetido em cada página
-    let currentTableWrap: HTMLTableElement | null = null;
-    let currentTbody: HTMLElement | null = null;
-
-    for (let i = 0; i < page.items.length; i++) {
-      const info = page.items[i];
-      const node = info.el.cloneNode(true) as HTMLElement;
-
-      if (info.isTableRow && info.tableKey) {
-        if (!currentTableWrap) {
-          currentTableWrap = document.createElement("table");
-          currentTableWrap.style.width = "100%";
-          currentTableWrap.style.minWidth = "0";
-          currentTableWrap.style.tableLayout = "fixed";
-          currentTableWrap.style.borderCollapse = "collapse";
-          const meta = tableMeta.get(info.tableKey) ?? tableMeta.get(page.tableKey);
-          if (meta?.colgroup) currentTableWrap.appendChild(meta.colgroup.cloneNode(true));
-          if (meta?.thead) currentTableWrap.appendChild(meta.thead.cloneNode(true));
-          currentTbody = document.createElement("tbody");
-          currentTableWrap.appendChild(currentTbody);
-          pageRoot.appendChild(currentTableWrap);
-        }
-        currentTbody?.appendChild(node);
-      } else {
-        currentTableWrap = null;
-        currentTbody = null;
-        pageRoot.appendChild(node);
-      }
-    }
-
-    pageStage.appendChild(pageRoot);
-    document.body.appendChild(pageStage);
-    try {
-      await waitImages(pageStage);
-      await wait(40);
-      const canvas = await capture(pageStage, html2canvas, scale, landscape);
-      canvases.push(canvas);
-    } finally {
-      pageStage.remove();
-    }
-  }
-
-  return canvases.length > 0
-    ? canvases
-    : [await (async () => {
-        const s = makeStage(landscape);
-        s.appendChild(clone);
-        try {
-          await waitImages(s);
-          return await capture(s, html2canvas, scale, landscape);
-        } finally {
-          s.remove();
-        }
-      })()];
+  return pages.length > 0 ? pages : [canvas];
 }
 
-/** Unidades atómicas onde o PDF pode quebrar página (nunca a meio). */
-function collectBreakUnits(root: HTMLElement): HTMLElement[] {
-  const units: HTMLElement[] = [];
-  const tables = Array.from(root.querySelectorAll("table"));
+/** Carrega o logotipo como data-URL para desenhar em cada página do PDF. */
+async function loadLogoDataUrl(): Promise<string | null> {
+  const src = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  try {
+    const res = await fetch(src, { mode: "cors" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
 
-  if (tables.length > 0) {
-    // Percorrer filhos de root; tabelas → cada tr; resto → bloco
-    const walk = (parent: HTMLElement) => {
-      for (const child of Array.from(parent.children) as HTMLElement[]) {
-        if (child.tagName === "TABLE") {
-          // Só linhas de body — thead é repetido automaticamente em cada página
-          const bodyRows = child.querySelectorAll("tbody tr");
-          if (bodyRows.length > 0) {
-            bodyRows.forEach((tr) => units.push(tr as HTMLElement));
-          } else {
-            // Tabelas sem tbody explícito
-            child.querySelectorAll("tr").forEach((tr) => {
-              if (!(tr as HTMLElement).closest("thead")) units.push(tr as HTMLElement);
-            });
-          }
-        } else if (child.querySelector("table")) {
-          walk(child);
-        } else if (
-          child.matches("article, section, header, .print-sheet, .print-a5-half, [data-pdf-stamp], [data-pdf-logo-header]") ||
-          child.tagName === "H1" ||
-          child.tagName === "H2" ||
-          child.tagName === "H3" ||
-          child.tagName === "P" ||
-          child.tagName === "DIV"
-        ) {
-          // Se o div só envolve uma tabela, descer
-          const innerTables = child.querySelectorAll("table");
-          if (innerTables.length === 1 && child.children.length <= 3) {
-            walk(child);
-          } else if (innerTables.length > 0) {
-            walk(child);
-          } else {
-            units.push(child);
-          }
-        } else {
-          units.push(child);
-        }
-      }
-    };
-    walk(root);
-  } else {
-    // Sem tabelas: filhos de primeiro nível + articles
-    const articles = root.querySelectorAll("article, .print-a5-half");
-    if (articles.length > 0) {
-      articles.forEach((a) => units.push(a as HTMLElement));
-    } else {
-      Array.from(root.children).forEach((c) => {
-        if ((c as HTMLElement).tagName !== "STYLE") units.push(c as HTMLElement);
-      });
+/**
+ * Desenha cabeçalho com logotipo em TODAS as páginas do PDF.
+ * Devolve a altura usada (mm) para o conteúdo começar abaixo.
+ */
+function drawPageHeader(
+  pdf: JsPdfInstance,
+  logoDataUrl: string | null,
+  title: string,
+  margin: number,
+): number {
+  const pageW = pdf.internal.pageSize.getWidth();
+  const logoSize = 12; // mm
+  let y = margin;
+
+  if (logoDataUrl) {
+    try {
+      pdf.addImage(logoDataUrl, "JPEG", margin, y, logoSize, logoSize);
+    } catch {
+      /* logo opcional */
     }
   }
 
-  return units.filter((u) => {
-    const r = u.getBoundingClientRect();
-    return r.height > 0 || (u.textContent || "").trim().length > 0;
-  });
+  const textX = margin + (logoDataUrl ? logoSize + 3 : 0);
+  pdf.setTextColor(31, 92, 74);
+  pdf.setFontSize(8);
+  pdf.setFont("helvetica", "bold");
+  pdf.text("ÉCOLE CONSULAIRE", textX, y + 4);
+
+  pdf.setTextColor(17, 17, 17);
+  pdf.setFontSize(11);
+  pdf.text(title || "Controlo Financeiro", textX, y + 9);
+
+  pdf.setFontSize(8);
+  pdf.setTextColor(80, 80, 80);
+  pdf.setFont("helvetica", "normal");
+  pdf.text(new Date().toLocaleDateString("pt-PT"), textX, y + 13);
+
+  const headerBottom = y + logoSize + 2;
+  pdf.setDrawColor(40, 40, 40);
+  pdf.line(margin, headerBottom, pageW - margin, headerBottom);
+
+  return headerBottom + 3; // conteúdo começa aqui
 }
 
 function addCoverPage(
-  pdf: InstanceType<JsPdfCtor>,
+  pdf: JsPdfInstance,
   canvas: HTMLCanvasElement,
   isFirst: boolean,
 ): void {
@@ -788,36 +553,36 @@ function addCoverPage(
   const x = (pageW - w) / 2;
   const y = (pageH - h) / 2;
   if (!isFirst) pdf.addPage();
-  pdf.addImage(canvas.toDataURL("image/jpeg", 0.88), "JPEG", x, y, w, h);
+  pdf.addImage(canvas.toDataURL("image/jpeg", 0.9), "JPEG", x, y, w, h);
 }
 
 export async function elementToPdfBlob(
   el: HTMLElement,
-  opts?: { filename?: string; stamp?: boolean; landscape?: boolean },
+  opts?: { filename?: string; stamp?: boolean; landscape?: boolean; title?: string },
 ): Promise<{ blob: Blob; filename: string }> {
   const { html2canvas, jsPDF } = await ensureLibs();
   const landscape = Boolean(opts?.landscape);
   const when = agoraPdfLabel();
   const wantStamp = opts?.stamp !== false;
+  const docTitle = opts?.title || "Controlo Financeiro";
 
   const clone = prepareClone(el);
-  ensureLogoHeader(clone);
+  // Não injectar logo no HTML: desenhamos em CADA página via jsPDF
+  // (evita logo só na 1.ª página e duplicados)
   const covers = Array.from(clone.querySelectorAll<HTMLElement>(".print-cover"));
-
   const coverNodes: HTMLElement[] = [];
   for (const c of covers) {
     coverNodes.push(c.cloneNode(true) as HTMLElement);
     c.remove();
   }
 
-  // Carimbo dentro do 1.º recibo (não fora da caixa)
-  if (wantStamp) {
-    injectStamps(clone, when);
-  }
+  if (wantStamp) injectStamps(clone, when);
 
+  const logoDataUrl = await loadLogoDataUrl();
   const pdf = new jsPDF({ orientation: landscape ? "l" : "p", unit: "mm", format: "a4" });
   let pageCount = 0;
 
+  // Capas (se existirem)
   for (const cover of coverNodes) {
     const stage = makeStage(landscape);
     try {
@@ -841,46 +606,67 @@ export async function elementToPdfBlob(
     !!clone.querySelector("table, img, .print-sheet, .print-a4-page, article");
 
   if (hasBody) {
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = landscape ? 8 : 9;
-    const contentW = pageW - margin * 2;
-    const contentH = pageH - margin * 2;
-    const scale = landscape ? 1.5 : 1.6;
-
-    // ——— Paginação por elementos (captura 1 página de cada vez) ———
-    // Cada página é um contentor com altura fixa = área útil A4.
-    // Nunca se fatia um canvas alto → impossível cortar texto a meio.
-    const pageCanvases = await renderPaginatedCanvases(
-      clone,
-      landscape,
-      html2canvas,
-      scale,
-      contentH,
-      contentW,
-    );
-
-    for (let i = 0; i < pageCanvases.length; i++) {
-      const pc = pageCanvases[i];
-      const sliceMmH = (pc.height * contentW) / pc.width;
-      if (pageCount > 0 || i > 0) pdf.addPage();
-      pdf.addImage(
-        pc.toDataURL("image/jpeg", 0.93),
-        "JPEG",
-        margin,
-        margin,
-        contentW,
-        Math.min(sliceMmH, contentH),
-      );
-      pageCount++;
-    }
-  } else if (pageCount === 0) {
     const stage = makeStage(landscape);
     try {
       stage.appendChild(clone);
       await waitImages(stage);
+      await wait(100);
+
+      const scale = landscape ? 1.5 : 1.6;
+      // Medir quebras ANTES da captura (DOM ainda montado)
+      const breakYsCss = measureBreakYs(stage);
+      const canvas = await capture(stage, html2canvas, scale, landscape);
+
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const sideMargin = landscape ? 8 : 10;
+      // Reserva espaço para o cabeçalho com logo em todas as páginas
+      const headerReserve = 20; // mm
+      const bottomMargin = 8;
+      const contentW = pageW - sideMargin * 2;
+      const contentH = pageH - headerReserve - bottomMargin;
+
+      const imgFullH = (canvas.height * contentW) / canvas.width;
+
+      const addContentPage = (pageCanvas: HTMLCanvasElement) => {
+        if (pageCount > 0) pdf.addPage();
+        const contentTop = drawPageHeader(pdf, logoDataUrl, docTitle, sideMargin);
+        const availH = pageH - contentTop - bottomMargin;
+        const sliceMmH = (pageCanvas.height * contentW) / pageCanvas.width;
+        pdf.addImage(
+          pageCanvas.toDataURL("image/jpeg", 0.92),
+          "JPEG",
+          sideMargin,
+          contentTop,
+          contentW,
+          Math.min(sliceMmH, availH),
+        );
+        pageCount++;
+      };
+
+      if (imgFullH <= contentH * 1.02) {
+        // Uma única página
+        addContentPage(canvas);
+      } else {
+        const pageHeightCanvas = (contentH * canvas.width) / contentW;
+        const slices = sliceAtBreaks(canvas, breakYsCss, scale, pageHeightCanvas);
+        for (const slice of slices) {
+          addContentPage(slice);
+        }
+      }
+    } finally {
+      stage.remove();
+    }
+  } else if (pageCount === 0) {
+    const stage = makeStage(landscape);
+    try {
+      // Conteúdo mínimo com logo
+      ensureLogoHeader(clone, docTitle);
+      stage.appendChild(clone);
+      await waitImages(stage);
       const canvas = await capture(stage, html2canvas, 1.5, landscape);
       addCoverPage(pdf, canvas, true);
+      pageCount++;
     } finally {
       stage.remove();
     }
@@ -891,7 +677,6 @@ export async function elementToPdfBlob(
     filename: opts?.filename || `documento-${Date.now()}.pdf`,
   };
 }
-
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -905,7 +690,6 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
 
-/** Telemóvel / tablet táctil — usa caixa de partilha do sistema. */
 export function isMobileDevice(): boolean {
   if (typeof navigator === "undefined") return false;
   const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
@@ -915,38 +699,29 @@ export function isMobileDevice(): boolean {
   );
 }
 
-/** Abre o PDF numa nova separador (PC) para visualizar e depois partilhar/guardar. */
 function openPdfInNewTab(blob: Blob, filename: string): "opened" | "downloaded" {
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank", "noopener,noreferrer");
   if (!win) {
-    // Pop-up bloqueado → descarregar
     downloadBlob(blob, filename);
     window.setTimeout(() => URL.revokeObjectURL(url), 2500);
     return "downloaded";
   }
-  // Manter URL válida enquanto o separador está aberto
   window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
   return "opened";
 }
 
 export type PdfDelivery = "shared" | "opened" | "downloaded";
 
-/**
- * PC: abre o PDF no browser (ver → guardar / imprimir / enviar).
- * Telemóvel: caixa de partilha (WhatsApp, Gmail, …).
- */
 export async function shareOrDownloadPdf(
   blob: Blob,
   filename: string,
   meta?: { title?: string; text?: string },
 ): Promise<PdfDelivery> {
-  // ——— Ambiente desktop: abrir PDF primeiro ———
   if (!isMobileDevice()) {
     return openPdfInNewTab(blob, filename);
   }
 
-  // ——— Telemóvel: partilha nativa ———
   const file = new File([blob], filename, { type: "application/pdf" });
   const nav = navigator as Navigator & {
     canShare?: (data: ShareData) => boolean;
@@ -980,9 +755,7 @@ export async function shareOrDownloadPdf(
     }
   }
 
-  // Fallback telemóvel: abrir / descarregar
-  const opened = openPdfInNewTab(blob, filename);
-  return opened;
+  return openPdfInNewTab(blob, filename);
 }
 
 export async function exportElementPdf(
@@ -991,6 +764,10 @@ export async function exportElementPdf(
   meta?: { title?: string; text?: string },
 ): Promise<PdfDelivery> {
   if (!el) throw new Error("Área de impressão não encontrada");
-  const { blob, filename: name } = await elementToPdfBlob(el, { filename, stamp: true });
+  const { blob, filename: name } = await elementToPdfBlob(el, {
+    filename,
+    stamp: true,
+    title: meta?.title,
+  });
   return shareOrDownloadPdf(blob, name, meta);
 }
