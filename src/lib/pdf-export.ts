@@ -438,7 +438,7 @@ async function capture(
   landscape = false,
 ): Promise<HTMLCanvasElement> {
   const w = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
-  // height: undefined → captura a altura total do conteúdo (sem cortar o fundo)
+  const fullH = Math.max(el.scrollHeight, el.offsetHeight, 1);
   return html2canvas(el, {
     scale,
     useCORS: true,
@@ -449,78 +449,327 @@ async function capture(
     windowWidth: w,
     scrollX: 0,
     scrollY: 0,
-    // Garante que o canvas cobre todo o elemento (tabelas longas, etc.)
-    height: el.scrollHeight,
-    windowHeight: el.scrollHeight,
+    height: fullH,
+    windowHeight: fullH,
   });
 }
 
 /**
- * Encontra um ponto de corte horizontal seguro (linha quase branca) para não
- * partir texto, células de tabela ou bordas a meio da página.
- * Pesquisa de `idealY` para cima até `minY`.
+ * Y de corte seguros em coordenadas do ELEMENTO (px CSS, antes do scale do canvas).
+ * Usa o fundo de cada linha de tabela, artigo, cabeçalho, etc. — nunca a meio do texto.
  */
-function findSafeCutY(
-  canvas: HTMLCanvasElement,
-  idealY: number,
-  minY: number,
-  maxY: number,
-): number {
-  const h = canvas.height;
-  const w = canvas.width;
-  const yMax = Math.min(Math.floor(maxY), h);
-  const yIdeal = Math.min(Math.floor(idealY), yMax);
-  const yMin = Math.max(0, Math.floor(minY));
+function collectDomBreakYs(root: HTMLElement): number[] {
+  const rootRect = root.getBoundingClientRect();
+  const ys = new Set<number>([0]);
 
-  if (yIdeal <= yMin + 2) return yIdeal;
-  if (yIdeal >= h - 2) return h;
-
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return yIdeal;
-
-  // Amostrar colunas ao longo da largura (mais rápido que pixel a pixel)
-  const stepX = Math.max(4, Math.floor(w / 120));
-  const whiteThreshold = 245; // quase branco
-  const minWhiteRatio = 0.92;
-
-  const isQuietRow = (y: number): boolean => {
-    if (y < 0 || y >= h) return false;
-    try {
-      const row = ctx.getImageData(0, y, w, 1).data;
-      let white = 0;
-      let samples = 0;
-      for (let x = 0; x < w; x += stepX) {
-        const i = x * 4;
-        const r = row[i];
-        const g = row[i + 1];
-        const b = row[i + 2];
-        const a = row[i + 3];
-        samples++;
-        // Fundo branco ou transparente conta como "quieto"
-        if (a < 20 || (r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold)) {
-          white++;
-        }
-      }
-      return samples > 0 && white / samples >= minWhiteRatio;
-    } catch {
-      return false;
-    }
+  const pushBottom = (node: Element) => {
+    const r = (node as HTMLElement).getBoundingClientRect();
+    if (r.height < 1) return;
+    const bottom = r.bottom - rootRect.top;
+    if (bottom > 1) ys.add(Math.round(bottom));
   };
 
-  // Preferir faixa quieta contínua (≥ 2 px) perto de idealY
-  for (let y = yIdeal; y >= yMin; y--) {
-    if (isQuietRow(y) && (y === 0 || isQuietRow(y - 1) || isQuietRow(Math.min(h - 1, y + 1)))) {
-      return y;
+  // Linhas de tabela (principal causa de corte)
+  root.querySelectorAll("tr").forEach(pushBottom);
+  // Blocos semânticos
+  root.querySelectorAll(
+    "article, section, header, h1, h2, h3, h4, .print-sheet, .print-a5-half, .print-a4-page, [data-pdf-stamp], [data-pdf-logo-header]",
+  ).forEach(pushBottom);
+  // Filhos diretos e secções com borda
+  root.querySelectorAll(":scope > *, div.rounded-\\[var\\(--radius-lg\\)\\], div.border").forEach(pushBottom);
+
+  ys.add(Math.round(Math.max(root.scrollHeight, root.getBoundingClientRect().height)));
+  return Array.from(ys).sort((a, b) => a - b);
+}
+
+/** Escolhe o maior breakY ≤ ideal, com pelo menos minY de avanço. */
+function pickBreakY(breaks: number[], ideal: number, minY: number, absoluteMax: number): number {
+  let best = -1;
+  for (const y of breaks) {
+    if (y > minY + 0.5 && y <= ideal + 0.5) best = y;
+  }
+  if (best > minY) return Math.min(best, absoluteMax);
+  // Nenhum break no intervalo: usar ideal (melhor que loop infinito)
+  return Math.min(Math.max(ideal, minY + 1), absoluteMax);
+}
+
+/**
+ * Paginação definitiva por elementos DOM.
+ * 1) Mede cada unidade quebrável (linhas de tabela, artigos, blocos)
+ * 2) Agrupa unidades em páginas que cabem na altura útil A4
+ * 3) Captura CADA página isoladamente (canvas = 1 página exacta)
+ * → Impossível cortar texto/células a meio.
+ */
+async function renderPaginatedCanvases(
+  clone: HTMLElement,
+  landscape: boolean,
+  html2canvas: Html2CanvasFn,
+  scale: number,
+  contentHmm: number,
+  contentWmm: number,
+): Promise<HTMLCanvasElement[]> {
+  const stageW = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
+  // Altura útil em px CSS: proporção mm → px com base na largura do stage
+  // contentWmm corresponde à largura útil; stage tem padding 16px
+  const pad = 16;
+  const usableWpx = stageW - pad * 2;
+  const pxPerMm = usableWpx / contentWmm;
+  const usableHpx = Math.floor(contentHmm * pxPerMm);
+
+  // --- Montar clone temporário para medir ---
+  const measureStage = makeStage(landscape);
+  measureStage.style.padding = `${pad}px`;
+  measureStage.style.width = `${stageW}px`;
+  // Sem limite de altura na medição
+  measureStage.style.height = "auto";
+  measureStage.style.overflow = "visible";
+  measureStage.appendChild(clone);
+  await waitImages(measureStage);
+  await wait(100);
+
+  const units = collectBreakUnits(clone);
+
+  // Se não há unidades (conteúdo simples), capturar tudo de uma vez
+  if (units.length === 0) {
+    try {
+      const canvas = await capture(measureStage, html2canvas, scale, landscape);
+      return [canvas];
+    } finally {
+      measureStage.remove();
     }
   }
 
-  // Fallback: qualquer linha quieta
-  for (let y = yIdeal; y >= yMin; y--) {
-    if (isQuietRow(y)) return y;
+  // Medir + clonar ENQUANTO o DOM ainda está montado (getBoundingClientRect válido)
+  type UnitInfo = {
+    el: HTMLElement;
+    height: number;
+    isTableRow: boolean;
+    tableKey: string;
+    headerHeight: number;
+  };
+  type TableMeta = {
+    colgroup: Node | null;
+    thead: Node | null;
+    headerHeight: number;
+  };
+  const tableMeta = new Map<string, TableMeta>();
+  let tableKeySeq = 0;
+  const tableKeys = new WeakMap<HTMLTableElement, string>();
+
+  const infos: UnitInfo[] = units.map((el) => {
+    const h = Math.ceil(el.getBoundingClientRect().height);
+    const isTableRow = el.tagName === "TR";
+    const table = isTableRow ? (el.closest("table") as HTMLTableElement | null) : null;
+    let tableKey = "";
+    let headerHeight = 0;
+    if (table) {
+      let key = tableKeys.get(table);
+      if (!key) {
+        key = `t${tableKeySeq++}`;
+        tableKeys.set(table, key);
+        const theadRows = Array.from(table.querySelectorAll("thead tr")) as HTMLElement[];
+        headerHeight = theadRows.reduce(
+          (s, r) => s + Math.ceil(r.getBoundingClientRect().height),
+          0,
+        );
+        tableMeta.set(key, {
+          colgroup: table.querySelector("colgroup")?.cloneNode(true) ?? null,
+          thead: table.querySelector("thead")?.cloneNode(true) ?? null,
+          headerHeight,
+        });
+      } else {
+        headerHeight = tableMeta.get(key)?.headerHeight ?? 0;
+      }
+      tableKey = key;
+    }
+    return {
+      el: el.cloneNode(true) as HTMLElement,
+      height: Math.max(h, 1),
+      isTableRow,
+      tableKey,
+      headerHeight,
+    };
+  });
+
+  // Agrupar em páginas
+  type PageSpec = { items: UnitInfo[]; tableKey: string };
+  const pages: PageSpec[] = [];
+  let current: UnitInfo[] = [];
+  let currentH = 0;
+  let activeTableKey = "";
+
+  const flush = () => {
+    if (current.length === 0) return;
+    pages.push({ items: current, tableKey: activeTableKey });
+    current = [];
+    currentH = 0;
+  };
+
+  for (const info of infos) {
+    if (info.isTableRow && info.tableKey && info.tableKey !== activeTableKey) {
+      if (current.length > 0) flush();
+      activeTableKey = info.tableKey;
+    }
+    if (!info.isTableRow) {
+      if (current.length > 0 && activeTableKey) flush();
+      activeTableKey = "";
+    }
+
+    const headerExtra =
+      info.isTableRow && current.length === 0 && info.headerHeight > 0 ? info.headerHeight : 0;
+    const need = info.height + headerExtra + 4;
+
+    if (current.length > 0 && currentH + need > usableHpx) {
+      flush();
+    }
+    if (current.length === 0 && need > usableHpx) {
+      current.push(info);
+      currentH = need;
+      flush();
+      continue;
+    }
+    const isFirstOnPage = current.length === 0;
+    current.push(info);
+    currentH += info.height + (isFirstOnPage ? headerExtra : 0) + 4;
+  }
+  flush();
+
+  // DOM de medição já não é necessário (tudo clonado)
+  measureStage.remove();
+
+  // --- Capturar cada página ---
+  const canvases: HTMLCanvasElement[] = [];
+
+  for (const page of pages) {
+    const pageStage = makeStage(landscape);
+    pageStage.style.padding = `${pad}px`;
+    pageStage.style.width = `${stageW}px`;
+    pageStage.style.minHeight = `${usableHpx}px`;
+    pageStage.style.height = "auto";
+    pageStage.style.overflow = "visible";
+    pageStage.style.background = "#ffffff";
+
+    const pageRoot = document.createElement("div");
+    pageRoot.style.width = "100%";
+    pageRoot.style.background = "#ffffff";
+
+    // Reconstruir tabelas com thead repetido em cada página
+    let currentTableWrap: HTMLTableElement | null = null;
+    let currentTbody: HTMLElement | null = null;
+
+    for (let i = 0; i < page.items.length; i++) {
+      const info = page.items[i];
+      const node = info.el.cloneNode(true) as HTMLElement;
+
+      if (info.isTableRow && info.tableKey) {
+        if (!currentTableWrap) {
+          currentTableWrap = document.createElement("table");
+          currentTableWrap.style.width = "100%";
+          currentTableWrap.style.minWidth = "0";
+          currentTableWrap.style.tableLayout = "fixed";
+          currentTableWrap.style.borderCollapse = "collapse";
+          const meta = tableMeta.get(info.tableKey) ?? tableMeta.get(page.tableKey);
+          if (meta?.colgroup) currentTableWrap.appendChild(meta.colgroup.cloneNode(true));
+          if (meta?.thead) currentTableWrap.appendChild(meta.thead.cloneNode(true));
+          currentTbody = document.createElement("tbody");
+          currentTableWrap.appendChild(currentTbody);
+          pageRoot.appendChild(currentTableWrap);
+        }
+        currentTbody?.appendChild(node);
+      } else {
+        currentTableWrap = null;
+        currentTbody = null;
+        pageRoot.appendChild(node);
+      }
+    }
+
+    pageStage.appendChild(pageRoot);
+    document.body.appendChild(pageStage);
+    try {
+      await waitImages(pageStage);
+      await wait(40);
+      const canvas = await capture(pageStage, html2canvas, scale, landscape);
+      canvases.push(canvas);
+    } finally {
+      pageStage.remove();
+    }
   }
 
-  // Último recurso: manter ideal (melhor que perder conteúdo)
-  return yIdeal;
+  return canvases.length > 0
+    ? canvases
+    : [await (async () => {
+        const s = makeStage(landscape);
+        s.appendChild(clone);
+        try {
+          await waitImages(s);
+          return await capture(s, html2canvas, scale, landscape);
+        } finally {
+          s.remove();
+        }
+      })()];
+}
+
+/** Unidades atómicas onde o PDF pode quebrar página (nunca a meio). */
+function collectBreakUnits(root: HTMLElement): HTMLElement[] {
+  const units: HTMLElement[] = [];
+  const tables = Array.from(root.querySelectorAll("table"));
+
+  if (tables.length > 0) {
+    // Percorrer filhos de root; tabelas → cada tr; resto → bloco
+    const walk = (parent: HTMLElement) => {
+      for (const child of Array.from(parent.children) as HTMLElement[]) {
+        if (child.tagName === "TABLE") {
+          // Só linhas de body — thead é repetido automaticamente em cada página
+          const bodyRows = child.querySelectorAll("tbody tr");
+          if (bodyRows.length > 0) {
+            bodyRows.forEach((tr) => units.push(tr as HTMLElement));
+          } else {
+            // Tabelas sem tbody explícito
+            child.querySelectorAll("tr").forEach((tr) => {
+              if (!(tr as HTMLElement).closest("thead")) units.push(tr as HTMLElement);
+            });
+          }
+        } else if (child.querySelector("table")) {
+          walk(child);
+        } else if (
+          child.matches("article, section, header, .print-sheet, .print-a5-half, [data-pdf-stamp], [data-pdf-logo-header]") ||
+          child.tagName === "H1" ||
+          child.tagName === "H2" ||
+          child.tagName === "H3" ||
+          child.tagName === "P" ||
+          child.tagName === "DIV"
+        ) {
+          // Se o div só envolve uma tabela, descer
+          const innerTables = child.querySelectorAll("table");
+          if (innerTables.length === 1 && child.children.length <= 3) {
+            walk(child);
+          } else if (innerTables.length > 0) {
+            walk(child);
+          } else {
+            units.push(child);
+          }
+        } else {
+          units.push(child);
+        }
+      }
+    };
+    walk(root);
+  } else {
+    // Sem tabelas: filhos de primeiro nível + articles
+    const articles = root.querySelectorAll("article, .print-a5-half");
+    if (articles.length > 0) {
+      articles.forEach((a) => units.push(a as HTMLElement));
+    } else {
+      Array.from(root.children).forEach((c) => {
+        if ((c as HTMLElement).tagName !== "STYLE") units.push(c as HTMLElement);
+      });
+    }
+  }
+
+  return units.filter((u) => {
+    const r = u.getBoundingClientRect();
+    return r.height > 0 || (u.textContent || "").trim().length > 0;
+  });
 }
 
 function addCoverPage(
@@ -592,101 +841,38 @@ export async function elementToPdfBlob(
     !!clone.querySelector("table, img, .print-sheet, .print-a4-page, article");
 
   if (hasBody) {
-    const stage = makeStage(landscape);
-    try {
-      stage.appendChild(clone);
-      await waitImages(stage);
-      const scale = landscape ? 1.4 : coverNodes.length > 0 ? 1.25 : 1.55;
-      const canvas = await capture(stage, html2canvas, scale, landscape);
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = landscape ? 8 : 9;
+    const contentW = pageW - margin * 2;
+    const contentH = pageH - margin * 2;
+    const scale = landscape ? 1.5 : 1.6;
 
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      // Margens um pouco maiores para evitar corte visual nas bordas da página
-      const margin = landscape ? 8 : coverNodes.length > 0 ? 7 : 9;
-      const contentW = pageW - margin * 2;
-      const contentH = pageH - margin * 2;
+    // ——— Paginação por elementos (captura 1 página de cada vez) ———
+    // Cada página é um contentor com altura fixa = área útil A4.
+    // Nunca se fatia um canvas alto → impossível cortar texto a meio.
+    const pageCanvases = await renderPaginatedCanvases(
+      clone,
+      landscape,
+      html2canvas,
+      scale,
+      contentH,
+      contentW,
+    );
 
-      // Largura: sempre encaixar a página inteira (sem corte horizontal)
-      const imgW = contentW;
-      const imgFullH = (canvas.height * contentW) / canvas.width;
-
-      // Se couber numa página (com pequena margem), escalar para caber tudo
-      if (imgFullH <= contentH * 1.02) {
-        const h = Math.min(imgFullH, contentH);
-        if (pageCount > 0) pdf.addPage();
-        pdf.addImage(
-          canvas.toDataURL("image/jpeg", 0.92),
-          "JPEG",
-          margin,
-          margin,
-          imgW,
-          h,
-        );
-        pageCount++;
-      } else {
-        // Multipágina: cortar em fatias nos pontos seguros (linhas quase brancas)
-        // para não partir texto, células de tabela ou bordas a meio da página.
-        const pxPerPage = (contentH * canvas.width) / contentW;
-        // Mínimo ~55% da página útil para não gerar páginas quase vazias
-        const minSlicePx = pxPerPage * 0.55;
-        const pageCanvas = document.createElement("canvas");
-        const ctx = pageCanvas.getContext("2d");
-        if (!ctx) throw new Error("Canvas indisponível");
-
-        let srcY = 0;
-        let bodyPage = 0;
-        while (srcY < canvas.height - 1) {
-          const remaining = canvas.height - srcY;
-          let sliceH: number;
-
-          if (remaining <= pxPerPage + 2) {
-            // Última página: usar tudo o que resta (sem cortar o fim)
-            sliceH = remaining;
-          } else {
-            const idealEnd = srcY + pxPerPage;
-            // Procurar corte seguro a partir do fim ideal, sem descer abaixo de 55%
-            const safeEnd = findSafeCutY(
-              canvas,
-              idealEnd,
-              srcY + minSlicePx,
-              idealEnd,
-            );
-            sliceH = Math.max(1, safeEnd - srcY);
-            // Se o algoritmo não avançou o suficiente, forçar avanço para evitar loop
-            if (sliceH < minSlicePx * 0.9) {
-              sliceH = Math.min(pxPerPage, remaining);
-            }
-          }
-
-          pageCanvas.width = canvas.width;
-          pageCanvas.height = Math.max(1, Math.ceil(sliceH));
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-          ctx.drawImage(
-            canvas,
-            0,
-            srcY,
-            canvas.width,
-            sliceH,
-            0,
-            0,
-            canvas.width,
-            sliceH,
-          );
-          const data = pageCanvas.toDataURL("image/jpeg", 0.92);
-          const sliceMmH = (sliceH * contentW) / canvas.width;
-
-          if (pageCount > 0 || bodyPage > 0) pdf.addPage();
-          // Altura exacta da fatia (não esticar até contentH) — evita distorção
-          pdf.addImage(data, "JPEG", margin, margin, contentW, Math.min(sliceMmH, contentH));
-          srcY += sliceH;
-          bodyPage++;
-          pageCount++;
-          if (bodyPage > 80) break;
-        }
-      }
-    } finally {
-      stage.remove();
+    for (let i = 0; i < pageCanvases.length; i++) {
+      const pc = pageCanvases[i];
+      const sliceMmH = (pc.height * contentW) / pc.width;
+      if (pageCount > 0 || i > 0) pdf.addPage();
+      pdf.addImage(
+        pc.toDataURL("image/jpeg", 0.93),
+        "JPEG",
+        margin,
+        margin,
+        contentW,
+        Math.min(sliceMmH, contentH),
+      );
+      pageCount++;
     }
   } else if (pageCount === 0) {
     const stage = makeStage(landscape);
