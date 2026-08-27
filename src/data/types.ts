@@ -148,6 +148,10 @@ export type Salario = {
   diasTrab: number;
   outrosDesc: number;
   dataPag: string;
+  /** Contactos (cadastro completo) */
+  telefone?: string;
+  email?: string;
+  morada?: string;
 };
 
 export type Escola = {

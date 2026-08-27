@@ -333,6 +333,9 @@ export function salariosToCsv(
     "Outros descontos",
     "Líquido calculado",
     "Data pagamento",
+    "Telefone",
+    "E-mail",
+    "Morada",
   ];
   const lines = rows.map((r) => {
     const diasU = r.diasUteis || 22;
@@ -354,6 +357,9 @@ export function salariosToCsv(
       outros,
       Math.round(liq),
       r.dataPag || "",
+      r.telefone || "",
+      r.email || "",
+      r.morada || "",
     ].map(String);
   });
   return headerBody(cols, lines);

@@ -32,6 +32,9 @@ type FormState = {
   diasTrab: string;
   outrosDesc: string;
   dataPag: string;
+  telefone: string;
+  email: string;
+  morada: string;
 };
 
 function emptyForm(): FormState {
@@ -45,6 +48,9 @@ function emptyForm(): FormState {
     diasTrab: "22",
     outrosDesc: "0",
     dataPag: todayIso(),
+    telefone: "",
+    email: "",
+    morada: "",
   };
 }
 
@@ -77,6 +83,7 @@ function Salarios() {
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Salario | null>(null);
+  const [viewing, setViewing] = useState<Salario | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
 
   function openNew() {
@@ -104,6 +111,9 @@ function Salarios() {
       diasTrab: String(r.diasTrab ?? 22),
       outrosDesc: String(r.outrosDesc ?? 0),
       dataPag: r.dataPag || todayIso(),
+      telefone: r.telefone || "",
+      email: r.email || "",
+      morada: r.morada || "",
     });
   }
 
@@ -154,6 +164,9 @@ function Salarios() {
       diasTrab,
       outrosDesc,
       dataPag: form.dataPag || todayIso(),
+      telefone: form.telefone.trim(),
+      email: form.email.trim(),
+      morada: form.morada.trim(),
     };
     addSalario(row);
     toast.success(`Funcionário ${row.nome} adicionado (${row.id})`);
@@ -178,6 +191,9 @@ function Salarios() {
         diasTrab,
         outrosDesc,
         dataPag: form.dataPag || editing.dataPag,
+        telefone: form.telefone.trim(),
+        email: form.email.trim(),
+        morada: form.morada.trim(),
       });
       toast.success(`Salário ${editing.id} actualizado`);
       setEditing(null);
@@ -264,6 +280,36 @@ function Salarios() {
             onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
           />
         </div>
+        <div className="sm:col-span-2 border-t border-[var(--color-line)] pt-2">
+          <p className="mb-2 text-xs font-medium tracking-wide text-[var(--color-muted)] uppercase">
+            Contactos
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Telefone</Label>
+          <Input
+            value={form.telefone}
+            onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+            placeholder="9xx xxx xxx"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>E-mail</Label>
+          <Input
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            placeholder="nome@email.com"
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Morada</Label>
+          <Input
+            value={form.morada}
+            onChange={(e) => setForm({ ...form, morada: e.target.value })}
+            placeholder="Bairro, município…"
+          />
+        </div>
         <div className="flex justify-end gap-2 sm:col-span-2">
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancelar
@@ -336,7 +382,11 @@ function Salarios() {
           </thead>
           <tbody>
             {computed.map((r) => (
-              <tr key={r.id} className="border-t border-[var(--color-line)]">
+              <tr
+                key={r.id}
+                className="border-t border-[var(--color-line)] cursor-pointer hover:bg-[var(--color-forest-soft)]/40"
+                onClick={() => setViewing(r)}
+              >
                 <td className="px-3 py-2 font-mono text-xs">{r.id}</td>
                 <td className="px-3 py-2 font-medium">{r.nome}</td>
                 <td className="px-3 py-2">{r.funcao}</td>
@@ -349,7 +399,14 @@ function Salarios() {
                 <td className="px-3 py-2">{formatDate(r.dataPag)}</td>
                 <td className="no-print px-3 py-2 text-right">
                   {canEdit ? (
-                    <Button size="sm" variant="secondary" onClick={() => openEdit(r)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEdit(r);
+                      }}
+                    >
                       <Pencil className="size-3.5" />
                     </Button>
                   ) : null}
@@ -368,8 +425,32 @@ function Salarios() {
         </table>
       </div>
       </div>
-      <p className="mt-3 text-sm text-[var(--color-muted)]">
+
+      {/* Fichas completas na impressão / PDF */}
+      <div className="print-only mt-6 hidden print:block space-y-4">
+        <h2 className="font-display text-lg">Fichas de funcionários</h2>
+        {computed.map((r) => (
+          <div key={`ficha-${r.id}`} className="print-sheet break-inside-avoid rounded border border-[var(--color-line-strong)] p-4 text-sm">
+            <p className="font-display text-base font-medium">{r.nome}</p>
+            <p className="text-[var(--color-muted)]">{r.funcao} · {r.categoria}</p>
+            <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              <p><span className="text-[var(--color-muted)]">ID:</span> {r.id}</p>
+              <p><span className="text-[var(--color-muted)]">Mês:</span> {r.mes}</p>
+              <p><span className="text-[var(--color-muted)]">Salário:</span> {formatKz(r.salario)}</p>
+              <p><span className="text-[var(--color-muted)]">Líquido:</span> {formatKz(r.liquido)}</p>
+              <p><span className="text-[var(--color-muted)]">Dias:</span> {r.diasTrab}/{r.diasUteis}</p>
+              <p><span className="text-[var(--color-muted)]">Pagamento:</span> {formatDate(r.dataPag)}</p>
+              <p><span className="text-[var(--color-muted)]">Telefone:</span> {r.telefone || "—"}</p>
+              <p><span className="text-[var(--color-muted)]">E-mail:</span> {r.email || "—"}</p>
+              <p className="sm:col-span-2"><span className="text-[var(--color-muted)]">Morada:</span> {r.morada || "—"}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-3 text-sm text-[var(--color-muted)] no-print">
         Adelaide e Teresa: meio mês de Julho (11/22 dias) = 45.000 Kz cada, pagos a 6 de Agosto (FAT-051).
+        Clique numa linha para ver a ficha completa.
       </p>
 
       <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
@@ -389,6 +470,83 @@ function Salarios() {
             <DialogTitle>Editar {editing?.id}</DialogTitle>
           </DialogHeader>
           <FormFields onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ficha do funcionário</DialogTitle>
+          </DialogHeader>
+          {viewing ? (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="font-display text-lg leading-tight">{viewing.nome}</p>
+                <p className="text-[var(--color-muted)]">
+                  {viewing.funcao} · {viewing.categoria}
+                </p>
+              </div>
+              <div className="grid gap-2 border-t border-[var(--color-line)] pt-3 sm:grid-cols-2">
+                <p><span className="text-[var(--color-muted)]">ID</span><br />{viewing.id}</p>
+                <p><span className="text-[var(--color-muted)]">Mês</span><br />{viewing.mes}</p>
+                <p><span className="text-[var(--color-muted)]">Salário</span><br />{formatKz(viewing.salario)}</p>
+                <p>
+                  <span className="text-[var(--color-muted)]">Líquido</span>
+                  <br />
+                  {formatKz(
+                    viewing.salario -
+                      (viewing.diasUteis
+                        ? (viewing.salario / viewing.diasUteis) *
+                          Math.max(0, viewing.diasUteis - viewing.diasTrab)
+                        : 0) -
+                      (viewing.outrosDesc || 0),
+                  )}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">Dias</span>
+                  <br />
+                  {viewing.diasTrab}/{viewing.diasUteis}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">Pagamento</span>
+                  <br />
+                  {formatDate(viewing.dataPag)}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">Telefone</span>
+                  <br />
+                  {viewing.telefone || "—"}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">E-mail</span>
+                  <br />
+                  {viewing.email || "—"}
+                </p>
+                <p className="sm:col-span-2">
+                  <span className="text-[var(--color-muted)]">Morada</span>
+                  <br />
+                  {viewing.morada || "—"}
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-[var(--color-line)] pt-3">
+                <Button type="button" variant="secondary" onClick={() => setViewing(null)}>
+                  Fechar
+                </Button>
+                {canEdit ? (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const r = viewing;
+                      setViewing(null);
+                      openEdit(r);
+                    }}
+                  >
+                    Editar
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

@@ -147,7 +147,7 @@ const STAGE_CSS = `
 
   [data-pdf-stage] .print-sheet {
     box-shadow: none !important;
-    border: 1px solid #ccc !important;
+    border: 1.5px solid #555 !important;
     background: #fff !important;
     max-width: 100% !important;
     width: 100% !important;
@@ -173,12 +173,13 @@ const STAGE_CSS = `
   [data-pdf-stage] th,
   [data-pdf-stage] td {
     padding: 5px 6px !important;
-    border: 0.6px solid #bbb !important;
+    border: 1px solid #666 !important;
     vertical-align: top !important;
     word-wrap: break-word !important;
-    overflow-wrap: anywhere !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
     white-space: normal !important;
-    line-height: 1.3 !important;
+    line-height: 1.35 !important;
     font-size: 11px !important;
   }
   [data-pdf-stage] th {
@@ -454,9 +455,10 @@ function addCanvasToPdf(
 ): number {
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const margin = opts.landscape ? 8 : opts.tighter ? 7 : 10;
+  const margin = opts.landscape ? 10 : opts.tighter ? 9 : 12;
   const contentW = pageW - margin * 2;
-  const contentH = pageH - margin * 2;
+  // Folga inferior para não colar no rodapé / não cortar última linha
+  const contentH = pageH - margin * 2 - (opts.landscape ? 6 : 8);
 
   // Escala: a largura do canvas mapeia SEMPRE para contentW (sem crop lateral)
   const scale = contentW / canvas.width;

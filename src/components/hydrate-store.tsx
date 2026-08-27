@@ -72,7 +72,7 @@ export function HydrateStore() {
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => {
           void pushCloud();
-        }, 1500);
+        }, 2500);
       });
     }
 
