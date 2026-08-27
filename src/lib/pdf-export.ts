@@ -143,16 +143,22 @@ const STAGE_CSS = `
     background: #fff !important;
     max-width: none !important;
     padding: 10px !important;
+    overflow: visible !important;
   }
   [data-pdf-stage] .print-a4-page {
     display: flex !important;
     flex-direction: column !important;
     width: 100% !important;
     gap: 10px !important;
+    overflow: visible !important;
+    max-height: none !important;
   }
   [data-pdf-stage] .print-a5-half {
     min-height: 480px !important;
-    overflow: hidden !important;
+    /* Em PDF: não cortar conteúdo do recibo; o paginador trata o excesso */
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
   }
   [data-pdf-stage] .print-a5-half article,
   [data-pdf-stage] article.print-sheet {
@@ -173,6 +179,7 @@ const STAGE_CSS = `
     min-width: 0 !important;
     border-collapse: collapse;
     font-size: 12px !important;
+    table-layout: auto !important;
   }
   [data-pdf-stage] th {
     font-size: 11px !important;
@@ -182,12 +189,17 @@ const STAGE_CSS = `
     padding: 7px 8px !important;
     border-bottom: 1.5px solid #333 !important;
     text-align: left;
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
   }
   [data-pdf-stage] td {
     font-size: 12px !important;
     padding: 6px 8px !important;
     border-bottom: 1px solid #ccc !important;
     vertical-align: top;
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
   }
   [data-pdf-stage] .print-sheet table { font-size: 12px !important; }
   [data-pdf-landscape] {
@@ -326,6 +338,9 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.style.width = "100%";
   clone.style.maxWidth = "100%";
   clone.style.background = "#ffffff";
+  clone.style.overflow = "visible";
+  clone.style.maxHeight = "none";
+  clone.style.height = "auto";
   clone.querySelectorAll(".no-print").forEach((n) => n.remove());
   // Tabelas largas: forçar caber na página (PDF paisagem / A4)
   clone.querySelectorAll("table").forEach((table) => {
@@ -339,10 +354,12 @@ function prepareClone(source: HTMLElement): HTMLElement {
       .filter((c) => !c.startsWith("min-w"))
       .join(" ");
   });
-  clone.querySelectorAll(".overflow-x-auto").forEach((node) => {
+  clone.querySelectorAll(".overflow-x-auto, .print-sheet, .print-a4-page, .print-a5-half").forEach((node) => {
     const el = node as HTMLElement;
     el.style.overflow = "visible";
     el.style.maxWidth = "100%";
+    el.style.maxHeight = "none";
+    el.style.height = "auto";
   });
   clone.querySelectorAll(".print-only, .print-cover").forEach((node) => {
     const el = node as HTMLElement;
@@ -421,6 +438,7 @@ async function capture(
   landscape = false,
 ): Promise<HTMLCanvasElement> {
   const w = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
+  // height: undefined → captura a altura total do conteúdo (sem cortar o fundo)
   return html2canvas(el, {
     scale,
     useCORS: true,
@@ -431,7 +449,78 @@ async function capture(
     windowWidth: w,
     scrollX: 0,
     scrollY: 0,
+    // Garante que o canvas cobre todo o elemento (tabelas longas, etc.)
+    height: el.scrollHeight,
+    windowHeight: el.scrollHeight,
   });
+}
+
+/**
+ * Encontra um ponto de corte horizontal seguro (linha quase branca) para não
+ * partir texto, células de tabela ou bordas a meio da página.
+ * Pesquisa de `idealY` para cima até `minY`.
+ */
+function findSafeCutY(
+  canvas: HTMLCanvasElement,
+  idealY: number,
+  minY: number,
+  maxY: number,
+): number {
+  const h = canvas.height;
+  const w = canvas.width;
+  const yMax = Math.min(Math.floor(maxY), h);
+  const yIdeal = Math.min(Math.floor(idealY), yMax);
+  const yMin = Math.max(0, Math.floor(minY));
+
+  if (yIdeal <= yMin + 2) return yIdeal;
+  if (yIdeal >= h - 2) return h;
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return yIdeal;
+
+  // Amostrar colunas ao longo da largura (mais rápido que pixel a pixel)
+  const stepX = Math.max(4, Math.floor(w / 120));
+  const whiteThreshold = 245; // quase branco
+  const minWhiteRatio = 0.92;
+
+  const isQuietRow = (y: number): boolean => {
+    if (y < 0 || y >= h) return false;
+    try {
+      const row = ctx.getImageData(0, y, w, 1).data;
+      let white = 0;
+      let samples = 0;
+      for (let x = 0; x < w; x += stepX) {
+        const i = x * 4;
+        const r = row[i];
+        const g = row[i + 1];
+        const b = row[i + 2];
+        const a = row[i + 3];
+        samples++;
+        // Fundo branco ou transparente conta como "quieto"
+        if (a < 20 || (r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold)) {
+          white++;
+        }
+      }
+      return samples > 0 && white / samples >= minWhiteRatio;
+    } catch {
+      return false;
+    }
+  };
+
+  // Preferir faixa quieta contínua (≥ 2 px) perto de idealY
+  for (let y = yIdeal; y >= yMin; y--) {
+    if (isQuietRow(y) && (y === 0 || isQuietRow(y - 1) || isQuietRow(Math.min(h - 1, y + 1)))) {
+      return y;
+    }
+  }
+
+  // Fallback: qualquer linha quieta
+  for (let y = yIdeal; y >= yMin; y--) {
+    if (isQuietRow(y)) return y;
+  }
+
+  // Último recurso: manter ideal (melhor que perder conteúdo)
+  return yIdeal;
 }
 
 function addCoverPage(
@@ -512,7 +601,8 @@ export async function elementToPdfBlob(
 
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const margin = landscape ? 7 : coverNodes.length > 0 ? 6 : 8;
+      // Margens um pouco maiores para evitar corte visual nas bordas da página
+      const margin = landscape ? 8 : coverNodes.length > 0 ? 7 : 9;
       const contentW = pageW - margin * 2;
       const contentH = pageH - margin * 2;
 
@@ -525,7 +615,7 @@ export async function elementToPdfBlob(
         const h = Math.min(imgFullH, contentH);
         if (pageCount > 0) pdf.addPage();
         pdf.addImage(
-          canvas.toDataURL("image/jpeg", 0.9),
+          canvas.toDataURL("image/jpeg", 0.92),
           "JPEG",
           margin,
           margin,
@@ -534,9 +624,11 @@ export async function elementToPdfBlob(
         );
         pageCount++;
       } else {
-        // Multipágina: cortar em fatias; alinhar ao passo de linha (~22px * scale)
-        const rowStep = Math.max(16, Math.round((landscape ? 18 : 22) * (landscape ? 1.4 : 1.5)));
+        // Multipágina: cortar em fatias nos pontos seguros (linhas quase brancas)
+        // para não partir texto, células de tabela ou bordas a meio da página.
         const pxPerPage = (contentH * canvas.width) / contentW;
+        // Mínimo ~55% da página útil para não gerar páginas quase vazias
+        const minSlicePx = pxPerPage * 0.55;
         const pageCanvas = document.createElement("canvas");
         const ctx = pageCanvas.getContext("2d");
         if (!ctx) throw new Error("Canvas indisponível");
@@ -544,26 +636,53 @@ export async function elementToPdfBlob(
         let srcY = 0;
         let bodyPage = 0;
         while (srcY < canvas.height - 1) {
-          let sliceH = Math.min(pxPerPage, canvas.height - srcY);
-          // Evitar cortar linha a meio: recuar até múltiplo de rowStep (exceto última página)
-          if (srcY + sliceH < canvas.height - 2) {
-            const snapped = Math.floor(sliceH / rowStep) * rowStep;
-            if (snapped > pxPerPage * 0.55) sliceH = snapped;
+          const remaining = canvas.height - srcY;
+          let sliceH: number;
+
+          if (remaining <= pxPerPage + 2) {
+            // Última página: usar tudo o que resta (sem cortar o fim)
+            sliceH = remaining;
+          } else {
+            const idealEnd = srcY + pxPerPage;
+            // Procurar corte seguro a partir do fim ideal, sem descer abaixo de 55%
+            const safeEnd = findSafeCutY(
+              canvas,
+              idealEnd,
+              srcY + minSlicePx,
+              idealEnd,
+            );
+            sliceH = Math.max(1, safeEnd - srcY);
+            // Se o algoritmo não avançou o suficiente, forçar avanço para evitar loop
+            if (sliceH < minSlicePx * 0.9) {
+              sliceH = Math.min(pxPerPage, remaining);
+            }
           }
+
           pageCanvas.width = canvas.width;
           pageCanvas.height = Math.max(1, Math.ceil(sliceH));
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-          ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-          const data = pageCanvas.toDataURL("image/jpeg", 0.9);
+          ctx.drawImage(
+            canvas,
+            0,
+            srcY,
+            canvas.width,
+            sliceH,
+            0,
+            0,
+            canvas.width,
+            sliceH,
+          );
+          const data = pageCanvas.toDataURL("image/jpeg", 0.92);
           const sliceMmH = (sliceH * contentW) / canvas.width;
 
           if (pageCount > 0 || bodyPage > 0) pdf.addPage();
-          pdf.addImage(data, "JPEG", margin, margin, contentW, sliceMmH);
+          // Altura exacta da fatia (não esticar até contentH) — evita distorção
+          pdf.addImage(data, "JPEG", margin, margin, contentW, Math.min(sliceMmH, contentH));
           srcY += sliceH;
           bodyPage++;
           pageCount++;
-          if (bodyPage > 50) break;
+          if (bodyPage > 80) break;
         }
       }
     } finally {
