@@ -86,9 +86,9 @@ export const loadFinanceCloud = createServerFn({ method: "GET" }).handler(
   },
 );
 
-export const saveFinanceCloud = createServerFn({ method: "POST" })
-  .validator((data: FinanceCloudPayload) => data)
-  .handler(async ({ data }): Promise<{ ok: boolean; updatedAt: string }> => {
+export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<{ ok: boolean; updatedAt: string }> => {
+    const data = ((ctx as { data?: FinanceCloudPayload }).data ?? emptyPayload()) as FinanceCloudPayload;
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
     const updatedAt = new Date().toISOString();

@@ -631,7 +631,6 @@ export async function elementToPdfBlob(
       stage.appendChild(wrap);
       await waitImages(stage);
       const canvas = await capture(stage, html2canvas, 1.5, landscape);
-      // Forçar caber numa única página (escala se necessário)
       const used = addCanvasToPdf(pdf, canvas, {
         landscape,
         hasPriorPages: pageCount > 0,
@@ -642,13 +641,16 @@ export async function elementToPdfBlob(
     } finally {
       stage.remove();
     }
-  } else if (pageCount === 0) {
+  }
+
+  if (pageCount === 0) {
     const stage = makeStage(landscape);
     try {
       stage.appendChild(clone);
       await waitImages(stage);
       const canvas = await capture(stage, html2canvas, 1.5, landscape);
       addCoverPage(pdf, canvas, true);
+      pageCount = 1;
     } finally {
       stage.remove();
     }
