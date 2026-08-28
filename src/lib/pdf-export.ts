@@ -550,6 +550,52 @@ function addCanvasToPdf(
  * HTML simples (ex.: fatura de propina) → PDF A4 vertical, uma página.
  * Usa stage off-screen com opacidade total (evita PDF em branco).
  */
+
+/**
+ * Vários HTML (ex.: faturas) → um único PDF A4, uma página por fatura.
+ */
+export async function htmlFragmentsToMultiPageA4Pdf(
+  fragments: string[],
+  opts?: { filename?: string; title?: string },
+): Promise<{ blob: Blob; filename: string }> {
+  if (!fragments.length) throw new Error("Sem conteúdo para o PDF");
+  const { html2canvas, jsPDF } = await ensureLibs();
+  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = 10;
+  const maxW = pageW - margin * 2;
+  const maxH = pageH - margin * 2;
+
+  for (let i = 0; i < fragments.length; i++) {
+    const stage = makeStage(false);
+    try {
+      const wrap = document.createElement("div");
+      wrap.style.cssText =
+        "width:100%;background:#ffffff;color:#111111;box-sizing:border-box;padding:6px 2px;";
+      wrap.innerHTML = fragments[i];
+      stage.appendChild(wrap);
+      await waitImages(stage);
+      await wait(60);
+      const canvas = await capture(stage, html2canvas, 1.6, false);
+      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+      const w = canvas.width * ratio;
+      const h = canvas.height * ratio;
+      const x = (pageW - w) / 2;
+      const y = margin;
+      if (i > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, y, w, h);
+    } finally {
+      stage.remove();
+    }
+  }
+
+  return {
+    blob: pdf.output("blob"),
+    filename: opts?.filename || `documento-${Date.now()}.pdf`,
+  };
+}
+
 export async function htmlFragmentToA4Pdf(
   html: string,
   opts?: { filename?: string; title?: string },

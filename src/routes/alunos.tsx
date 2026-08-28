@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
-import { htmlFragmentToA4Pdf, shareOrDownloadPdf } from "@/lib/pdf-export";
+import { htmlFragmentToA4Pdf, htmlFragmentsToMultiPageA4Pdf, shareOrDownloadPdf } from "@/lib/pdf-export";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
 
@@ -658,6 +658,7 @@ function Alunos() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportIds, setExportIds] = useState<Set<string>>(new Set());
   const [exportBusy, setExportBusy] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
 
   const grupos = useMemo(() => ["todos", ...new Set(alunos.map((a) => a.grupo))], [alunos]);
   const turmasDisponiveis = useMemo(
@@ -900,15 +901,15 @@ function Alunos() {
     return `
 <div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0f172a;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;">
   <!-- Cabeçalho: só logo + cores Congo + lema -->
-  <div style="background:#0b1f3a;padding:0;overflow:hidden;">
+  <div style="background:#ffffff;padding:0;overflow:hidden;border-bottom:1px solid #e2e8f0;">
     <div style="height:6px;display:flex;">
       <div style="flex:1;background:#009543;"></div>
       <div style="flex:1;background:#fbde4a;"></div>
       <div style="flex:1;background:#dc241f;"></div>
     </div>
-    <div style="padding:20px 24px;display:flex;align-items:center;justify-content:center;gap:20px;">
-      <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;background:#fff;border-radius:12px;padding:6px;" crossorigin="anonymous" />
-      <p style="margin:0;font-size:15px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#fbde4a;">Apprendre · Grandir · Réussir</p>
+    <div style="padding:18px 24px;display:flex;align-items:center;justify-content:center;gap:18px;">
+      <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;border-radius:12px;padding:4px;" crossorigin="anonymous" />
+      <p style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#009543;">Apprendre · Grandir · Réussir</p>
     </div>
     <div style="height:4px;display:flex;">
       <div style="flex:1;background:#009543;"></div>
@@ -919,16 +920,16 @@ function Alunos() {
 
   <div style="flex:1;padding:22px 24px 10px;display:flex;flex-direction:column;gap:14px;">
     <!-- Título + ref -->
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #0b1f3a;padding-bottom:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #009543;padding-bottom:12px;">
       <div>
         <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#dc241f;">Fatura comercial</p>
-        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b1f3a;letter-spacing:-0.02em;">Propina mensal</p>
+        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b3d2c;letter-spacing:-0.02em;">Propina mensal</p>
         <p style="margin:6px 0 0;font-size:12px;color:#475569;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
       </div>
-      <div style="text-align:right;background:#0b1f3a;color:#fff;padding:12px 16px;border-radius:8px;min-width:140px;">
-        <p style="margin:0;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.8;">Referência</p>
-        <p style="margin:6px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;">${numero}</p>
-        <p style="margin:6px 0 0;font-size:11px;opacity:0.9;">${emitida}</p>
+      <div style="text-align:right;background:#e6f4ec;color:#0b3d2c;padding:12px 16px;border-radius:8px;min-width:140px;border:1px solid #b7dfc8;">
+        <p style="margin:0;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#009543;font-weight:700;">Referência</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;color:#0b3d2c;">${numero}</p>
+        <p style="margin:6px 0 0;font-size:11px;color:#3d6b56;">${emitida}</p>
       </div>
     </div>
 
@@ -936,14 +937,14 @@ function Alunos() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div style="border-left:4px solid #009543;padding:10px 12px;background:#f8fafc;border-radius:0 8px 8px 0;">
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Emissor</p>
-        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b1f3a;">${escola.nome || "École Consulaire"}</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b3d2c;">${escola.nome || "École Consulaire"}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#475569;line-height:1.4;">${morada}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#475569;">${telefones}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#475569;">${emailEscola}</p>
       </div>
       <div style="border-left:4px solid #dc241f;padding:10px 12px;background:#f8fafc;border-radius:0 8px 8px 0;">
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Facturado a</p>
-        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b1f3a;">${encarregado}</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b3d2c;">${encarregado}</p>
         <p style="margin:4px 0 0;font-size:12px;color:#334155;">Aluno: <strong>${a.nome}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#64748b;">${a.id} · ${a.turma}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
@@ -954,13 +955,13 @@ function Alunos() {
     <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
       <div style="flex:1;padding:16px 18px;background:#fff;">
         <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Descrição</p>
-        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b1f3a;">Propina mensal — ${mesRef}</p>
+        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Propina mensal — ${mesRef}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Valor registado em Propinas" : "Valor de referência a cobrar"}</p>
       </div>
-      <div style="min-width:160px;background:#0b1f3a;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;">
-        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.85;">Total</p>
-        <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;">${formatKz(valor)}</p>
-        <p style="margin:6px 0 0;font-size:10px;opacity:0.85;">até ${prazo.limite}</p>
+      <div style="min-width:160px;background:#e6f4ec;color:#0b3d2c;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;border-left:1px solid #b7dfc8;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#009543;font-weight:700;">Total</p>
+        <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#0b3d2c;">${formatKz(valor)}</p>
+        <p style="margin:6px 0 0;font-size:10px;color:#3d6b56;">até ${prazo.limite}</p>
       </div>
     </div>
 
@@ -993,9 +994,9 @@ function Alunos() {
 
     <!-- Pagamento -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="background:#0b1f3a;color:#fff;border-radius:10px;padding:14px 16px;">
-        <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.8;font-weight:700;">IBAN</p>
-        <p style="margin:10px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.04em;word-break:break-all;line-height:1.35;">${iban}</p>
+      <div style="background:#e6f4ec;color:#0b3d2c;border-radius:10px;padding:14px 16px;border:1px solid #b7dfc8;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#009543;font-weight:700;">IBAN</p>
+        <p style="margin:10px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.04em;word-break:break-all;line-height:1.35;color:#0b3d2c;">${iban}</p>
       </div>
       <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;background:#f8fafc;">
         <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;font-weight:700;">Métodos de pagamento</p>
@@ -1013,12 +1014,12 @@ function Alunos() {
   <!-- Rodapé -->
   <div style="border-top:1px solid #e2e8f0;padding:12px 24px 16px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;background:#f8fafc;">
     <div>
-      <p style="margin:0;font-size:11px;font-weight:700;color:#0b1f3a;">Departamento de Finanças</p>
+      <p style="margin:0;font-size:11px;font-weight:700;color:#0b3d2c;">Departamento de Finanças</p>
       <p style="margin:4px 0 0;font-size:10px;color:#64748b;">Documento elaborado pelo Departamento de Finanças</p>
       <p style="margin:10px 0 0;border-top:1px solid #cbd5e1;padding-top:4px;width:160px;font-size:10px;color:#475569;">Assinatura / carimbo</p>
     </div>
     <div style="text-align:right;font-size:10px;color:#64748b;">
-      <p style="margin:0;">Ref. <strong style="color:#0b1f3a;">${numero}</strong></p>
+      <p style="margin:0;">Ref. <strong style="color:#0b3d2c;">${numero}</strong></p>
       <p style="margin:2px 0 0;">Emitida em ${emitida}</p>
     </div>
   </div>
@@ -1138,100 +1139,89 @@ function Alunos() {
 
 
   async function gerarFaturasDoMes() {
-    if (typeof nextFaturaNumero !== "function" || typeof addFaturaPropina !== "function") {
-      toast.error("Actualize a página.");
-      return;
-    }
-    const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
-    const contacto = loadContacto();
-    let geradas = 0;
-    let saltadas = 0;
-    let semValor = 0;
-    let erros = 0;
-    toast.message("A gerar faturas individuais (PDF)…");
-
-    const downloadBlob = (blob: Blob, name: string) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
-    };
-
-    for (const a of alunos) {
-      const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
-      if (valor <= 0) {
-        semValor++;
-        continue;
+    if (batchBusy) return;
+    setBatchBusy(true);
+    try {
+      if (typeof nextFaturaNumero !== "function") {
+        toast.error("Actualize a página (função de faturas indisponível).");
+        return;
       }
-      const existente = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
-      const numero = existente?.numero || nextFaturaNumero(mesKey);
-      const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto });
-      try {
-        const { blob, filename: name } = await htmlFragmentToA4Pdf(html, {
-          filename: `fatura-${numero}-${a.id}.pdf`,
-          title: `Fatura ${numero}`,
-        });
-        if (!blob || blob.size < 400) {
-          erros++;
+      const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
+      const contacto = loadContacto();
+      const fragments: string[] = [];
+      let registadas = 0;
+      let semValor = 0;
+
+      const elegiveis = alunos.filter((a) => resolverValorPropina(a, mesLetivo).valor > 0);
+      if (elegiveis.length === 0) {
+        toast.error(
+          "Nenhum aluno com propina definida. Indique a propina na matrícula ou em Propinas.",
+        );
+        return;
+      }
+
+      toast.message(`A montar 1 PDF com ${elegiveis.length} fatura(s)…`);
+
+      for (let i = 0; i < elegiveis.length; i++) {
+        const a = elegiveis[i];
+        const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
+        if (valor <= 0) {
+          semValor++;
           continue;
         }
-        downloadBlob(blob, name);
-        if (!existente) {
-          addFaturaPropina({
-            id: numero,
-            numero,
-            alunoId: a.id,
-            alunoNome: a.nome,
-            mesRef,
-            mesKey,
-            valor,
-            email: a.email || undefined,
-            emitidoEm: new Date().toISOString(),
-          });
-        } else {
-          saltadas++;
+        const existente = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
+        let numero: string;
+        try {
+          numero = existente?.numero || nextFaturaNumero(mesKey);
+        } catch {
+          numero = `PROP-${mesKey}-${String(i + 1).padStart(3, "0")}`;
         }
-        geradas++;
-      } catch {
-        erros++;
-      }
-      await new Promise((r) => setTimeout(r, 450));
-    }
-    toast.success(
-      `${geradas} fatura(s) PDF descarregada(s)` +
-        (saltadas ? ` · ${saltadas} já registadas (PDF gerado de novo)` : "") +
-        (semValor ? ` · ${semValor} sem propina` : "") +
-        (erros ? ` · ${erros} erro(s)` : ""),
-    );
-  }
-
-  useEffect(() => {
-    try {
-      const d = new Date();
-      const day = d.getDate();
-      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-      if (!(day === 30 || (lastDay < 30 && day === lastDay))) return;
-      const mesKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const flag = `faturas-aviso-${mesKey}`;
-      if (typeof sessionStorage !== "undefined" && sessionStorage.getItem(flag)) return;
-      if (typeof sessionStorage !== "undefined") sessionStorage.setItem(flag, "1");
-      window.setTimeout(() => {
-        toast.message(
-          "Dia 30 — faturamento de propinas. Use «Gerar faturas do mês» para emitir os PDF (PROP-…).",
-          { duration: 8000 },
+        fragments.push(
+          buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto }),
         );
-      }, 600);
-    } catch {
-      /* ignore */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        if (!existente && typeof addFaturaPropina === "function") {
+          try {
+            addFaturaPropina({
+              id: numero,
+              numero,
+              alunoId: a.id,
+              alunoNome: a.nome,
+              mesRef,
+              mesKey,
+              valor,
+              email: a.email || undefined,
+              emitidoEm: new Date().toISOString(),
+            });
+            registadas++;
+          } catch {
+            /* ignore */
+          }
+        }
+      }
 
+      if (fragments.length === 0) {
+        toast.error("Nenhuma fatura para incluir no PDF.");
+        return;
+      }
+
+      const { blob, filename } = await htmlFragmentsToMultiPageA4Pdf(fragments, {
+        filename: `faturas-propina-${mesKey}.pdf`,
+        title: `Faturas ${mesRef}`,
+      });
+      if (!blob || blob.size < 500) throw new Error("PDF vazio");
+
+      await shareOrDownloadPdf(blob, filename, {
+        title: `Faturas de propina — ${mesRef}`,
+        text: `${fragments.length} fatura(s) · ${mesRef}`,
+      });
+      toast.success(`PDF único com ${fragments.length} fatura(s)` + (semValor ? ` · ${semValor} sem propina` : ""));
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar o PDF das faturas");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
 
   async function exportListaPdf() {
     const selected = filteredByClass.filter((a) => exportIds.has(a.id));
@@ -1321,10 +1311,11 @@ function Alunos() {
               <Button
                 className="shrink-0"
                 variant="secondary"
-                title="Gera faturas PROP- do mês para alunos com propina"
+                title="Gera e descarrega uma fatura PDF por aluno com propina"
+                disabled={batchBusy}
                 onClick={() => void gerarFaturasDoMes()}
               >
-                Faturas do mês
+                {batchBusy ? "A gerar faturas…" : "Faturas do mês"}
               </Button>
             ) : null}
           </div>
