@@ -1008,7 +1008,6 @@ function Alunos() {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #009543;padding-bottom:12px;">
       <div>
         <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#dc241f;">Facture <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Fatura</span></p>
-        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b3d2c;letter-spacing:-0.02em;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:13px;font-weight:500;color:#64748b;">Propina mensal</span></p>
         <p style="margin:6px 0 0;font-size:12px;color:#475569;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
       </div>
       <div style="text-align:right;background:#e6f4ec;color:#0b3d2c;padding:12px 16px;border-radius:8px;min-width:140px;border:1px solid #b7dfc8;">
@@ -1040,7 +1039,7 @@ function Alunos() {
     <!-- Valor em destaque -->
     <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
       <div style="flex:1;padding:16px 18px;background:#fff;">
-        <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Descrição</p>
+        <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;"><span style="font-weight:700;color:#0b3d2c;">Description</span> <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Descrição</span></p>
         <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Propina mensal</span> — ${mesRef}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Valor registado em Propinas" : "Valor de referência a cobrar"}</p>
       </div>
