@@ -594,7 +594,63 @@ function MatriculaForm({
           </div>
           <div className="space-y-1.5">
             <Label>Propina mensal (referência)</Label>
-            <Input value={form.propina} onChange={(e) => setForm({ ...form, propina: e.target.value })} />
+            <select
+              className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+              value={
+                [
+                  String(PROPINA_MATERNELLE),
+                  String(PROPINA_PRIMAIRE),
+                  String(PROPINA_COLLEGE),
+                  String(CAMPUS_CIDADE_PROPINA_1),
+                  String(CAMPUS_CIDADE_PROPINA_IRMAOS),
+                  "0",
+                ].includes(form.propina)
+                  ? form.propina
+                  : "__custom__"
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__custom__") {
+                  setForm({ ...form, propina: form.propina === "0" ? "" : form.propina });
+                  return;
+                }
+                const isTrans =
+                  v === String(CAMPUS_CIDADE_PROPINA_1) || v === String(CAMPUS_CIDADE_PROPINA_IRMAOS);
+                setForm({
+                  ...form,
+                  propina: v,
+                  transferidoCampusCidade: isTrans ? true : form.transferidoCampusCidade,
+                  agregadoIrmaos: v === String(CAMPUS_CIDADE_PROPINA_IRMAOS),
+                });
+              }}
+            >
+              <option value="0">— escolher —</option>
+              <option value={String(PROPINA_MATERNELLE)}>Maternelle — {formatKz(PROPINA_MATERNELLE)}</option>
+              <option value={String(PROPINA_PRIMAIRE)}>Primaire — {formatKz(PROPINA_PRIMAIRE)}</option>
+              <option value={String(PROPINA_COLLEGE)}>Collège — {formatKz(PROPINA_COLLEGE)}</option>
+              <option value={String(CAMPUS_CIDADE_PROPINA_1)}>
+                Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA_1)}
+              </option>
+              <option value={String(CAMPUS_CIDADE_PROPINA_IRMAOS)}>
+                Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
+              </option>
+              <option value="__custom__">Outro valor…</option>
+            </select>
+            {![
+              String(PROPINA_MATERNELLE),
+              String(PROPINA_PRIMAIRE),
+              String(PROPINA_COLLEGE),
+              String(CAMPUS_CIDADE_PROPINA_1),
+              String(CAMPUS_CIDADE_PROPINA_IRMAOS),
+              "0",
+            ].includes(form.propina) ? (
+              <Input
+                className="mt-1.5"
+                value={form.propina}
+                onChange={(e) => setForm({ ...form, propina: e.target.value })}
+                placeholder="Valor personalizado (Kz)"
+              />
+            ) : null}
           </div>
         </div>
         <p className="mt-3 text-sm font-medium text-[var(--color-forest)]">
@@ -951,8 +1007,8 @@ function Alunos() {
     <!-- Título + ref -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #009543;padding-bottom:12px;">
       <div>
-        <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#dc241f;">Fatura <span style="opacity:0.45;font-weight:500;">|</span> Facture</p>
-        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b3d2c;letter-spacing:-0.02em;">Propina mensal <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:16px;font-weight:600;">Frais de scolarité</span></p>
+        <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#dc241f;">Facture <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Fatura</span></p>
+        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b3d2c;letter-spacing:-0.02em;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:13px;font-weight:500;color:#64748b;">Propina mensal</span></p>
         <p style="margin:6px 0 0;font-size:12px;color:#475569;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
       </div>
       <div style="text-align:right;background:#e6f4ec;color:#0b3d2c;padding:12px 16px;border-radius:8px;min-width:140px;border:1px solid #b7dfc8;">
@@ -985,7 +1041,7 @@ function Alunos() {
     <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
       <div style="flex:1;padding:16px 18px;background:#fff;">
         <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Descrição</p>
-        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Propina mensal <span style="opacity:0.4;font-weight:500;">|</span> Frais de scolarité — ${mesRef}</p>
+        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Propina mensal</span> — ${mesRef}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Valor registado em Propinas" : "Valor de referência a cobrar"}</p>
       </div>
       <div style="min-width:160px;background:#e6f4ec;color:#0b3d2c;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;border-left:1px solid #b7dfc8;">
@@ -997,7 +1053,7 @@ function Alunos() {
 
     <!-- Prazos (sem tabela) -->
     <div style="background:linear-gradient(180deg,#fffbeb 0%,#fff 100%);border:1px solid #fcd34d;border-radius:10px;padding:14px 16px;">
-      <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#b45309;">Prazos <span style="opacity:0.45;font-weight:500;">|</span> Délais</p>
+      <p style="margin:0 0 12px;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#b45309;">Délais <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Prazos</span></p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
           <p style="margin:0;font-size:10px;color:#16a34a;font-weight:700;">SEM MULTA</p>
@@ -1640,17 +1696,13 @@ function Alunos() {
                       className="flex h-10 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
                       defaultValue="auto"
                       onChange={(e) => {
-                        const v = e.target.value as "auto" | "mat" | "pri" | "col";
+                        const v = e.target.value;
                         const a = invoicePreview.aluno;
-                        if (a.transferidoCampusCidade) {
-                          toast.message(
-                            "Aluno transferido (Campus Cidade): mantém-se a propina especial (100.000 ou 75.000 Kz).",
-                          );
-                        }
-                        const valor =
-                          v === "auto"
-                            ? propinaPorCiclo(a)
-                            : propinaPorCiclo(a, v);
+                        let valor: number;
+                        if (v === "trans1") valor = CAMPUS_CIDADE_PROPINA_1;
+                        else if (v === "trans2") valor = CAMPUS_CIDADE_PROPINA_IRMAOS;
+                        else if (v === "auto") valor = propinaPorCiclo(a);
+                        else valor = propinaPorCiclo(a, v as "mat" | "pri" | "col");
                         const html = buildInvoiceHtml({
                           a,
                           numero: invoicePreview.numero,
@@ -1667,6 +1719,12 @@ function Alunos() {
                       <option value="mat">Maternelle — {formatKz(PROPINA_MATERNELLE)}</option>
                       <option value="pri">Primaire — {formatKz(PROPINA_PRIMAIRE)}</option>
                       <option value="col">Collège — {formatKz(PROPINA_COLLEGE)}</option>
+                      <option value="trans1">
+                        Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA_1)}
+                      </option>
+                      <option value="trans2">
+                        Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
+                      </option>
                     </select>
                   </div>
                   <span className="pb-2 text-xs text-[var(--color-muted)]">
