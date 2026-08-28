@@ -103,10 +103,21 @@ function loadIban(): string {
   return loadContacto().iban;
 }
 
+/** Datas no formato 28-08-2026 */
+function fmtData(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
+}
+
 /** Limite de pagamento: dia 10 do mês civil seguinte ao mês da fatura. */
-function prazoFatura(mesLetivo: string): { limite: string; multa35: string; multa40: string; suspensao: string } {
+function prazoFatura(mesLetivo: string): {
+  limite: string;
+  de11a30: string;
+  multa40: string;
+  suspensao: string;
+} {
   const now = new Date();
-  // Mapear mês lectivo → mês civil aproximado (ano lectivo)
   const mesIdx: Record<string, number> = {
     set: 8, out: 9, nov: 10, dez: 11, jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
   };
@@ -114,17 +125,14 @@ function prazoFatura(mesLetivo: string): { limite: string; multa35: string; mult
   let y = now.getFullYear();
   if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
   if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
-  // Próximo mês civil após o mês de referência
-  const next = new Date(y, baseMonth + 1, 10);
-  const after30 = new Date(y, baseMonth + 1, 30);
-  const nextNext10 = new Date(y, baseMonth + 2, 10);
-  const fmt = (d: Date) =>
-    d.toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
+  const limite = new Date(y, baseMonth + 1, 10);
+  const dia30 = new Date(y, baseMonth + 1, 30);
+  const dia10Seguinte = new Date(y, baseMonth + 2, 10);
   return {
-    limite: fmt(next),
-    multa35: `Do dia 11 ao dia 30 de ${next.toLocaleDateString("pt-PT", { month: "long", year: "numeric" })}`,
-    multa40: fmt(nextNext10),
-    suspensao: fmt(nextNext10),
+    limite: fmtData(limite),
+    de11a30: `${fmtData(new Date(y, baseMonth + 1, 11))} a ${fmtData(dia30)}`,
+    multa40: fmtData(dia10Seguinte),
+    suspensao: fmtData(dia10Seguinte),
   };
 }
 
@@ -887,133 +895,137 @@ function Alunos() {
     const multa40v = formatKz(Math.round(valor * 0.4));
     const total35 = formatKz(Math.round(valor * 1.35));
     const total40 = formatKz(Math.round(valor * 1.4));
-    const estadoPag =
-      pagoMes > 0 ? "Pagamento parcial/total registado em Propinas" : "Aguarda pagamento";
-
+    const emitida = fmtData(new Date());
+    // Cores da bandeira da República do Congo: verde · amarelo · vermelho
     return `
-<div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#111;background:#fff;min-height:1000px;display:flex;flex-direction:column;box-sizing:border-box;">
-  <!-- Cabeçalho comercial -->
-  <div style="background:linear-gradient(135deg,#0f4c3a 0%,#1f5c4a 55%,#2d7a62 100%);color:#fff;padding:22px 24px;border-radius:8px 8px 0 0;">
-    <div style="display:flex;align-items:center;gap:16px;">
-      <div style="background:#fff;border-radius:10px;padding:8px;flex-shrink:0;">
-        <img src="${logoSrc}" width="64" height="64" alt="Logo" style="display:block;width:64px;height:64px;object-fit:contain;" crossorigin="anonymous" />
-      </div>
-      <div style="flex:1;min-width:0;">
-        <p style="margin:0;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9;font-weight:600;">${escola.nome || "École Consulaire"}</p>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:700;letter-spacing:-0.02em;">Fatura comercial de propina</p>
-        <p style="margin:4px 0 0;font-size:12px;opacity:0.92;">Ref. ${numero} · ${mesRef} · Ano lectivo ${escola.ano || ""}</p>
-        <p style="margin:8px 0 0;font-size:10px;opacity:0.88;line-height:1.45;max-width:420px;">${morada}</p>
-        <p style="margin:4px 0 0;font-size:10px;opacity:0.88;">Tels.: ${telefones}</p>
-        <p style="margin:2px 0 0;font-size:10px;opacity:0.88;">E-mail: ${emailEscola}</p>
-      </div>
-      <div style="text-align:right;background:rgba(255,255,255,0.12);padding:10px 14px;border-radius:8px;flex-shrink:0;">
-        <p style="margin:0;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.85;">N.º</p>
-        <p style="margin:4px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;">${numero}</p>
-      </div>
+<div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0f172a;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;">
+  <!-- Cabeçalho: só logo + cores Congo + lema -->
+  <div style="background:#0b1f3a;padding:0;overflow:hidden;">
+    <div style="height:6px;display:flex;">
+      <div style="flex:1;background:#009543;"></div>
+      <div style="flex:1;background:#fbde4a;"></div>
+      <div style="flex:1;background:#dc241f;"></div>
+    </div>
+    <div style="padding:20px 24px;display:flex;align-items:center;justify-content:center;gap:20px;">
+      <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;background:#fff;border-radius:12px;padding:6px;" crossorigin="anonymous" />
+      <p style="margin:0;font-size:15px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#fbde4a;">Apprendre · Grandir · Réussir</p>
+    </div>
+    <div style="height:4px;display:flex;">
+      <div style="flex:1;background:#009543;"></div>
+      <div style="flex:1;background:#fbde4a;"></div>
+      <div style="flex:1;background:#dc241f;"></div>
     </div>
   </div>
 
-  <div style="flex:1;padding:20px 22px 12px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;gap:16px;">
-    <!-- Cliente + fatura -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-      <div style="background:#f8faf9;border:1px solid #e2e8e6;border-radius:8px;padding:12px 14px;">
-        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;">Facturado a</p>
-        <p style="margin:0;font-size:14px;font-weight:700;">${encarregado}</p>
-        <p style="margin:6px 0 0;font-size:12px;color:#444;">Aluno: <strong>${a.nome}</strong></p>
-        <p style="margin:3px 0 0;font-size:12px;color:#555;">${a.id} · ${a.turma}</p>
-        <p style="margin:3px 0 0;font-size:12px;color:#555;">Tel. ${a.telefone || "—"} · ${email || "sem e-mail"}</p>
+  <div style="flex:1;padding:22px 24px 10px;display:flex;flex-direction:column;gap:14px;">
+    <!-- Título + ref -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #0b1f3a;padding-bottom:12px;">
+      <div>
+        <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#dc241f;">Fatura comercial</p>
+        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b1f3a;letter-spacing:-0.02em;">Propina mensal</p>
+        <p style="margin:6px 0 0;font-size:12px;color:#475569;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
       </div>
-      <div style="background:#fff;border:1px solid #e2e8e6;border-radius:8px;padding:12px 14px;">
-        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;">Resumo</p>
-        <p style="margin:0;font-size:12px;color:#555;">Mês lectivo: <strong>${MESES_LABEL[mesLetivo] || mesLetivo}</strong></p>
-        <p style="margin:4px 0 0;font-size:12px;color:#555;">Situação: ${estadoPag}</p>
-        <p style="margin:10px 0 0;font-size:11px;color:#666;">Limite de pagamento sem multa</p>
-        <p style="margin:2px 0 0;font-size:15px;font-weight:700;color:#0f4c3a;">${prazo.limite}</p>
+      <div style="text-align:right;background:#0b1f3a;color:#fff;padding:12px 16px;border-radius:8px;min-width:140px;">
+        <p style="margin:0;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.8;">Referência</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;">${numero}</p>
+        <p style="margin:6px 0 0;font-size:11px;opacity:0.9;">${emitida}</p>
       </div>
     </div>
 
-    <!-- Linhas -->
-    <table style="width:100%;border-collapse:collapse;font-size:13px;border-radius:8px;overflow:hidden;border:1px solid #d1d5db;">
-      <thead>
-        <tr style="background:#1f5c4a;color:#fff;">
-          <th style="text-align:left;padding:11px 12px;font-weight:600;">Descrição</th>
-          <th style="text-align:right;padding:11px 12px;font-weight:600;width:28%;">Valor</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding:14px 12px;border-bottom:1px solid #e5e7eb;">
-            <strong>Propina mensal</strong> — ${mesRef}
-            <div style="font-size:11px;color:#666;margin-top:4px;">${pagoMes > 0 ? "Valor conforme pagamento registado em Propinas" : "Valor de referência a cobrar"}</div>
-          </td>
-          <td style="padding:14px 12px;text-align:right;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;font-size:15px;">${formatKz(valor)}</td>
-        </tr>
-        <tr style="background:#f0f7f4;">
-          <td style="padding:14px 12px;font-weight:700;font-size:14px;">Total a pagar (até ${prazo.limite})</td>
-          <td style="padding:14px 12px;text-align:right;font-weight:700;font-size:18px;color:#0f4c3a;font-variant-numeric:tabular-nums;">${formatKz(valor)}</td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- Escola + cliente -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="border-left:4px solid #009543;padding:10px 12px;background:#f8fafc;border-radius:0 8px 8px 0;">
+        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Emissor</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b1f3a;">${escola.nome || "École Consulaire"}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#475569;line-height:1.4;">${morada}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#475569;">${telefones}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#475569;">${emailEscola}</p>
+      </div>
+      <div style="border-left:4px solid #dc241f;padding:10px 12px;background:#f8fafc;border-radius:0 8px 8px 0;">
+        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Facturado a</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b1f3a;">${encarregado}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#334155;">Aluno: <strong>${a.nome}</strong></p>
+        <p style="margin:2px 0 0;font-size:11px;color:#64748b;">${a.id} · ${a.turma}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
+      </div>
+    </div>
 
-    <!-- Prazos e multas -->
-    <div style="border:1px solid #e5d4a1;background:#fffbeb;border-radius:8px;padding:14px 16px;">
-      <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#92400e;">Prazos e consequências</p>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <tr>
-          <td style="padding:6px 0;vertical-align:top;width:8px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-top:4px;"></span></td>
-          <td style="padding:6px 8px;"><strong>Até ${prazo.limite}</strong> — pagar o valor da fatura <strong>sem multa</strong>.</td>
-        </tr>
-        <tr>
-          <td style="padding:6px 0;vertical-align:top;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-top:4px;"></span></td>
-          <td style="padding:6px 8px;"><strong>${prazo.multa35}</strong> — multa de <strong>35%</strong> (${multa35v}) · total ${total35}.</td>
-        </tr>
-        <tr>
-          <td style="padding:6px 0;vertical-align:top;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ea580c;margin-top:4px;"></span></td>
-          <td style="padding:6px 8px;">Se não pagar até <strong>${prazo.multa40}</strong> — multa de <strong>40%</strong> (${multa40v}) · total ${total40}.</td>
-        </tr>
-        <tr>
-          <td style="padding:6px 0;vertical-align:top;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-top:4px;"></span></td>
-          <td style="padding:6px 8px;">Após <strong>${prazo.suspensao}</strong> sem pagamento — <strong>o aluno é suspenso</strong> até regularização.</td>
-        </tr>
-      </table>
+    <!-- Valor em destaque -->
+    <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="flex:1;padding:16px 18px;background:#fff;">
+        <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Descrição</p>
+        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b1f3a;">Propina mensal — ${mesRef}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Valor registado em Propinas" : "Valor de referência a cobrar"}</p>
+      </div>
+      <div style="min-width:160px;background:#0b1f3a;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.85;">Total</p>
+        <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;">${formatKz(valor)}</p>
+        <p style="margin:6px 0 0;font-size:10px;opacity:0.85;">até ${prazo.limite}</p>
+      </div>
+    </div>
+
+    <!-- Prazos (sem tabela) -->
+    <div style="background:linear-gradient(180deg,#fffbeb 0%,#fff 100%);border:1px solid #fcd34d;border-radius:10px;padding:14px 16px;">
+      <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#b45309;">Prazos</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
+          <p style="margin:0;font-size:10px;color:#16a34a;font-weight:700;">SEM MULTA</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;">Até ${prazo.limite}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Pagar ${formatKz(valor)}</p>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
+          <p style="margin:0;font-size:10px;color:#d97706;font-weight:700;">MULTA 35%</p>
+          <p style="margin:4px 0 0;font-size:12px;font-weight:600;">${prazo.de11a30}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">+${multa35v} · total ${total35}</p>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
+          <p style="margin:0;font-size:10px;color:#ea580c;font-weight:700;">MULTA 40%</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;">Até ${prazo.multa40}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">+${multa40v} · total ${total40}</p>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #fecaca;">
+          <p style="margin:0;font-size:10px;color:#dc2626;font-weight:700;">SUSPENSÃO</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;">Após ${prazo.suspensao}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Sem pagamento · aluno suspenso</p>
+        </div>
+      </div>
     </div>
 
     <!-- Pagamento -->
-    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:12px;">
-      <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 14px;background:#fafafa;">
-        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#1f5c4a;">IBAN para transferência</p>
-        <p style="margin:0;font-size:14px;font-weight:700;font-family:ui-monospace,monospace;letter-spacing:0.02em;word-break:break-all;">${iban}</p>
-        <p style="margin:8px 0 0;font-size:11px;color:#666;">Titular: ${escola.nome || "École Consulaire"} · Indique o n.º da fatura na descrição.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="background:#0b1f3a;color:#fff;border-radius:10px;padding:14px 16px;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.8;font-weight:700;">IBAN</p>
+        <p style="margin:10px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.04em;word-break:break-all;line-height:1.35;">${iban}</p>
       </div>
-      <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 14px;background:#fafafa;">
-        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#1f5c4a;">Métodos de pagamento</p>
-        <ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.7;color:#222;">
-          <li><strong>Transferência bancária</strong> (IBAN acima)</li>
-          <li><strong>Cartão Multicaixa</strong> (na secretaria)</li>
-          <li><strong>Dinheiro</strong> (na secretaria)</li>
-        </ol>
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;background:#f8fafc;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;font-weight:700;">Métodos de pagamento</p>
+        <p style="margin:10px 0 0;font-size:12px;line-height:1.7;color:#0f172a;">
+          1. Transferência bancária<br/>
+          2. Cartão Multicaixa<br/>
+          3. Dinheiro (secretaria)
+        </p>
       </div>
     </div>
 
     <div style="flex:1;"></div>
-
-    <p style="margin:0;font-size:10px;color:#888;line-height:1.4;">${escola.notaFiscal || ""}</p>
   </div>
 
   <!-- Rodapé -->
-  <div style="margin-top:auto;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:14px 22px 18px;background:#f8faf9;display:flex;justify-content:space-between;gap:16px;font-size:11px;color:#555;">
-    <div style="max-width:55%;">
-      <p style="margin:0;font-weight:700;color:#0f4c3a;font-size:12px;">${escola.nome || "École Consulaire"}</p>
-      <p style="margin:4px 0 0;line-height:1.4;font-size:10px;">${morada}</p>
-      <p style="margin:4px 0 0;font-size:10px;">Tels.: ${telefones} · ${emailEscola}</p>
-      <p style="margin:14px 0 0;border-top:1px solid #ccc;padding-top:4px;width:150px;font-weight:600;color:#111;">A secretaria</p>
+  <div style="border-top:1px solid #e2e8f0;padding:12px 24px 16px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;background:#f8fafc;">
+    <div>
+      <p style="margin:0;font-size:11px;font-weight:700;color:#0b1f3a;">Departamento de Finanças</p>
+      <p style="margin:4px 0 0;font-size:10px;color:#64748b;">Documento elaborado pelo Departamento de Finanças</p>
+      <p style="margin:10px 0 0;border-top:1px solid #cbd5e1;padding-top:4px;width:160px;font-size:10px;color:#475569;">Assinatura / carimbo</p>
     </div>
-    <div style="text-align:right;">
-      <p style="margin:0;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">Referência comercial</p>
-      <p style="margin:4px 0 0;font-size:14px;font-weight:700;font-family:ui-monospace,monospace;color:#111;">${numero}</p>
-      <p style="margin:6px 0 0;">Emitida em ${new Date().toLocaleString("pt-PT")}</p>
-      <p style="margin:4px 0 0;font-size:10px;">Obrigado pela confiança · Apprendre · Grandir · Réussir</p>
+    <div style="text-align:right;font-size:10px;color:#64748b;">
+      <p style="margin:0;">Ref. <strong style="color:#0b1f3a;">${numero}</strong></p>
+      <p style="margin:2px 0 0;">Emitida em ${emitida}</p>
     </div>
+  </div>
+  <div style="height:5px;display:flex;">
+    <div style="flex:1;background:#009543;"></div>
+    <div style="flex:1;background:#fbde4a;"></div>
+    <div style="flex:1;background:#dc241f;"></div>
   </div>
 </div>
     `;
@@ -1108,7 +1120,7 @@ function Alunos() {
       if (enviarEmail && email) {
         const subject = encodeURIComponent(`Fatura ${numero} — ${mesRef} — ${a.nome}`);
         const body = encodeURIComponent(
-          `Exmo(a). ${encarregado},\n\nSegue a fatura de mensalidade ${mesRef}.\n\nN.º: ${numero}\nAluno: ${a.nome} (${a.id})\nValor: ${formatKz(valor)}\n\nAnexe o PDF gerado a este e-mail.\n\nSecretaria · ${escola.nome || "École Consulaire"}\n`,
+          `Exmo(a). ${encarregado},\n\nSegue a fatura de mensalidade ${mesRef}.\n\nN.º: ${numero}\nAluno: ${a.nome} (${a.id})\nValor: ${formatKz(valor)}\n\nAnexe o PDF gerado a este e-mail.\n\nDepartamento de Finanças · ${escola.nome || "École Consulaire"}\n`,
         );
         window.setTimeout(() => {
           window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
@@ -1131,27 +1143,45 @@ function Alunos() {
       return;
     }
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
+    const contacto = loadContacto();
     let geradas = 0;
     let saltadas = 0;
     let semValor = 0;
+    let erros = 0;
+    toast.message("A gerar faturas individuais (PDF)…");
+
+    const downloadBlob = (blob: Blob, name: string) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+    };
+
     for (const a of alunos) {
       const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
       if (valor <= 0) {
         semValor++;
         continue;
       }
-      if ((faturasPropina || []).some((f) => f.alunoId === a.id && f.mesKey === mesKey)) {
-        saltadas++;
-        continue;
-      }
-      const numero = nextFaturaNumero(mesKey);
-      const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto: loadContacto() });
+      const existente = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
+      const numero = existente?.numero || nextFaturaNumero(mesKey);
+      const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto });
       try {
         const { blob, filename: name } = await htmlFragmentToA4Pdf(html, {
-          filename: `fatura-${numero}.pdf`,
+          filename: `fatura-${numero}-${a.id}.pdf`,
           title: `Fatura ${numero}`,
         });
-        if (blob && blob.size >= 400) {
+        if (!blob || blob.size < 400) {
+          erros++;
+          continue;
+        }
+        downloadBlob(blob, name);
+        if (!existente) {
           addFaturaPropina({
             id: numero,
             numero,
@@ -1163,20 +1193,20 @@ function Alunos() {
             email: a.email || undefined,
             emitidoEm: new Date().toISOString(),
           });
-          geradas++;
-          if (geradas === 1) {
-            await shareOrDownloadPdf(blob, name, { title: `Fatura ${numero}` });
-          }
+        } else {
+          saltadas++;
         }
+        geradas++;
       } catch {
-        /* skip one */
+        erros++;
       }
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 450));
     }
     toast.success(
-      `Faturas do mês: ${geradas} geradas` +
-        (saltadas ? ` · ${saltadas} já existiam` : "") +
-        (semValor ? ` · ${semValor} sem propina` : ""),
+      `${geradas} fatura(s) PDF descarregada(s)` +
+        (saltadas ? ` · ${saltadas} já registadas (PDF gerado de novo)` : "") +
+        (semValor ? ` · ${semValor} sem propina` : "") +
+        (erros ? ` · ${erros} erro(s)` : ""),
     );
   }
 
