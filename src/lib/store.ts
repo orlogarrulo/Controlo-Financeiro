@@ -254,6 +254,21 @@ export const useFinance = create<Store>()(
           });
         }
         get().pushAudit("editar_aluno", `${id} · ${Object.keys(patch).join(", ")}`);
+        // Manter Propinas alinhada com a matrícula
+        if (patch.propina != null || patch.nome != null || patch.turma != null) {
+          set({
+            mensalidades: get().mensalidades.map((m) =>
+              m.id === id
+                ? {
+                    ...m,
+                    propina: patch.propina != null ? Number(patch.propina) : m.propina,
+                    nome: patch.nome != null ? String(patch.nome) : m.nome,
+                    turma: patch.turma != null ? String(patch.turma) : m.turma,
+                  }
+                : m,
+            ),
+          });
+        }
       },
       setMensalidade: (id, mes, valor) => {
         set({
