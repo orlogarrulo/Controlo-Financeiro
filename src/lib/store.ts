@@ -343,15 +343,19 @@ export const useFinance = create<Store>()(
         }
         get().pushAudit("editar_salario", `${id} · ${Object.keys(patch).join(", ")}`);
       },
-      nextFaturaNumero: (mesKey) => {
+            nextFaturaNumero: (mesKey) => {
         const key = mesKey || new Date().toISOString().slice(0, 7);
         const existing = get().faturasPropina || [];
         let max = 0;
-        // PROP = propina/mensalidade (distinto de FAT- internas de despesas)
-        const re = new RegExp(`^PROP-${key}-(\d{3})$`);
+        // Conta todas as PROP- do mês e também sequência global do prefixo
+        const reMes = new RegExp(`^PROP-${key}-(\d{3,})$`);
+        const reAny = /^PROP-\d{4}-\d{2}-(\d{3,})$/;
         for (const f of existing) {
-          const m = String(f.numero || "").match(re);
-          if (m) max = Math.max(max, Number(m[1]));
+          const n = String(f.numero || "");
+          const m1 = n.match(reMes);
+          if (m1) max = Math.max(max, Number(m1[1]));
+          const m2 = n.match(reAny);
+          if (m2 && n.includes(key)) max = Math.max(max, Number(m2[1]));
         }
         return `PROP-${key}-${String(max + 1).padStart(3, "0")}`;
       },

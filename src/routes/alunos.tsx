@@ -53,6 +53,12 @@ const CAMPUS_CIDADE_INSCRICAO = 150000;
 const CAMPUS_CIDADE_SEGURO = 30000;
 const CAMPUS_CIDADE_PROPINA_1 = 100000;
 const CAMPUS_CIDADE_PROPINA_IRMAOS = 75000;
+const PROPINA_MATERNELLE = 170000;
+const PROPINA_PRIMAIRE = 250000;
+const PROPINA_COLLEGE = 260000;
+const NOME_ESCOLA_FATURA =
+  "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida";
+
 const CAMPUS_CIDADE_NOTA =
   "Transferido do Campus Cidade · inscrição/seguro tarifário normal · propina 100.000 Kz (1 aluno) ou 75.000 Kz (2+ irmãos do mesmo agregado) · 2026-2027";
 
@@ -272,6 +278,29 @@ function nextRecibo(existing: Aluno[]): string {
 function isMaternelleTurma(turma: string): boolean {
   return turma.startsWith("Maternelle");
 }
+
+/** Propina de referência por ciclo (respeita transferidos Campus Cidade). */
+function propinaPorCiclo(a: Aluno, ciclo?: "mat" | "pri" | "col" | "auto"): number {
+  if (a.transferidoCampusCidade) {
+    // Mantém tarifário especial dos transferidos
+    if (a.propina === CAMPUS_CIDADE_PROPINA_IRMAOS || (a.obs || "").includes("75.000")) {
+      return CAMPUS_CIDADE_PROPINA_IRMAOS;
+    }
+    return a.propina && a.propina > 0 ? a.propina : CAMPUS_CIDADE_PROPINA_1;
+  }
+  const c =
+    ciclo && ciclo !== "auto"
+      ? ciclo
+      : a.grupo === "Maternelle" || a.turma.startsWith("Maternelle")
+        ? "mat"
+        : a.grupo === "Collège" || ["6ème", "5ème", "4ème", "3ème"].includes(a.turma)
+          ? "col"
+          : "pri";
+  if (c === "mat") return PROPINA_MATERNELLE;
+  if (c === "col") return PROPINA_COLLEGE;
+  return PROPINA_PRIMAIRE;
+}
+
 
 function calcTotais(f: FormState) {
   const inscricao = num(f.inscricao);
@@ -908,7 +937,7 @@ function Alunos() {
       <div style="flex:1;background:#dc241f;"></div>
     </div>
     <div style="padding:18px 24px;display:flex;align-items:center;justify-content:center;gap:18px;">
-      <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;border-radius:12px;padding:4px;" crossorigin="anonymous" />
+      <img src="${logoSrc}" width="144" height="144" alt="Logo" style="width:144px;height:144px;object-fit:contain;border-radius:12px;padding:4px;" crossorigin="anonymous" />
       <p style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#009543;">Apprendre · Grandir · Réussir</p>
     </div>
     <div style="height:4px;display:flex;">
@@ -922,8 +951,8 @@ function Alunos() {
     <!-- Título + ref -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #009543;padding-bottom:12px;">
       <div>
-        <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#dc241f;">Fatura comercial</p>
-        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b3d2c;letter-spacing:-0.02em;">Propina mensal</p>
+        <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#dc241f;">Fatura <span style="opacity:0.45;font-weight:500;">|</span> Facture</p>
+        <p style="margin:4px 0 0;font-size:22px;font-weight:800;color:#0b3d2c;letter-spacing:-0.02em;">Propina mensal <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:16px;font-weight:600;">Frais de scolarité</span></p>
         <p style="margin:6px 0 0;font-size:12px;color:#475569;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
       </div>
       <div style="text-align:right;background:#e6f4ec;color:#0b3d2c;padding:12px 16px;border-radius:8px;min-width:140px;border:1px solid #b7dfc8;">
@@ -937,7 +966,7 @@ function Alunos() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
       <div style="border-left:4px solid #009543;padding:10px 12px;background:#f8fafc;border-radius:0 8px 8px 0;">
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Emissor</p>
-        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b3d2c;">${escola.nome || "École Consulaire"}</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b3d2c;">${NOME_ESCOLA_FATURA}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#475569;line-height:1.4;">${morada}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#475569;">${telefones}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#475569;">${emailEscola}</p>
@@ -948,6 +977,7 @@ function Alunos() {
         <p style="margin:4px 0 0;font-size:12px;color:#334155;">Aluno: <strong>${a.nome}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#64748b;">${a.id} · ${a.turma}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
+        ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#b45309;font-weight:600;">Transferido Campus Cidade · propina especial</p>` : ""}
       </div>
     </div>
 
@@ -955,7 +985,7 @@ function Alunos() {
     <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
       <div style="flex:1;padding:16px 18px;background:#fff;">
         <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Descrição</p>
-        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Propina mensal — ${mesRef}</p>
+        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Propina mensal <span style="opacity:0.4;font-weight:500;">|</span> Frais de scolarité — ${mesRef}</p>
         <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Valor registado em Propinas" : "Valor de referência a cobrar"}</p>
       </div>
       <div style="min-width:160px;background:#e6f4ec;color:#0b3d2c;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;border-left:1px solid #b7dfc8;">
@@ -967,7 +997,7 @@ function Alunos() {
 
     <!-- Prazos (sem tabela) -->
     <div style="background:linear-gradient(180deg,#fffbeb 0%,#fff 100%);border:1px solid #fcd34d;border-radius:10px;padding:14px 16px;">
-      <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#b45309;">Prazos</p>
+      <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#b45309;">Prazos <span style="opacity:0.45;font-weight:500;">|</span> Délais</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
           <p style="margin:0;font-size:10px;color:#16a34a;font-weight:700;">SEM MULTA</p>
@@ -1046,11 +1076,35 @@ function Alunos() {
       toast.error("Actualize a página (numeração indisponível).");
       return;
     }
-    const ja = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
-    const numero = ja?.numero || nextFaturaNumero(mesKey);
+    // Numeração sempre sequencial (PROP-AAAA-MM-NNN)
+    const numero =
+      typeof nextFaturaNumero === "function"
+        ? nextFaturaNumero(mesKey)
+        : `PROP-${mesKey}-001`;
     const contacto = loadContacto();
-    const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto });
-    setInvoicePreview({ aluno: a, numero, valor, mesRef, mesKey, mesLetivo, pagoMes, contacto, html });
+    // Valor: prioridade pagamento Propinas → propina aluno → tarifário por ciclo
+    let valorFinal = valor;
+    if (valorFinal <= 0) valorFinal = propinaPorCiclo(a);
+    const html = buildInvoiceHtml({
+      a,
+      numero,
+      valor: valorFinal,
+      mesRef,
+      mesLetivo,
+      pagoMes,
+      contacto,
+    });
+    setInvoicePreview({
+      aluno: a,
+      numero,
+      valor: valorFinal,
+      mesRef,
+      mesKey,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      html,
+    });
   }
 
   /** Alterar o mês lectivo na pré-visualização e recalcular valor/HTML. */
@@ -1162,6 +1216,19 @@ function Alunos() {
 
       toast.message(`A montar 1 PDF com ${elegiveis.length} fatura(s)…`);
 
+      // Sequência local: evita o mesmo n.º se o store ainda não gravou
+      let seq = 0;
+      try {
+        const existing = faturasPropina || [];
+        const re = new RegExp(`^PROP-${mesKey}-(\d+)$`);
+        for (const f of existing) {
+          const m = String(f.numero || "").match(re);
+          if (m) seq = Math.max(seq, Number(m[1]));
+        }
+      } catch {
+        /* ignore */
+      }
+
       for (let i = 0; i < elegiveis.length; i++) {
         const a = elegiveis[i];
         const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
@@ -1169,17 +1236,15 @@ function Alunos() {
           semValor++;
           continue;
         }
-        const existente = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
-        let numero: string;
-        try {
-          numero = existente?.numero || nextFaturaNumero(mesKey);
-        } catch {
-          numero = `PROP-${mesKey}-${String(i + 1).padStart(3, "0")}`;
-        }
+        seq += 1;
+        const numero = `PROP-${mesKey}-${String(seq).padStart(3, "0")}`;
+        // Se propina 0 no registo, usa tarifário do ciclo (exceto transferidos já tratados em resolver)
+        let valorFat = valor;
+        if (valorFat <= 0) valorFat = propinaPorCiclo(a);
         fragments.push(
-          buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto }),
+          buildInvoiceHtml({ a, numero, valor: valorFat, mesRef, mesLetivo, pagoMes, contacto }),
         );
-        if (!existente && typeof addFaturaPropina === "function") {
+        if (typeof addFaturaPropina === "function") {
           try {
             addFaturaPropina({
               id: numero,
@@ -1188,7 +1253,7 @@ function Alunos() {
               alunoNome: a.nome,
               mesRef,
               mesKey,
-              valor,
+              valor: valorFat,
               email: a.email || undefined,
               emitidoEm: new Date().toISOString(),
             });
@@ -1569,9 +1634,48 @@ function Alunos() {
                       ))}
                     </select>
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Tarifa / classe</label>
+                    <select
+                      className="flex h-10 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                      defaultValue="auto"
+                      onChange={(e) => {
+                        const v = e.target.value as "auto" | "mat" | "pri" | "col";
+                        const a = invoicePreview.aluno;
+                        if (a.transferidoCampusCidade) {
+                          toast.message(
+                            "Aluno transferido (Campus Cidade): mantém-se a propina especial (100.000 ou 75.000 Kz).",
+                          );
+                        }
+                        const valor =
+                          v === "auto"
+                            ? propinaPorCiclo(a)
+                            : propinaPorCiclo(a, v);
+                        const html = buildInvoiceHtml({
+                          a,
+                          numero: invoicePreview.numero,
+                          valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto: invoicePreview.contacto,
+                        });
+                        setInvoicePreview({ ...invoicePreview, valor, html });
+                      }}
+                    >
+                      <option value="auto">Automático (turma do aluno)</option>
+                      <option value="mat">Maternelle — {formatKz(PROPINA_MATERNELLE)}</option>
+                      <option value="pri">Primaire — {formatKz(PROPINA_PRIMAIRE)}</option>
+                      <option value="col">Collège — {formatKz(PROPINA_COLLEGE)}</option>
+                    </select>
+                  </div>
                   <span className="pb-2 text-xs text-[var(--color-muted)]">
                     {formatKz(invoicePreview.valor)}
-                    {invoicePreview.pagoMes > 0 ? " · pago" : " · a cobrar"}
+                    {invoicePreview.aluno.transferidoCampusCidade
+                      ? " · transferido Campus Cidade"
+                      : invoicePreview.pagoMes > 0
+                        ? " · pago"
+                        : " · a cobrar"}
                   </span>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
