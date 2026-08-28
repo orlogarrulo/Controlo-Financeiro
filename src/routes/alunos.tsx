@@ -4,7 +4,6 @@ import { Pencil, Printer, Plus, UserPlus, Mail, FileText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
-import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -62,6 +61,73 @@ const METODOS_PAGAMENTO = [
   "Cartão Multicaixa",
   "Transferência bancária",
 ] as const;
+
+type EscolaContacto = {
+  morada: string;
+  telefones: string;
+  email: string;
+  iban: string;
+};
+
+const DEFAULT_CONTACTO: EscolaContacto = {
+  morada: "Urbanização Nova Vida, Rua 63, Casa S/N, Município Kilamba Kiaxi, Luanda - Angola",
+  telefones: "+244 922 637 000 / +244 922 637 640",
+  email: "ecoleconsulaireeducongo1976.nv@gmail.com",
+  iban: "AO06.0040.0000.6725.7113.1013.0",
+};
+
+const CONTACTO_STORAGE_KEY = "ecc-escola-contacto-v1";
+
+function loadContacto(): EscolaContacto {
+  try {
+    const raw = localStorage.getItem(CONTACTO_STORAGE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<EscolaContacto>;
+      return { ...DEFAULT_CONTACTO, ...p };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { ...DEFAULT_CONTACTO };
+}
+
+function saveContacto(c: EscolaContacto) {
+  try {
+    localStorage.setItem(CONTACTO_STORAGE_KEY, JSON.stringify(c));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadIban(): string {
+  return loadContacto().iban;
+}
+
+/** Limite de pagamento: dia 10 do mês civil seguinte ao mês da fatura. */
+function prazoFatura(mesLetivo: string): { limite: string; multa35: string; multa40: string; suspensao: string } {
+  const now = new Date();
+  // Mapear mês lectivo → mês civil aproximado (ano lectivo)
+  const mesIdx: Record<string, number> = {
+    set: 8, out: 9, nov: 10, dez: 11, jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
+  };
+  const baseMonth = mesIdx[mesLetivo] ?? now.getMonth();
+  let y = now.getFullYear();
+  if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
+  if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
+  // Próximo mês civil após o mês de referência
+  const next = new Date(y, baseMonth + 1, 10);
+  const after30 = new Date(y, baseMonth + 1, 30);
+  const nextNext10 = new Date(y, baseMonth + 2, 10);
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("pt-PT", { day: "2-digit", month: "long", year: "numeric" });
+  return {
+    limite: fmt(next),
+    multa35: `Do dia 11 ao dia 30 de ${next.toLocaleDateString("pt-PT", { month: "long", year: "numeric" })}`,
+    multa40: fmt(nextNext10),
+    suspensao: fmt(nextNext10),
+  };
+}
+
 
 type FormState = {
   nome: string;
@@ -577,9 +643,13 @@ function Alunos() {
     mesKey: string;
     mesLetivo: string;
     pagoMes: number;
+    contacto: EscolaContacto;
     html: string;
   } | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportIds, setExportIds] = useState<Set<string>>(new Set());
+  const [exportBusy, setExportBusy] = useState(false);
 
   const grupos = useMemo(() => ["todos", ...new Set(alunos.map((a) => a.grupo))], [alunos]);
   const turmasDisponiveis = useMemo(
@@ -805,56 +875,147 @@ function Alunos() {
     mesRef: string;
     mesLetivo: string;
     pagoMes: number;
+    contacto: EscolaContacto;
   }): string {
-    const { a, numero, valor, mesRef, mesLetivo, pagoMes } = opts;
+    const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto } = opts;
+    const { morada, telefones, email: emailEscola, iban } = contacto;
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     const email = (a.email || "").trim();
     const logoSrc = `${location.origin}/logo-escola.jpg`;
+    const prazo = prazoFatura(mesLetivo);
+    const multa35v = formatKz(Math.round(valor * 0.35));
+    const multa40v = formatKz(Math.round(valor * 0.4));
+    const total35 = formatKz(Math.round(valor * 1.35));
+    const total40 = formatKz(Math.round(valor * 1.4));
     const estadoPag =
-      pagoMes > 0 ? "Valor registado em Propinas" : "Valor de referência (a cobrar)";
+      pagoMes > 0 ? "Pagamento parcial/total registado em Propinas" : "Aguarda pagamento";
+
     return `
-      <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;background:#fff;padding:8px;">
-        <div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #1f5c4a;padding-bottom:14px;margin-bottom:18px;">
-          <img src="${logoSrc}" width="72" height="72" alt="Logo" style="object-fit:contain;width:72px;height:72px;flex-shrink:0;" crossorigin="anonymous" />
-          <div style="flex:1;min-width:0;">
-            <p style="margin:0;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">${escola.nome || "École Consulaire"}</p>
-            <p style="margin:6px 0 0;font-size:20px;font-weight:700;">Fatura de mensalidade / propina</p>
-            <p style="margin:4px 0 0;font-size:12px;color:#444;">${mesRef} · ${escola.ano || ""} · ${MESES_LABEL[mesLetivo] || mesLetivo}</p>
-          </div>
-          <div style="text-align:right;flex-shrink:0;">
-            <p style="margin:0;font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.06em;">N.º fatura</p>
-            <p style="margin:4px 0 0;font-size:16px;font-weight:700;font-family:ui-monospace,monospace;color:#1f5c4a;">${numero}</p>
-          </div>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
-          <tr><td style="padding:5px 0;color:#555;width:38%;">Aluno</td><td style="padding:5px 0;font-weight:600;">${a.nome} (${a.id})</td></tr>
-          <tr><td style="padding:5px 0;color:#555;">Turma</td><td style="padding:5px 0;">${a.turma}</td></tr>
-          <tr><td style="padding:5px 0;color:#555;">Encarregado</td><td style="padding:5px 0;">${encarregado}</td></tr>
-          <tr><td style="padding:5px 0;color:#555;">E-mail</td><td style="padding:5px 0;">${email || "—"}</td></tr>
-          <tr><td style="padding:5px 0;color:#555;">Telefone</td><td style="padding:5px 0;">${a.telefone || "—"}</td></tr>
-          <tr><td style="padding:5px 0;color:#555;">Situação</td><td style="padding:5px 0;">${estadoPag}</td></tr>
-        </table>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #999;">
-          <thead>
-            <tr style="background:#eef6f2;">
-              <th style="text-align:left;padding:10px 8px;border-bottom:1px solid #999;">Descrição</th>
-              <th style="text-align:right;padding:10px 8px;border-bottom:1px solid #999;">Valor (Kz)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding:12px 8px;">Propina mensal — ${mesRef}${pagoMes > 0 ? " (pago registado)" : " (a cobrar)"}</td>
-              <td style="padding:12px 8px;text-align:right;">${formatKz(valor)}</td>
-            </tr>
-            <tr style="background:#f8faf9;font-weight:700;">
-              <td style="padding:12px 8px;border-top:1px solid #999;">Total</td>
-              <td style="padding:12px 8px;text-align:right;border-top:1px solid #999;">${formatKz(valor)}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="margin-top:18px;font-size:11px;color:#555;">${escola.notaFiscal || ""}</p>
-        <p style="margin-top:8px;font-size:11px;color:#666;">Fatura <strong>${numero}</strong> · Modelo de pré-visualização · Secretaria</p>
+<div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#111;background:#fff;min-height:1000px;display:flex;flex-direction:column;box-sizing:border-box;">
+  <!-- Cabeçalho comercial -->
+  <div style="background:linear-gradient(135deg,#0f4c3a 0%,#1f5c4a 55%,#2d7a62 100%);color:#fff;padding:22px 24px;border-radius:8px 8px 0 0;">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div style="background:#fff;border-radius:10px;padding:8px;flex-shrink:0;">
+        <img src="${logoSrc}" width="64" height="64" alt="Logo" style="display:block;width:64px;height:64px;object-fit:contain;" crossorigin="anonymous" />
       </div>
+      <div style="flex:1;min-width:0;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.9;font-weight:600;">${escola.nome || "École Consulaire"}</p>
+        <p style="margin:6px 0 0;font-size:22px;font-weight:700;letter-spacing:-0.02em;">Fatura comercial de propina</p>
+        <p style="margin:4px 0 0;font-size:12px;opacity:0.92;">Ref. ${numero} · ${mesRef} · Ano lectivo ${escola.ano || ""}</p>
+        <p style="margin:8px 0 0;font-size:10px;opacity:0.88;line-height:1.45;max-width:420px;">${morada}</p>
+        <p style="margin:4px 0 0;font-size:10px;opacity:0.88;">Tels.: ${telefones}</p>
+        <p style="margin:2px 0 0;font-size:10px;opacity:0.88;">E-mail: ${emailEscola}</p>
+      </div>
+      <div style="text-align:right;background:rgba(255,255,255,0.12);padding:10px 14px;border-radius:8px;flex-shrink:0;">
+        <p style="margin:0;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.85;">N.º</p>
+        <p style="margin:4px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;">${numero}</p>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;padding:20px 22px 12px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;gap:16px;">
+    <!-- Cliente + fatura -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="background:#f8faf9;border:1px solid #e2e8e6;border-radius:8px;padding:12px 14px;">
+        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;">Facturado a</p>
+        <p style="margin:0;font-size:14px;font-weight:700;">${encarregado}</p>
+        <p style="margin:6px 0 0;font-size:12px;color:#444;">Aluno: <strong>${a.nome}</strong></p>
+        <p style="margin:3px 0 0;font-size:12px;color:#555;">${a.id} · ${a.turma}</p>
+        <p style="margin:3px 0 0;font-size:12px;color:#555;">Tel. ${a.telefone || "—"} · ${email || "sem e-mail"}</p>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8e6;border-radius:8px;padding:12px 14px;">
+        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;">Resumo</p>
+        <p style="margin:0;font-size:12px;color:#555;">Mês lectivo: <strong>${MESES_LABEL[mesLetivo] || mesLetivo}</strong></p>
+        <p style="margin:4px 0 0;font-size:12px;color:#555;">Situação: ${estadoPag}</p>
+        <p style="margin:10px 0 0;font-size:11px;color:#666;">Limite de pagamento sem multa</p>
+        <p style="margin:2px 0 0;font-size:15px;font-weight:700;color:#0f4c3a;">${prazo.limite}</p>
+      </div>
+    </div>
+
+    <!-- Linhas -->
+    <table style="width:100%;border-collapse:collapse;font-size:13px;border-radius:8px;overflow:hidden;border:1px solid #d1d5db;">
+      <thead>
+        <tr style="background:#1f5c4a;color:#fff;">
+          <th style="text-align:left;padding:11px 12px;font-weight:600;">Descrição</th>
+          <th style="text-align:right;padding:11px 12px;font-weight:600;width:28%;">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:14px 12px;border-bottom:1px solid #e5e7eb;">
+            <strong>Propina mensal</strong> — ${mesRef}
+            <div style="font-size:11px;color:#666;margin-top:4px;">${pagoMes > 0 ? "Valor conforme pagamento registado em Propinas" : "Valor de referência a cobrar"}</div>
+          </td>
+          <td style="padding:14px 12px;text-align:right;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;font-size:15px;">${formatKz(valor)}</td>
+        </tr>
+        <tr style="background:#f0f7f4;">
+          <td style="padding:14px 12px;font-weight:700;font-size:14px;">Total a pagar (até ${prazo.limite})</td>
+          <td style="padding:14px 12px;text-align:right;font-weight:700;font-size:18px;color:#0f4c3a;font-variant-numeric:tabular-nums;">${formatKz(valor)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Prazos e multas -->
+    <div style="border:1px solid #e5d4a1;background:#fffbeb;border-radius:8px;padding:14px 16px;">
+      <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#92400e;">Prazos e consequências</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr>
+          <td style="padding:6px 0;vertical-align:top;width:8px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-top:4px;"></span></td>
+          <td style="padding:6px 8px;"><strong>Até ${prazo.limite}</strong> — pagar o valor da fatura <strong>sem multa</strong>.</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;vertical-align:top;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-top:4px;"></span></td>
+          <td style="padding:6px 8px;"><strong>${prazo.multa35}</strong> — multa de <strong>35%</strong> (${multa35v}) · total ${total35}.</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;vertical-align:top;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ea580c;margin-top:4px;"></span></td>
+          <td style="padding:6px 8px;">Se não pagar até <strong>${prazo.multa40}</strong> — multa de <strong>40%</strong> (${multa40v}) · total ${total40}.</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;vertical-align:top;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-top:4px;"></span></td>
+          <td style="padding:6px 8px;">Após <strong>${prazo.suspensao}</strong> sem pagamento — <strong>o aluno é suspenso</strong> até regularização.</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Pagamento -->
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:12px;">
+      <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 14px;background:#fafafa;">
+        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#1f5c4a;">IBAN para transferência</p>
+        <p style="margin:0;font-size:14px;font-weight:700;font-family:ui-monospace,monospace;letter-spacing:0.02em;word-break:break-all;">${iban}</p>
+        <p style="margin:8px 0 0;font-size:11px;color:#666;">Titular: ${escola.nome || "École Consulaire"} · Indique o n.º da fatura na descrição.</p>
+      </div>
+      <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 14px;background:#fafafa;">
+        <p style="margin:0 0 8px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#1f5c4a;">Métodos de pagamento</p>
+        <ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.7;color:#222;">
+          <li><strong>Transferência bancária</strong> (IBAN acima)</li>
+          <li><strong>Cartão Multicaixa</strong> (na secretaria)</li>
+          <li><strong>Dinheiro</strong> (na secretaria)</li>
+        </ol>
+      </div>
+    </div>
+
+    <div style="flex:1;"></div>
+
+    <p style="margin:0;font-size:10px;color:#888;line-height:1.4;">${escola.notaFiscal || ""}</p>
+  </div>
+
+  <!-- Rodapé -->
+  <div style="margin-top:auto;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:14px 22px 18px;background:#f8faf9;display:flex;justify-content:space-between;gap:16px;font-size:11px;color:#555;">
+    <div style="max-width:55%;">
+      <p style="margin:0;font-weight:700;color:#0f4c3a;font-size:12px;">${escola.nome || "École Consulaire"}</p>
+      <p style="margin:4px 0 0;line-height:1.4;font-size:10px;">${morada}</p>
+      <p style="margin:4px 0 0;font-size:10px;">Tels.: ${telefones} · ${emailEscola}</p>
+      <p style="margin:14px 0 0;border-top:1px solid #ccc;padding-top:4px;width:150px;font-weight:600;color:#111;">A secretaria</p>
+    </div>
+    <div style="text-align:right;">
+      <p style="margin:0;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">Referência comercial</p>
+      <p style="margin:4px 0 0;font-size:14px;font-weight:700;font-family:ui-monospace,monospace;color:#111;">${numero}</p>
+      <p style="margin:6px 0 0;">Emitida em ${new Date().toLocaleString("pt-PT")}</p>
+      <p style="margin:4px 0 0;font-size:10px;">Obrigado pela confiança · Apprendre · Grandir · Réussir</p>
+    </div>
+  </div>
+</div>
     `;
   }
 
@@ -874,8 +1035,9 @@ function Alunos() {
     }
     const ja = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
     const numero = ja?.numero || nextFaturaNumero(mesKey);
-    const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes });
-    setInvoicePreview({ aluno: a, numero, valor, mesRef, mesKey, mesLetivo, pagoMes, html });
+    const contacto = loadContacto();
+    const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto });
+    setInvoicePreview({ aluno: a, numero, valor, mesRef, mesKey, mesLetivo, pagoMes, contacto, html });
   }
 
   /** Alterar o mês lectivo na pré-visualização e recalcular valor/HTML. */
@@ -906,8 +1068,9 @@ function Alunos() {
     const mesKey = invoicePreview.mesKey; // numeração do mês civil actual
     const ja = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
     const numero = ja?.numero || invoicePreview.numero;
-    const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes });
-    setInvoicePreview({ aluno: a, numero, valor, mesRef, mesKey, mesLetivo, pagoMes, html });
+    const contacto = invoicePreview.contacto || loadContacto();
+    const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto });
+    setInvoicePreview({ aluno: a, numero, valor, mesRef, mesKey, mesLetivo, pagoMes, contacto, html });
   }
 
   /** A partir da pré-visualização: gera PDF A4 e regista a fatura. */
@@ -982,7 +1145,7 @@ function Alunos() {
         continue;
       }
       const numero = nextFaturaNumero(mesKey);
-      const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes });
+      const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto: loadContacto() });
       try {
         const { blob, filename: name } = await htmlFragmentToA4Pdf(html, {
           filename: `fatura-${numero}.pdf`,
@@ -1039,6 +1202,64 @@ function Alunos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+  async function exportListaPdf() {
+    const selected = filteredByClass.filter((a) => exportIds.has(a.id));
+    if (selected.length === 0) {
+      toast.error("Seleccione pelo menos um aluno.");
+      return;
+    }
+    setExportBusy(true);
+    try {
+      const rows = selected
+        .map(
+          (a) =>
+            `<tr>
+              <td style="padding:6px 8px;border-bottom:1px solid #ddd;font-family:monospace;font-size:11px;">${a.id}</td>
+              <td style="padding:6px 8px;border-bottom:1px solid #ddd;">${a.nome}</td>
+              <td style="padding:6px 8px;border-bottom:1px solid #ddd;">${a.turma}</td>
+              <td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;">${formatKz(a.liquido)}</td>
+              <td style="padding:6px 8px;border-bottom:1px solid #ddd;font-family:monospace;font-size:11px;">${a.recibo}</td>
+            </tr>`,
+        )
+        .join("");
+      const html = `
+        <div style="font-family:system-ui,sans-serif;color:#111;">
+          <div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid #1f5c4a;padding-bottom:12px;margin-bottom:14px;">
+            <img src="${location.origin}/logo-escola.jpg" width="56" height="56" style="object-fit:contain" crossorigin="anonymous" />
+            <div>
+              <p style="margin:0;font-size:11px;color:#1f5c4a;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">${escola.nome}</p>
+              <p style="margin:4px 0 0;font-size:18px;font-weight:700;">Lista de matrículas</p>
+              <p style="margin:2px 0 0;font-size:12px;color:#555;">${selected.length} aluno(s) · ${new Date().toLocaleDateString("pt-PT")}</p>
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#1f5c4a;color:#fff;">
+                <th style="text-align:left;padding:8px;">ID</th>
+                <th style="text-align:left;padding:8px;">Nome</th>
+                <th style="text-align:left;padding:8px;">Turma</th>
+                <th style="text-align:right;padding:8px;">Líquido</th>
+                <th style="text-align:left;padding:8px;">Recibo</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      const { blob, filename } = await htmlFragmentToA4Pdf(html, {
+        filename: `matriculas-selecao-${selected.length}.pdf`,
+        title: "Lista de matrículas",
+      });
+      await shareOrDownloadPdf(blob, filename, { title: "Lista de matrículas" });
+      toast.success(`PDF com ${selected.length} aluno(s)`);
+      setExportOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao exportar");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -1050,30 +1271,33 @@ function Alunos() {
             : "Consulta das matrículas. Só o Colaborador 1 pode criar ou editar."
         }
         actions={
-          <>
+          <div className="no-print flex flex-row flex-wrap items-center gap-2">
             {canEdit ? (
-              <Button className="no-print shrink-0" onClick={openNew}>
+              <Button className="shrink-0" onClick={openNew}>
                 <UserPlus className="mr-1 size-4" /> Nova matrícula
               </Button>
             ) : null}
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              onClick={() => {
+                setExportIds(new Set(filteredByClass.map((a) => a.id)));
+                setExportOpen(true);
+              }}
+            >
+              <FileText className="mr-1 size-4" /> Ver / Exportar PDF
+            </Button>
             {canEdit ? (
               <Button
-                className="no-print shrink-0"
+                className="shrink-0"
                 variant="secondary"
-                title="Gera faturas numeradas de propina para todos os alunos com propina definida"
+                title="Gera faturas PROP- do mês para alunos com propina"
                 onClick={() => void gerarFaturasDoMes()}
               >
-                <FileText className="mr-1 size-4" /> Gerar faturas do mês
+                Faturas do mês
               </Button>
             ) : null}
-            <PrintActions
-              targetRef={printRef}
-              filename="matriculas.pdf"
-              landscape
-              shareTitle="Matrículas · École Consulaire"
-              shareText="Documento gerado pela secretaria da École Consulaire."
-            />
-          </>
+          </div>
         }
       />
 
@@ -1229,6 +1453,71 @@ function Alunos() {
         </DialogContent>
       </Dialog>
 
+
+      {/* Exportar lista PDF — seleccionar alunos */}
+      <Dialog open={exportOpen} onOpenChange={(o) => !o && setExportOpen(false)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Exportar lista de matrículas (PDF)</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-[var(--color-muted)]">
+            Escolha todos ou apenas alguns alunos. O PDF da lista usa o filtro actual de grupo/turma.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setExportIds(new Set(filteredByClass.map((a) => a.id)))}
+            >
+              Seleccionar todos
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setExportIds(new Set())}>
+              Limpar
+            </Button>
+            <span className="self-center text-xs text-[var(--color-muted)]">
+              {exportIds.size} seleccionado(s)
+            </span>
+          </div>
+          <div className="max-h-[40vh] space-y-1 overflow-y-auto rounded border border-[var(--color-line)] p-2">
+            {filteredByClass.map((a) => (
+              <label
+                key={a.id}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-[var(--color-bg)]"
+              >
+                <input
+                  type="checkbox"
+                  checked={exportIds.has(a.id)}
+                  onChange={(e) => {
+                    setExportIds((prev) => {
+                      const n = new Set(prev);
+                      if (e.target.checked) n.add(a.id);
+                      else n.delete(a.id);
+                      return n;
+                    });
+                  }}
+                />
+                <span className="font-mono text-xs text-[var(--color-muted)]">{a.id}</span>
+                <span className="truncate">{a.nome}</span>
+                <span className="ml-auto text-xs text-[var(--color-muted)]">{a.turma}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setExportOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={exportBusy || exportIds.size === 0}
+              onClick={() => void exportListaPdf()}
+            >
+              {exportBusy ? "A gerar…" : "Gerar PDF"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Pré-visualização da fatura (modelo com logo) */}
       <Dialog open={!!invoicePreview} onOpenChange={(o) => !o && !invoiceBusy && setInvoicePreview(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1243,23 +1532,111 @@ function Alunos() {
           </p>
           {invoicePreview ? (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-sm font-medium text-[var(--color-ink)]">Mês da fatura</label>
-                <select
-                  className="h-10 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-                  value={invoicePreview.mesLetivo}
-                  onChange={(e) => mudarMesFatura(e.target.value)}
-                >
-                  {MESES_LETIVOS.map((m) => (
-                    <option key={m} value={m}>
-                      {MESES_LABEL[m]}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs text-[var(--color-muted)]">
-                  Valor: {formatKz(invoicePreview.valor)}
-                  {invoicePreview.pagoMes > 0 ? " (pago em Propinas)" : " (referência)"}
-                </span>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Mês da fatura</label>
+                    <select
+                      className="flex h-10 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                      value={invoicePreview.mesLetivo}
+                      onChange={(e) => mudarMesFatura(e.target.value)}
+                    >
+                      {MESES_LETIVOS.map((m) => (
+                        <option key={m} value={m}>
+                          {MESES_LABEL[m]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="pb-2 text-xs text-[var(--color-muted)]">
+                    {formatKz(invoicePreview.valor)}
+                    {invoicePreview.pagoMes > 0 ? " · pago" : " · a cobrar"}
+                  </span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Morada da escola</label>
+                    <Input
+                      value={invoicePreview.contacto.morada}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, morada: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Telefones (editável)</label>
+                    <Input
+                      value={invoicePreview.contacto.telefones}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, telefones: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">E-mail (editável)</label>
+                    <Input
+                      type="email"
+                      value={invoicePreview.contacto.email}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, email: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">IBAN (editável)</label>
+                    <Input
+                      value={invoicePreview.contacto.iban}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, iban: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </div>
               </div>
               <div
                 className="mx-auto max-h-[55vh] overflow-auto rounded-[var(--radius-md)] border border-[var(--color-line)] bg-white p-4 shadow-sm"
