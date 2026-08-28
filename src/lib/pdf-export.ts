@@ -545,6 +545,47 @@ function addCanvasToPdf(
   return pages;
 }
 
+
+/**
+ * HTML simples (ex.: fatura de propina) → PDF A4 vertical, uma página.
+ * Usa stage off-screen com opacidade total (evita PDF em branco).
+ */
+export async function htmlFragmentToA4Pdf(
+  html: string,
+  opts?: { filename?: string; title?: string },
+): Promise<{ blob: Blob; filename: string }> {
+  const { html2canvas, jsPDF } = await ensureLibs();
+  const stage = makeStage(false);
+  try {
+    const wrap = document.createElement("div");
+    wrap.style.cssText =
+      "width:100%;background:#ffffff;color:#111111;box-sizing:border-box;padding:8px 4px;";
+    wrap.innerHTML = html;
+    stage.appendChild(wrap);
+    await waitImages(stage);
+    await wait(100);
+    const canvas = await capture(stage, html2canvas, 1.8, false);
+    const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 12;
+    const maxW = pageW - margin * 2;
+    const maxH = pageH - margin * 2;
+    const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+    const w = canvas.width * ratio;
+    const h = canvas.height * ratio;
+    const x = (pageW - w) / 2;
+    const y = margin;
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", x, y, w, h);
+    return {
+      blob: pdf.output("blob"),
+      filename: opts?.filename || `documento-${Date.now()}.pdf`,
+    };
+  } finally {
+    stage.remove();
+  }
+}
+
 export async function elementToPdfBlob(
   el: HTMLElement,
   opts?: { filename?: string; stamp?: boolean; landscape?: boolean },
