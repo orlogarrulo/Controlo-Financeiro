@@ -14,7 +14,9 @@ import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { elementToPdfBlob, shareOrDownloadPdf } from "@/lib/pdf-export";
-import type { Aluno } from "@/data/types";
+import type { Aluno, FaturaPropina } from "@/data/types";
+
+const EMPTY_FATURAS: FaturaPropina[] = [];
 
 export const Route = createFileRoute("/alunos")({
   component: Alunos,
@@ -543,7 +545,7 @@ function Alunos() {
   const updateAluno = useFinance((s) => s.updateAluno);
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
   const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
-  const faturasPropina = useFinance((s) => s.faturasPropina ?? []);
+  const faturasPropina = useFinance((s) => s.faturasPropina) || EMPTY_FATURAS;
   const operators = useFinance((s) => s.operators);
   const activeOperator = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(activeOperator, operators);
@@ -781,6 +783,10 @@ function Alunos() {
       return jaEmitida;
     }
 
+        if (typeof nextFaturaNumero !== "function" || typeof addFaturaPropina !== "function") {
+      toast.error("Actualize a página (a numeração de faturas ainda não está disponível neste browser).");
+      return null;
+    }
     const numero = nextFaturaNumero(mesKey);
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     const email = (a.email || "").trim();
@@ -923,28 +929,28 @@ function Alunos() {
   }
 
   useEffect(() => {
-    const d = new Date();
-    const day = d.getDate();
-    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    const isBillingDay = day === 30 || (lastDay < 30 && day === lastDay);
-    if (!isBillingDay || !canEdit) return;
-    const mesKey = d.toISOString().slice(0, 7);
-    const flag = `faturas-aviso-${mesKey}`;
-    if (sessionStorage.getItem(flag)) return;
-    sessionStorage.setItem(flag, "1");
-    const pending = alunos.filter(
-      (a) =>
-        (a.propina || 0) > 0 &&
-        !(faturasPropina || []).some((f) => f.alunoId === a.id && f.mesKey === mesKey),
-    ).length;
-    if (pending > 0) {
-      toast.message(
-        `Dia de faturamento: ${pending} fatura(s) de propina por emitir. Use «Gerar faturas do mês».`,
-        { duration: 8000 },
-      );
+    try {
+      const d = new Date();
+      const day = d.getDate();
+      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      const isBillingDay = day === 30 || (lastDay < 30 && day === lastDay);
+      if (!isBillingDay) return;
+      const mesKey = d.toISOString().slice(0, 7);
+      const flag = `faturas-aviso-${mesKey}`;
+      if (typeof sessionStorage !== "undefined" && sessionStorage.getItem(flag)) return;
+      if (typeof sessionStorage !== "undefined") sessionStorage.setItem(flag, "1");
+      // Aviso leve — só uma vez por sessão/mês (não depende de estado React)
+      window.setTimeout(() => {
+        toast.message(
+          "Dia de faturamento de propinas. Use «Gerar faturas do mês» para emitir as faturas numeradas (PROP-…).",
+          { duration: 7000 },
+        );
+      }, 800);
+    } catch {
+      /* ignore */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canEdit, alunos.length, faturasPropina.length]);
+  }, []);
 
   return (
     <div>

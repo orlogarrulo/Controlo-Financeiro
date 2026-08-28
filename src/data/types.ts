@@ -137,7 +137,7 @@ export type Aluno = {
 
 export type FaturaPropina = {
   id: string;
-  /** Numeração própria: FAT-AAAA-MM-001 */
+  /** Numeração própria de propina: PROP-AAAA-MM-001 (≠ FAT- de despesas) */
   numero: string;
   alunoId: string;
   alunoNome: string;

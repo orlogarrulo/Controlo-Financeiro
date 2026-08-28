@@ -332,12 +332,13 @@ export const useFinance = create<Store>()(
         const key = mesKey || new Date().toISOString().slice(0, 7);
         const existing = get().faturasPropina || [];
         let max = 0;
-        const re = new RegExp(`^FAT-${key}-(\d{3})$`);
+        // PROP = propina/mensalidade (distinto de FAT- internas de despesas)
+        const re = new RegExp(`^PROP-${key}-(\d{3})$`);
         for (const f of existing) {
           const m = String(f.numero || "").match(re);
           if (m) max = Math.max(max, Number(m[1]));
         }
-        return `FAT-${key}-${String(max + 1).padStart(3, "0")}`;
+        return `PROP-${key}-${String(max + 1).padStart(3, "0")}`;
       },
       addFaturaPropina: (f) => {
         set({ faturasPropina: [...(get().faturasPropina || []), f] });

@@ -620,13 +620,15 @@ export async function elementToPdfBlob(
     }
   }
 
-  // Cada bloco "last page" numa página própria, tabela completa sem corte
+  // Cada bloco "last page" numa página própria, com logotipo no topo
   for (const block of lastPageNodes) {
     const stage = makeStage(landscape);
     try {
       const wrap = document.createElement("div");
       wrap.style.width = "100%";
       wrap.style.background = "#ffffff";
+      // Logo sempre na última página (Balanço / Despesas do Quadro, etc.)
+      ensureLogoHeader(wrap, opts?.title || "Controlo Financeiro");
       wrap.appendChild(block);
       stage.appendChild(wrap);
       await waitImages(stage);
