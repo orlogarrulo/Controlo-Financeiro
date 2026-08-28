@@ -313,6 +313,8 @@ function ReciboInscricao({
     { label: "Uniforme", value: aluno.uniforme },
     { label: "Seguro escolar", value: aluno.seguro },
     { label: "Actividades extras", value: aluno.extras },
+    { label: "Transporte", value: aluno.transporte || 0 },
+    { label: "Alimentação", value: aluno.alimentacao || 0 },
     { label: "Curso intensivo", value: aluno.curso },
     { label: "1.ª mensalidade", value: aluno.mensalidade1 },
   ].filter((l) => l.value > 0);
@@ -389,7 +391,10 @@ function ReciboInscricao({
           </tr>
         </tbody>
       </table>
-      <p className="mt-3 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
+      <p className="mt-3 rounded border border-[var(--color-line)] bg-[var(--color-bg)] px-2 py-1.5 text-[11px] font-medium leading-snug text-[var(--color-ink)]">
+        O valor da inscrição não é reembolsável.
+      </p>
+      <p className="mt-2 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
       <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
         <div data-assinatura-escola="1">
           <p>A secretaria</p>

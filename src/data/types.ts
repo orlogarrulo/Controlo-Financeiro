@@ -94,6 +94,10 @@ export type Aluno = {
   uniforme: number;
   seguro: number;
   extras: number;
+  /** Transporte escolar (Maternelle). */
+  transporte?: number;
+  /** Alimentação / cantina (Maternelle). */
+  alimentacao?: number;
   curso: number;
   mensalidade1: number;
   dataPag: string;
@@ -106,6 +110,8 @@ export type Aluno = {
   /** Nome da mãe (opcional). */
   mae?: string;
   telefone: string;
+  /** E-mail do encarregado de educação (para envio de faturas). */
+  email?: string;
   /** Morada / endereço. */
   morada?: string;
   bi: string;
@@ -128,6 +134,21 @@ export type Aluno = {
   updatedAt?: string;
 };
 
+
+export type FaturaPropina = {
+  id: string;
+  /** Numeração própria: FAT-AAAA-MM-001 */
+  numero: string;
+  alunoId: string;
+  alunoNome: string;
+  mesRef: string;
+  /** YYYY-MM */
+  mesKey: string;
+  valor: number;
+  email?: string;
+  emitidoEm: string;
+};
+
 export type Mensalidade = {
   id: string;
   nome: string;
@@ -148,6 +169,8 @@ export type Salario = {
   diasTrab: number;
   outrosDesc: number;
   dataPag: string;
+  /** Data de início do contrato de trabalho */
+  dataInicioContrato?: string;
   /** Contactos e identificação (cadastro completo) */
   telefone?: string;
   email?: string;

@@ -328,6 +328,21 @@ export const useFinance = create<Store>()(
         }
         get().pushAudit("editar_salario", `${id} · ${Object.keys(patch).join(", ")}`);
       },
+      nextFaturaNumero: (mesKey) => {
+        const key = mesKey || new Date().toISOString().slice(0, 7);
+        const existing = get().faturasPropina || [];
+        let max = 0;
+        const re = new RegExp(`^FAT-${key}-(\d{3})$`);
+        for (const f of existing) {
+          const m = String(f.numero || "").match(re);
+          if (m) max = Math.max(max, Number(m[1]));
+        }
+        return `FAT-${key}-${String(max + 1).padStart(3, "0")}`;
+      },
+      addFaturaPropina: (f) => {
+        set({ faturasPropina: [...(get().faturasPropina || []), f] });
+        get().pushAudit("emitir_fatura_propina", `${f.numero} · ${f.alunoNome} · ${f.mesRef}`);
+      },
       resetLocal: () =>
         set({
           extras: [],
@@ -342,6 +357,7 @@ export const useFinance = create<Store>()(
           sessionLog: [],
           salariosExtra: [],
           salariosOverrides: {},
+          faturasPropina: [],
         }),
     }),
     {
@@ -363,6 +379,7 @@ export const useFinance = create<Store>()(
         sessionLog: s.sessionLog,
         salariosExtra: s.salariosExtra,
         salariosOverrides: s.salariosOverrides,
+        faturasPropina: s.faturasPropina,
       }),
     },
   ),

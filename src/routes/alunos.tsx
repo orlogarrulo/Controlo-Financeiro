@@ -1,6 +1,6 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
-import { Pencil, Printer, Plus, UserPlus } from "lucide-react";
+import { Pencil, Printer, Plus, UserPlus, Mail, FileText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
+import { elementToPdfBlob, shareOrDownloadPdf } from "@/lib/pdf-export";
 import type { Aluno } from "@/data/types";
 
 export const Route = createFileRoute("/alunos")({
@@ -74,10 +75,13 @@ type FormState = {
   manuais: string;
   uniforme: string;
   extras: string;
+  transporte: string;
+  alimentacao: string;
   curso: string;
   mensalidade1: string;
   propina: string;
   telefone: string;
+  email: string;
   morada: string;
   bi: string;
   familia: string;
@@ -101,10 +105,13 @@ function emptyForm(): FormState {
     manuais: "0",
     uniforme: "0",
     extras: "0",
+    transporte: "0",
+    alimentacao: "0",
     curso: "0",
     mensalidade1: "0",
     propina: "0",
     telefone: "",
+    email: "",
     morada: "",
     bi: "",
     familia: "",
@@ -185,16 +192,35 @@ function nextRecibo(existing: Aluno[]): string {
   return `EF/${String(max + 1).padStart(3, "0")}`;
 }
 
+function isMaternelleTurma(turma: string): boolean {
+  return turma.startsWith("Maternelle");
+}
+
 function calcTotais(f: FormState) {
   const inscricao = num(f.inscricao);
   const seguro = f.seguroExterno ? 0 : num(f.seguro);
   const manuais = num(f.manuais);
   const uniforme = num(f.uniforme);
   const extras = num(f.extras);
+  const transporte = isMaternelleTurma(f.turma) ? num(f.transporte) : 0;
+  const alimentacao = isMaternelleTurma(f.turma) ? num(f.alimentacao) : 0;
   const curso = num(f.curso);
   const mensalidade1 = num(f.mensalidade1);
-  const bruto = inscricao + seguro + manuais + uniforme + extras + curso + mensalidade1;
-  return { inscricao, seguro, manuais, uniforme, extras, curso, mensalidade1, bruto, liquido: bruto };
+  const bruto =
+    inscricao + seguro + manuais + uniforme + extras + transporte + alimentacao + curso + mensalidade1;
+  return {
+    inscricao,
+    seguro,
+    manuais,
+    uniforme,
+    extras,
+    transporte,
+    alimentacao,
+    curso,
+    mensalidade1,
+    bruto,
+    liquido: bruto,
+  };
 }
 
 
@@ -268,8 +294,18 @@ function MatriculaForm({
         <Label>Telefone</Label>
         <Input
           data-focus="telefone" value={form.telefone}
-          onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+          onChange={(e) => setForm((prev) => ({ ...prev, telefone: e.target.value }))}
           placeholder="9xx xxx xxx"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>E-mail do encarregado</Label>
+        <Input
+          type="email"
+          data-focus="email"
+          value={form.email}
+          onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+          placeholder="encarregado@email.com"
         />
       </div>
       <div className="space-y-1.5">
@@ -417,6 +453,28 @@ function MatriculaForm({
             <Label>ATL / extras</Label>
             <Input value={form.extras} onChange={(e) => setForm({ ...form, extras: e.target.value })} />
           </div>
+          {isMaternelleTurma(form.turma) ? (
+            <>
+              <div className="space-y-1.5">
+                <Label>Transporte (Maternelle)</Label>
+                <Input
+                  value={form.transporte}
+                  onChange={(e) => setForm({ ...form, transporte: e.target.value })}
+                  inputMode="decimal"
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Alimentação (Maternelle)</Label>
+                <Input
+                  value={form.alimentacao}
+                  onChange={(e) => setForm({ ...form, alimentacao: e.target.value })}
+                  inputMode="decimal"
+                  placeholder="0"
+                />
+              </div>
+            </>
+          ) : null}
           <div className="space-y-1.5">
             <Label>Curso intensivo</Label>
             <Input value={form.curso} onChange={(e) => setForm({ ...form, curso: e.target.value })} />
@@ -483,6 +541,9 @@ function Alunos() {
   const overrides = useFinance((s) => s.alunosOverrides);
   const addAluno = useFinance((s) => s.addAluno);
   const updateAluno = useFinance((s) => s.updateAluno);
+  const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
+  const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
+  const faturasPropina = useFinance((s) => s.faturasPropina ?? []);
   const operators = useFinance((s) => s.operators);
   const activeOperator = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(activeOperator, operators);
@@ -561,10 +622,13 @@ function Alunos() {
       manuais: String(a.manuais ?? 0),
       uniforme: String(a.uniforme ?? 0),
       extras: String(a.extras ?? 0),
+      transporte: String(a.transporte ?? 0),
+      alimentacao: String(a.alimentacao ?? 0),
       curso: String(a.curso ?? 0),
       mensalidade1: String(a.mensalidade1 ?? 0),
       propina: String(a.propina ?? 0),
       telefone: a.telefone || "",
+      email: a.email || "",
       morada: a.morada || "",
       bi: a.bi || "",
       familia: a.familia || "",
@@ -616,6 +680,8 @@ function Alunos() {
       uniforme: t.uniforme,
       seguro: t.seguro,
       extras: t.extras,
+      transporte: t.transporte,
+      alimentacao: t.alimentacao,
       curso: t.curso,
       mensalidade1: t.mensalidade1,
       dataPag: form.dataPag,
@@ -626,6 +692,7 @@ function Alunos() {
       pai: form.pai.trim(),
       mae: form.mae.trim(),
       telefone: form.telefone.trim(),
+      email: form.email.trim(),
       morada: form.morada.trim(),
       bi: form.bi.trim(),
       familia: form.familia.trim() || form.nome.trim().split(" ").slice(-2).join(" "),
@@ -659,6 +726,7 @@ function Alunos() {
         pai: form.pai.trim(),
         mae: form.mae.trim(),
         telefone: form.telefone.trim(),
+        email: form.email.trim(),
         morada: form.morada.trim(),
         bi: form.bi.trim(),
         familia: form.familia.trim(),
@@ -668,6 +736,8 @@ function Alunos() {
         manuais: t.manuais,
         uniforme: t.uniforme,
         extras: t.extras,
+        transporte: t.transporte,
+        alimentacao: t.alimentacao,
         curso: t.curso,
         mensalidade1: t.mensalidade1,
         propina: num(form.propina),
@@ -688,6 +758,194 @@ function Alunos() {
 
 
 
+
+  async function emitirFaturaMensalidade(a: Aluno, opts?: { silent?: boolean }) {
+    const propina = a.propina || 0;
+    if (propina <= 0) {
+      if (!opts?.silent) {
+        toast.error("Este aluno não tem valor de propina mensal definido. Edite a matrícula e indique a propina.");
+      }
+      return null;
+    }
+    const now = new Date();
+    const mesKey = now.toISOString().slice(0, 7);
+    const mesRef = now.toLocaleDateString("pt-PT", { month: "long", year: "numeric" });
+    // Evitar duplicar fatura do mesmo aluno no mesmo mês
+    const jaEmitida = (faturasPropina || []).find(
+      (f) => f.alunoId === a.id && f.mesKey === mesKey,
+    );
+    if (jaEmitida) {
+      if (!opts?.silent) {
+        toast.message(`Já existe fatura ${jaEmitida.numero} para ${a.nome} neste mês.`);
+      }
+      return jaEmitida;
+    }
+
+    const numero = nextFaturaNumero(mesKey);
+    const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
+    const email = (a.email || "").trim();
+    const logoSrc = `${location.origin}/logo-escola.jpg`;
+
+    const host = document.createElement("div");
+    host.style.cssText =
+      "position:fixed;left:-9999px;top:0;width:720px;background:#fff;padding:28px;font-family:system-ui,sans-serif;color:#111;box-sizing:border-box;";
+    host.innerHTML = `
+      <div style="display:flex;align-items:center;gap:16px;border-bottom:2px solid #1f5c4a;padding-bottom:14px;margin-bottom:18px;">
+        <img src="${logoSrc}" width="72" height="72" alt="Logo" style="object-fit:contain;flex-shrink:0" crossorigin="anonymous" />
+        <div style="flex:1">
+          <p style="margin:0;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">${escola.nome || "École Consulaire"}</p>
+          <p style="margin:6px 0 0;font-size:20px;font-weight:700;">Fatura de mensalidade</p>
+          <p style="margin:4px 0 0;font-size:12px;color:#555;">${mesRef} · ${escola.ano || ""}</p>
+        </div>
+        <div style="text-align:right">
+          <p style="margin:0;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.06em;">N.º fatura</p>
+          <p style="margin:4px 0 0;font-size:16px;font-weight:700;font-family:ui-monospace,monospace;color:#1f5c4a;">${numero}</p>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+        <tr><td style="padding:5px 0;color:#555;width:38%;">Aluno</td><td style="padding:5px 0;font-weight:600;">${a.nome} <span style="font-weight:500;color:#666">(${a.id})</span></td></tr>
+        <tr><td style="padding:5px 0;color:#555;">Turma</td><td style="padding:5px 0;">${a.turma}</td></tr>
+        <tr><td style="padding:5px 0;color:#555;">Encarregado</td><td style="padding:5px 0;">${encarregado}</td></tr>
+        <tr><td style="padding:5px 0;color:#555;">E-mail</td><td style="padding:5px 0;">${email || "—"}</td></tr>
+        <tr><td style="padding:5px 0;color:#555;">Telefone</td><td style="padding:5px 0;">${a.telefone || "—"}</td></tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #bbb;">
+        <thead>
+          <tr style="background:#eef6f2;">
+            <th style="text-align:left;padding:10px 8px;border-bottom:1px solid #bbb;">Descrição</th>
+            <th style="text-align:right;padding:10px 8px;border-bottom:1px solid #bbb;">Valor (Kz)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:12px 8px;">Propina mensal — ${mesRef}</td>
+            <td style="padding:12px 8px;text-align:right;font-variant-numeric:tabular-nums;">${formatKz(propina)}</td>
+          </tr>
+          <tr style="background:#f8faf9;font-weight:700;">
+            <td style="padding:12px 8px;border-top:1px solid #bbb;">Total a pagar</td>
+            <td style="padding:12px 8px;text-align:right;border-top:1px solid #bbb;font-variant-numeric:tabular-nums;">${formatKz(propina)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin-top:18px;font-size:11px;color:#555;line-height:1.45;">${escola.notaFiscal || ""}</p>
+      <p style="margin-top:8px;font-size:11px;color:#666;">Fatura <strong>${numero}</strong> · Emitida em ${now.toLocaleString("pt-PT")} · Secretaria</p>
+    `;
+    document.body.appendChild(host);
+    try {
+      // Esperar o logotipo carregar
+      const img = host.querySelector("img");
+      if (img) {
+        await Promise.race([
+          new Promise<void>((res) => {
+            if ((img as HTMLImageElement).complete) res();
+            else {
+              img.onload = () => res();
+              img.onerror = () => res();
+            }
+          }),
+          new Promise<void>((res) => setTimeout(res, 1500)),
+        ]);
+      }
+      const filename = `fatura-${numero}.pdf`;
+      const { blob, filename: name } = await elementToPdfBlob(host, {
+        filename,
+        stamp: true,
+        title: `Fatura ${numero}`,
+      });
+      await shareOrDownloadPdf(blob, name, {
+        title: `Fatura ${numero} — ${a.nome}`,
+        text: `Fatura de mensalidade ${mesRef} · ${a.nome} · ${formatKz(propina)}`,
+      });
+
+      const fatura = {
+        id: numero,
+        numero,
+        alunoId: a.id,
+        alunoNome: a.nome,
+        mesRef,
+        mesKey,
+        valor: propina,
+        email: email || undefined,
+        emitidoEm: now.toISOString(),
+      };
+      addFaturaPropina(fatura);
+      if (!opts?.silent) toast.success(`Fatura ${numero} gerada`);
+
+      if (email && !opts?.silent) {
+        const subject = encodeURIComponent(`Fatura ${numero} — mensalidade ${mesRef} — ${a.nome}`);
+        const body = encodeURIComponent(
+          `Exmo(a). ${encarregado},\n\n` +
+            `Segue a fatura de mensalidade/propina referente a ${mesRef}.\n\n` +
+            `N.º fatura: ${numero}\n` +
+            `Aluno: ${a.nome} (${a.id})\n` +
+            `Turma: ${a.turma}\n` +
+            `Valor: ${formatKz(propina)}\n\n` +
+            `O PDF foi gerado neste dispositivo — anexe-o a este e-mail antes de enviar.\n\n` +
+            `Com os melhores cumprimentos,\nSecretaria · ${escola.nome || "École Consulaire"}\n`,
+        );
+        window.setTimeout(() => {
+          window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+        }, 500);
+        toast.message(`A abrir e-mail para ${email}`);
+      } else if (!email && !opts?.silent) {
+        toast.message("Sem e-mail do encarregado — edite a matrícula para envio automático por e-mail.");
+      }
+      return fatura;
+    } catch (e) {
+      if (!opts?.silent) toast.error(e instanceof Error ? e.message : "Não foi possível gerar a fatura");
+      return null;
+    } finally {
+      host.remove();
+    }
+  }
+
+  /** No dia 30 (ou último dia do mês), avisa e permite gerar todas as faturas do mês. */
+  async function gerarFaturasDoMes() {
+    const elegiveis = alunos.filter((a) => (a.propina || 0) > 0);
+    if (elegiveis.length === 0) {
+      toast.error("Não há alunos com propina definida.");
+      return;
+    }
+    const mesKey = new Date().toISOString().slice(0, 7);
+    let geradas = 0;
+    let saltadas = 0;
+    for (const a of elegiveis) {
+      const ja = (faturasPropina || []).some((f) => f.alunoId === a.id && f.mesKey === mesKey);
+      if (ja) {
+        saltadas++;
+        continue;
+      }
+      const r = await emitirFaturaMensalidade(a, { silent: true });
+      if (r) geradas++;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    toast.success(`Faturas do mês: ${geradas} geradas` + (saltadas ? ` · ${saltadas} já existiam` : ""));
+  }
+
+  useEffect(() => {
+    const d = new Date();
+    const day = d.getDate();
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    const isBillingDay = day === 30 || (lastDay < 30 && day === lastDay);
+    if (!isBillingDay || !canEdit) return;
+    const mesKey = d.toISOString().slice(0, 7);
+    const flag = `faturas-aviso-${mesKey}`;
+    if (sessionStorage.getItem(flag)) return;
+    sessionStorage.setItem(flag, "1");
+    const pending = alunos.filter(
+      (a) =>
+        (a.propina || 0) > 0 &&
+        !(faturasPropina || []).some((f) => f.alunoId === a.id && f.mesKey === mesKey),
+    ).length;
+    if (pending > 0) {
+      toast.message(
+        `Dia de faturamento: ${pending} fatura(s) de propina por emitir. Use «Gerar faturas do mês».`,
+        { duration: 8000 },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, alunos.length, faturasPropina.length]);
+
   return (
     <div>
       <PageHeader
@@ -701,9 +959,19 @@ function Alunos() {
         actions={
           <div className="flex flex-wrap gap-2">
             {canEdit ? (
-              <Button className="no-print" onClick={openNew}>
-                <UserPlus className="mr-1 size-4" /> Nova matrícula
-              </Button>
+              <>
+                <Button className="no-print" onClick={openNew}>
+                  <UserPlus className="mr-1 size-4" /> Nova matrícula
+                </Button>
+                <Button
+                  className="no-print"
+                  variant="secondary"
+                  title="Gera faturas numeradas de propina para todos os alunos com propina definida"
+                  onClick={() => void gerarFaturasDoMes()}
+                >
+                  <FileText className="mr-1 size-4" /> Gerar faturas do mês
+                </Button>
+              </>
             ) : null}
             <PrintActions
               targetRef={printRef}
@@ -819,11 +1087,22 @@ function Alunos() {
                 <td className="px-3 py-2 text-xs">{a.metodoPagamento || "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{a.recibo}</td>
                 <td className="no-print px-3 py-2 text-right">
-                  {canEdit ? (
-                    <Button size="sm" variant="secondary" onClick={() => openEdit(a)}>
-                      <Pencil className="size-3.5" />
+                  <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Emitir fatura de mensalidade e enviar por e-mail"
+                      onClick={() => void emitirFaturaMensalidade(a)}
+                    >
+                      <FileText className="size-3.5" />
+                      <Mail className="ml-0.5 size-3.5" />
                     </Button>
-                  ) : null}
+                    {canEdit ? (
+                      <Button size="sm" variant="secondary" onClick={() => openEdit(a)}>
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}

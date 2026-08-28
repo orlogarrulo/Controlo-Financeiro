@@ -163,77 +163,82 @@ function Dashboard() {
         </Card>
       </div>
 
-      {/* Balanço patrimonial — ecrã, impressão e PDF */}
-      <Card className="mt-4 print-sheet" data-pdf-last-page="1">
-        <CardHeader>
-          <CardTitle>Balanço patrimonial</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 sm:grid-cols-2 text-sm">
-            <div>
-              <p className="mb-2 text-[11px] font-semibold tracking-wide text-[var(--color-forest)] uppercase">
-                Ativo
-              </p>
-              <div className="space-y-2">
-                <Row k="Cartão Multicaixa BAI" v={t.saldoBai} />
-                <Row k="Fundo de maneio" v={t.fundoRestante} />
-                <div className="my-1 h-px bg-[var(--color-line)]" />
-                <Row k="Total do ativo" v={t.saldoBai + t.fundoRestante} bold />
+      {/* Balanço + Despesas na mesma página do PDF */}
+      <div className="mt-4 space-y-4" data-pdf-last-page="1">
+        <Card className="print-sheet">
+          <CardHeader>
+            <CardTitle>Balanço patrimonial</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 sm:grid-cols-2 text-sm">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold tracking-wide text-[var(--color-forest)] uppercase">
+                  Ativo
+                </p>
+                <div className="space-y-2">
+                  <Row k="Cartão Multicaixa BAI" v={t.saldoBai} />
+                  <Row k="Fundo de maneio" v={t.fundoRestante} />
+                  <div className="my-1 h-px bg-[var(--color-line)]" />
+                  <Row k="Total do ativo" v={t.saldoBai + t.fundoRestante} bold />
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-[11px] font-semibold tracking-wide text-[var(--color-forest)] uppercase">
+                  Passivo e capital próprio
+                </p>
+                <div className="space-y-2">
+                  <Row k="A reembolsar ao sócio" v={t.socioEntradas} />
+                  <Row
+                    k="Resultado líquido do exercício"
+                    v={t.resultado}
+                    danger={t.resultado < 0}
+                  />
+                  <Row
+                    k="Capital / equilíbrio"
+                    v={(t.saldoBai + t.fundoRestante) - t.socioEntradas - t.resultado}
+                  />
+                  <div className="my-1 h-px bg-[var(--color-line)]" />
+                  <Row
+                    k="Total passivo + capital"
+                    v={t.saldoBai + t.fundoRestante}
+                    bold
+                  />
+                </div>
               </div>
             </div>
-            <div>
-              <p className="mb-2 text-[11px] font-semibold tracking-wide text-[var(--color-forest)] uppercase">
-                Passivo e capital próprio
-              </p>
-              <div className="space-y-2">
-                <Row k="A reembolsar ao sócio" v={t.socioEntradas} />
-                <Row
-                  k="Resultado líquido do exercício"
-                  v={t.resultado}
-                  danger={t.resultado < 0}
-                />
-                <Row
-                  k="Capital / equilíbrio"
-                  v={(t.saldoBai + t.fundoRestante) - t.socioEntradas - t.resultado}
-                />
-                <div className="my-1 h-px bg-[var(--color-line)]" />
-                <Row
-                  k="Total passivo + capital"
-                  v={t.saldoBai + t.fundoRestante}
-                  bold
-                />
-              </div>
-            </div>
-          </div>
-          <p className="mt-3 text-[11px] text-[var(--color-muted)]">
-            Balanço simplificado com base nas disponibilidades (BAI + fundo) e obrigações ao sócio.
-            O total do ativo iguala o total do passivo e capital próprio.
-          </p>
-        </CardContent>
-      </Card>
+            <p className="mt-3 text-[11px] text-[var(--color-muted)]">
+              Balanço simplificado com base nas disponibilidades (BAI + fundo) e obrigações ao sócio.
+              O total do ativo iguala o total do passivo e capital próprio.
+            </p>
+          </CardContent>
+        </Card>
 
-      {/* Tabela simples de despesas (impressão) */}
-      {cats.length > 0 ? (
-        <div className="print-only mt-6 hidden print:block print-sheet">
-          <h2 className="font-display mb-2 text-lg">Despesas por categoria</h2>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-[11px] uppercase text-[var(--color-muted)]">
-                <th className="py-1">Categoria</th>
-                <th className="py-1 text-right">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cats.map((c) => (
-                <tr key={c.categoria} className="border-b border-[var(--color-line)]">
-                  <td className="py-1.5">{c.categoria}</td>
-                  <td className="py-1.5 text-right tabular-nums">{formatKz(c.despesas)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+        {cats.length > 0 ? (
+          <Card className="print-sheet">
+            <CardHeader>
+              <CardTitle>Despesas por categoria</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-[11px] uppercase text-[var(--color-muted)]">
+                    <th className="py-1">Categoria</th>
+                    <th className="py-1 text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cats.map((c) => (
+                    <tr key={c.categoria} className="border-b border-[var(--color-line)]">
+                      <td className="py-1.5">{c.categoria}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatKz(c.despesas)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        ) : null}
+      </div>
 
       <div className="no-print mt-6 grid gap-3 sm:grid-cols-3">
         <Quick

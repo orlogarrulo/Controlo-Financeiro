@@ -32,6 +32,7 @@ type FormState = {
   diasTrab: string;
   outrosDesc: string;
   dataPag: string;
+  dataInicioContrato: string;
   telefone: string;
   email: string;
   morada: string;
@@ -50,6 +51,7 @@ function emptyForm(): FormState {
     diasTrab: "22",
     outrosDesc: "0",
     dataPag: todayIso(),
+    dataInicioContrato: todayIso(),
     telefone: "",
     email: "",
     morada: "",
@@ -144,6 +146,15 @@ function SalarioFormFields({
           type="date"
           data-focus="dataPag" value={form.dataPag}
           onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Data de início do contrato</Label>
+        <Input
+          type="date"
+          data-focus="dataInicioContrato"
+          value={form.dataInicioContrato}
+          onChange={(e) => setForm({ ...form, dataInicioContrato: e.target.value })}
         />
       </div>
       <div className="sm:col-span-2 border-t border-[var(--color-line)] pt-2">
@@ -261,6 +272,7 @@ function Salarios() {
       diasTrab: String(r.diasTrab ?? 22),
       outrosDesc: String(r.outrosDesc ?? 0),
       dataPag: r.dataPag || todayIso(),
+      dataInicioContrato: r.dataInicioContrato || "",
       telefone: r.telefone || "",
       email: r.email || "",
       morada: r.morada || "",
@@ -316,6 +328,7 @@ function Salarios() {
       diasTrab,
       outrosDesc,
       dataPag: form.dataPag || todayIso(),
+      dataInicioContrato: form.dataInicioContrato || undefined,
       telefone: form.telefone.trim(),
       email: form.email.trim(),
       morada: form.morada.trim(),
@@ -345,6 +358,7 @@ function Salarios() {
         diasTrab,
         outrosDesc,
         dataPag: form.dataPag || editing.dataPag,
+        dataInicioContrato: form.dataInicioContrato || undefined,
         telefone: form.telefone.trim(),
         email: form.email.trim(),
         morada: form.morada.trim(),
@@ -479,6 +493,7 @@ function Salarios() {
               <p><span className="text-[var(--color-muted)]">Líquido:</span> {formatKz(r.liquido)}</p>
               <p><span className="text-[var(--color-muted)]">Dias:</span> {r.diasTrab}/{r.diasUteis}</p>
               <p><span className="text-[var(--color-muted)]">Pagamento:</span> {formatDate(r.dataPag)}</p>
+              <p><span className="text-[var(--color-muted)]">Início contrato:</span> {r.dataInicioContrato ? formatDate(r.dataInicioContrato) : "—"}</p>
               <p><span className="text-[var(--color-muted)]">Telefone:</span> {r.telefone || "—"}</p>
               <p><span className="text-[var(--color-muted)]">E-mail:</span> {r.email || "—"}</p>
               <p className="sm:col-span-2"><span className="text-[var(--color-muted)]">Morada:</span> {r.morada || "—"}</p>
@@ -552,6 +567,11 @@ function Salarios() {
                   <span className="text-[var(--color-muted)]">Pagamento</span>
                   <br />
                   {formatDate(viewing.dataPag)}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">Início do contrato</span>
+                  <br />
+                  {viewing.dataInicioContrato ? formatDate(viewing.dataInicioContrato) : "—"}
                 </p>
                 <p>
                   <span className="text-[var(--color-muted)]">Telefone</span>
