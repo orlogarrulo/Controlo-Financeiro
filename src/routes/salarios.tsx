@@ -340,6 +340,17 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
     hour: "2-digit",
     minute: "2-digit",
   });
+  // Ex.: "Luanda, aos 29 de AGOSTO DE 2026"
+  const MESES_EXT = [
+    "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
+    "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+  ];
+  const agora = new Date();
+  const dia = agora.getDate();
+  const mesExt = MESES_EXT[agora.getMonth()];
+  const ano = agora.getFullYear();
+  const localData =
+    `Luanda, aos ${dia} de ${mesExt} DE ${ano}`;
   const vigilante = isVigilante(f.funcao || "");
   const perfil = perfilContrato(f.funcao || "", f.categoria);
   const categoriaContrato = perfil.categoria;
@@ -353,7 +364,7 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
 <p>Na escala habitual, a cobertura de vigilância é assegurada em alternância: cada vigilante cumpre <strong>3 (três) dias consecutivos</strong> de turno de <strong>24 horas</strong> e beneficia de <strong>3 (três) dias de folga</strong>, entrando o colega de turno nos dias seguintes. A escala semanal (incluindo a distribuição entre segunda e sexta-feira e demais dias de funcionamento) é definida e afixada pela escola.</p>
 <p>O horário de referência do Prestador é: <strong>${horario}</strong>. Este regime de turnos de 24 horas adapta-se à natureza da vigilância contínua das instalações escolares e ao calendário de funcionamento da escola, no âmbito do contrato de <em>prestação de serviços</em>.</p>`
     : `<p>O Prestador cumprirá o horário de <strong>${horario}</strong>. Este horário corresponde a cerca de 8 horas efectivas de trabalho por dia (após a pausa de almoço), alinhado com a prática usual e com os limites gerais da legislação laboral angolana para jornada diária, adaptado ao regime de <em>prestação de serviços</em> e ao calendário escolar (aulas a partir das 07h30).</p>`;
-  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Contrato — ${f.nome}</title>
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4; margin: 16mm; }
   body { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.5; color: #0f172a; text-align: justify; }
@@ -364,7 +375,13 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   .muted { color:#64748b; font-size:11px; }
   p { margin: 0 0 8px; text-align: justify; text-justify: inter-word; }
   .clause { margin-bottom: 12px; }
-  .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:72px; padding-top:28px; }
+  .local-data {
+    text-align: center;
+    font-size: 12px;
+    margin: 36px 0;
+    padding: 0;
+  }
+  .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:0; padding-top:0; }
   .sign div { border-top:1px solid #94a3b8; padding-top:12px; text-align:center; font-size:11px; min-height:88px; }
   .doc-foot { margin-top:28px; text-align:right; font-size:9px; color:#94a3b8; line-height:1.35; }
 </style></head><body>
@@ -408,7 +425,7 @@ ${clausula4}
 <p>O contrato rege-se pela legislação angolana aplicável à prestação de serviços e pelas normas próprias da missão diplomática. Foro de Luanda.</p>
 </div>
 
-<p style="margin:0;height:48px;">&nbsp;</p>
+<p class="local-data">${localData}</p>
 
 <div class="sign">
   <div>O Contratante<br/>${escola.nome}<br/><br/>_______________________</div>
@@ -439,7 +456,7 @@ function autorizacaoPagamentoHtml(
         </tr>`,
     )
     .join("");
-  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Autorização de pagamento — ${mes}</title>
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4; margin: 16mm; }
   body { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.45; color: #0f172a; }
@@ -527,7 +544,7 @@ function listaFuncionariosHtml(
         </tr>`,
     )
     .join("");
-  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>${titulo}</title>
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4; margin: 14mm; }
   body { font-family: system-ui, sans-serif; font-size: 12px; color: #0f172a; }
@@ -565,7 +582,7 @@ function pacoteRecibosComAutorizacaoHtml(
       authBody = authBody.slice(after + 1, bodyClose);
     }
   }
-  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Recibos e autorização</title>
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4; margin: 14mm; }
   body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
@@ -595,27 +612,33 @@ ${authBody}
 </body></html>`;
 }
 
-function openPrintHtml(html: string, title: string) {
+function openPrintHtml(html: string, _title?: string) {
   /**
-   * Impressão sem mostrar o URL da app no rodapé:
-   * usa um documento isolado (blob:) em vez do iframe sobre a página da aplicação.
-   * No diálogo de impressão do Chrome/Edge, desactive também «Cabeçalhos e rodapés»
-   * se o browser ainda mostrar data/título.
+   * Impressão limpa: sem título de documento (nome/recibo) e via blob
+   * para reduzir URL da app no rodapé. No Chrome/Edge desactive
+   * «Cabeçalhos e rodapés» no diálogo de impressão (data + URL).
    */
-  const withNoUrlHint = html.includes("</head>")
-    ? html.replace(
-        "</head>",
-        `<style>
+  let docHtml = html;
+  // Título vazio — evita "Contrato — Nome" / "Recibos e autorização" no cabeçalho
+  if (docHtml.includes("<title>")) {
+    docHtml = docHtml.replace(/<title>[^<]*<\/title>/i, "<title></title>");
+  } else if (docHtml.includes("</head>")) {
+    docHtml = docHtml.replace("</head>", "<title></title></head>");
+  }
+  if (docHtml.includes("</head>")) {
+    docHtml = docHtml.replace(
+      "</head>",
+      `<style>
   @page { margin: 14mm; }
   html, body { margin: 0; }
 </style></head>`,
-      )
-    : html;
+    );
+  }
 
-  const blob = new Blob([withNoUrlHint], { type: "text/html;charset=utf-8" });
+  const blob = new Blob([docHtml], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const iframe = document.createElement("iframe");
-  iframe.setAttribute("title", title);
+  iframe.setAttribute("title", " ");
   iframe.setAttribute("aria-hidden", "true");
   iframe.style.cssText =
     "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
@@ -671,7 +694,7 @@ function wrapReciboPage(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
-  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Recibo ${r.nome}</title>
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4; margin: 14mm; }
   body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
