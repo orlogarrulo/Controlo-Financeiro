@@ -435,13 +435,33 @@ ${clausula4}
 }
 
 
+function dataDocFinancas(iso?: string): string {
+  const d = iso ? new Date(iso.length === 10 ? iso + "T12:00:00" : iso) : new Date();
+  if (Number.isNaN(d.getTime())) {
+    const n = new Date();
+    return `${String(n.getDate()).padStart(2, "0")}-${String(n.getMonth() + 1).padStart(2, "0")}-${n.getFullYear()}`;
+  }
+  return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+}
+
+/** Resumo curto do objecto (cláusula 2) para o recibo de honorários. */
+function resumoTrabalhoPrestacao(funcao?: string, categoria?: string): string {
+  const perfil = perfilContrato(funcao || "", categoria);
+  // Usar a frase de natureza sem prefixos longos
+  const o = perfil.objecto || "";
+  const m = o.match(/tem por objecto\s+(.+?)(?:\s+Constituem|\s+Os serviços|$)/i);
+  let s = (m ? m[1] : perfil.categoria + (funcao ? ` — ${funcao}` : "")).trim();
+  if (s.length > 220) s = s.slice(0, 217) + "…";
+  return s || funcao || "Prestação de serviços";
+}
+
 function autorizacaoPagamentoHtml(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string },
   recibos: ReciboSalario[],
-  socios: [string, string] = ["Sócio 1", "Sócio 2"],
+  _socios?: [string, string],
 ) {
   const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
-  const hoje = formatDate(todayIso());
+  const dataDoc = dataDocFinancas(todayIso());
   const mes = recibos[0]?.mes || "—";
   const total = recibos.reduce((s, r) => s + (r.liquido || 0), 0);
   const rows = recibos
@@ -455,19 +475,20 @@ function autorizacaoPagamentoHtml(
         </tr>`,
     )
     .join("");
-  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Autorização de pagamento</title>
 <style>
   @page { size: A4; margin: 16mm; }
-  body { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.45; color: #0f172a; }
+  body { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.45; color: #0f172a; position: relative; min-height: 100vh; }
   h1 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
   .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:14px; }
   .head img { width:64px; height:64px; object-fit:contain; }
   .muted { color:#64748b; font-size:11px; }
   table { width:100%; border-collapse:collapse; margin:12px 0 16px; }
   th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; padding:6px 8px; border-bottom:2px solid #cbd5e1; }
-  .total { font-weight:700; font-size:14px; margin:8px 0 16px; }
-  .sign { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:40px; }
-  .sign div { border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; min-height:72px; }
+  .total { font-weight:700; font-size:14px; margin:8px 0 28px; }
+  .sign { margin-top:56px; max-width:280px; }
+  .sign .line { margin-top:56px; border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; }
+  .doc-foot { position: fixed; bottom: 8mm; right: 0; left: 0; text-align: right; font-size: 9px; color: #64748b; }
 </style></head><body>
 <div class="head">
   <img src="${logo}" alt="Logo"/>
@@ -479,26 +500,26 @@ function autorizacaoPagamentoHtml(
 </div>
 <h1>AUTORIZAÇÃO / SOLICITAÇÃO DE PAGAMENTO DE HONORÁRIOS</h1>
 <p class="muted" style="text-align:center">Pagamento a debitar da conta Banco BAI da escola</p>
-<p>Os sócios abaixo assinados <strong>autorizam</strong> o pagamento dos honorários referentes a <strong>${mes}</strong>, conforme a lista seguinte, por transferência ou cartão a partir da conta BAI da ${escola.nomeCurto || "escola"}.</p>
+<p>A Administração <strong>autoriza</strong> o pagamento dos honorários referentes a <strong>${mes}</strong>, conforme a lista seguinte, por transferência ou cartão a partir da conta BAI da ${escola.nomeCurto || "escola"}.</p>
 <table>
   <thead><tr><th>Prestador</th><th>Função</th><th style="text-align:right">Valor líquido</th><th>IBAN</th></tr></thead>
   <tbody>${rows}</tbody>
 </table>
 <p class="total">Total a autorizar: ${formatKz(total)}</p>
-<p>Luanda, ${hoje}. Documento gerado pelo Departamento de Finanças para assinatura dos sócios antes da execução do pagamento.</p>
 <div class="sign">
-  <div>${socios[0]}<br/>Sócio<br/><br/>_______________________</div>
-  <div>${socios[1]}<br/>Sócio<br/><br/>_______________________</div>
+  <div class="line">A Administração</div>
 </div>
+<p class="doc-foot">Documento gerado pelo Departamento de Finanças, ${dataDoc}</p>
 </body></html>`;
 }
-
 
 function reciboHonorarioHtml(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
   const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const trabalho = resumoTrabalhoPrestacao(r.funcao, undefined);
+  const dataDoc = dataDocFinancas(r.dataPag || todayIso());
   return `<div class="sheet">
 <div class="head">
   <img src="${logo}" alt="Logo"/>
@@ -510,6 +531,7 @@ function reciboHonorarioHtml(
 <p class="kicker">Recibo de honorários / prestação de serviços</p>
 <div class="row"><span>N.º <strong>${r.id}</strong></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
 <p>Pagámos a <strong>${r.nome}</strong> (${r.funcao || "—"}) a quantia de <strong>${formatKz(r.liquido)}</strong> referente a <strong>${r.mes}</strong>.</p>
+<p class="trabalho"><strong>Trabalho prestado (objecto):</strong> ${trabalho}</p>
 <table class="vals">
   <tr><td>Honorário de referência</td><td class="num">${formatKz(r.salarioBruto)}</td></tr>
   ${r.descontoDias > 0 ? `<tr><td>Desconto dias (${r.diasTrab}/${r.diasUteis})</td><td class="num">−${formatKz(r.descontoDias)}</td></tr>` : ""}
@@ -519,9 +541,10 @@ function reciboHonorarioHtml(
 ${r.iban ? `<p class="muted">IBAN: ${r.iban}</p>` : ""}
 <p class="muted">${escola.notaFiscal || ""}</p>
 <div class="sign2">
-  <div>O prestador<br/><br/>_________________</div>
-  <div>Departamento de Finanças<br/><br/>_________________</div>
+  <div><span class="sign-label">O prestador</span><span class="sign-line"></span></div>
+  <div><span class="sign-label">A secretaria</span><span class="sign-line"></span></div>
 </div>
+<p class="doc-foot-inline">Documento gerado pelo Departamento de Finanças, ${dataDoc}</p>
 </div>`;
 }
 
@@ -617,20 +640,24 @@ function pacoteRecibosComAutorizacaoHtml(
   table.vals td { padding:10px 0; border-top:1px solid #e2e8f0; }
   table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
   table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
+  .trabalho { font-size:11px; line-height:1.4; color:#334155; margin:10px 0 14px; }
   .sign2 {
     display:grid;
     grid-template-columns:1fr 1fr;
-    gap:40px;
-    margin-top:56px;
-    padding-top:12px;
+    gap:48px;
+    margin-top:64px;
+    padding-top:8px;
     font-size:11px;
   }
-  .sign2 div {
+  .sign2 .sign-label { display:block; text-align:center; margin-bottom:72px; }
+  .sign2 .sign-line {
+    display:block;
     border-top:1px solid #94a3b8;
-    padding-top:14px;
-    min-height:96px;
+    padding-top:8px;
+    min-height:8px;
     text-align:center;
   }
+  .doc-foot-inline { margin-top:28px; font-size:9px; color:#64748b; text-align:right; }
   .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:48px; }
   .sign div { border-top:1px solid #94a3b8; padding-top:12px; text-align:center; font-size:11px; min-height:88px; }
   h1 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
@@ -747,14 +774,16 @@ function wrapReciboPage(
   table.vals td { padding:10px 0; border-top:1px solid #e2e8f0; }
   table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
   table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
+  .trabalho { font-size:11px; line-height:1.4; color:#334155; margin:10px 0 14px; }
   .sign2 {
-    display:grid; grid-template-columns:1fr 1fr; gap:40px;
-    margin-top:56px; padding-top:12px; font-size:11px;
+    display:grid; grid-template-columns:1fr 1fr; gap:48px;
+    margin-top:64px; padding-top:8px; font-size:11px;
   }
-  .sign2 div {
-    border-top:1px solid #94a3b8; padding-top:14px;
-    min-height:96px; text-align:center;
+  .sign2 .sign-label { display:block; text-align:center; margin-bottom:72px; }
+  .sign2 .sign-line {
+    display:block; border-top:1px solid #94a3b8; padding-top:8px; text-align:center;
   }
+  .doc-foot-inline { margin-top:28px; font-size:9px; color:#64748b; text-align:right; }
 </style></head><body>${reciboHonorarioHtml(escola, r)}</body></html>`;
 }
 
