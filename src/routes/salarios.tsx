@@ -536,7 +536,7 @@ function autorizacaoPagamentoHtml(
   .total { font-weight:700; font-size:14px; margin:8px 0 28px; }
   .sign { margin-top:56px; max-width:280px; }
   .sign .line { margin-top:56px; border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; }
-  .doc-foot { position: absolute; bottom: 4mm; right: 0; left: 0; text-align: right; font-size: 9px; color: #64748b; }
+  .doc-foot { margin-top: 24px; text-align: right; font-size: 9px; color: #64748b; }
 </style></head><body>
 <div class="head">
   <img src="${logo}" alt="Logo"/>
@@ -568,30 +568,30 @@ function reciboHonorarioHtml(
   const descricao = descricaoPrestacaoPorFuncao(r.funcao);
   const { ini, fim } = periodoPrestacaoMes(r.mesKey, r.mes);
   const dataDoc = dataDocFinancas(r.dataPag || todayIso());
-  return `<div class="sheet-a5">
-<div class="head">
-  <img src="${logo}" alt="Logo"/>
-  <div>
-    <strong>${escola.nome}</strong><br/>
-    <span class="muted">${escola.subtitulo || "Luanda"} · ${escola.ano || ""}</span>
+  return `<article class="recibo">
+  <header class="rh">
+    <img src="${logo}" alt=""/>
+    <div>
+      <strong>${escola.nome}</strong><br/>
+      <span class="mu">${escola.subtitulo || "Luanda"} · ${escola.ano || ""}</span>
+    </div>
+  </header>
+  <p class="ki">Recibo de honorários / prestação de serviços</p>
+  <div class="rw"><span>N.º <b>${r.id}</b></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
+  <p class="tx">Pagámos a <b>${r.nome}</b> (${r.funcao || "—"}) a quantia de <b>${formatKz(r.liquido)}</b> referente a ${descricao}, durante o período <b>${ini}</b> a <b>${fim}</b>.</p>
+  <table class="tb">
+    <tr><td>Honorário de referência</td><td class="n">${formatKz(r.salarioBruto)}</td></tr>
+    ${r.descontoDias > 0 ? `<tr><td>Desconto dias (${r.diasTrab}/${r.diasUteis})</td><td class="n">−${formatKz(r.descontoDias)}</td></tr>` : ""}
+    ${(r.outrosDesc || 0) > 0 ? `<tr><td>Outros descontos</td><td class="n">−${formatKz(r.outrosDesc)}</td></tr>` : ""}
+    <tr class="tot"><td>Líquido</td><td class="n">${formatKz(r.liquido)}</td></tr>
+  </table>
+  ${r.iban ? `<p class="mu">IBAN: ${r.iban}</p>` : ""}
+  <div class="sg">
+    <div><span>O prestador</span><i></i></div>
+    <div><span>Departamento de Finanças</span><i></i></div>
   </div>
-</div>
-<p class="kicker">Recibo de honorários / prestação de serviços</p>
-<div class="row"><span>N.º <strong>${r.id}</strong></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
-<p class="texto-recibo">Pagámos a <strong>${r.nome}</strong> (${r.funcao || "—"}) a quantia de <strong>${formatKz(r.liquido)}</strong> referente a ${descricao}, durante o período <strong>${ini}</strong> a <strong>${fim}</strong>.</p>
-<table class="vals">
-  <tr><td>Honorário de referência</td><td class="num">${formatKz(r.salarioBruto)}</td></tr>
-  ${r.descontoDias > 0 ? `<tr><td>Desconto dias (${r.diasTrab}/${r.diasUteis})</td><td class="num">−${formatKz(r.descontoDias)}</td></tr>` : ""}
-  ${(r.outrosDesc || 0) > 0 ? `<tr><td>Outros descontos</td><td class="num">−${formatKz(r.outrosDesc)}</td></tr>` : ""}
-  <tr class="tot"><td>Líquido</td><td class="num">${formatKz(r.liquido)}</td></tr>
-</table>
-${r.iban ? `<p class="muted">IBAN: ${r.iban}</p>` : ""}
-<div class="sign2">
-  <div><span class="sign-label">O prestador</span><span class="sign-line"></span></div>
-  <div><span class="sign-label">Departamento de Finanças</span><span class="sign-line"></span></div>
-</div>
-<p class="doc-foot-inline">Documento gerado pelo Departamento de Finanças, ${dataDoc}</p>
-</div>`;
+  <p class="ft">Documento gerado pelo Departamento de Finanças, ${dataDoc}</p>
+</article>`;
 }
 
 function listaFuncionariosHtml(
@@ -639,69 +639,33 @@ function pacoteRecibosComAutorizacaoHtml(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   recibos: ReciboSalario[],
 ) {
-  const authInner = autorizacaoPagamentoHtml(escola, recibos);
-  // Emparelhar 2 recibos A5 por página A4
-  const pairs: string[] = [];
+  const folhas: string[] = [];
   for (let i = 0; i < recibos.length; i += 2) {
-    const a = reciboHonorarioHtml(escola, recibos[i]);
-    const b = recibos[i + 1] ? reciboHonorarioHtml(escola, recibos[i + 1]) : "";
-    pairs.push(`<div class="page-a4-pair">${a}${b}</div>`);
+    const r1 = reciboHonorarioHtml(escola, recibos[i]);
+    const r2 = recibos[i + 1] ? reciboHonorarioHtml(escola, recibos[i + 1]) : "";
+    folhas.push(`<div class="folha">${r1}${r2}</div>`);
   }
-  const sheets = pairs.join('<div class="break"></div>');
-  let authBody = authInner;
-  const bodyOpen = authBody.indexOf("<body");
-  if (bodyOpen >= 0) {
-    const after = authBody.indexOf(">", bodyOpen);
-    const bodyClose = authBody.lastIndexOf("</body>");
-    if (after >= 0 && bodyClose > after) {
-      authBody = authBody.slice(after + 1, bodyClose);
-    }
+  // Autorização: extrair só o miolo do HTML completo
+  const authFull = autorizacaoPagamentoHtml(escola, recibos);
+  let authInner = authFull;
+  const b0 = authFull.indexOf("<body");
+  if (b0 >= 0) {
+    const after = authFull.indexOf(">", b0);
+    const b1 = authFull.lastIndexOf("</body>");
+    if (after >= 0 && b1 > after) authInner = authFull.slice(after + 1, b1);
   }
+  // Reembrulhar autorização com classes .auth
+  authInner = authInner
+    .replace(/class="head"/g, 'class="head"')
+    .replace(/<body[^>]*>/i, "")
+    .replace(/<\/body>/i, "");
+  const authPage = `<div class="folha"><div class="auth">${authInner}</div></div>`;
+
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
-<style>
-  @page { size: A4 portrait; margin: 10mm; }
-  html, body { margin: 0; padding: 0; font-family: Georgia, serif; font-size: 11px; color: #0f172a; }
-  .break { page-break-after: always; height: 0; break-after: page; }
-  ${cssReciboA5()}
-  /* Autorização (página própria) */
-  .auth-page {
-    page-break-before: always;
-    padding: 4mm 2mm;
-    position: relative;
-    min-height: 270mm;
-    box-sizing: border-box;
-  }
-  .auth-page .head {
-    display: flex; gap: 12px; align-items: center;
-    border-bottom: 2px solid #009543;
-    padding-bottom: 10px; margin-bottom: 14px;
-  }
-  .auth-page .head img { width: 56px; height: 56px; object-fit: contain; }
-  .auth-page h1 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
-  .auth-page .muted { color: #64748b; font-size: 11px; }
-  .auth-page table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; }
-  .auth-page th {
-    text-align: left; font-size: 10px; text-transform: uppercase;
-    letter-spacing: 0.06em; color: #64748b; padding: 6px 8px;
-    border-bottom: 2px solid #cbd5e1;
-  }
-  .auth-page .total { font-weight: 700; font-size: 14px; margin: 8px 0 28px; }
-  .auth-page .sign { margin-top: 56px; max-width: 280px; }
-  .auth-page .sign .line {
-    margin-top: 56px; border-top: 1px solid #94a3b8;
-    padding-top: 8px; text-align: center; font-size: 11px;
-  }
-  .auth-page .doc-foot {
-    position: absolute;
-    bottom: 4mm;
-    right: 2mm;
-    font-size: 9px;
-    color: #64748b;
-    text-align: right;
-  }
-</style></head><body>
-${sheets}
-<div class="auth-page">${authBody}</div>
+<style>${cssImpressaoRecibos()}</style>
+</head><body>
+${folhas.join("\n")}
+${authPage}
 </body></html>`;
 }
 
@@ -718,15 +682,8 @@ function openPrintHtml(html: string, _title?: string) {
   } else if (docHtml.includes("</head>")) {
     docHtml = docHtml.replace("</head>", "<title></title></head>");
   }
-  if (docHtml.includes("</head>")) {
-    docHtml = docHtml.replace(
-      "</head>",
-      `<style>
-  @page { margin: 14mm; }
-  html, body { margin: 0; }
-</style></head>`,
-    );
-  }
+  // Não injectar @page extra — os documentos já definem size A4 e margens.
+  // Um segundo @page { margin } estraga o emparelhamento de 2 recibos.
 
   const blob = new Blob([docHtml], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -782,121 +739,163 @@ function openPrintHtml(html: string, _title?: string) {
 
 
 
+
+/** Estilos de impressão: 2 recibos por A4 (metade superior + metade inferior). */
+function cssImpressaoRecibos(): string {
+  return `
+@page { size: A4 portrait; margin: 10mm; }
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  color: #0f172a;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.folha {
+  width: 100%;
+  page-break-after: always;
+  break-after: page;
+}
+.folha:last-child { page-break-after: auto; break-after: auto; }
+.folha::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+.recibo {
+  width: 100%;
+  height: 128mm;
+  max-height: 128mm;
+  padding: 3mm 2mm 2mm;
+  overflow: hidden;
+  border-bottom: 1px dashed #94a3b8;
+}
+.folha .recibo:last-child { border-bottom: none; }
+.recibo .rh {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1.5pt solid #009543;
+  padding-bottom: 3mm;
+  margin-bottom: 2mm;
+}
+.recibo .rh img { width: 36px; height: 36px; object-fit: contain; }
+.recibo .rh strong { font-size: 10pt; }
+.recibo .mu { color: #64748b; font-size: 8pt; }
+.recibo .ki {
+  font-size: 7.5pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #009543;
+  font-weight: 700;
+  margin: 0 0 1.5mm;
+}
+.recibo .rw {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 1.5mm;
+  font-size: 9pt;
+}
+.recibo .tx {
+  font-size: 9pt;
+  line-height: 1.3;
+  margin: 0 0 2mm;
+  text-align: justify;
+}
+.recibo .tb {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.5mm;
+  font-size: 9pt;
+}
+.recibo .tb td { padding: 1mm 0; border-top: 0.5pt solid #e2e8f0; }
+.recibo .tb .n { text-align: right; font-variant-numeric: tabular-nums; }
+.recibo .tb .tot { font-weight: 700; border-top: 1pt solid #0f172a; }
+.recibo .sg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12mm;
+  margin-top: 4mm;
+  font-size: 8pt;
+  text-align: center;
+}
+.recibo .sg span { display: block; margin-bottom: 10mm; }
+.recibo .sg i {
+  display: block;
+  border-top: 0.5pt solid #64748b;
+  font-style: normal;
+}
+.recibo .ft {
+  margin: 3mm 0 0;
+  font-size: 7.5pt;
+  color: #64748b;
+  text-align: right;
+}
+/* Autorização */
+.auth {
+  padding: 2mm;
+  position: relative;
+  min-height: 260mm;
+}
+.auth .head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 2px solid #009543;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+.auth .head img { width: 52px; height: 52px; object-fit: contain; }
+.auth h1 { font-size: 13pt; text-align: center; margin: 8px 0 6px; }
+.auth .muted { color: #64748b; font-size: 9pt; }
+.auth table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; font-size: 10pt; }
+.auth th {
+  text-align: left;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  padding: 4px 6px;
+  border-bottom: 1.5pt solid #cbd5e1;
+}
+.auth td { padding: 4px 6px; border-bottom: 0.5pt solid #e2e8f0; }
+.auth .total { font-weight: 700; font-size: 12pt; margin: 8px 0 20px; }
+.auth .sign { margin-top: 40px; max-width: 60mm; }
+.auth .sign .line {
+  margin-top: 40px;
+  border-top: 0.5pt solid #94a3b8;
+  padding-top: 6px;
+  text-align: center;
+  font-size: 9pt;
+}
+.auth .doc-foot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  font-size: 8pt;
+  color: #64748b;
+  text-align: right;
+}
+`;
+}
+
 /** HTML completo para pré-visualizar recibo individual */
 function wrapReciboPage(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
-<style>
-  @page { size: A4; margin: 8mm; }
-  body { font-family: Georgia, serif; font-size: 11px; color: #0f172a; margin: 0; }
-  ${cssReciboA5()}
-</style></head><body>
-<div class="page-a4">
-  ${reciboHonorarioHtml(escola, r)}
-</div>
+<style>${cssImpressaoRecibos()}</style></head><body>
+<div class="folha">${reciboHonorarioHtml(escola, r)}</div>
 </body></html>`;
 }
 
+
 /** CSS partilhado: dois recibos A5 por folha A4. */
-function cssReciboA5(): string {
-  return `
-  html, body { margin: 0; padding: 0; }
-  .page-a4-pair {
-    width: 100%;
-    height: 277mm;
-    max-height: 277mm;
-    box-sizing: border-box;
-    page-break-after: always;
-    page-break-inside: avoid;
-    break-after: page;
-    display: block;
-    overflow: hidden;
-  }
-  .page-a4-pair:last-child { page-break-after: auto; break-after: auto; }
-  .page-a4 {
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .sheet-a5 {
-    height: 138.5mm;
-    max-height: 138.5mm;
-    overflow: hidden;
-    padding: 5mm 7mm 3mm;
-    box-sizing: border-box;
-    border-bottom: 1px dashed #94a3b8;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    position: relative;
-  }
-  .page-a4-pair .sheet-a5:last-child,
-  .page-a4-pair .sheet-a5:only-child { border-bottom: none; }
-  .sheet-a5 .head {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    border-bottom: 2px solid #009543;
-    padding-bottom: 6px;
-    margin-bottom: 6px;
-  }
-  .sheet-a5 .head img { width: 40px; height: 40px; object-fit: contain; }
-  .sheet-a5 .kicker {
-    font-size: 8px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #009543;
-    font-weight: 700;
-    margin: 0 0 4px;
-  }
-  .sheet-a5 .row {
-    display: flex;
-    justify-content: space-between;
-    margin: 4px 0 6px;
-    font-size: 10px;
-  }
-  .sheet-a5 .muted { color: #64748b; font-size: 9px; }
-  .sheet-a5 .texto-recibo {
-    font-size: 10px;
-    line-height: 1.35;
-    margin: 0 0 6px;
-    text-align: justify;
-  }
-  .sheet-a5 table.vals {
-    width: 100%;
-    margin: 4px 0 6px;
-    border-collapse: collapse;
-    font-size: 10px;
-  }
-  .sheet-a5 table.vals td { padding: 3px 0; border-top: 1px solid #e2e8f0; }
-  .sheet-a5 table.vals .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .sheet-a5 table.vals .tot { font-weight: 700; border-top: 2px solid #0f172a; }
-  .sheet-a5 .sign2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    margin-top: 14px;
-    font-size: 9px;
-  }
-  .sheet-a5 .sign2 .sign-label { display: block; text-align: center; margin-bottom: 28px; }
-  .sheet-a5 .sign2 .sign-line {
-    display: block;
-    border-top: 1px solid #94a3b8;
-    padding-top: 3px;
-    text-align: center;
-  }
-  .sheet-a5 .doc-foot-inline {
-    position: absolute;
-    bottom: 2mm;
-    right: 7mm;
-    left: 7mm;
-    margin: 0;
-    font-size: 8px;
-    color: #64748b;
-    text-align: right;
-  }
-`;
-}
+
 
 function SalarioFormFields({
   form,
