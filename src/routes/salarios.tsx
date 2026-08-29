@@ -536,7 +536,7 @@ function autorizacaoPagamentoHtml(
   .total { font-weight:700; font-size:14px; margin:8px 0 28px; }
   .sign { margin-top:56px; max-width:280px; }
   .sign .line { margin-top:56px; border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; }
-  .doc-foot { position: fixed; bottom: 8mm; right: 0; left: 0; text-align: right; font-size: 9px; color: #64748b; }
+  .doc-foot { position: absolute; bottom: 4mm; right: 0; left: 0; text-align: right; font-size: 9px; color: #64748b; }
 </style></head><body>
 <div class="head">
   <img src="${logo}" alt="Logo"/>
@@ -659,61 +659,49 @@ function pacoteRecibosComAutorizacaoHtml(
   }
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4; margin: 8mm; }
-  body { font-family: Georgia, serif; font-size: 11px; color: #0f172a; margin: 0; }
-  .break { page-break-after: always; height: 0; }
+  @page { size: A4 portrait; margin: 10mm; }
+  html, body { margin: 0; padding: 0; font-family: Georgia, serif; font-size: 11px; color: #0f172a; }
+  .break { page-break-after: always; height: 0; break-after: page; }
   ${cssReciboA5()}
-  .head {
-    display:flex;
-    gap:14px;
-    align-items:center;
-    border-bottom:2px solid #009543;
-    padding-bottom:16px;
-    margin-bottom:28px;
+  /* Autorização (página própria) */
+  .auth-page {
+    page-break-before: always;
+    padding: 4mm 2mm;
+    position: relative;
+    min-height: 270mm;
+    box-sizing: border-box;
   }
-  .head img { width:64px; height:64px; object-fit:contain; }
-  .kicker {
-    font-size:10px;
-    letter-spacing:0.12em;
-    text-transform:uppercase;
-    color:#009543;
-    font-weight:700;
-    margin: 0 0 16px;
+  .auth-page .head {
+    display: flex; gap: 12px; align-items: center;
+    border-bottom: 2px solid #009543;
+    padding-bottom: 10px; margin-bottom: 14px;
   }
-  .row { display:flex; justify-content:space-between; margin:14px 0 20px; }
-  .muted { color:#64748b; font-size:11px; }
-  table.vals { width:100%; margin:20px 0 28px; border-collapse:collapse; }
-  table.vals td { padding:10px 0; border-top:1px solid #e2e8f0; }
-  table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
-  table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
-  .trabalho { font-size:11px; line-height:1.4; color:#334155; margin:10px 0 14px; }
-  .sign2 {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:48px;
-    margin-top:64px;
-    padding-top:8px;
-    font-size:11px;
+  .auth-page .head img { width: 56px; height: 56px; object-fit: contain; }
+  .auth-page h1 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
+  .auth-page .muted { color: #64748b; font-size: 11px; }
+  .auth-page table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; }
+  .auth-page th {
+    text-align: left; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b; padding: 6px 8px;
+    border-bottom: 2px solid #cbd5e1;
   }
-  .sign2 .sign-label { display:block; text-align:center; margin-bottom:72px; }
-  .sign2 .sign-line {
-    display:block;
-    border-top:1px solid #94a3b8;
-    padding-top:8px;
-    min-height:8px;
-    text-align:center;
+  .auth-page .total { font-weight: 700; font-size: 14px; margin: 8px 0 28px; }
+  .auth-page .sign { margin-top: 56px; max-width: 280px; }
+  .auth-page .sign .line {
+    margin-top: 56px; border-top: 1px solid #94a3b8;
+    padding-top: 8px; text-align: center; font-size: 11px;
   }
-  .doc-foot-inline { margin-top:28px; font-size:9px; color:#64748b; text-align:right; }
-  .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:48px; }
-  .sign div { border-top:1px solid #94a3b8; padding-top:12px; text-align:center; font-size:11px; min-height:88px; }
-  h1 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
-  table { width:100%; border-collapse:collapse; margin:12px 0 16px; }
-  th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; padding:6px 8px; border-bottom:2px solid #cbd5e1; }
-  .total { font-weight:700; font-size:14px; margin:8px 0 16px; }
+  .auth-page .doc-foot {
+    position: absolute;
+    bottom: 4mm;
+    right: 2mm;
+    font-size: 9px;
+    color: #64748b;
+    text-align: right;
+  }
 </style></head><body>
 ${sheets}
-<div class="break"></div>
-${authBody}
+<div class="auth-page">${authBody}</div>
 </body></html>`;
 }
 
@@ -814,54 +802,99 @@ function wrapReciboPage(
 /** CSS partilhado: dois recibos A5 por folha A4. */
 function cssReciboA5(): string {
   return `
+  html, body { margin: 0; padding: 0; }
+  .page-a4-pair {
+    width: 100%;
+    height: 277mm;
+    max-height: 277mm;
+    box-sizing: border-box;
+    page-break-after: always;
+    page-break-inside: avoid;
+    break-after: page;
+    display: block;
+    overflow: hidden;
+  }
+  .page-a4-pair:last-child { page-break-after: auto; break-after: auto; }
   .page-a4 {
     width: 100%;
-    min-height: 277mm;
-    box-sizing: border-box;
-  }
-  .page-a4-pair {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    min-height: 277mm;
     box-sizing: border-box;
   }
   .sheet-a5 {
-    height: 138mm;
-    max-height: 138mm;
+    height: 138.5mm;
+    max-height: 138.5mm;
     overflow: hidden;
-    padding: 6mm 8mm 4mm;
+    padding: 5mm 7mm 3mm;
     box-sizing: border-box;
-    border-bottom: 1px dashed #cbd5e1;
+    border-bottom: 1px dashed #94a3b8;
     page-break-inside: avoid;
+    break-inside: avoid;
+    position: relative;
   }
-  .page-a4-pair .sheet-a5:last-child { border-bottom: none; }
-  .head {
-    display:flex; gap:10px; align-items:center;
-    border-bottom:2px solid #009543;
-    padding-bottom:8px; margin-bottom:10px;
+  .page-a4-pair .sheet-a5:last-child,
+  .page-a4-pair .sheet-a5:only-child { border-bottom: none; }
+  .sheet-a5 .head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    border-bottom: 2px solid #009543;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
   }
-  .head img { width:48px; height:48px; object-fit:contain; }
-  .kicker {
-    font-size:9px; letter-spacing:0.12em; text-transform:uppercase;
-    color:#009543; font-weight:700; margin: 0 0 8px;
+  .sheet-a5 .head img { width: 40px; height: 40px; object-fit: contain; }
+  .sheet-a5 .kicker {
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #009543;
+    font-weight: 700;
+    margin: 0 0 4px;
   }
-  .row { display:flex; justify-content:space-between; margin:6px 0 8px; font-size:11px; }
-  .muted { color:#64748b; font-size:10px; }
-  .texto-recibo { font-size:11px; line-height:1.4; margin: 0 0 8px; text-align: justify; }
-  table.vals { width:100%; margin:6px 0 10px; border-collapse:collapse; font-size:11px; }
-  table.vals td { padding:4px 0; border-top:1px solid #e2e8f0; }
-  table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
-  table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
-  .sign2 {
-    display:grid; grid-template-columns:1fr 1fr; gap:28px;
-    margin-top:20px; font-size:10px;
+  .sheet-a5 .row {
+    display: flex;
+    justify-content: space-between;
+    margin: 4px 0 6px;
+    font-size: 10px;
   }
-  .sign2 .sign-label { display:block; text-align:center; margin-bottom:36px; }
-  .sign2 .sign-line {
-    display:block; border-top:1px solid #94a3b8; padding-top:4px; text-align:center;
+  .sheet-a5 .muted { color: #64748b; font-size: 9px; }
+  .sheet-a5 .texto-recibo {
+    font-size: 10px;
+    line-height: 1.35;
+    margin: 0 0 6px;
+    text-align: justify;
   }
-  .doc-foot-inline { margin-top:10px; font-size:8px; color:#64748b; text-align:right; }
+  .sheet-a5 table.vals {
+    width: 100%;
+    margin: 4px 0 6px;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+  .sheet-a5 table.vals td { padding: 3px 0; border-top: 1px solid #e2e8f0; }
+  .sheet-a5 table.vals .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sheet-a5 table.vals .tot { font-weight: 700; border-top: 2px solid #0f172a; }
+  .sheet-a5 .sign2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 14px;
+    font-size: 9px;
+  }
+  .sheet-a5 .sign2 .sign-label { display: block; text-align: center; margin-bottom: 28px; }
+  .sheet-a5 .sign2 .sign-line {
+    display: block;
+    border-top: 1px solid #94a3b8;
+    padding-top: 3px;
+    text-align: center;
+  }
+  .sheet-a5 .doc-foot-inline {
+    position: absolute;
+    bottom: 2mm;
+    right: 7mm;
+    left: 7mm;
+    margin: 0;
+    font-size: 8px;
+    color: #64748b;
+    text-align: right;
+  }
 `;
 }
 
