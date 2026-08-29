@@ -138,7 +138,116 @@ const HORARIO_VIGILANTE =
 
 function isVigilante(funcao: string): boolean {
   const f = (funcao || "").toLowerCase().normalize("NFD").replace(/\u0300-\u036f/g, "");
-  return f.includes("vigilant");
+  return f.includes("vigilant") || (f.includes("segur") && f.includes("pessoal"));
+}
+
+function normTxt(s: string): string {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\u0300-\u036f/g, "");
+}
+
+/** Categoria contratual + texto do objecto conforme a função. */
+function perfilContrato(funcao: string, categoria?: string): {
+  categoria: string;
+  objecto: string;
+} {
+  const f = normTxt(funcao);
+  const c = normTxt(categoria || "");
+
+  // Vigilantes / Pessoal de Segurança
+  if (
+    f.includes("vigilant") ||
+    f.includes("seguranca") ||
+    f.includes("segurança") ||
+    (f.includes("segur") && !f.includes("social"))
+  ) {
+    return {
+      categoria: "Pessoal de Apoio Operacional (Segurança e Vigilância)",
+      objecto:
+        "Prestação de serviços de vigilância e segurança das instalações, bens e pessoas da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, em regime de turnos, assegurando a protecção do património escolar e o controlo de acessos.",
+    };
+  }
+
+  // Limpeza
+  if (f.includes("limpez") || f.includes("higiene") || f.includes("faxina") || f.includes("conservacao")) {
+    return {
+      categoria: "Pessoal de Apoio Operacional (Higiene e Salubridade)",
+      objecto:
+        "Prestação de serviços de limpeza, higiene e salubridade das instalações da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, contribuindo para o bom estado e condições de utilização dos espaços escolares.",
+    };
+  }
+
+  // Diretor de Património
+  if (f.includes("patrimonio") || f.includes("património") || (f.includes("diretor") && f.includes("infra"))) {
+    return {
+      categoria: "Quadro Técnico / Gestão de Infraestruturas",
+      objecto:
+        "Prestação de serviços de direcção e gestão do património e infraestruturas da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, incluindo supervisão de manutenção, conservação e utilização adequada dos bens e espaços escolares.",
+    };
+  }
+
+  // Financeiro
+  if (
+    f.includes("financ") ||
+    f.includes("contabil") ||
+    f.includes("tesour") ||
+    c.includes("financ")
+  ) {
+    return {
+      categoria: "Quadro Técnico Administrativo (Especialidade: Gestão Financeira)",
+      objecto:
+        "Prestação de serviços de natureza técnico-administrativa na área da gestão financeira da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, incluindo apoio ao registo, controlo e reporte de operações financeiras escolares.",
+    };
+  }
+
+  // Diretor Administrativo
+  if (
+    (f.includes("diretor") || f.includes("director")) &&
+    (f.includes("admin") || f.includes("execut"))
+  ) {
+    return {
+      categoria: "Cargo de Direção Executiva / Quadro Técnico Superior",
+      objecto:
+        "Prestação de serviços de direcção administrativa e executiva da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, assegurando a coordenação dos serviços de apoio, a organização interna e o cumprimento das orientações da direcção da escola.",
+    };
+  }
+
+  // Diretor Pedagógico
+  if (
+    (f.includes("diretor") || f.includes("director")) &&
+    (f.includes("pedagog") || f.includes("ensino") || f.includes("academ"))
+  ) {
+    return {
+      categoria: "Cargo de Direção Superior / Comissão de Serviço",
+      objecto:
+        "Prestação de serviços de direcção pedagógica da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, em regime de comissão de serviço / direcção superior, coordenando a actividade educativa, o corpo docente e o projecto pedagógico da escola.",
+    };
+  }
+
+  // Professores / docentes
+  if (
+    f.includes("professor") ||
+    f.includes("docente") ||
+    f.includes("enseignant") ||
+    f.includes("educador") ||
+    f.includes("maitre") ||
+    f.includes("maître")
+  ) {
+    return {
+      categoria: "Corpo Docente (Expatriado ou Local)",
+      objecto:
+        "Prestação de serviços de natureza educacional e lectiva na École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, no âmbito do corpo docente (expatriado ou local), assegurando o ensino, o acompanhamento dos alunos e as actividades pedagógicas inerentes à função.",
+    };
+  }
+
+  // Fallback
+  return {
+    categoria: categoria?.trim() || "Pessoal de Apoio / Prestação de Serviços",
+    objecto:
+      "Prestação de serviços de apoio à actividade da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, conforme a função e as orientações da direcção da escola.",
+  };
 }
 
 function liquidoCalc(salario: number, diasUteis: number, diasTrab: number, outrosDesc: number) {
@@ -155,6 +264,9 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   const fim = f.dataFimContrato ? formatDate(f.dataFimContrato) : "—";
   const hoje = formatDate(todayIso());
   const vigilante = isVigilante(f.funcao || "");
+  const perfil = perfilContrato(f.funcao || "", f.categoria);
+  const categoriaContrato = perfil.categoria;
+  const objectoTexto = (f.objectoContrato || "").trim() || perfil.objecto;
   const horario =
     f.horario ||
     (vigilante ? HORARIO_VIGILANTE : HORARIO_PADRAO);
@@ -174,8 +286,8 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   .muted { color:#64748b; font-size:11px; }
   p { margin: 0 0 8px; text-align: justify; text-justify: inter-word; }
   .clause { margin-bottom: 12px; }
-  .sign { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:36px; }
-  .sign div { border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; }
+  .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:72px; padding-top:28px; }
+  .sign div { border-top:1px solid #94a3b8; padding-top:12px; text-align:center; font-size:11px; min-height:88px; }
 </style></head><body>
 <!-- Sem logotipo no contrato (documento formal de prestação de serviços). Em Angola é lícito o empregador usar papel timbrado/logo; nesta escola optámos por modelo só texto. -->
 <p class="muted" style="text-align:center;margin:0 0 4px">${escola.nome}<br/>${escola.subtitulo || "Missão diplomática · Luanda"} · Ano lectivo ${escola.ano || ""}</p>
@@ -189,7 +301,9 @@ Entidade de natureza diplomática — sem retenção de impostos do trabalho na 
 </div>
 
 <div class="clause"><h2>2. Objecto</h2>
-<p>${f.objectoContrato || "Prestação de serviços de apoio à actividade escolar."} Função: <strong>${f.funcao || "—"}</strong> (${f.categoria || "Pessoal"}).</p>
+<p>${objectoTexto}</p>
+<p><strong>Função:</strong> ${f.funcao || "—"}.</p>
+<p><strong>Categoria contratual:</strong> ${categoriaContrato}.</p>
 </div>
 
 <div class="clause"><h2>3. Local e duração</h2>
@@ -218,6 +332,8 @@ ${clausula4}
 </div>
 
 <p class="muted">Emitido em Luanda, aos ${hoje}. Documento gerado pelo Departamento de Finanças para assinatura das partes.</p>
+
+<p style="margin:0;height:48px;">&nbsp;</p>
 
 <div class="sign">
   <div>O Contratante<br/>${escola.nome}<br/><br/>_______________________</div>
