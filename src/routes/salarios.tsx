@@ -73,7 +73,7 @@ function emptyForm(): FormState {
     localPrestacao: "Luanda",
     objectoContrato:
       "Prestação de serviços de natureza educacional / apoio à École Consulaire du Congo (Brazzaville) de Luanda, durante o ano lectivo.",
-    horario: "07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)",
+    horario: HORARIO_PADRAO,
   };
 }
 
@@ -101,7 +101,7 @@ function formFromSalario(r: Salario): FormState {
     objectoContrato:
       r.objectoContrato ||
       "Prestação de serviços de natureza educacional / apoio à École Consulaire du Congo (Brazzaville) de Luanda, durante o ano lectivo.",
-    horario: r.horario || "07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)",
+    horario: r.horario || (isVigilante(r.funcao) ? HORARIO_VIGILANTE : HORARIO_PADRAO),
   };
 }
 
@@ -130,6 +130,17 @@ function toSalarioPatch(form: FormState): Partial<Salario> {
   };
 }
 
+const HORARIO_PADRAO =
+  "07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)";
+/** Regime de turnos 24h — vigilantes: 3 dias de serviço + 3 dias de folga, em alternância. */
+const HORARIO_VIGILANTE =
+  "regime de turnos de 24 horas: 3 dias consecutivos de serviço (24h/dia) e 3 dias de folga, em alternância com o colega de turno";
+
+function isVigilante(funcao: string): boolean {
+  const f = (funcao || "").toLowerCase().normalize("NFD").replace(/\u0300-\u036f/g, "");
+  return f.includes("vigilant");
+}
+
 function liquidoCalc(salario: number, diasUteis: number, diasTrab: number, outrosDesc: number) {
   const falta = Math.max(0, (diasUteis || 0) - (diasTrab || 0));
   const descDias = diasUteis > 0 ? (salario / diasUteis) * falta : 0;
@@ -143,18 +154,26 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   const inicio = f.dataInicioContrato ? formatDate(f.dataInicioContrato) : "—";
   const fim = f.dataFimContrato ? formatDate(f.dataFimContrato) : "—";
   const hoje = formatDate(todayIso());
-  const horario = f.horario || "07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)";
+  const vigilante = isVigilante(f.funcao || "");
+  const horario =
+    f.horario ||
+    (vigilante ? HORARIO_VIGILANTE : HORARIO_PADRAO);
+  const clausula4 = vigilante
+    ? `<p>O Prestador prestará serviços na qualidade de <strong>vigilante em regime de turnos</strong>.</p>
+<p>Na escala habitual, a cobertura de vigilância é assegurada em alternância: cada vigilante cumpre <strong>3 (três) dias consecutivos</strong> de turno de <strong>24 horas</strong> e beneficia de <strong>3 (três) dias de folga</strong>, entrando o colega de turno nos dias seguintes. A escala semanal (incluindo a distribuição entre segunda e sexta-feira e demais dias de funcionamento) é definida e afixada pela escola.</p>
+<p>O horário de referência do Prestador é: <strong>${horario}</strong>. Este regime de turnos de 24 horas adapta-se à natureza da vigilância contínua das instalações escolares e ao calendário de funcionamento da escola, no âmbito do contrato de <em>prestação de serviços</em>.</p>`
+    : `<p>O Prestador cumprirá o horário de <strong>${horario}</strong>. Este horário corresponde a cerca de 8 horas efectivas de trabalho por dia (após a pausa de almoço), alinhado com a prática usual e com os limites gerais da legislação laboral angolana para jornada diária, adaptado ao regime de <em>prestação de serviços</em> e ao calendário escolar (aulas a partir das 07h30).</p>`;
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Contrato — ${f.nome}</title>
 <style>
   @page { size: A4; margin: 16mm; }
-  body { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.45; color: #0f172a; }
+  body { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.5; color: #0f172a; text-align: justify; }
   h1 { font-size: 16px; text-align: center; margin: 8px 0 4px; }
-  h2 { font-size: 13px; margin: 14px 0 6px; }
+  h2 { font-size: 13px; margin: 16px 0 8px; text-align: center; font-weight: 700; }
   .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:12px; }
   .head img { width:64px; height:64px; object-fit:contain; }
   .muted { color:#64748b; font-size:11px; }
-  p { margin: 0 0 8px; text-align: justify; }
-  .clause { margin-bottom: 10px; }
+  p { margin: 0 0 8px; text-align: justify; text-justify: inter-word; }
+  .clause { margin-bottom: 12px; }
   .sign { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:36px; }
   .sign div { border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; }
 </style></head><body>
@@ -178,7 +197,7 @@ Entidade de natureza diplomática — sem retenção de impostos do trabalho na 
 </div>
 
 <div class="clause"><h2>4. Horário de prestação</h2>
-<p>O Prestador cumprirá o horário de <strong>${horario}</strong>. Este horário corresponde a cerca de 8 horas efectivas de trabalho por dia (após a pausa de almoço), alinhado com a prática usual e com os limites gerais da legislação laboral angolana para jornada diária, adaptado ao regime de <em>prestação de serviços</em> e ao calendário escolar (aulas a partir das 07h30).</p>
+${clausula4}
 </div>
 
 <div class="clause"><h2>5. Honorários</h2>
@@ -198,7 +217,7 @@ Entidade de natureza diplomática — sem retenção de impostos do trabalho na 
 <p>O contrato rege-se pela legislação angolana aplicável à prestação de serviços e pelas normas próprias da missão diplomática. Foro de Luanda.</p>
 </div>
 
-<p class="muted">Emitido em Luanda, aos ${hoje}. Documento gerado pela secretaria para assinatura das partes.</p>
+<p class="muted">Emitido em Luanda, aos ${hoje}. Documento gerado pelo Departamento de Finanças para assinatura das partes.</p>
 
 <div class="sign">
   <div>O Contratante<br/>${escola.nome}<br/><br/>_______________________</div>
@@ -258,7 +277,7 @@ function autorizacaoPagamentoHtml(
   <tbody>${rows}</tbody>
 </table>
 <p class="total">Total a autorizar: ${formatKz(total)}</p>
-<p>Luanda, ${hoje}. Documento gerado pela secretaria para assinatura dos sócios antes da execução do pagamento.</p>
+<p>Luanda, ${hoje}. Documento gerado pelo Departamento de Finanças para assinatura dos sócios antes da execução do pagamento.</p>
 <div class="sign">
   <div>${socios[0]}<br/>Sócio<br/><br/>_______________________</div>
   <div>${socios[1]}<br/>Sócio<br/><br/>_______________________</div>
@@ -293,7 +312,7 @@ ${r.iban ? `<p class="muted">IBAN: ${r.iban}</p>` : ""}
 <p class="muted">${escola.notaFiscal || ""}</p>
 <div class="sign2">
   <div>O prestador<br/><br/>_________________</div>
-  <div>A secretaria<br/><br/>_________________</div>
+  <div>Departamento de Finanças<br/><br/>_________________</div>
 </div>
 </div>`;
 }
@@ -335,7 +354,7 @@ function listaFuncionariosHtml(
   <thead><tr><th>Funcionário</th><th>Função</th><th class="num">Salário</th><th class="num">Dias trab.</th><th>Mês</th></tr></thead>
   <tbody>${body}</tbody>
 </table>
-<p class="muted">Documento gerado pela secretaria · apenas listagem (não é captura de ecrã).</p>
+<p class="muted">Documento gerado pelo Departamento de Finanças · apenas listagem (não é captura de ecrã).</p>
 </body></html>`;
 }
 
@@ -480,7 +499,25 @@ function SalarioFormFields({
       </div>
       <div className="space-y-1.5">
         <Label>Função</Label>
-        <Input value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value })} placeholder="Professor(a), auxiliar…" />
+        <Input
+          value={form.funcao}
+          onChange={(e) => {
+            const funcao = e.target.value;
+            const next = { ...form, funcao };
+            if (isVigilante(funcao)) {
+              next.horario = HORARIO_VIGILANTE;
+            } else if (form.horario === HORARIO_VIGILANTE || !form.horario.trim()) {
+              next.horario = HORARIO_PADRAO;
+            }
+            setForm(next);
+          }}
+          placeholder="Professor(a), auxiliar, vigilante…"
+        />
+        {isVigilante(form.funcao) ? (
+          <p className="text-[11px] text-[var(--color-forest)]">
+            Função vigilante: o contrato usa automaticamente o regime de turnos (3 dias 24h + 3 dias folga).
+          </p>
+        ) : null}
       </div>
       <div className="space-y-1.5">
         <Label>Categoria</Label>
@@ -545,7 +582,9 @@ function SalarioFormFields({
           placeholder="07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)"
         />
         <p className="text-[11px] text-[var(--color-muted)]">
-          Padrão: 07h00–17h00 com 1h de almoço (≈8h efectivas). Editável por prestador.
+          {isVigilante(form.funcao)
+            ? "Vigilante: turnos de 24h — 3 dias de serviço e 3 dias de folga, em alternância."
+            : "Padrão: 07h00–17h00 com 1h de almoço (≈8h efectivas). Editável por prestador."}
         </p>
       </div>
       <div className="space-y-1.5">
@@ -584,13 +623,15 @@ function Salarios() {
   const canEdit = isCollaborator1(active, operators);
   const salariosExtra = useFinance((s) => s.salariosExtra);
   const salariosOverrides = useFinance((s) => s.salariosOverrides);
+  const salariosDeletedIds = useFinance((s) => s.salariosDeletedIds || []);
+  const removeSalario = useFinance((s) => s.removeSalario);
   const addSalario = useFinance((s) => s.addSalario);
   const updateSalario = useFinance((s) => s.updateSalario);
   const recibosSalario = useFinance((s) => s.recibosSalario || []);
   const addRecibosSalario = useFinance((s) => s.addRecibosSalario);
   const setReciboSalarioPago = useFinance((s) => s.setReciboSalarioPago);
   const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
-  const rows = salariosAll(salariosExtra, salariosOverrides);
+  const rows = salariosAll(salariosExtra, salariosOverrides, salariosDeletedIds);
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [creating, setCreating] = useState(false);
@@ -911,6 +952,30 @@ function Salarios() {
                         <Button type="button" size="sm" variant="secondary" onClick={() => openEdit(r)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
+                        {canEdit ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            title="Apagar registo do funcionário"
+                            onClick={() => {
+                              if (
+                                !window.confirm(
+                                  `Apagar o registo de ${r.nome}? Esta acção não pode ser desfeita facilmente.`,
+                                )
+                              )
+                                return;
+                              try {
+                                removeSalario(r.id);
+                                toast.success(`Registo de ${r.nome} apagado`);
+                              } catch (e) {
+                                toast.error(e instanceof Error ? e.message : "Não foi possível apagar");
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
                         <Button type="button" size="sm" variant="secondary" onClick={() => criarContrato(r)} title="Criar contrato">
                           <FileText className="h-3.5 w-3.5" />
                           <span className="ml-1 hidden sm:inline">Contrato</span>

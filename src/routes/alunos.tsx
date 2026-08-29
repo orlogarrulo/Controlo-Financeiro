@@ -1148,7 +1148,7 @@ function Alunos() {
       <div style="flex:1;padding:16px 18px;background:#fff;">
         <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;"><span style="font-weight:700;color:#0b3d2c;">Description</span> <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Descrição</span></p>
         <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Fatura / liquidação</span> — ${mesRef}</p>
-        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Inclui valores já registados em Propinas" : "Itens seleccionados na secretaria"}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Inclui valores já registados em Propinas" : "Itens seleccionados pelo Departamento de Finanças"}</p>
         ${linhasHtml}
       </div>
       <div style="min-width:160px;background:#e6f4ec;color:#0b3d2c;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;border-left:1px solid #b7dfc8;">
@@ -1196,7 +1196,7 @@ function Alunos() {
         <p style="margin:10px 0 0;font-size:12px;line-height:1.7;color:#0f172a;">
           1. Transferência bancária<br/>
           2. Cartão Multicaixa<br/>
-          3. Dinheiro (secretaria)
+          3. Dinheiro (Departamento de Finanças)
         </p>
       </div>
     </div>

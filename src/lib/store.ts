@@ -81,6 +81,7 @@ type ExtraState = {
   sessionLog: { at: string; by: string; action: "entrada" | "saida"; detail: string }[];
   /** Funcionários / folhas de salário adicionados na app. */
   salariosExtra: Salario[];
+  salariosDeletedIds: string[];
   recibosSalario: ReciboSalario[];
   /** Sobrescritas de salários do seed (por id). */
   salariosOverrides: Record<string, Partial<Salario>>;
@@ -91,6 +92,7 @@ type Store = ExtraState & {
   addAluno: (aluno: Aluno) => void;
   updateAluno: (id: string, patch: Partial<Aluno>) => void;
   setMensalidade: (id: string, mes: string, valor: number) => void;
+  confirmPropinaBai: (id: string, mes: string) => { ok: boolean; message: string };
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
   updateExtra: (id: string, patch: Partial<Lancamento>) => void;
@@ -120,9 +122,72 @@ type Store = ExtraState & {
   }) => void;
   addSalario: (s: Salario) => void;
   updateSalario: (id: string, patch: Partial<Salario>) => void;
+  removeSalario: (id: string) => void;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
+
+
+/** Mês lectivo → mês civil 0-11 (ano lectivo set–jun). */
+const MES_LETIVO_IDX: Record<string, number> = {
+  set: 8, out: 9, nov: 10, dez: 11, jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
+};
+
+/**
+ * Prazo de pagamento da propina do mês lectivo:
+ * do dia 30 do mês de referência até ao dia 10 do mês seguinte.
+ * Ex.: propina de setembro → 30/09 a 10/10.
+ */
+export function limitePropina(mesLetivo: string, refYear?: number): { inicio: Date; fim: Date } {
+  const idx = MES_LETIVO_IDX[mesLetivo] ?? 8;
+  const now = new Date();
+  let y = refYear ?? now.getFullYear();
+  // Ajuste ano lectivo
+  if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
+  if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
+  // Dia 30 do mês de referência (meses com menos dias usam o último dia)
+  const lastDay = new Date(y, idx + 1, 0).getDate();
+  const diaInicio = Math.min(30, lastDay);
+  const inicio = new Date(y, idx, diaInicio);
+  const fim = new Date(y, idx + 1, 10); // dia 10 do mês seguinte
+  inicio.setHours(0, 0, 0, 0);
+  fim.setHours(23, 59, 59, 999);
+  return { inicio, fim };
+}
+
+export function propinaNoPrazo(mesLetivo: string, dataIso: string): boolean {
+  const d = new Date(dataIso + "T12:00:00");
+  const { inicio, fim } = limitePropina(mesLetivo);
+  return d >= inicio && d <= fim;
+}
+
+export type EstadoPropinaMes =
+  | "pago"
+  | "pago_multa"
+  | "em_prazo"
+  | "atraso"
+  | "futuro";
+
+/** Estado do mês: pago / pago c/ multa / em prazo / atraso / futuro. */
+export function estadoPropinaMes(
+  mesLetivo: string,
+  valorPago: number,
+  dataPagamento?: string,
+  hoje = new Date(),
+): EstadoPropinaMes {
+  const { inicio, fim } = limitePropina(mesLetivo);
+  const h = new Date(hoje);
+  h.setHours(12, 0, 0, 0);
+
+  if (valorPago > 0) {
+    const dataRef = dataPagamento || h.toISOString().slice(0, 10);
+    return propinaNoPrazo(mesLetivo, dataRef) ? "pago" : "pago_multa";
+  }
+  // Sem pagamento
+  if (h < inicio) return "futuro"; // ainda não abriu a janela (antes do dia 30)
+  if (h <= fim) return "em_prazo"; // dentro da janela, ainda pode pagar sem multa
+  return "atraso"; // passou o dia 10 → pendente com multa
+}
 
 export const useFinance = create<Store>()(
   persist(
@@ -141,6 +206,7 @@ export const useFinance = create<Store>()(
       auditLog: [],
       sessionLog: [],
       salariosExtra: [],
+      salariosDeletedIds: [],
       recibosSalario: [],
       salariosOverrides: {},
       setActiveOperator: (name) => set({ activeOperator: name }),
@@ -391,8 +457,6 @@ export const useFinance = create<Store>()(
         }
       },
       setMensalidade: (id, mes, valor) => {
-        const prevRow = get().mensalidades.find((m) => m.id === id);
-        const prevVal = prevRow ? Number(prevRow.pagamentos?.[mes] || 0) : 0;
         const nextVal = Number(valor) || 0;
         set({
           mensalidades: get().mensalidades.map((m) =>
@@ -400,33 +464,45 @@ export const useFinance = create<Store>()(
           ),
         });
         get().pushAudit("propina", `${id} · ${mes} · ${nextVal}`);
-        // Delta positivo = recebimento de propina na conta BAI
-        const delta = nextVal - prevVal;
-        if (delta !== 0) {
-          const nome = prevRow?.nome || id;
-          const movId = `APP-PROP-${id}-${mes}-${Date.now().toString(36).slice(-4)}`;
-          if (delta > 0) {
-            pushBaiMovimento(get, set, {
-              id: movId,
-              data: new Date().toISOString().slice(0, 10),
-              entrada: delta,
-              banco: "PROPINA-APP",
-              descricao: `Propina ${mes} · ${nome}`,
-              observacoes: `Aluno ${id}`,
-            });
-            get().pushAudit("bai_entrada_propina", `${id} · ${mes} · +${delta}`);
-          } else {
-            pushBaiMovimento(get, set, {
-              id: movId,
-              data: new Date().toISOString().slice(0, 10),
-              saida: Math.abs(delta),
-              banco: "PROPINA-APP",
-              descricao: `Ajuste propina ${mes} · ${nome}`,
-              observacoes: `Aluno ${id} · estorno/ajuste`,
-            });
-            get().pushAudit("bai_ajuste_propina", `${id} · ${mes} · ${delta}`);
-          }
-        }
+      },
+      /** Confirma o valor da propina no mês e regista entrada no Banco BAI (id estável por aluno+mês). */
+      confirmPropinaBai: (id, mes) => {
+        const row = get().mensalidades.find((m) => m.id === id);
+        if (!row) return { ok: false, message: "Aluno não encontrado em Propinas." };
+        const valor = Number(row.pagamentos?.[mes] || 0);
+        if (valor <= 0) return { ok: false, message: "Indique um valor pago maior que zero antes de salvar." };
+        const movId = `APP-PROP-${id}-${mes}`;
+        const hoje = new Date().toISOString().slice(0, 10);
+        // Remove movimento anterior do mesmo aluno/mês (re-sincronizar)
+        set({
+          movimentosBaiExtra: (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
+          mensalidades: get().mensalidades.map((m) =>
+            m.id === id
+              ? {
+                  ...m,
+                  pagamentosEm: { ...(m.pagamentosEm || {}), [mes]: hoje },
+                }
+              : m,
+          ),
+        });
+        const ok = pushBaiMovimento(get, set, {
+          id: movId,
+          data: hoje,
+          entrada: valor,
+          banco: "PROPINA-APP",
+          descricao: `Propina ${mes} · ${row.nome}`,
+          observacoes: `Aluno ${id} · confirmado Departamento de Finanças`,
+        });
+        if (!ok) return { ok: false, message: "Não foi possível registar no BAI." };
+        get().pushAudit("bai_entrada_propina", `${id} · ${mes} · ${valor}`);
+        // Classificar pontualidade
+        const pontual = propinaNoPrazo(mes, hoje);
+        return {
+          ok: true,
+          message: pontual
+            ? `Propina ${mes} · ${row.nome}: ${valor} Kz no BAI (dentro do prazo → Pago).`
+            : `Propina ${mes} · ${row.nome}: ${valor} Kz no BAI (fora do prazo → Pago c/ multa).`,
+        };
       },
       setFoto: (id, dataUrl) => set({ fotos: { ...get().fotos, [id]: dataUrl } }),
       updateExtra: (id, patch) => {
@@ -699,6 +775,25 @@ export const useFinance = create<Store>()(
         }
         get().pushAudit("editar_salario", `${id} · ${Object.keys(patch).join(", ")}`);
       },
+      removeSalario: (id) => {
+        const ops = get().operators;
+        const by = get().activeOperator || "—";
+        if (by !== ops[0]) {
+          throw new Error("Apenas o Colaborador 1 pode apagar registos de funcionários.");
+        }
+        const prevName =
+          get().salariosExtra.find((r) => r.id === id)?.nome ||
+          seed.salarios.find((r) => r.id === id)?.nome ||
+          id;
+        const deleted = Array.from(
+          new Set([...(get().salariosDeletedIds || []), id]),
+        );
+        set({
+          salariosExtra: get().salariosExtra.filter((r) => r.id !== id),
+          salariosDeletedIds: deleted,
+        });
+        get().pushAudit("apagar_salario", `${id} · ${prevName}`);
+      },
             nextFaturaNumero: (mesKey) => {
         const key = mesKey || new Date().toISOString().slice(0, 7);
         const existing = get().faturasPropina || [];
@@ -757,6 +852,7 @@ export const useFinance = create<Store>()(
         auditLog: s.auditLog,
         sessionLog: s.sessionLog,
         salariosExtra: s.salariosExtra,
+        salariosDeletedIds: s.salariosDeletedIds,
         recibosSalario: s.recibosSalario || [],
         salariosOverrides: s.salariosOverrides,
         faturasPropina: s.faturasPropina,
@@ -985,13 +1081,20 @@ export function alunosAll(
 export function salariosAll(
   extra: Salario[] = [],
   overrides: Record<string, Partial<Salario>> = {},
+  deletedIds: string[] = [],
 ): Salario[] {
-  const fromSeed = seed.salarios.map((s) => {
-    const o = overrides[s.id];
-    return o ? { ...s, ...o } : s;
-  });
+  const deleted = new Set(deletedIds);
+  const fromSeed = seed.salarios
+    .filter((s) => !deleted.has(s.id))
+    .map((s) => {
+      const o = overrides[s.id];
+      return o ? { ...s, ...o } : s;
+    });
   const extraIds = new Set(extra.map((s) => s.id));
-  return [...fromSeed.filter((s) => !extraIds.has(s.id)), ...extra];
+  return [
+    ...fromSeed.filter((s) => !extraIds.has(s.id)),
+    ...extra.filter((s) => !deleted.has(s.id)),
+  ];
 }
 
 

@@ -138,7 +138,7 @@ function Lancamentos() {
               filename="lancamentos.pdf"
               landscape
               shareTitle="Lançamentos · École Consulaire"
-              shareText="Documento gerado pela secretaria da École Consulaire."
+              shareText="Documento gerado pelo Departamento de Finanças da École Consulaire."
             />
             <Button
               variant="secondary"

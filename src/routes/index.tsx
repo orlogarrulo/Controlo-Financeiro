@@ -89,7 +89,7 @@ function Dashboard() {
               targetRef={printRef}
               filename="quadro-financeiro.pdf"
               shareTitle="Quadro financeiro · École Consulaire"
-              shareText="Resumo financeiro gerado pela secretaria."
+              shareText="Resumo financeiro gerado pelo Departamento de Finanças."
             />
           }
         />

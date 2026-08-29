@@ -152,7 +152,7 @@ function Banco() {
               filename="extrato-bai.pdf"
               landscape
               shareTitle="Extrato BAI · École Consulaire"
-              shareText="Documento gerado pela secretaria da École Consulaire."
+              shareText="Documento gerado pelo Departamento de Finanças da École Consulaire."
               printLabel="Imprimir extrato"
             />
           </div>

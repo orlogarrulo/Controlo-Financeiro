@@ -204,7 +204,7 @@ function Recibos() {
             targetRef={printRef}
             filename={pdfName}
             shareTitle="Recibo · École Consulaire"
-            shareText="Recibo gerado pela secretaria da École Consulaire du Congo de Luanda."
+            shareText="Recibo gerado pelo Departamento de Finanças da École Consulaire du Congo de Luanda."
           />
         }
       />
@@ -387,7 +387,7 @@ function ReciboInscricao({
       <p className="mt-2 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
       <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
         <div data-assinatura-escola="1">
-          <p>A secretaria</p>
+          <p>Departamento de Finanças</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
         <div>
@@ -433,7 +433,7 @@ function ReciboManeio({
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
         <div data-assinatura-escola="1">
-          <p>A secretaria</p>
+          <p>Departamento de Finanças</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
         </div>
       </div>

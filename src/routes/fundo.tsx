@@ -107,7 +107,7 @@ function Fundo() {
               filename="fundo-maneio.pdf"
             landscape
               shareTitle="Fundo de maneio · École Consulaire"
-              shareText="Documento gerado pela secretaria da École Consulaire."
+              shareText="Documento gerado pelo Departamento de Finanças da École Consulaire."
             />
           </div>
         }

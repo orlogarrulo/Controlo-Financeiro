@@ -379,12 +379,12 @@ function prepareClone(source: HTMLElement): HTMLElement {
   return clone;
 }
 
-/** Carimbo «A secretaria» em CADA recibo (e no fim do documento se não houver recibos). */
+/** Carimbo «Departamento de Finanças» em CADA recibo (e no fim do documento se não houver recibos). */
 function injectStamps(root: HTMLElement, when: string): void {
   const makeStamp = () => {
     const stamp = document.createElement("div");
     stamp.setAttribute("data-pdf-stamp", "1");
-    stamp.innerHTML = `<strong>A secretaria</strong> · Documento gerado em ${when}`;
+    stamp.innerHTML = `<strong>Departamento de Finanças</strong> · Documento gerado em ${when}`;
     return stamp;
   };
 
