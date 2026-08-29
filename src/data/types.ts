@@ -184,6 +184,8 @@ export type Salario = {
   localPrestacao?: string;
   /** Objecto resumido do contrato */
   objectoContrato?: string;
+  /** Horário de prestação (ex.: 07h00–17h00, 1h almoço) */
+  horario?: string;
   /** Se já existe contrato gerado/registado */
   temContrato?: boolean;
 };

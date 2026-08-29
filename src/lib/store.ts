@@ -320,6 +320,23 @@ export const useFinance = create<Store>()(
         const row = { ...aluno, criadoPor: by, createdAt: new Date().toISOString() };
         set({ alunosExtra: [...get().alunosExtra, row] });
         get().pushAudit("criar_aluno", `${row.id} · ${row.nome}`);
+        // Pagamento de matrícula por cartão/transferência → entrada no Banco BAI
+        const met = (row.metodoPagamento || "").toLowerCase();
+        const viaBai =
+          /cart[aã]o|multicaixa|transfer|bai|tpa/i.test(met) ||
+          met.includes("banco");
+        const valor = Number(row.liquido) || 0;
+        if (viaBai && valor > 0) {
+          const ok = pushBaiMovimento(get, set, {
+            id: `APP-MAT-${row.id}`,
+            data: row.dataPag || new Date().toISOString().slice(0, 10),
+            entrada: valor,
+            banco: /transfer/i.test(met) ? "TRANSF-APP" : "CARTAO-APP",
+            descricao: `Matrícula ${row.nome} (${row.id})`,
+            observacoes: `Método: ${row.metodoPagamento || "—"} · recibo ${row.recibo || ""}`,
+          });
+          if (ok) get().pushAudit("bai_entrada_matricula", `${row.id} · +${valor}`);
+        }
       },
       updateAluno: (id, patch) => {
         const ops = get().operators;
@@ -364,12 +381,42 @@ export const useFinance = create<Store>()(
         }
       },
       setMensalidade: (id, mes, valor) => {
+        const prevRow = get().mensalidades.find((m) => m.id === id);
+        const prevVal = prevRow ? Number(prevRow.pagamentos?.[mes] || 0) : 0;
+        const nextVal = Number(valor) || 0;
         set({
           mensalidades: get().mensalidades.map((m) =>
-            m.id === id ? { ...m, pagamentos: { ...m.pagamentos, [mes]: valor } } : m,
+            m.id === id ? { ...m, pagamentos: { ...m.pagamentos, [mes]: nextVal } } : m,
           ),
         });
-        get().pushAudit("propina", `${id} · ${mes} · ${valor}`);
+        get().pushAudit("propina", `${id} · ${mes} · ${nextVal}`);
+        // Delta positivo = recebimento de propina na conta BAI
+        const delta = nextVal - prevVal;
+        if (delta !== 0) {
+          const nome = prevRow?.nome || id;
+          const movId = `APP-PROP-${id}-${mes}-${Date.now().toString(36).slice(-4)}`;
+          if (delta > 0) {
+            pushBaiMovimento(get, set, {
+              id: movId,
+              data: new Date().toISOString().slice(0, 10),
+              entrada: delta,
+              banco: "PROPINA-APP",
+              descricao: `Propina ${mes} · ${nome}`,
+              observacoes: `Aluno ${id}`,
+            });
+            get().pushAudit("bai_entrada_propina", `${id} · ${mes} · +${delta}`);
+          } else {
+            pushBaiMovimento(get, set, {
+              id: movId,
+              data: new Date().toISOString().slice(0, 10),
+              saida: Math.abs(delta),
+              banco: "PROPINA-APP",
+              descricao: `Ajuste propina ${mes} · ${nome}`,
+              observacoes: `Aluno ${id} · estorno/ajuste`,
+            });
+            get().pushAudit("bai_ajuste_propina", `${id} · ${mes} · ${delta}`);
+          }
+        }
       },
       setFoto: (id, dataUrl) => set({ fotos: { ...get().fotos, [id]: dataUrl } }),
       updateExtra: (id, patch) => {
@@ -869,6 +916,46 @@ export function salariosAll(
   });
   const extraIds = new Set(extra.map((s) => s.id));
   return [...fromSeed.filter((s) => !extraIds.has(s.id)), ...extra];
+}
+
+
+/** Acrescenta movimento à conta BAI (entrada ou saída) e actualiza saldo. */
+function pushBaiMovimento(
+  get: () => {
+    movimentosBaiExtra: MovimentoBai[];
+    baiOverride: boolean;
+  },
+  set: (p: { movimentosBaiExtra: MovimentoBai[] }) => void,
+  opts: {
+    id: string;
+    data: string;
+    entrada?: number;
+    saida?: number;
+    banco?: string;
+    descricao: string;
+    observacoes?: string;
+  },
+) {
+  const extra = get().movimentosBaiExtra || [];
+  if (extra.some((m) => m.id === opts.id)) return false;
+  const movs = movimentosAll(extra, get().baiOverride);
+  const last = movs[movs.length - 1];
+  const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
+  const entrada = Number(opts.entrada) || 0;
+  const saida = Number(opts.saida) || 0;
+  const mov: MovimentoBai = {
+    id: opts.id,
+    linha: (last?.linha ?? 0) + 1,
+    data: opts.data,
+    banco: opts.banco || "APP",
+    descricao: opts.descricao,
+    entrada,
+    saida,
+    saldo: prevSaldo + entrada - saida,
+    observacoes: opts.observacoes || "",
+  };
+  set({ movimentosBaiExtra: [...extra, mov] });
+  return true;
 }
 
 export function movimentosAll(extra: MovimentoBai[] = [], override = false): MovimentoBai[] {

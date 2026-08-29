@@ -40,6 +40,7 @@ type FormState = {
   iban: string;
   localPrestacao: string;
   objectoContrato: string;
+  horario: string;
 };
 
 function addMonthsIso(iso: string, months: number): string {
@@ -72,6 +73,7 @@ function emptyForm(): FormState {
     localPrestacao: "Luanda",
     objectoContrato:
       "Prestação de serviços de natureza educacional / apoio à École Consulaire du Congo (Brazzaville) de Luanda, durante o ano lectivo.",
+    horario: "07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)",
   };
 }
 
@@ -99,6 +101,7 @@ function formFromSalario(r: Salario): FormState {
     objectoContrato:
       r.objectoContrato ||
       "Prestação de serviços de natureza educacional / apoio à École Consulaire du Congo (Brazzaville) de Luanda, durante o ano lectivo.",
+    horario: r.horario || "07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)",
   };
 }
 
@@ -123,6 +126,7 @@ function toSalarioPatch(form: FormState): Partial<Salario> {
     iban: form.iban.trim(),
     localPrestacao: form.localPrestacao.trim(),
     objectoContrato: form.objectoContrato.trim(),
+    horario: form.horario.trim(),
   };
 }
 
@@ -136,10 +140,10 @@ function liquidoCalc(salario: number, diasUteis: number, diasTrab: number, outro
 }
 
 function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }, f: Salario) {
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   const inicio = f.dataInicioContrato ? formatDate(f.dataInicioContrato) : "—";
   const fim = f.dataFimContrato ? formatDate(f.dataFimContrato) : "—";
   const hoje = formatDate(todayIso());
+  const horario = f.horario || "07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)";
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Contrato — ${f.nome}</title>
 <style>
   @page { size: A4; margin: 16mm; }
@@ -154,14 +158,8 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   .sign { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:36px; }
   .sign div { border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; }
 </style></head><body>
-<div class="head">
-  <img src="${logo}" alt="Logo"/>
-  <div>
-    <strong>${escola.nome}</strong><br/>
-    <span class="muted">${escola.subtitulo || "Missão diplomática · Luanda"}</span><br/>
-    <span class="muted">Ano lectivo ${escola.ano || ""}</span>
-  </div>
-</div>
+<!-- Sem logotipo no contrato (documento formal de prestação de serviços). Em Angola é lícito o empregador usar papel timbrado/logo; nesta escola optámos por modelo só texto. -->
+<p class="muted" style="text-align:center;margin:0 0 4px">${escola.nome}<br/>${escola.subtitulo || "Missão diplomática · Luanda"} · Ano lectivo ${escola.ano || ""}</p>
 <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
 <p class="muted" style="text-align:center">Regime de prestação de serviços · Duração do ano lectivo (9 meses)<br/>
 Entidade de natureza diplomática — sem retenção de impostos do trabalho na presente relação contratual, nos termos aplicáveis às missões diplomáticas em Angola.</p>
@@ -179,20 +177,24 @@ Entidade de natureza diplomática — sem retenção de impostos do trabalho na 
 <p>Local de prestação: <strong>${f.localPrestacao || "Luanda"}</strong>. O presente contrato tem a duração do ano lectivo, estimada em <strong>9 (nove) meses</strong>, com início em <strong>${inicio}</strong> e termo previsto em <strong>${fim}</strong>, podendo cessar por acordo ou por incumprimento.</p>
 </div>
 
-<div class="clause"><h2>4. Honorários</h2>
+<div class="clause"><h2>4. Horário de prestação</h2>
+<p>O Prestador cumprirá o horário de <strong>${horario}</strong>. Este horário corresponde a cerca de 8 horas efectivas de trabalho por dia (após a pausa de almoço), alinhado com a prática usual e com os limites gerais da legislação laboral angolana para jornada diária, adaptado ao regime de <em>prestação de serviços</em> e ao calendário escolar (aulas a partir das 07h30).</p>
+</div>
+
+<div class="clause"><h2>5. Honorários</h2>
 <p>Pelos serviços prestados, o Contratante pagará ao Prestador o valor mensal de <strong>${formatKz(f.salario)}</strong> (honorários brutos mensais de referência), proporcional aos dias efectivamente prestados no mês, quando aplicável. O pagamento será efectuado até ao dia 30 de cada mês (ou no dia útil imediato), preferencialmente por transferência para o IBAN indicado.</p>
 <p>Por se tratar de entidade de natureza diplomática, não há lugar, nesta relação, a descontos de segurança social ou retenção na fonte a cargo da escola, salvo orientação diversa das autoridades competentes.</p>
 </div>
 
-<div class="clause"><h2>5. Obrigações</h2>
+<div class="clause"><h2>6. Obrigações</h2>
 <p>O Prestador obriga-se a cumprir horários e tarefas acordadas, guardar confidencialidade e zelar pelo património escolar. O Contratante obriga-se a pagar pontualmente os honorários e a disponibilizar condições mínimas de trabalho.</p>
 </div>
 
-<div class="clause"><h2>6. Cessação</h2>
+<div class="clause"><h2>7. Cessação</h2>
 <p>Qualquer das partes pode denunciar o contrato com pré-aviso de 15 dias, por escrito, salvo justa causa.</p>
 </div>
 
-<div class="clause"><h2>7. Lei e foro</h2>
+<div class="clause"><h2>8. Lei e foro</h2>
 <p>O contrato rege-se pela legislação angolana aplicável à prestação de serviços e pelas normas próprias da missão diplomática. Foro de Luanda.</p>
 </div>
 
@@ -531,6 +533,17 @@ function SalarioFormFields({
         <Label>Objecto do contrato</Label>
         <Input value={form.objectoContrato} onChange={(e) => setForm({ ...form, objectoContrato: e.target.value })} />
       </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label>Horário de prestação</Label>
+        <Input
+          value={form.horario}
+          onChange={(e) => setForm({ ...form, horario: e.target.value })}
+          placeholder="07h00 às 17h00, com 1 hora de almoço (aulas a partir das 07h30)"
+        />
+        <p className="text-[11px] text-[var(--color-muted)]">
+          Padrão: 07h00–17h00 com 1h de almoço (≈8h efectivas). Editável por prestador.
+        </p>
+      </div>
       <div className="space-y-1.5">
         <Label>Dias úteis (ref.)</Label>
         <Input value={form.diasUteis} onChange={(e) => setForm({ ...form, diasUteis: e.target.value })} />
@@ -654,6 +667,7 @@ function Salarios() {
       iban: patch.iban,
       localPrestacao: patch.localPrestacao,
       objectoContrato: patch.objectoContrato,
+      horario: patch.horario,
       temContrato: withContract,
     };
     addSalario(row);
@@ -1148,12 +1162,35 @@ function Salarios() {
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-auto rounded border border-[var(--color-line)] bg-white">
             {previewHtml ? (
-              <iframe title={previewHtml.title} srcDoc={previewHtml.html} className="h-[60vh] w-full bg-white" />
+              <iframe
+                key={previewHtml.title}
+                title={previewHtml.title}
+                srcDoc={previewHtml.html}
+                sandbox="allow-same-origin allow-modals allow-popups"
+                className="h-[60vh] w-full bg-white"
+              />
             ) : null}
           </div>
           <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
             <Button type="button" variant="secondary" onClick={() => setPreviewHtml(null)}>
               Fechar
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (!previewHtml) return;
+                const w = window.open("", "_blank", "noopener,noreferrer");
+                if (w) {
+                  w.document.open();
+                  w.document.write(previewHtml.html);
+                  w.document.close();
+                } else {
+                  toast.error("Permita pop-ups para abrir o documento.");
+                }
+              }}
+            >
+              Abrir em nova janela
             </Button>
             <Button
               type="button"
