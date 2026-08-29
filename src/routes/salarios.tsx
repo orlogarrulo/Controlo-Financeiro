@@ -514,8 +514,9 @@ function autorizacaoPagamentoHtml(
   const total = recibos.reduce((s, r) => s + (r.liquido || 0), 0);
   const rows = recibos
     .map(
-      (r) =>
+      (r, i) =>
         `<tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;width:2.2em;text-align:right;color:#64748b;font-variant-numeric:tabular-nums;">${i + 1}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.nome}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.funcao || "—"}</td>
           <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;font-variant-numeric:tabular-nums;">${formatKz(r.liquido)}</td>
@@ -549,7 +550,7 @@ function autorizacaoPagamentoHtml(
 <h1>AUTORIZAÇÃO / SOLICITAÇÃO DE PAGAMENTO DE HONORÁRIOS</h1>
 <p>A Administração <strong>autoriza</strong> o pagamento dos honorários referentes a <strong>${mes}</strong>, conforme a lista seguinte, por transferência ou cartão a partir da conta BAI da ${escola.nomeCurto || "escola"}.</p>
 <table>
-  <thead><tr><th>Prestador</th><th>Função</th><th style="text-align:right">Valor líquido</th><th>IBAN</th></tr></thead>
+  <thead><tr><th style="width:2.2em">N.º</th><th>Prestador</th><th>Função</th><th style="text-align:right">Valor líquido</th><th>IBAN</th></tr></thead>
   <tbody>${rows}</tbody>
 </table>
 <p class="total">Total a autorizar: ${formatKz(total)}</p>

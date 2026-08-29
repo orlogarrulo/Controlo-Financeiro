@@ -1,23 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  BookOpen,
-  Camera,
-  Landmark,
-  LayoutDashboard,
-  Menu,
-  Receipt,
-  Users,
-  Wallet,
-  FileSpreadsheet,
-  Banknote,
-  Cloud,
-  X,
-  UserRound,
-  ListChecks,
-  LogOut,
-} from "lucide-react";
-import { useState } from "react";
+import { BookOpen, Camera, Landmark, LayoutDashboard, Menu, Receipt, Users, Wallet, FileSpreadsheet, Banknote, Cloud, X, UserRound, ListChecks, LogOut, Moon, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getSeed, useFinance } from "@/lib/store";
 import {
@@ -52,6 +36,19 @@ const BOTTOM = [
 export function AppShell({ children }: { children: ReactNode }) {
   const escola = getSeed().escola;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof document === "undefined") return "light";
+    const saved = localStorage.getItem("cf-theme");
+    if (saved === "dark" || saved === "light") return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("cf-theme", theme);
+  }, [theme]);
+  function toggleTheme() {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  }
   const [open, setOpen] = useState(false);
   const [editOps, setEditOps] = useState(false);
   const activeOperator = useFinance((s) => s.activeOperator);
@@ -76,6 +73,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               <NavLink key={to} to={to} label={label} icon={icon} active={pathname === to} />
             ))}
           </nav>
+          <div className="px-3 pb-2">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex h-10 w-full items-center gap-2 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-ink)] hover:bg-[var(--color-forest-soft)]"
+              aria-label={theme === "dark" ? "Activar modo claro" : "Activar modo escuro"}
+            >
+              {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              {theme === "dark" ? "Modo claro" : "Modo escuro"}
+            </button>
+          </div>
           <OperatorPanel
             operators={operators}
             activeOperator={activeOperator}
@@ -107,6 +115,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </p>
                 <p className="truncate font-display text-base leading-tight">{currentLabel}</p>
               </div>
+              <button
+                type="button"
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl text-[var(--color-ink)] active:bg-[var(--color-forest-soft)]"
+                onClick={toggleTheme}
+                aria-label={theme === "dark" ? "Activar modo claro" : "Activar modo escuro"}
+                title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+              >
+                {theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}
+              </button>
               <span className="max-w-[5.5rem] truncate rounded-full bg-[var(--color-forest-soft)] px-2.5 py-1 text-[10px] font-medium text-[var(--color-forest-deep)]">
                 {activeOperator.replace(/^Colaborador\s*/i, "C")}
               </span>
