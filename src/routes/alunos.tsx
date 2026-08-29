@@ -794,6 +794,8 @@ function Alunos() {
     pagoMes: number;
     contacto: EscolaContacto;
     html: string;
+    linhas: { key: string; label: string; value: number; on: boolean }[];
+    mesesProp: number;
   } | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -1021,6 +1023,34 @@ function Alunos() {
     return { valor, pagoMes, propinaRef };
   }
 
+
+  type LinhaFat = { key: string; label: string; value: number; on: boolean };
+
+  function linhasMatriculaBase(a: Aluno, mesesProp = 1): LinhaFat[] {
+    const propinaMes = Number(a.propina) || 0;
+    const meses = Math.min(9, Math.max(0, mesesProp));
+    return [
+      { key: "inscricao", label: "Inscrição", value: Number(a.inscricao) || 0, on: (Number(a.inscricao) || 0) > 0 },
+      { key: "seguro", label: "Seguro escolar", value: Number(a.seguro) || 0, on: (Number(a.seguro) || 0) > 0 },
+      { key: "manuais", label: "Manuais", value: Number(a.manuais) || 0, on: (Number(a.manuais) || 0) > 0 },
+      { key: "uniforme", label: "Uniforme", value: Number(a.uniforme) || 0, on: (Number(a.uniforme) || 0) > 0 },
+      { key: "atl", label: "ATL", value: Number(a.extras) || 0, on: (Number(a.extras) || 0) > 0 },
+      { key: "transporte", label: "Transporte", value: Number(a.transporte) || 0, on: (Number(a.transporte) || 0) > 0 },
+      { key: "alimentacao", label: "Alimentação", value: Number(a.alimentacao) || 0, on: (Number(a.alimentacao) || 0) > 0 },
+      { key: "curso", label: "Curso intensivo", value: Number(a.curso) || 0, on: (Number(a.curso) || 0) > 0 },
+      {
+        key: "propinas",
+        label: meses > 1 ? `Propinas (${meses} meses)` : "Propina (1 mês)",
+        value: propinaMes * (meses || 0),
+        on: propinaMes > 0 && meses > 0,
+      },
+    ];
+  }
+
+  function totalLinhas(linhas: LinhaFat[]) {
+    return linhas.filter((l) => l.on && l.value > 0).reduce((s, l) => s + l.value, 0);
+  }
+
   function buildInvoiceHtml(opts: {
     a: Aluno;
     numero: string;
@@ -1029,8 +1059,26 @@ function Alunos() {
     mesLetivo: string;
     pagoMes: number;
     contacto: EscolaContacto;
+    linhas?: LinhaFat[];
   }): string {
-    const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto } = opts;
+    const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto, linhas } = opts;
+    const linhasAtivas = (linhas || []).filter((l) => l.on && l.value > 0);
+    const linhasHtml = linhasAtivas.length
+      ? `<table style="width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:12px;">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 0;border-bottom:2px solid #cbd5e1;color:#64748b;font-size:10px;text-transform:uppercase;">Rubrica</th>
+            <th style="text-align:right;padding:6px 0;border-bottom:2px solid #cbd5e1;color:#64748b;font-size:10px;text-transform:uppercase;">Valor</th>
+          </tr></thead>
+          <tbody>
+            ${linhasAtivas
+              .map(
+                (l) =>
+                  `<tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${l.label}</td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;text-align:right;font-variant-numeric:tabular-nums;">${formatKz(l.value)}</td></tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>`
+      : "";
     const { morada, telefones, email: emailEscola, iban } = contacto;
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     const email = (a.email || "").trim();
@@ -1099,8 +1147,9 @@ function Alunos() {
     <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
       <div style="flex:1;padding:16px 18px;background:#fff;">
         <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;"><span style="font-weight:700;color:#0b3d2c;">Description</span> <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Descrição</span></p>
-        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Propina mensal</span> — ${mesRef}</p>
-        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Valor registado em Propinas" : "Valor de referência a cobrar"}</p>
+        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Fatura / liquidação</span> — ${mesRef}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Inclui valores já registados em Propinas" : "Itens seleccionados na secretaria"}</p>
+        ${linhasHtml}
       </div>
       <div style="min-width:160px;background:#e6f4ec;color:#0b3d2c;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;border-left:1px solid #b7dfc8;">
         <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#009543;font-weight:700;">Total</p>
@@ -1180,43 +1229,102 @@ function Alunos() {
   function abrirFatura(a: Aluno) {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
-    if (valor <= 0) {
-      toast.error(
-        "Sem valor de propina. Em Matrículas edite o aluno e indique a propina mensal, ou registe o pagamento em Propinas.",
-      );
-      return;
-    }
     if (typeof nextFaturaNumero !== "function") {
       toast.error("Actualize a página (numeração indisponível).");
       return;
     }
-    // Numeração sempre sequencial (PROP-AAAA-MM-NNN)
     const numero =
       typeof nextFaturaNumero === "function"
         ? nextFaturaNumero(mesKey)
         : `PROP-${mesKey}-001`;
     const contacto = loadContacto();
-    // Valor: prioridade pagamento Propinas → propina aluno → tarifário por ciclo
-    let valorFinal = valor;
-    if (valorFinal <= 0) valorFinal = propinaPorCiclo(a);
+    const mesesProp = a.mesesPropina && a.mesesPropina > 0 ? a.mesesPropina : 1;
+    let linhas = linhasMatriculaBase(a, mesesProp);
+    // Se só houver propina mensal em Propinas e sem itens de matrícula, marcar propina com valor do mês
+    const propLine = linhas.find((l) => l.key === "propinas");
+    if (propLine && pagoMes > 0) {
+      propLine.value = pagoMes;
+      propLine.on = true;
+      propLine.label = "Propina (mês corrente)";
+    }
+    const valorFinal = totalLinhas(linhas) || valor || propinaPorCiclo(a);
+    if (valorFinal <= 0) {
+      // ainda assim abrir com propina de referência
+      linhas = linhasMatriculaBase(a, 1).map((l) =>
+        l.key === "propinas"
+          ? { ...l, value: propinaPorCiclo(a), on: propinaPorCiclo(a) > 0 }
+          : { ...l, on: false },
+      );
+    }
+    const total = totalLinhas(linhas) || propinaPorCiclo(a);
     const html = buildInvoiceHtml({
       a,
       numero,
-      valor: valorFinal,
+      valor: total,
       mesRef,
       mesLetivo,
       pagoMes,
       contacto,
+      linhas,
     });
     setInvoicePreview({
       aluno: a,
       numero,
-      valor: valorFinal,
+      valor: total,
       mesRef,
       mesKey,
       mesLetivo,
       pagoMes,
       contacto,
+      html,
+      linhas,
+      mesesProp,
+    });
+  }
+
+  function refrescarFatura(patch: {
+    linhas?: LinhaFat[];
+    mesesProp?: number;
+    mesLetivo?: string;
+    mesRef?: string;
+  }) {
+    if (!invoicePreview) return;
+    const a = invoicePreview.aluno;
+    let mesesProp = patch.mesesProp ?? invoicePreview.mesesProp;
+    let linhas = patch.linhas ?? invoicePreview.linhas;
+    if (patch.mesesProp != null) {
+      const propinaMes = Number(a.propina) || propinaPorCiclo(a);
+      linhas = linhas.map((l) =>
+        l.key === "propinas"
+          ? {
+              ...l,
+              label: mesesProp > 1 ? `Propinas (${mesesProp} meses)` : "Propina (1 mês)",
+              value: propinaMes * mesesProp,
+              on: propinaMes > 0 && mesesProp > 0 ? l.on || true : false,
+            }
+          : l,
+      );
+    }
+    const total = totalLinhas(linhas);
+    const mesLetivo = patch.mesLetivo ?? invoicePreview.mesLetivo;
+    const mesRef = patch.mesRef ?? invoicePreview.mesRef;
+    const html = buildInvoiceHtml({
+      a,
+      numero: invoicePreview.numero,
+      valor: total,
+      mesRef,
+      mesLetivo,
+      pagoMes: invoicePreview.pagoMes,
+      contacto: invoicePreview.contacto,
+      linhas,
+    });
+    setInvoicePreview({
+      ...invoicePreview,
+      linhas,
+      mesesProp,
+      valor: total,
+      mesLetivo,
+      mesRef,
       html,
     });
   }
@@ -1779,6 +1887,49 @@ function Alunos() {
                         ? " · pago"
                         : " · a cobrar"}
                   </span>
+                </div>
+                <div className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                    Itens da fatura (marque o que incluir)
+                  </p>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-[var(--color-muted)]">Meses de propina</label>
+                    <select
+                      className="h-9 rounded border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-sm"
+                      value={String(invoicePreview.mesesProp)}
+                      onChange={(e) => refrescarFatura({ mesesProp: Number(e.target.value) || 0 })}
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                        <option key={n} value={n}>
+                          {n === 0 ? "0 (sem propina)" : `${n} mês${n > 1 ? "es" : ""}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {invoicePreview.linhas.map((l) => (
+                      <li key={l.key} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={l.on}
+                          disabled={l.value <= 0 && l.key !== "propinas"}
+                          onChange={(e) => {
+                            const linhas = invoicePreview.linhas.map((x) =>
+                              x.key === l.key ? { ...x, on: e.target.checked } : x,
+                            );
+                            refrescarFatura({ linhas });
+                          }}
+                        />
+                        <span className="min-w-0 flex-1">{l.label}</span>
+                        <span className="tabular-nums text-[var(--color-muted)]">
+                          {l.value > 0 ? formatKz(l.value) : "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-sm font-semibold text-[var(--color-forest)]">
+                    Total fatura: {formatKz(invoicePreview.valor)}
+                  </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="space-y-1 sm:col-span-2">
