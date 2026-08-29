@@ -342,15 +342,14 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   });
   // Ex.: "Luanda, aos 29 de AGOSTO DE 2026"
   const MESES_EXT = [
-    "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
-    "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
   ];
   const agora = new Date();
   const dia = agora.getDate();
   const mesExt = MESES_EXT[agora.getMonth()];
   const ano = agora.getFullYear();
-  const localData =
-    `Luanda, aos ${dia} de ${mesExt} DE ${ano}`;
+  const localData = `Luanda, aos ${dia} de ${mesExt} de ${ano}`;
   const vigilante = isVigilante(f.funcao || "");
   const perfil = perfilContrato(f.funcao || "", f.categoria);
   const categoriaContrato = perfil.categoria;
@@ -376,9 +375,9 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   p { margin: 0 0 8px; text-align: justify; text-justify: inter-word; }
   .clause { margin-bottom: 12px; }
   .local-data {
-    text-align: center;
+    text-align: left;
     font-size: 12px;
-    margin: 36px 0;
+    margin: 28px 0 56px 0;
     padding: 0;
   }
   .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:0; padding-top:0; }
@@ -586,21 +585,54 @@ function pacoteRecibosComAutorizacaoHtml(
 <style>
   @page { size: A4; margin: 14mm; }
   body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
-  .break { page-break-after: always; }
-  .sheet { page-break-after: always; }
+  .break { page-break-after: always; height: 0; }
+  .sheet {
+    page-break-after: always;
+    page-break-inside: avoid;
+    padding: 8mm 2mm 14mm;
+    min-height: 240mm;
+    box-sizing: border-box;
+  }
   .sheet:last-child { page-break-after: auto; }
-  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:12px; }
-  .head img { width:56px; height:56px; object-fit:contain; }
-  .kicker { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#009543; font-weight:700; }
-  .row { display:flex; justify-content:space-between; margin:8px 0; }
+  .head {
+    display:flex;
+    gap:14px;
+    align-items:center;
+    border-bottom:2px solid #009543;
+    padding-bottom:16px;
+    margin-bottom:28px;
+  }
+  .head img { width:64px; height:64px; object-fit:contain; }
+  .kicker {
+    font-size:10px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:#009543;
+    font-weight:700;
+    margin: 0 0 16px;
+  }
+  .row { display:flex; justify-content:space-between; margin:14px 0 20px; }
   .muted { color:#64748b; font-size:11px; }
-  table.vals { width:100%; margin:12px 0; border-collapse:collapse; }
-  table.vals td { padding:6px 0; border-top:1px solid #e2e8f0; }
+  table.vals { width:100%; margin:20px 0 28px; border-collapse:collapse; }
+  table.vals td { padding:10px 0; border-top:1px solid #e2e8f0; }
   table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
   table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
-  .sign2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; font-size:11px; }
-  .sign { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:40px; }
-  .sign div { border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; min-height:72px; }
+  .sign2 {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:40px;
+    margin-top:56px;
+    padding-top:12px;
+    font-size:11px;
+  }
+  .sign2 div {
+    border-top:1px solid #94a3b8;
+    padding-top:14px;
+    min-height:96px;
+    text-align:center;
+  }
+  .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:48px; }
+  .sign div { border-top:1px solid #94a3b8; padding-top:12px; text-align:center; font-size:11px; min-height:88px; }
   h1 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
   table { width:100%; border-collapse:collapse; margin:12px 0 16px; }
   th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; padding:6px 8px; border-bottom:2px solid #cbd5e1; }
@@ -698,16 +730,31 @@ function wrapReciboPage(
 <style>
   @page { size: A4; margin: 14mm; }
   body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
-  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:12px; }
-  .head img { width:56px; height:56px; object-fit:contain; }
-  .kicker { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#009543; font-weight:700; }
-  .row { display:flex; justify-content:space-between; margin:8px 0; }
+  .sheet { padding: 8mm 2mm 14mm; min-height: 240mm; box-sizing: border-box; }
+  .head {
+    display:flex; gap:14px; align-items:center;
+    border-bottom:2px solid #009543;
+    padding-bottom:16px; margin-bottom:28px;
+  }
+  .head img { width:64px; height:64px; object-fit:contain; }
+  .kicker {
+    font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
+    color:#009543; font-weight:700; margin: 0 0 16px;
+  }
+  .row { display:flex; justify-content:space-between; margin:14px 0 20px; }
   .muted { color:#64748b; font-size:11px; }
-  table.vals { width:100%; margin:12px 0; border-collapse:collapse; }
-  table.vals td { padding:6px 0; border-top:1px solid #e2e8f0; }
+  table.vals { width:100%; margin:20px 0 28px; border-collapse:collapse; }
+  table.vals td { padding:10px 0; border-top:1px solid #e2e8f0; }
   table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
   table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
-  .sign2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; font-size:11px; }
+  .sign2 {
+    display:grid; grid-template-columns:1fr 1fr; gap:40px;
+    margin-top:56px; padding-top:12px; font-size:11px;
+  }
+  .sign2 div {
+    border-top:1px solid #94a3b8; padding-top:14px;
+    min-height:96px; text-align:center;
+  }
 </style></head><body>${reciboHonorarioHtml(escola, r)}</body></html>`;
 }
 
