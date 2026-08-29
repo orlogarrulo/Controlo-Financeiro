@@ -161,14 +161,38 @@ function normTxt(s: string): string {
     .replace(/\u0300-\u036f/g, "");
 }
 
-/** Categoria contratual + texto do objecto (cláusula 2) conforme a função. */
+/** Categoria + redacção completa da cláusula 2 (Objecto) por função. */
 function perfilContrato(funcao: string, categoria?: string): {
   categoria: string;
+  /** Parágrafos HTML da cláusula 2 (já com <p>). */
+  objectoHtml: string;
+  /** Texto simples (formulário / fallback). */
   objecto: string;
 } {
   const f = normTxt(funcao);
   const c = normTxt(categoria || "");
   const escola = "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida";
+  const nomeFunc = (funcao || "").trim() || "—";
+
+  function montar(opts: {
+    categoria: string;
+    natureza: string;
+    ambito: string;
+    exclusoes: string;
+  }) {
+    const objecto =
+      `O presente contrato tem por objecto ${opts.natureza} ` +
+      opts.ambito +
+      " " +
+      opts.exclusoes;
+    const objectoHtml = `
+<p><strong>2.1.</strong> O presente contrato de prestação de serviços tem por objecto ${opts.natureza}</p>
+<p><strong>2.2. Âmbito dos serviços.</strong> ${opts.ambito}</p>
+<p><strong>2.3. Limites.</strong> ${opts.exclusoes}</p>
+<p><strong>2.4. Identificação da prestação.</strong> Função: <strong>${nomeFunc}</strong>. Categoria contratual: <strong>${opts.categoria}</strong>.</p>
+<p><strong>2.5.</strong> A duração, o local e o horário da prestação regulam-se, respectivamente, pelas cláusulas 3 e 4 do presente contrato, sem prejuízo das orientações escritas que a Contratante venha a transmitir no âmbito da função.</p>`;
+    return { categoria: opts.categoria, objecto, objectoHtml };
+  }
 
   // Vigilantes / Pessoal de Segurança
   if (
@@ -177,51 +201,50 @@ function perfilContrato(funcao: string, categoria?: string): {
     f.includes("segurança") ||
     (f.includes("segur") && !f.includes("social"))
   ) {
-    return {
+    return montar({
       categoria: "Pessoal de Apoio Operacional (Segurança e Vigilância)",
-      objecto:
-        `O presente contrato tem por objecto a prestação de serviços de vigilância e segurança física das instalações, bens e pessoas da ${escola}. ` +
-        "O Prestador obriga-se a exercer funções de controlo de acessos, ronda e permanência no posto, prevenção de riscos e reportes de ocorrências à direcção, em regime de turnos de 24 horas conforme a escala definida pela Contratante. " +
-        "Estes serviços são de natureza operacional de segurança e não incluem actividades lectivas, pedagógicas ou de ensino.",
-    };
+      natureza: `a prestação, pelo Prestador à Contratante, de serviços de vigilância e segurança física das instalações, bens e pessoas da ${escola}, durante o período de vigência do contrato.`,
+      ambito:
+        "Constituem obrigações do Prestador, a título enunciativo: (i) a permanência no posto e a realização de rondas segundo a escala de turnos de 24 horas definida pela Contratante; (ii) o controlo de entradas e saídas e a identificação de pessoas e veículos, quando aplicável; (iii) a prevenção de riscos e a preservação do património escolar; (iv) o registo e a comunicação imediata de ocorrências, anomalias ou incidentes à direcção ou ao responsável designado; (v) o cumprimento das normas internas de segurança e confidencialidade.",
+      exclusoes:
+        "Os serviços objecto desta cláusula são exclusivamente de natureza operacional de segurança e vigilância. Ficam expressamente excluídas do objecto contratual quaisquer actividades lectivas, pedagógicas, de ensino, de limpeza ou de gestão administrativa e financeira.",
+    });
   }
 
   // Limpeza
   if (f.includes("limpez") || f.includes("higiene") || f.includes("faxina") || f.includes("conservacao")) {
-    return {
+    return montar({
       categoria: "Pessoal de Apoio Operacional (Higiene e Salubridade)",
-      objecto:
-        `O presente contrato tem por objecto a prestação de serviços de limpeza, higiene e salubridade das instalações da ${escola}. ` +
-        "O Prestador obriga-se a assegurar a conservação das condições de higiene dos espaços (salas, sanitários, áreas comuns e zonas exteriores sob responsabilidade da escola), segundo o plano de trabalho e os produtos/meios disponibilizados pela Contratante. " +
-        "Estes serviços são de natureza operacional de apoio e não incluem funções de ensino, vigilância de segurança nem gestão administrativa.",
-    };
+      natureza: `a prestação, pelo Prestador à Contratante, de serviços de limpeza, higiene e salubridade das instalações da ${escola}, durante o período de vigência do contrato.`,
+      ambito:
+        "Constituem obrigações do Prestador, a título enunciativo: (i) a limpeza e conservação higiénica das salas, sanitários, corredores, áreas comuns e demais espaços indicados pela Contratante; (ii) a execução do plano de trabalho e dos horários de serviço definidos; (iii) a utilização correcta dos produtos, utensílios e equipamentos disponibilizados; (iv) a comunicação de anomalias, avarias ou necessidades de material; (v) o cumprimento das regras de higiene, segurança e confidencialidade aplicáveis nas instalações escolares.",
+      exclusoes:
+        "Os serviços objecto desta cláusula são exclusivamente de natureza operacional de higiene e salubridade. Ficam expressamente excluídas do objecto contratual funções de ensino, de vigilância de segurança, de controlo de acessos e de gestão administrativa ou financeira.",
+    });
   }
 
   // Diretor de Património
   if (f.includes("patrimonio") || f.includes("património") || (f.includes("diretor") && f.includes("infra"))) {
-    return {
+    return montar({
       categoria: "Quadro Técnico / Gestão de Infraestruturas",
-      objecto:
-        `O presente contrato tem por objecto a prestação de serviços de direcção técnica e gestão do património e das infraestruturas da ${escola}. ` +
-        "O Prestador coordena e supervisiona a manutenção, conservação e utilização adequada dos bens, edifícios e equipamentos, articula intervenções técnicas e apoia a direcção nas decisões relativas ao património escolar. " +
-        "Estes serviços são de natureza técnico-gestora de infraestruturas, distintos das funções docentes e da vigilância operacional de rotina.",
-    };
+      natureza: `a prestação, pelo Prestador à Contratante, de serviços de direcção técnica e de gestão do património e das infraestruturas da ${escola}, durante o período de vigência do contrato.`,
+      ambito:
+        "Constituem obrigações do Prestador, a título enunciativo: (i) a supervisão do estado de conservação de edifícios, equipamentos e bens afectos à escola; (ii) a coordenação de intervenções de manutenção e reparação, em articulação com a direcção; (iii) o apoio à planificação de necessidades patrimoniais e logísticas; (iv) a vigilância do uso adequado das infraestruturas; (v) a elaboração de reportes e propostas técnicas que lhe sejam solicitados no âmbito da função.",
+      exclusoes:
+        "Os serviços objecto desta cláusula são de natureza técnico-gestora de património e infraestruturas. Não incluem o exercício regular de funções docentes, de limpeza operacional de rotina nem de vigilância de segurança em regime de turnos, salvo determinação escrita em contrário da Contratante.",
+    });
   }
 
   // Financeiro
-  if (
-    f.includes("financ") ||
-    f.includes("contabil") ||
-    f.includes("tesour") ||
-    c.includes("financ")
-  ) {
-    return {
+  if (f.includes("financ") || f.includes("contabil") || f.includes("tesour") || c.includes("financ")) {
+    return montar({
       categoria: "Quadro Técnico Administrativo (Especialidade: Gestão Financeira)",
-      objecto:
-        `O presente contrato tem por objecto a prestação de serviços técnico-administrativos na área da gestão financeira da ${escola}. ` +
-        "O Prestador apoia o registo, o controlo e o reporte de operações financeiras (propinas, despesas, reconciliações e documentação de suporte), em conformidade com as orientações do Departamento de Finanças e da direcção da escola. " +
-        "Estes serviços são de natureza administrativa-financeira e não incluem exercício de funções docentes nem de vigilância das instalações.",
-    };
+      natureza: `a prestação, pelo Prestador à Contratante, de serviços técnico-administrativos na área da gestão financeira da ${escola}, durante o período de vigência do contrato.`,
+      ambito:
+        "Constituem obrigações do Prestador, a título enunciativo: (i) o apoio ao registo e organização de documentação financeira (propinas, despesas, comprovativos e mapas de suporte); (ii) a colaboração em reconciliações e controlos internos sob orientação do Departamento de Finanças; (iii) a preparação de elementos para reporte à direcção; (iv) a observância de confidencialidade quanto a dados financeiros e pessoais a que tenha acesso; (v) o cumprimento dos procedimentos e prazos definidos pela Contratante.",
+      exclusoes:
+        "Os serviços objecto desta cláusula são exclusivamente de natureza administrativo-financeira. Ficam excluídas do objecto contratual funções docentes, de vigilância das instalações e de limpeza ou manutenção operacional.",
+    });
   }
 
   // Diretor Administrativo
@@ -229,13 +252,14 @@ function perfilContrato(funcao: string, categoria?: string): {
     (f.includes("diretor") || f.includes("director")) &&
     (f.includes("admin") || f.includes("execut"))
   ) {
-    return {
+    return montar({
       categoria: "Cargo de Direção Executiva / Quadro Técnico Superior",
-      objecto:
-        `O presente contrato tem por objecto a prestação de serviços de direcção administrativa e executiva da ${escola}. ` +
-        "O Prestador coordena os serviços de apoio (administrativos, logísticos e de funcionamento interno), zela pelo cumprimento das orientações da direcção e articula com os demais responsáveis da escola. " +
-        "Estes serviços correspondem a funções de direcção administrativa, sem prejuízo das competências próprias da direcção pedagógica e do corpo docente.",
-    };
+      natureza: `a prestação, pelo Prestador à Contratante, de serviços de direcção administrativa e executiva da ${escola}, durante o período de vigência do contrato.`,
+      ambito:
+        "Constituem obrigações do Prestador, a título enunciativo: (i) a coordenação dos serviços de apoio administrativo e logístico ao funcionamento da escola; (ii) a articulação entre os diversos serviços e a direcção; (iii) o acompanhamento do cumprimento de orientações internas e de rotinas organizativas; (iv) a representação administrativa da escola quando para tal for mandatada; (v) a elaboração de informações e propostas no âmbito da gestão administrativa.",
+      exclusoes:
+        "Os serviços objecto desta cláusula respeitam à direcção administrativa e executiva. Não substituem as competências próprias da direcção pedagógica nem o exercício regular de funções docentes ou de vigilância operacional de segurança.",
+    });
   }
 
   // Diretor Pedagógico
@@ -243,16 +267,17 @@ function perfilContrato(funcao: string, categoria?: string): {
     (f.includes("diretor") || f.includes("director")) &&
     (f.includes("pedagog") || f.includes("ensino") || f.includes("academ"))
   ) {
-    return {
+    return montar({
       categoria: "Cargo de Direção Superior / Comissão de Serviço",
-      objecto:
-        `O presente contrato tem por objecto a prestação de serviços de direcção pedagógica superior da ${escola}, em regime de comissão de serviço / cargo de direcção. ` +
-        "O Prestador coordena o projecto educativo, a organização curricular e o acompanhamento do corpo docente, zelando pela qualidade do ensino e pelo cumprimento do calendário e das orientações pedagógicas aplicáveis. " +
-        "Estes serviços são de direcção pedagógica e não se confundem com a vigilância operacional, a limpeza ou a gestão meramente patrimonial das instalações.",
-    };
+      natureza: `a prestação, pelo Prestador à Contratante, de serviços de direcção pedagógica superior da ${escola}, em regime de cargo de direcção / comissão de serviço, durante o período de vigência do contrato.`,
+      ambito:
+        "Constituem obrigações do Prestador, a título enunciativo: (i) a coordenação do projecto educativo e da organização pedagógica; (ii) o acompanhamento e a orientação do corpo docente; (iii) a supervisão da qualidade do ensino e do cumprimento do calendário escolar; (iv) a articulação com famílias e instâncias internas da escola no domínio pedagógico; (v) a apresentação de balanços e propostas pedagógicas à direcção da escola.",
+      exclusoes:
+        "Os serviços objecto desta cláusula são de direcção pedagógica. Não se confundem com a vigilância operacional de segurança, com os serviços de limpeza ou com a gestão meramente patrimonial e financeira das instalações.",
+    });
   }
 
-  // Professores / docentes
+  // Professores
   if (
     f.includes("professor") ||
     f.includes("docente") ||
@@ -261,22 +286,25 @@ function perfilContrato(funcao: string, categoria?: string): {
     f.includes("maitre") ||
     f.includes("maître")
   ) {
-    return {
+    return montar({
       categoria: "Corpo Docente (Expatriado ou Local)",
-      objecto:
-        `O presente contrato tem por objecto a prestação de serviços docentes e educativos na ${escola}, no âmbito do corpo docente (expatriado ou local). ` +
-        "O Prestador assegura o ensino das disciplinas ou níveis que lhe forem atribuídos, o acompanhamento pedagógico dos alunos, a preparação de aulas e a participação nas actividades escolares inerentes à função docente, segundo o horário e o projecto pedagógico definidos pela direcção. " +
-        "Estes serviços são exclusivamente de natureza educacional e lectiva.",
-    };
+      natureza: `a prestação, pelo Prestador à Contratante, de serviços docentes e educativos na ${escola}, na qualidade de membro do corpo docente (expatriado ou local), durante o período de vigência do contrato.`,
+      ambito:
+        "Constituem obrigações do Prestador, a título enunciativo: (i) a leccionação das disciplinas, níveis ou turmas que lhe forem atribuídos; (ii) a preparação de aulas e materiais didácticos; (iii) o acompanhamento pedagógico e a avaliação dos alunos nos termos definidos pela direcção pedagógica; (iv) a participação em reuniões, conselhos e actividades escolares inerentes à função docente; (v) o cumprimento do horário lectivo e do projecto pedagógico da escola.",
+      exclusoes:
+        "Os serviços objecto desta cláusula são exclusivamente de natureza educacional e lectiva. Ficam excluídas do objecto contratual funções de vigilância de segurança das instalações, de limpeza e de gestão administrativa ou financeira, salvo tarefas pontuais de acompanhamento de alunos expressamente solicitadas no âmbito escolar.",
+    });
   }
 
   // Fallback
-  return {
+  return montar({
     categoria: categoria?.trim() || "Pessoal de Apoio / Prestação de Serviços",
-    objecto:
-      `O presente contrato tem por objecto a prestação de serviços profissionais de apoio ao funcionamento da ${escola}, durante o ano lectivo, nos termos da função concretamente indicada e das orientações da direcção. ` +
-      "O âmbito exacto das tarefas é o que resultar da função e da categoria contratual constantes do presente instrumento, sem alargamento automático a outras áreas de actividade.",
-  };
+    natureza: `a prestação, pelo Prestador à Contratante, de serviços profissionais de apoio ao funcionamento da ${escola}, nos termos da função indicada no presente contrato.`,
+    ambito:
+      "O Prestador executará as tarefas inerentes à função e à categoria contratual aqui identificadas, segundo as orientações escritas da direcção da escola e dentro do horário e local previstos nas cláusulas seguintes.",
+    exclusoes:
+      "O objecto contratual limita-se ao âmbito da função e categoria indicadas, sem alargamento automático a outras áreas de actividade da escola.",
+  });
 }
 
 function liquidoCalc(salario: number, diasUteis: number, diasTrab: number, outrosDesc: number) {
@@ -292,10 +320,20 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   const inicio = f.dataInicioContrato ? formatDate(f.dataInicioContrato) : "—";
   const fim = f.dataFimContrato ? formatDate(f.dataFimContrato) : "—";
   const hoje = formatDate(todayIso());
+  const emitidoEm = new Date().toLocaleString("pt-PT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const vigilante = isVigilante(f.funcao || "");
   const perfil = perfilContrato(f.funcao || "", f.categoria);
   const categoriaContrato = perfil.categoria;
-  const objectoTexto = (f.objectoContrato || "").trim() || perfil.objecto;
+  const objectoCustom = (f.objectoContrato || "").trim();
+  const objectoHtml = objectoCustom
+    ? `<p>${objectoCustom}</p><p><strong>2.4. Identificação da prestação.</strong> Função: <strong>${f.funcao || "—"}</strong>. Categoria contratual: <strong>${categoriaContrato}</strong>.</p><p><strong>2.5.</strong> A duração, o local e o horário da prestação regulam-se pelas cláusulas 3 e 4.</p>`
+    : perfil.objectoHtml;
   const horario =
     f.horario ||
     (vigilante ? HORARIO_VIGILANTE : HORARIO_PADRAO);
@@ -317,6 +355,7 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   .clause { margin-bottom: 12px; }
   .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:72px; padding-top:28px; }
   .sign div { border-top:1px solid #94a3b8; padding-top:12px; text-align:center; font-size:11px; min-height:88px; }
+  .doc-foot { margin-top:28px; text-align:right; font-size:9px; color:#94a3b8; line-height:1.35; }
 </style></head><body>
 <!-- Sem logotipo no contrato (documento formal de prestação de serviços). Em Angola é lícito o empregador usar papel timbrado/logo; nesta escola optámos por modelo só texto. -->
 <p class="muted" style="text-align:center;margin:0 0 4px">${escola.nome}<br/>${escola.subtitulo || "Missão diplomática · Luanda"} · Ano lectivo ${escola.ano || ""}</p>
@@ -330,10 +369,7 @@ Entidade de natureza diplomática — sem retenção de impostos do trabalho na 
 </div>
 
 <div class="clause"><h2>2. Objecto</h2>
-<p>${objectoTexto}</p>
-<p style="margin-top:10px;"><strong>Função:</strong> ${f.funcao || "—"}.</p>
-<p><strong>Categoria contratual:</strong> ${categoriaContrato}.</p>
-<p class="muted" style="margin-top:8px;">A duração e o local de prestação constam da cláusula 3; o horário, da cláusula 4.</p>
+${objectoHtml}
 </div>
 
 <div class="clause"><h2>3. Local e duração</h2>
@@ -361,14 +397,13 @@ ${clausula4}
 <p>O contrato rege-se pela legislação angolana aplicável à prestação de serviços e pelas normas próprias da missão diplomática. Foro de Luanda.</p>
 </div>
 
-<p class="muted">Emitido em Luanda, aos ${hoje}. Documento gerado pelo Departamento de Finanças para assinatura das partes.</p>
-
 <p style="margin:0;height:48px;">&nbsp;</p>
 
 <div class="sign">
   <div>O Contratante<br/>${escola.nome}<br/><br/>_______________________</div>
   <div>O Prestador<br/>${f.nome}<br/><br/>_______________________</div>
 </div>
+<p class="doc-foot">Documento gerado por Recursos Humanos · ${emitidoEm}</p>
 </body></html>`;
 }
 
@@ -550,21 +585,41 @@ ${authBody}
 }
 
 function openPrintHtml(html: string, title: string) {
-  // Só caixa de impressão — sem nova janela em branco no browser
+  /**
+   * Impressão sem mostrar o URL da app no rodapé:
+   * usa um documento isolado (blob:) em vez do iframe sobre a página da aplicação.
+   * No diálogo de impressão do Chrome/Edge, desactive também «Cabeçalhos e rodapés»
+   * se o browser ainda mostrar data/título.
+   */
+  const withNoUrlHint = html.includes("</head>")
+    ? html.replace(
+        "</head>",
+        `<style>
+  @page { margin: 14mm; }
+  html, body { margin: 0; }
+</style></head>`,
+      )
+    : html;
+
+  const blob = new Blob([withNoUrlHint], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", title);
   iframe.setAttribute("aria-hidden", "true");
-  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+  iframe.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+  iframe.src = url;
   document.body.appendChild(iframe);
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!doc) {
-    toast.error("Não foi possível iniciar a impressão.");
-    iframe.remove();
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
+
+  const cleanup = () => {
+    try {
+      iframe.remove();
+    } catch {
+      /* ignore */
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 3000);
+  };
+
   const runPrint = () => {
     try {
       iframe.contentWindow?.focus();
@@ -572,23 +627,20 @@ function openPrintHtml(html: string, title: string) {
     } catch {
       toast.error("Impressão bloqueada pelo browser.");
     }
-    setTimeout(() => {
-      try {
-        iframe.remove();
-      } catch {
-        /* ignore */
-      }
-    }, 2000);
+    window.setTimeout(cleanup, 2500);
   };
-  // Esperar imagens (logo) quando existirem
-  const imgs = Array.from(doc.images || []);
-  if (imgs.length === 0) {
-    setTimeout(runPrint, 200);
-  } else {
+
+  iframe.onload = () => {
+    const doc = iframe.contentDocument;
+    const imgs = doc ? Array.from(doc.images || []) : [];
+    if (imgs.length === 0) {
+      window.setTimeout(runPrint, 200);
+      return;
+    }
     let left = imgs.length;
     const done = () => {
       left -= 1;
-      if (left <= 0) setTimeout(runPrint, 100);
+      if (left <= 0) window.setTimeout(runPrint, 150);
     };
     imgs.forEach((img) => {
       if (img.complete) done();
@@ -597,9 +649,11 @@ function openPrintHtml(html: string, title: string) {
         img.onerror = done;
       }
     });
-    setTimeout(runPrint, 2500); // segurança
-  }
+    window.setTimeout(runPrint, 2500);
+  };
 }
+
+
 
 /** HTML completo para pré-visualizar recibo individual */
 function wrapReciboPage(
