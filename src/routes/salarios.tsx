@@ -72,7 +72,7 @@ function emptyForm(): FormState {
     iban: "",
     localPrestacao: "Luanda",
     objectoContrato:
-      "Prestação de serviços de natureza educacional / apoio à École Consulaire du Congo (Brazzaville) de Luanda, durante o ano lectivo.",
+      "",
     horario: HORARIO_PADRAO,
   };
 }
@@ -98,9 +98,13 @@ function formFromSalario(r: Salario): FormState {
     nacionalidade: r.nacionalidade || "Angolana",
     iban: r.iban || "",
     localPrestacao: r.localPrestacao || "Luanda",
-    objectoContrato:
-      r.objectoContrato ||
-      "Prestação de serviços de natureza educacional / apoio à École Consulaire du Congo (Brazzaville) de Luanda, durante o ano lectivo.",
+    objectoContrato: (() => {
+      const perfil = perfilContrato(r.funcao || "", r.categoria);
+      const raw = (r.objectoContrato || "").trim();
+      const legado =
+        /natureza educacional|apoio à École Consulaire|apoio à actividade escolar/i.test(raw);
+      return !raw || legado ? perfil.objecto : raw;
+    })(),
     horario: r.horario || (isVigilante(r.funcao) ? HORARIO_VIGILANTE : HORARIO_PADRAO),
   };
 }
@@ -141,6 +145,7 @@ const FUNCOES_OPCOES = [
   "Vigilante",
   "Pessoal de Segurança",
   "Funcionário de Limpeza",
+  "Empregada de Limpeza",
   "Diretor de Património",
   "Técnico Financeiro",
   "Responsável Financeiro",
@@ -211,8 +216,16 @@ function perfilContrato(funcao: string, categoria?: string): {
     });
   }
 
-  // Limpeza
-  if (f.includes("limpez") || f.includes("higiene") || f.includes("faxina") || f.includes("conservacao")) {
+  // Limpeza / empregada / empregado de limpeza
+  if (
+    f.includes("limpez") ||
+    f.includes("higiene") ||
+    f.includes("faxina") ||
+    f.includes("conservacao") ||
+    f.includes("empregada") ||
+    (f.includes("empregado") && f.includes("limp")) ||
+    (f.includes("auxiliar") && f.includes("limp"))
+  ) {
     return montar({
       categoria: "Pessoal de Apoio Operacional (Higiene e Salubridade)",
       natureza: `a prestação, pelo Prestador à Contratante, de serviços de limpeza, higiene e salubridade das instalações da ${escola}, durante o período de vigência do contrato.`,
@@ -330,10 +343,8 @@ function contratoHtml(escola: { nome: string; subtitulo?: string; ano?: string }
   const vigilante = isVigilante(f.funcao || "");
   const perfil = perfilContrato(f.funcao || "", f.categoria);
   const categoriaContrato = perfil.categoria;
-  const objectoCustom = (f.objectoContrato || "").trim();
-  const objectoHtml = objectoCustom
-    ? `<p>${objectoCustom}</p><p><strong>2.4. Identificação da prestação.</strong> Função: <strong>${f.funcao || "—"}</strong>. Categoria contratual: <strong>${categoriaContrato}</strong>.</p><p><strong>2.5.</strong> A duração, o local e o horário da prestação regulam-se pelas cláusulas 3 e 4.</p>`
-    : perfil.objectoHtml;
+  // Cláusula 2 SEMPRE segundo a função (evita texto genérico/educacional antigo guardado em objectoContrato)
+  const objectoHtml = perfil.objectoHtml;
   const horario =
     f.horario ||
     (vigilante ? HORARIO_VIGILANTE : HORARIO_PADRAO);
@@ -535,7 +546,7 @@ function listaFuncionariosHtml(
   <thead><tr><th>Funcionário</th><th>Função</th><th class="num">Salário</th><th class="num">Dias trab.</th><th>Mês</th></tr></thead>
   <tbody>${body}</tbody>
 </table>
-<p class="muted">Documento gerado pelo Departamento de Finanças · apenas listagem (não é captura de ecrã).</p>
+<p class="muted">Documento gerado pelo Departamento de Finanças.</p>
 </body></html>`;
 }
 
@@ -713,7 +724,7 @@ function SalarioFormFields({
               ...form,
               funcao: v,
               categoria: perfil.categoria,
-              objectoContrato: form.objectoContrato.trim() ? form.objectoContrato : perfil.objecto,
+              objectoContrato: perfil.objecto,
               horario: isVigilante(v) ? HORARIO_VIGILANTE : form.horario === HORARIO_VIGILANTE ? HORARIO_PADRAO : form.horario || HORARIO_PADRAO,
             };
             setForm(next);
@@ -951,7 +962,7 @@ function Salarios() {
     const formAligned = {
       ...form,
       categoria: form.categoria.trim() || perfil.categoria,
-      objectoContrato: form.objectoContrato.trim() || perfil.objecto,
+      objectoContrato: perfil.objecto,
       horario: form.horario.trim() || (isVigilante(form.funcao) ? HORARIO_VIGILANTE : HORARIO_PADRAO),
       mes: form.mes.trim() || new Date().toLocaleDateString("pt-PT", { month: "long", year: "numeric" }),
     };
@@ -996,7 +1007,7 @@ function Salarios() {
     const formAligned = {
       ...form,
       categoria: form.categoria.trim() || perfil.categoria,
-      objectoContrato: form.objectoContrato.trim() || perfil.objecto,
+      objectoContrato: perfil.objecto,
       horario: form.horario.trim() || (isVigilante(form.funcao) ? HORARIO_VIGILANTE : HORARIO_PADRAO),
     };
     const patch = { ...toSalarioPatch(formAligned), temContrato: withContract || editing.temContrato };

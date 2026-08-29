@@ -1088,12 +1088,35 @@ export function salariosAll(
     .filter((s) => !deleted.has(s.id))
     .map((s) => {
       const o = overrides[s.id];
-      return o ? { ...s, ...o } : s;
+      const merged = o ? { ...s, ...o } : { ...s };
+      // Correcção: empregadas de limpeza — salário mensal 90.000 (não ½ mês a 45.000)
+      const fn = (merged.funcao || "").toLowerCase();
+      if (fn.includes("limpez") && (merged.salario === 45000 || merged.diasTrab === 11)) {
+        merged.salario = 90000;
+        if ((merged.diasTrab || 0) < 22 && (merged.diasUteis || 22) >= 22) {
+          merged.diasTrab = 22;
+          merged.diasUteis = 22;
+        }
+      }
+      return merged;
     });
   const extraIds = new Set(extra.map((s) => s.id));
   return [
     ...fromSeed.filter((s) => !extraIds.has(s.id)),
-    ...extra.filter((s) => !deleted.has(s.id)),
+    ...extra
+      .filter((s) => !deleted.has(s.id))
+      .map((s) => {
+        const fn = (s.funcao || "").toLowerCase();
+        if (fn.includes("limpez") && (s.salario === 45000 || s.diasTrab === 11)) {
+          return {
+            ...s,
+            salario: 90000,
+            diasTrab: (s.diasTrab || 0) < 22 ? 22 : s.diasTrab,
+            diasUteis: s.diasUteis && s.diasUteis >= 22 ? s.diasUteis : 22,
+          };
+        }
+        return s;
+      }),
   ];
 }
 
