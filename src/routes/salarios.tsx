@@ -342,9 +342,16 @@ function pacoteRecibosComAutorizacaoHtml(
   recibos: ReciboSalario[],
 ) {
   const authInner = autorizacaoPagamentoHtml(escola, recibos);
-  // extract body of auth - simpler: full pages
   const sheets = recibos.map((r) => reciboHonorarioHtml(escola, r)).join('<div class="break"></div>');
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  let authBody = authInner;
+  const bodyOpen = authBody.indexOf("<body");
+  if (bodyOpen >= 0) {
+    const after = authBody.indexOf(">", bodyOpen);
+    const bodyClose = authBody.lastIndexOf("</body>");
+    if (after >= 0 && bodyClose > after) {
+      authBody = authBody.slice(after + 1, bodyClose);
+    }
+  }
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Recibos e autorização</title>
 <style>
   @page { size: A4; margin: 14mm; }
@@ -362,13 +369,18 @@ function pacoteRecibosComAutorizacaoHtml(
   table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
   table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
   .sign2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; font-size:11px; }
+  .sign { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:40px; }
+  .sign div { border-top:1px solid #94a3b8; padding-top:8px; text-align:center; font-size:11px; min-height:72px; }
+  h1 { font-size: 15px; text-align: center; margin: 10px 0 6px; }
+  table { width:100%; border-collapse:collapse; margin:12px 0 16px; }
+  th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#64748b; padding:6px 8px; border-bottom:2px solid #cbd5e1; }
+  .total { font-weight:700; font-size:14px; margin:8px 0 16px; }
 </style></head><body>
 ${sheets}
 <div class="break"></div>
-${authInner.replace("<!DOCTYPE html>", "").replace(/<html[^>]*>/, "").replace("</html>", "").replace(/<head>[\\s\\S]*?<\\/head>/, "").replace(/<body[^>]*>/, "").replace("</body>", "")}
+${authBody}
 </body></html>`;
 }
-
 
 function openPrintHtml(html: string, title: string) {
   const w = window.open("", "_blank", "noopener,noreferrer");
@@ -521,6 +533,13 @@ function Salarios() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
+  const [avisoFimMesOn, setAvisoFimMesOn] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const day = new Date().getDate();
+    if (day < 28 || day > 30) return false;
+    const key = `aviso-salarios-${new Date().getFullYear()}-${new Date().getMonth()}`;
+    return window.sessionStorage.getItem(key) !== "1";
+  });
 
   function clearDeepLink() {
     void navigate({ search: { edit: undefined, focus: undefined }, replace: true });
@@ -740,22 +759,41 @@ function Salarios() {
       />
 
 
-      {(() => {
+      {avisoFimMesOn && (() => {
         const day = new Date().getDate();
         if (day < 28 || day > 30) return null;
         const porPagar = recibosSalario.filter((r) => !r.pago).length;
         return (
-          <div className="no-print mb-4 rounded-[var(--radius)] border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            <strong>Aviso de fim de mês (dia {day})</strong>
-            {" — "}
-            {porPagar > 0
-              ? `Existem ${porPagar} recibo(s) de honorários por pagar. Gere a autorização dos sócios e marque como pago (debita o Banco BAI).`
-              : "Está entre os dias 28 e 30: confirme se já gerou os recibos de honorários deste mês."}
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button type="button" size="sm" onClick={openGerarRecibos}>
-                Gerar recibos do mês
-              </Button>
+          <div className="no-print mb-4 flex gap-3 rounded-[var(--radius)] border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <div className="min-w-0 flex-1">
+              <strong>Aviso de fim de mês (dia {day})</strong>
+              {" — "}
+              {porPagar > 0
+                ? `Existem ${porPagar} recibo(s) de honorários por pagar. Gere a autorização dos sócios e marque como pago (debita o Banco BAI).`
+                : "Está entre os dias 28 e 30: confirme se já gerou os recibos de honorários deste mês."}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={openGerarRecibos}>
+                  Gerar recibos do mês
+                </Button>
+              </div>
             </div>
+            <button
+              type="button"
+              className="shrink-0 rounded px-2 text-lg leading-none text-amber-900/70 hover:bg-amber-100"
+              title="Fechar aviso"
+              aria-label="Fechar aviso"
+              onClick={() => {
+                const key = `aviso-salarios-${new Date().getFullYear()}-${new Date().getMonth()}`;
+                try {
+                  window.sessionStorage.setItem(key, "1");
+                } catch {
+                  /* ignore */
+                }
+                setAvisoFimMesOn(false);
+              }}
+            >
+              ×
+            </button>
           </div>
         );
       })()}
