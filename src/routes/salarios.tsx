@@ -136,6 +136,19 @@ const HORARIO_PADRAO =
 const HORARIO_VIGILANTE =
   "regime de turnos de 24 horas: 3 dias consecutivos de serviço (24h/dia) e 3 dias de folga, em alternância com o colega de turno";
 
+/** Funções pré-definidas (dropdown). A categoria contratual deriva automaticamente. */
+const FUNCOES_OPCOES = [
+  "Vigilante",
+  "Pessoal de Segurança",
+  "Funcionário de Limpeza",
+  "Diretor de Património",
+  "Técnico Financeiro",
+  "Responsável Financeiro",
+  "Diretor Administrativo",
+  "Professor(a)",
+  "Diretor Pedagógico",
+] as const;
+
 function isVigilante(funcao: string): boolean {
   const f = (funcao || "").toLowerCase().normalize("NFD").replace(/\u0300-\u036f/g, "");
   return f.includes("vigilant") || (f.includes("segur") && f.includes("pessoal"));
@@ -148,13 +161,14 @@ function normTxt(s: string): string {
     .replace(/\u0300-\u036f/g, "");
 }
 
-/** Categoria contratual + texto do objecto conforme a função. */
+/** Categoria contratual + texto do objecto (cláusula 2) conforme a função. */
 function perfilContrato(funcao: string, categoria?: string): {
   categoria: string;
   objecto: string;
 } {
   const f = normTxt(funcao);
   const c = normTxt(categoria || "");
+  const escola = "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida";
 
   // Vigilantes / Pessoal de Segurança
   if (
@@ -166,7 +180,9 @@ function perfilContrato(funcao: string, categoria?: string): {
     return {
       categoria: "Pessoal de Apoio Operacional (Segurança e Vigilância)",
       objecto:
-        "Prestação de serviços de vigilância e segurança das instalações, bens e pessoas da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, em regime de turnos, assegurando a protecção do património escolar e o controlo de acessos.",
+        `O presente contrato tem por objecto a prestação de serviços de vigilância e segurança física das instalações, bens e pessoas da ${escola}. ` +
+        "O Prestador obriga-se a exercer funções de controlo de acessos, ronda e permanência no posto, prevenção de riscos e reportes de ocorrências à direcção, em regime de turnos de 24 horas conforme a escala definida pela Contratante. " +
+        "Estes serviços são de natureza operacional de segurança e não incluem actividades lectivas, pedagógicas ou de ensino.",
     };
   }
 
@@ -175,7 +191,9 @@ function perfilContrato(funcao: string, categoria?: string): {
     return {
       categoria: "Pessoal de Apoio Operacional (Higiene e Salubridade)",
       objecto:
-        "Prestação de serviços de limpeza, higiene e salubridade das instalações da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, contribuindo para o bom estado e condições de utilização dos espaços escolares.",
+        `O presente contrato tem por objecto a prestação de serviços de limpeza, higiene e salubridade das instalações da ${escola}. ` +
+        "O Prestador obriga-se a assegurar a conservação das condições de higiene dos espaços (salas, sanitários, áreas comuns e zonas exteriores sob responsabilidade da escola), segundo o plano de trabalho e os produtos/meios disponibilizados pela Contratante. " +
+        "Estes serviços são de natureza operacional de apoio e não incluem funções de ensino, vigilância de segurança nem gestão administrativa.",
     };
   }
 
@@ -184,7 +202,9 @@ function perfilContrato(funcao: string, categoria?: string): {
     return {
       categoria: "Quadro Técnico / Gestão de Infraestruturas",
       objecto:
-        "Prestação de serviços de direcção e gestão do património e infraestruturas da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, incluindo supervisão de manutenção, conservação e utilização adequada dos bens e espaços escolares.",
+        `O presente contrato tem por objecto a prestação de serviços de direcção técnica e gestão do património e das infraestruturas da ${escola}. ` +
+        "O Prestador coordena e supervisiona a manutenção, conservação e utilização adequada dos bens, edifícios e equipamentos, articula intervenções técnicas e apoia a direcção nas decisões relativas ao património escolar. " +
+        "Estes serviços são de natureza técnico-gestora de infraestruturas, distintos das funções docentes e da vigilância operacional de rotina.",
     };
   }
 
@@ -198,7 +218,9 @@ function perfilContrato(funcao: string, categoria?: string): {
     return {
       categoria: "Quadro Técnico Administrativo (Especialidade: Gestão Financeira)",
       objecto:
-        "Prestação de serviços de natureza técnico-administrativa na área da gestão financeira da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, incluindo apoio ao registo, controlo e reporte de operações financeiras escolares.",
+        `O presente contrato tem por objecto a prestação de serviços técnico-administrativos na área da gestão financeira da ${escola}. ` +
+        "O Prestador apoia o registo, o controlo e o reporte de operações financeiras (propinas, despesas, reconciliações e documentação de suporte), em conformidade com as orientações do Departamento de Finanças e da direcção da escola. " +
+        "Estes serviços são de natureza administrativa-financeira e não incluem exercício de funções docentes nem de vigilância das instalações.",
     };
   }
 
@@ -210,7 +232,9 @@ function perfilContrato(funcao: string, categoria?: string): {
     return {
       categoria: "Cargo de Direção Executiva / Quadro Técnico Superior",
       objecto:
-        "Prestação de serviços de direcção administrativa e executiva da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, assegurando a coordenação dos serviços de apoio, a organização interna e o cumprimento das orientações da direcção da escola.",
+        `O presente contrato tem por objecto a prestação de serviços de direcção administrativa e executiva da ${escola}. ` +
+        "O Prestador coordena os serviços de apoio (administrativos, logísticos e de funcionamento interno), zela pelo cumprimento das orientações da direcção e articula com os demais responsáveis da escola. " +
+        "Estes serviços correspondem a funções de direcção administrativa, sem prejuízo das competências próprias da direcção pedagógica e do corpo docente.",
     };
   }
 
@@ -222,7 +246,9 @@ function perfilContrato(funcao: string, categoria?: string): {
     return {
       categoria: "Cargo de Direção Superior / Comissão de Serviço",
       objecto:
-        "Prestação de serviços de direcção pedagógica da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, em regime de comissão de serviço / direcção superior, coordenando a actividade educativa, o corpo docente e o projecto pedagógico da escola.",
+        `O presente contrato tem por objecto a prestação de serviços de direcção pedagógica superior da ${escola}, em regime de comissão de serviço / cargo de direcção. ` +
+        "O Prestador coordena o projecto educativo, a organização curricular e o acompanhamento do corpo docente, zelando pela qualidade do ensino e pelo cumprimento do calendário e das orientações pedagógicas aplicáveis. " +
+        "Estes serviços são de direcção pedagógica e não se confundem com a vigilância operacional, a limpeza ou a gestão meramente patrimonial das instalações.",
     };
   }
 
@@ -238,7 +264,9 @@ function perfilContrato(funcao: string, categoria?: string): {
     return {
       categoria: "Corpo Docente (Expatriado ou Local)",
       objecto:
-        "Prestação de serviços de natureza educacional e lectiva na École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, no âmbito do corpo docente (expatriado ou local), assegurando o ensino, o acompanhamento dos alunos e as actividades pedagógicas inerentes à função.",
+        `O presente contrato tem por objecto a prestação de serviços docentes e educativos na ${escola}, no âmbito do corpo docente (expatriado ou local). ` +
+        "O Prestador assegura o ensino das disciplinas ou níveis que lhe forem atribuídos, o acompanhamento pedagógico dos alunos, a preparação de aulas e a participação nas actividades escolares inerentes à função docente, segundo o horário e o projecto pedagógico definidos pela direcção. " +
+        "Estes serviços são exclusivamente de natureza educacional e lectiva.",
     };
   }
 
@@ -246,7 +274,8 @@ function perfilContrato(funcao: string, categoria?: string): {
   return {
     categoria: categoria?.trim() || "Pessoal de Apoio / Prestação de Serviços",
     objecto:
-      "Prestação de serviços de apoio à actividade da École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida, durante o ano lectivo, conforme a função e as orientações da direcção da escola.",
+      `O presente contrato tem por objecto a prestação de serviços profissionais de apoio ao funcionamento da ${escola}, durante o ano lectivo, nos termos da função concretamente indicada e das orientações da direcção. ` +
+      "O âmbito exacto das tarefas é o que resultar da função e da categoria contratual constantes do presente instrumento, sem alargamento automático a outras áreas de actividade.",
   };
 }
 
@@ -302,8 +331,9 @@ Entidade de natureza diplomática — sem retenção de impostos do trabalho na 
 
 <div class="clause"><h2>2. Objecto</h2>
 <p>${objectoTexto}</p>
-<p><strong>Função:</strong> ${f.funcao || "—"}.</p>
+<p style="margin-top:10px;"><strong>Função:</strong> ${f.funcao || "—"}.</p>
 <p><strong>Categoria contratual:</strong> ${categoriaContrato}.</p>
+<p class="muted" style="margin-top:8px;">A duração e o local de prestação constam da cláusula 3; o horário, da cláusula 4.</p>
 </div>
 
 <div class="clause"><h2>3. Local e duração</h2>
@@ -615,29 +645,85 @@ function SalarioFormFields({
       </div>
       <div className="space-y-1.5">
         <Label>Função</Label>
-        <Input
-          value={form.funcao}
+        <select
+          className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+          value={FUNCOES_OPCOES.includes(form.funcao as (typeof FUNCOES_OPCOES)[number]) ? form.funcao : form.funcao ? "__outro__" : ""}
           onChange={(e) => {
-            const funcao = e.target.value;
-            const next = { ...form, funcao };
-            if (isVigilante(funcao)) {
-              next.horario = HORARIO_VIGILANTE;
-            } else if (form.horario === HORARIO_VIGILANTE || !form.horario.trim()) {
-              next.horario = HORARIO_PADRAO;
+            const v = e.target.value;
+            if (v === "__outro__") {
+              setForm({ ...form, funcao: form.funcao && !FUNCOES_OPCOES.includes(form.funcao as (typeof FUNCOES_OPCOES)[number]) ? form.funcao : "" });
+              return;
             }
+            const perfil = perfilContrato(v);
+            const next = {
+              ...form,
+              funcao: v,
+              categoria: perfil.categoria,
+              objectoContrato: form.objectoContrato.trim() ? form.objectoContrato : perfil.objecto,
+              horario: isVigilante(v) ? HORARIO_VIGILANTE : form.horario === HORARIO_VIGILANTE ? HORARIO_PADRAO : form.horario || HORARIO_PADRAO,
+            };
             setForm(next);
           }}
-          placeholder="Professor(a), auxiliar, vigilante…"
-        />
+        >
+          <option value="">— escolher função —</option>
+          {FUNCOES_OPCOES.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+          <option value="__outro__">Outra função…</option>
+        </select>
+        {!FUNCOES_OPCOES.includes(form.funcao as (typeof FUNCOES_OPCOES)[number]) && form.funcao !== "" ? (
+          <Input
+            className="mt-1.5"
+            value={form.funcao}
+            onChange={(e) => {
+              const funcao = e.target.value;
+              const perfil = perfilContrato(funcao);
+              setForm({
+                ...form,
+                funcao,
+                categoria: perfil.categoria,
+                horario: isVigilante(funcao) ? HORARIO_VIGILANTE : form.horario,
+              });
+            }}
+            placeholder="Escreva a função"
+          />
+        ) : null}
         {isVigilante(form.funcao) ? (
           <p className="text-[11px] text-[var(--color-forest)]">
-            Função vigilante: o contrato usa automaticamente o regime de turnos (3 dias 24h + 3 dias folga).
+            Vigilante: contrato em regime de turnos (3 dias 24h + 3 dias folga).
           </p>
         ) : null}
       </div>
       <div className="space-y-1.5">
-        <Label>Categoria</Label>
-        <Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
+        <Label>Categoria contratual</Label>
+        <select
+          className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+          value={form.categoria}
+          onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+        >
+          {[
+            "Pessoal de Apoio Operacional (Segurança e Vigilância)",
+            "Pessoal de Apoio Operacional (Higiene e Salubridade)",
+            "Quadro Técnico / Gestão de Infraestruturas",
+            "Quadro Técnico Administrativo (Especialidade: Gestão Financeira)",
+            "Cargo de Direção Executiva / Quadro Técnico Superior",
+            "Corpo Docente (Expatriado ou Local)",
+            "Cargo de Direção Superior / Comissão de Serviço",
+            "Pessoal de Apoio / Prestação de Serviços",
+            form.categoria,
+          ]
+            .filter((v, i, a) => v && a.indexOf(v) === i)
+            .map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+        </select>
+        <p className="text-[11px] text-[var(--color-muted)]">
+          Actualiza-se com a função; pode ajustar manualmente. O contrato usa estes dados.
+        </p>
       </div>
       <div className="space-y-1.5">
         <Label>Honorário mensal (Kz)</Label>
@@ -807,7 +893,15 @@ function Salarios() {
       return;
     }
     const id = `F-${Date.now().toString(36).slice(-6).toUpperCase()}`;
-    const patch = toSalarioPatch(form);
+    const perfil = perfilContrato(form.funcao, form.categoria);
+    const formAligned = {
+      ...form,
+      categoria: form.categoria.trim() || perfil.categoria,
+      objectoContrato: form.objectoContrato.trim() || perfil.objecto,
+      horario: form.horario.trim() || (isVigilante(form.funcao) ? HORARIO_VIGILANTE : HORARIO_PADRAO),
+      mes: form.mes.trim() || new Date().toLocaleDateString("pt-PT", { month: "long", year: "numeric" }),
+    };
+    const patch = toSalarioPatch(formAligned);
     const row: Salario = {
       id,
       nome: patch.nome!,
@@ -844,12 +938,20 @@ function Salarios() {
       toast.error("Indique o nome completo.");
       return;
     }
-    const patch = { ...toSalarioPatch(form), temContrato: withContract || editing.temContrato };
+    const perfil = perfilContrato(form.funcao, form.categoria);
+    const formAligned = {
+      ...form,
+      categoria: form.categoria.trim() || perfil.categoria,
+      objectoContrato: form.objectoContrato.trim() || perfil.objecto,
+      horario: form.horario.trim() || (isVigilante(form.funcao) ? HORARIO_VIGILANTE : HORARIO_PADRAO),
+    };
+    const patch = { ...toSalarioPatch(formAligned), temContrato: withContract || editing.temContrato };
     try {
       updateSalario(editing.id, patch);
-      toast.success("Cadastro actualizado");
-      if (withContract) {
-        const full = { ...editing, ...patch } as Salario;
+      const full = { ...editing, ...patch } as Salario;
+      toast.success("Cadastro actualizado" + (withContract || editing.temContrato ? " · contrato actualizado" : ""));
+      // Sempre actualiza o contrato em pré-visualização se já tiver contrato ou pediu com contrato
+      if (withContract || editing.temContrato) {
         verDocumento(`Contrato — ${full.nome}`, contratoHtml(escola, full));
       }
       setEditing(null);
@@ -928,13 +1030,18 @@ function Salarios() {
         criadoEm: new Date().toISOString(),
       });
     }
-    addRecibosSalario(created);
+    // Numeração RH-AAAA-MM-NNN
+    const numbered = created.map((r, i) => ({
+      ...r,
+      id: `RH-${genMesKey}-${String(i + 1).padStart(3, "0")}`,
+    }));
+    addRecibosSalario(numbered);
     setGenOpen(false);
-    toast.success(`${created.length} recibo(s) de honorários gerado(s) para ${genMes}`);
-    // Autorização dos dois sócios para débito na conta BAI
+    toast.success(`${numbered.length} recibo(s) + autorização gerados para ${genMes}`);
+    // Um único documento: recibos (um por funcionário) + autorização no fim
     verDocumento(
-      `Autorização de pagamento — ${genMes}`,
-      autorizacaoPagamentoHtml(escola, created),
+      `Recibos e autorização — ${genMes}`,
+      pacoteRecibosComAutorizacaoHtml(escola, numbered),
     );
   }
 
@@ -970,17 +1077,20 @@ function Salarios() {
               type="button"
               variant="secondary"
               onClick={() => {
+                const now = new Date();
+                const mesAtual = now.toLocaleDateString("pt-PT", { month: "long", year: "numeric" });
+                const mesLabel = mesAtual.charAt(0).toUpperCase() + mesAtual.slice(1);
                 const list = rows.map((r) => ({
                   nome: r.nome,
                   funcao: r.funcao,
                   salario: r.salario,
                   diasTrab: r.diasTrab,
                   diasUteis: r.diasUteis,
-                  mes: r.mes,
+                  mes: mesLabel,
                 }));
-                openPrintHtml(
-                  listaFuncionariosHtml(escola, list),
-                  "Lista funcionários",
+                verDocumento(
+                  `Lista funcionários — ${mesLabel}`,
+                  listaFuncionariosHtml(escola, list, `Lista de funcionários · ${mesLabel}`),
                 );
               }}
             >
@@ -1121,30 +1231,18 @@ function Salarios() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                const list = recibosFiltrados.length ? recibosFiltrados : recibosSalario.filter((r) => !r.pago);
+                const list = recibosFiltrados.length ? recibosFiltrados : recibosSalario;
                 if (!list.length) {
-                  toast.error("Não há recibos para autorizar.");
+                  toast.error("Não há recibos. Use «Gerar recibos do mês» primeiro.");
                   return;
                 }
-                verDocumento("Autorização de pagamento de honorários", autorizacaoPagamentoHtml(escola, list));
+                verDocumento(
+                  "Recibos e autorização de pagamento",
+                  pacoteRecibosComAutorizacaoHtml(escola, list),
+                );
               }}
             >
-              Ver autorização
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                const list = recibosFiltrados;
-                if (!list.length) {
-                  toast.error("Não há recibos na lista filtrada.");
-                  return;
-                }
-                verDocumento("Recibos e autorização de pagamento", pacoteRecibosComAutorizacaoHtml(escola, list));
-              }}
-            >
-              Imprimir todos (recibos + cartas)
+              Ver PDF (recibos + autorização)
             </Button>
             <Button
               type="button"
@@ -1385,28 +1483,11 @@ function Salarios() {
             </Button>
             <Button
               type="button"
-              variant="secondary"
-              onClick={() => {
-                if (!previewHtml) return;
-                const w = window.open("", "_blank", "noopener,noreferrer");
-                if (w) {
-                  w.document.open();
-                  w.document.write(previewHtml.html);
-                  w.document.close();
-                } else {
-                  toast.error("Permita pop-ups para abrir o documento.");
-                }
-              }}
-            >
-              Abrir em nova janela
-            </Button>
-            <Button
-              type="button"
               onClick={() => {
                 if (previewHtml) openPrintHtml(previewHtml.html, previewHtml.title);
               }}
             >
-              Imprimir
+              Imprimir / PDF
             </Button>
           </div>
         </DialogContent>
@@ -1416,7 +1497,7 @@ function Salarios() {
       <Dialog open={genOpen} onOpenChange={setGenOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Gerar recibos do mês</DialogTitle>
+            <DialogTitle>Gerar recibos + autorização do mês</DialogTitle>
           </DialogHeader>
           <div className="grid max-h-[70vh] gap-3 overflow-y-auto">
             <div className="grid gap-2 sm:grid-cols-2">
