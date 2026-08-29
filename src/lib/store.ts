@@ -25,16 +25,23 @@ export function nextMonthlyDoc(
 ): string {
   const d = dataIso || new Date().toISOString().slice(0, 10);
   const ym = d.slice(0, 7); // YYYY-MM
-  const re = new RegExp(`^${prefix}-${ym}-(\d{3})$`);
+  const re = new RegExp("^" + prefix + "-" + ym + "-(\d{3})");
   let max = 0;
+  const keys = new Set<string>();
   for (const e of existing) {
     const key = e.docInterno || e.id || "";
-    const m = key.match(re);
-    if (m) max = Math.max(max, Number(m[1]));
+    keys.add(key);
+    const mm = key.match(re);
+    if (mm) max = Math.max(max, Number(mm[1]));
   }
-  return `${prefix}-${ym}-${String(max + 1).padStart(3, "0")}`;
+  let n = max + 1;
+  let id = prefix + "-" + ym + "-" + String(n).padStart(3, "0");
+  while (keys.has(id)) {
+    n += 1;
+    id = prefix + "-" + ym + "-" + String(n).padStart(3, "0");
+  }
+  return id;
 }
-
 
 export type CapturaInput = {
   data: string;
@@ -457,10 +464,13 @@ export const useFinance = create<Store>()(
           )
           .sort((a, b) => (a.data || "").localeCompare(b.data || ""));
         for (const e of sorted) {
-          const movId = `APP-${e.id}`;
+          // ID único mesmo se vários lançamentos partilharam o mesmo doc (bug antigo)
+          const movId = `APP-${e.id}-${e.data}-${Math.round((e.valor || 0) * 100)}-${(e.descricao || "").slice(0, 24).replace(/\s+/g, "_")}`;
           if (existing.has(movId)) continue;
-          // já no seed?
           if (movs.some((m) => m.id === movId)) continue;
+          // evitar duplicar por valor+data+descrição já no extrato app
+          const fingerprint = `${e.data}|${Number(e.valor)}|${(e.descricao || "").trim()}`;
+          if (movs.some((m) => m.banco.endsWith("-APP") && `${m.data}|${m.saida}|${(m.descricao || "").trim()}` === fingerprint)) continue;
           const isLev =
             /levantamento|atm/i.test(e.pagamento || "") ||
             /levantamento|atm/i.test(e.categoria || "") ||

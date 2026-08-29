@@ -383,23 +383,75 @@ ${authBody}
 }
 
 function openPrintHtml(html: string, title: string) {
+  // 1) Tentar nova janela
   const w = window.open("", "_blank", "noopener,noreferrer");
-  if (!w) {
-    toast.error("Permita pop-ups para imprimir o contrato.");
+  if (w) {
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.document.title = title;
+    setTimeout(() => {
+      try {
+        w.focus();
+        w.print();
+      } catch {
+        /* ignore */
+      }
+    }, 350);
     return;
   }
-  w.document.write(html);
-  w.document.close();
-  w.document.title = title;
+  // 2) Fallback: iframe oculto (pop-ups bloqueados)
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", title);
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    toast.error("Não foi possível abrir a impressão. Permita pop-ups ou tente noutro browser.");
+    iframe.remove();
+    return;
+  }
+  doc.open();
+  doc.write(html);
+  doc.close();
   setTimeout(() => {
     try {
-      w.focus();
-      w.print();
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
     } catch {
-      /* ignore */
+      toast.error("Impressão bloqueada pelo browser.");
     }
-  }, 300);
+    setTimeout(() => iframe.remove(), 1500);
+  }, 400);
 }
+
+/** HTML completo para pré-visualizar recibo individual */
+function wrapReciboPage(
+  escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
+  r: ReciboSalario,
+) {
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Recibo ${r.nome}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
+  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:12px; }
+  .head img { width:56px; height:56px; object-fit:contain; }
+  .kicker { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#009543; font-weight:700; }
+  .row { display:flex; justify-content:space-between; margin:8px 0; }
+  .muted { color:#64748b; font-size:11px; }
+  table.vals { width:100%; margin:12px 0; border-collapse:collapse; }
+  table.vals td { padding:6px 0; border-top:1px solid #e2e8f0; }
+  table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
+  table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
+  .sign2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; font-size:11px; }
+</style></head><body>${reciboHonorarioHtml(escola, r)}</body></html>`;
+}
+
 
 function SalarioFormFields({
   form,
@@ -533,6 +585,7 @@ function Salarios() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
+  const [previewHtml, setPreviewHtml] = useState<{ title: string; html: string } | null>(null);
   const [avisoFimMesOn, setAvisoFimMesOn] = useState(() => {
     if (typeof window === "undefined") return true;
     const day = new Date().getDate();
@@ -606,7 +659,7 @@ function Salarios() {
     addSalario(row);
     setCreating(false);
     toast.success(withContract ? "Cadastro guardado e contrato pronto a imprimir" : "Cadastro guardado");
-    if (withContract) openPrintHtml(contratoHtml(escola, row), `Contrato ${row.nome}`);
+    if (withContract) verDocumento(`Contrato — ${row.nome}`, contratoHtml(escola, row));
   }
 
   function saveEdit(withContract: boolean) {
@@ -621,13 +674,17 @@ function Salarios() {
       toast.success("Cadastro actualizado");
       if (withContract) {
         const full = { ...editing, ...patch } as Salario;
-        openPrintHtml(contratoHtml(escola, full), `Contrato ${full.nome}`);
+        verDocumento(`Contrato — ${full.nome}`, contratoHtml(escola, full));
       }
       setEditing(null);
       clearDeepLink();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao guardar");
     }
+  }
+
+  function verDocumento(title: string, html: string) {
+    setPreviewHtml({ title, html });
   }
 
   function criarContrato(r: Salario) {
@@ -640,8 +697,7 @@ function Salarios() {
     } catch {
       /* ignore */
     }
-    openPrintHtml(contratoHtml(escola, r), `Contrato ${r.nome}`);
-    toast.success("Contrato gerado — use a impressão do browser");
+    verDocumento(`Contrato — ${r.nome}`, contratoHtml(escola, r));
   }
 
   function openGerarRecibos() {
@@ -700,9 +756,9 @@ function Salarios() {
     setGenOpen(false);
     toast.success(`${created.length} recibo(s) de honorários gerado(s) para ${genMes}`);
     // Autorização dos dois sócios para débito na conta BAI
-    openPrintHtml(
+    verDocumento(
+      `Autorização de pagamento — ${genMes}`,
       autorizacaoPagamentoHtml(escola, created),
-      `Autorização pagamento ${genMes}`,
     );
   }
 
@@ -870,7 +926,7 @@ function Salarios() {
                   toast.error("Não há recibos para autorizar.");
                   return;
                 }
-                openPrintHtml(autorizacaoPagamentoHtml(escola, list), "Autorização pagamento honorários");
+                verDocumento("Autorização de pagamento de honorários", autorizacaoPagamentoHtml(escola, list));
               }}
             >
               Ver autorização
@@ -885,7 +941,7 @@ function Salarios() {
                   toast.error("Não há recibos na lista filtrada.");
                   return;
                 }
-                openPrintHtml(pacoteRecibosComAutorizacaoHtml(escola, list), "Recibos + autorização");
+                verDocumento("Recibos e autorização de pagamento", pacoteRecibosComAutorizacaoHtml(escola, list));
               }}
             >
               Imprimir todos (recibos + cartas)
@@ -953,17 +1009,7 @@ function Salarios() {
                           size="sm"
                           variant="secondary"
                           onClick={() =>
-                            openPrintHtml(
-                              `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Recibo</title>
-<style>@page{size:A4;margin:14mm}body{font-family:Georgia,serif;font-size:12px}
-.head{display:flex;gap:12px;align-items:center;border-bottom:2px solid #009543;padding-bottom:10px;margin-bottom:12px}
-.head img{width:56px;height:56px;object-fit:contain}.kicker{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#009543;font-weight:700}
-.row{display:flex;justify-content:space-between;margin:8px 0}.muted{color:#64748b;font-size:11px}
-table.vals{width:100%;margin:12px 0;border-collapse:collapse}table.vals td{padding:6px 0;border-top:1px solid #e2e8f0}
-table.vals .num{text-align:right}table.vals .tot{font-weight:700;border-top:2px solid #0f172a}
-.sign2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px;font-size:11px}</style></head><body>${reciboHonorarioHtml(escola, r)}</body></html>`,
-                              `Recibo ${r.nome}`,
-                            )
+                            verDocumento(`Recibo — ${r.nome}`, wrapReciboPage(escola, r))
                           }
                         >
                           Ver recibo
@@ -1091,6 +1137,33 @@ table.vals .num{text-align:right}table.vals .tot{font-weight:700;border-top:2px 
               </div>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Pré-visualização contrato / autorização / recibo */}
+      <Dialog open={!!previewHtml} onOpenChange={(o) => !o && setPreviewHtml(null)}>
+        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-3">
+          <DialogHeader>
+            <DialogTitle>{previewHtml?.title || "Documento"}</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto rounded border border-[var(--color-line)] bg-white">
+            {previewHtml ? (
+              <iframe title={previewHtml.title} srcDoc={previewHtml.html} className="h-[60vh] w-full bg-white" />
+            ) : null}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+            <Button type="button" variant="secondary" onClick={() => setPreviewHtml(null)}>
+              Fechar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (previewHtml) openPrintHtml(previewHtml.html, previewHtml.title);
+              }}
+            >
+              Imprimir
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

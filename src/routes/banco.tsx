@@ -3,7 +3,7 @@ import { PageHeader, Kpi } from "@/components/kpi";
 import { PrintActions } from "@/components/print-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pencil, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { getSeed, movimentosAll, useFinance } from "@/lib/store";
@@ -32,6 +32,17 @@ function Banco() {
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
   const saidas = movs.reduce((s, m) => s + m.saida, 0);
   const faturas = getSeed().faturasCartao;
+
+  useEffect(() => {
+    try {
+      const n = syncBaiFromExtras();
+      if (n > 0) toast.message(`Saldo BAI actualizado: ${n} movimento(s) em falta sincronizado(s)`);
+    } catch {
+      /* ignore */
+    }
+    // apenas ao abrir o separador
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>
@@ -70,9 +81,9 @@ function Banco() {
         </div>
       ) : null}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Saldo actual (cartão/extrato)" value={last?.saldo ?? 0} compact tone="forest" />
-        <Kpi label="Entradas" value={entradas} compact />
-        <Kpi label="Saídas" value={saidas} compact />
+        <Kpi label="Saldo actual (cartão/extrato)" value={last?.saldo ?? 0} tone="forest" />
+        <Kpi label="Entradas" value={entradas} />
+        <Kpi label="Saídas" value={saidas} />
         <Kpi label="Faturas TPA" value={String(faturas.length)} />
       </div>
 
