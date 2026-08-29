@@ -1783,6 +1783,94 @@
       "saida": 0.0,
       "saldo": 1064700.56,
       "observacoes": "ENTRADA DESCONHECIDA – a identificar mais tarde (fecha saldo 1 064 700,56)"
+    },
+    {
+      "id": "BAI-063",
+      "linha": 63,
+      "data": "2026-08-26",
+      "banco": "Transf pelo NI",
+      "descricao": "Transferência recebida · Transf pelo NI",
+      "entrada": 150000.0,
+      "saida": 0.0,
+      "saldo": 1214700.56,
+      "observacoes": "Registo manual secretaria"
+    },
+    {
+      "id": "BAI-064",
+      "linha": 64,
+      "data": "2026-08-26",
+      "banco": "Transf pelo NI",
+      "descricao": "Transferência recebida · Transf pelo NI",
+      "entrada": 180000.0,
+      "saida": 0.0,
+      "saldo": 1394700.56,
+      "observacoes": "Registo manual secretaria"
+    },
+    {
+      "id": "BAI-065",
+      "linha": 65,
+      "data": "2026-08-26",
+      "banco": "Transf pelo NI",
+      "descricao": "Transferência recebida · Transf pelo NI",
+      "entrada": 30000.0,
+      "saida": 0.0,
+      "saldo": 1424700.56,
+      "observacoes": "Registo manual secretaria"
+    },
+    {
+      "id": "BAI-066",
+      "linha": 66,
+      "data": "2026-08-26",
+      "banco": "Transf pelo NI",
+      "descricao": "Transferência recebida · Transf pelo NI",
+      "entrada": 30000.0,
+      "saida": 0.0,
+      "saldo": 1454700.56,
+      "observacoes": "Registo manual secretaria"
+    },
+    {
+      "id": "BAI-067",
+      "linha": 67,
+      "data": "2026-08-26",
+      "banco": "Transf pelo NI",
+      "descricao": "Transferência recebida · Transf pelo NI",
+      "entrada": 40000.0,
+      "saida": 0.0,
+      "saldo": 1494700.56,
+      "observacoes": "Registo manual secretaria"
+    },
+    {
+      "id": "BAI-068",
+      "linha": 68,
+      "data": "2026-08-26",
+      "banco": "Transf pelo NI",
+      "descricao": "Transferência recebida · Transf pelo NI",
+      "entrada": 27000.0,
+      "saida": 0.0,
+      "saldo": 1521700.56,
+      "observacoes": "Registo manual secretaria"
+    },
+    {
+      "id": "BAI-069",
+      "linha": 69,
+      "data": "2026-08-26",
+      "banco": "Transf pelo NI",
+      "descricao": "Transferência recebida · Transf pelo NI",
+      "entrada": 30000.0,
+      "saida": 0.0,
+      "saldo": 1551700.56,
+      "observacoes": "Registo manual secretaria"
+    },
+    {
+      "id": "BAI-070",
+      "linha": 70,
+      "data": "2026-08-28",
+      "banco": "Fecho TPA",
+      "descricao": "Fecho TPA / Multicaixa",
+      "entrada": 147340.0,
+      "saida": 0.0,
+      "saldo": 1699040.56,
+      "observacoes": "Registo manual secretaria"
     }
   ],
   "faturasCartao": [

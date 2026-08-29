@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FileText, Pencil, Plus, Printer, UserPlus } from "lucide-react";
+import { FileText, Pencil, Plus, Printer, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -385,51 +385,55 @@ ${authBody}
 }
 
 function openPrintHtml(html: string, title: string) {
-  // 1) Tentar nova janela
-  const w = window.open("", "_blank", "noopener,noreferrer");
-  if (w) {
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    w.document.title = title;
-    setTimeout(() => {
-      try {
-        w.focus();
-        w.print();
-      } catch {
-        /* ignore */
-      }
-    }, 350);
-    return;
-  }
-  // 2) Fallback: iframe oculto (pop-ups bloqueados)
+  // Só caixa de impressão — sem nova janela em branco no browser
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", title);
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!doc) {
-    toast.error("Não foi possível abrir a impressão. Permita pop-ups ou tente noutro browser.");
+    toast.error("Não foi possível iniciar a impressão.");
     iframe.remove();
     return;
   }
   doc.open();
   doc.write(html);
   doc.close();
-  setTimeout(() => {
+  const runPrint = () => {
     try {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
     } catch {
       toast.error("Impressão bloqueada pelo browser.");
     }
-    setTimeout(() => iframe.remove(), 1500);
-  }, 400);
+    setTimeout(() => {
+      try {
+        iframe.remove();
+      } catch {
+        /* ignore */
+      }
+    }, 2000);
+  };
+  // Esperar imagens (logo) quando existirem
+  const imgs = Array.from(doc.images || []);
+  if (imgs.length === 0) {
+    setTimeout(runPrint, 200);
+  } else {
+    let left = imgs.length;
+    const done = () => {
+      left -= 1;
+      if (left <= 0) setTimeout(runPrint, 100);
+    };
+    imgs.forEach((img) => {
+      if (img.complete) done();
+      else {
+        img.onload = done;
+        img.onerror = done;
+      }
+    });
+    setTimeout(runPrint, 2500); // segurança
+  }
 }
 
 /** HTML completo para pré-visualizar recibo individual */
@@ -585,6 +589,7 @@ function Salarios() {
   const recibosSalario = useFinance((s) => s.recibosSalario || []);
   const addRecibosSalario = useFinance((s) => s.addRecibosSalario);
   const setReciboSalarioPago = useFinance((s) => s.setReciboSalarioPago);
+  const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
   const rows = salariosAll(salariosExtra, salariosOverrides);
 
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -1029,14 +1034,36 @@ function Salarios() {
                           Ver recibo
                         </Button>
                         {canEdit ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => setReciboSalarioPago(r.id, !r.pago, todayIso())}
-                          >
-                            {r.pago ? "Marcar por pagar" : "Marcar pago"}
-                          </Button>
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setReciboSalarioPago(r.id, !r.pago, todayIso())}
+                            >
+                              {r.pago ? "Marcar por pagar" : "Marcar pago"}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              title="Apagar recibo (permite gerar outro)"
+                              onClick={() => {
+                                if (
+                                  !confirm(
+                                    `Apagar o recibo de ${r.nome} (${r.mes})? Poderá gerar um novo depois.`,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                removeReciboSalario(r.id);
+                                toast.success("Recibo apagado. Pode gerar outro em «Gerar recibos do mês».");
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span className="ml-1 hidden sm:inline">Apagar</span>
+                            </Button>
+                          </>
                         ) : null}
                       </div>
                     </td>

@@ -87,12 +87,18 @@ function Lancamentos() {
   }, [search.edit]);
 
 
-  const filtered = rows.filter((r) => {
-    if (fonte !== "todas" && r.origem !== fonte) return false;
-    if (!q) return true;
-    const hay = `${r.docInterno} ${r.descricao} ${r.fornecedor} ${r.fatura} ${r.categoria}`.toLowerCase();
-    return hay.includes(q.toLowerCase());
-  });
+  const filtered = rows
+    .filter((r) => {
+      if (fonte !== "todas" && r.origem !== fonte) return false;
+      if (!q) return true;
+      const hay = `${r.docInterno} ${r.descricao} ${r.fornecedor} ${r.fatura} ${r.categoria}`.toLowerCase();
+      return hay.includes(q.toLowerCase());
+    })
+    .sort((a, b) => {
+      const dc = (a.data || "").localeCompare(b.data || "");
+      if (dc !== 0) return dc;
+      return (a.docInterno || a.id || "").localeCompare(b.docInterno || b.id || "");
+    });
 
   function saveEdit() {
     if (!editing || !canEdit) return;

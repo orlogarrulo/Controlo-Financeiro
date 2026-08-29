@@ -106,6 +106,7 @@ type Store = ExtraState & {
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
+  removeReciboSalario: (id: string) => void;
   /** Cria movimentos BAI em falta a partir de despesas (cartão/transferência) já registadas. */
   syncBaiFromExtras: () => number;
   addSalario: (s: Salario) => void;
@@ -450,6 +451,19 @@ export const useFinance = create<Store>()(
         set({ recibosSalario: merged });
         get().pushAudit("recibos_salario", `${rows.length} recibo(s)`);
       },
+      removeReciboSalario: (id) => {
+        const prev = (get().recibosSalario || []).find((r) => r.id === id);
+        if (!prev) return;
+        set({
+          recibosSalario: (get().recibosSalario || []).filter((r) => r.id !== id),
+        });
+        // Se estava pago, remover movimento BAI associado
+        const movId = `APP-SAL-${id}`;
+        set({
+          movimentosBaiExtra: (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
+        });
+        get().pushAudit("recibo_salario_apagar", `${id} · ${prev.nome} · ${prev.mes}`);
+      },
       setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => {
         const prev = (get().recibosSalario || []).find((r) => r.id === id);
         set({
@@ -572,19 +586,49 @@ export const useFinance = create<Store>()(
           existing.add(movId);
         }
         if (toAdd.length) {
-          set({ movimentosBaiExtra: [...get().movimentosBaiExtra, ...toAdd] });
+          set({
+            movimentosBaiExtra: sortAndRecalcBai([
+              ...get().movimentosBaiExtra,
+              ...toAdd,
+            ]),
+          });
           get().pushAudit("bai_sync_extras", `${toAdd.length} movimentos`);
+        } else if ((get().movimentosBaiExtra || []).length) {
+          set({ movimentosBaiExtra: sortAndRecalcBai(get().movimentosBaiExtra) });
         }
         return toAdd.length;
       },
       importBaiMovimentos: (rows, replace) => {
+        const fp = (m: MovimentoBai) =>
+          `${m.data}|${Number(m.entrada) || 0}|${Number(m.saida) || 0}|${(m.banco || "").trim()}`;
+        let merged = [...rows];
+        if (replace) {
+          const ids = new Set(merged.map((m) => m.id));
+          const fps = new Set(merged.map(fp));
+          for (const s of seed.movimentosBai) {
+            if (ids.has(s.id) || fps.has(fp(s))) continue;
+            if ((s.linha || 0) > 62 || /Transf pelo NI|Fecho TPA/i.test(`${s.banco} ${s.descricao}`)) {
+              merged.push(s);
+              ids.add(s.id);
+              fps.add(fp(s));
+            }
+          }
+        } else {
+          // modo extra: juntar ao que já existe
+          const prev = get().movimentosBaiExtra || [];
+          const ids = new Set(merged.map((m) => m.id));
+          for (const p of prev) {
+            if (!ids.has(p.id)) merged.push(p);
+          }
+        }
+        merged = sortAndRecalcBai(merged);
         set({
-          movimentosBaiExtra: rows,
+          movimentosBaiExtra: merged,
           baiOverride: replace,
         });
         get().pushAudit(
           "import_bai",
-          `${rows.length} movimentos BAI (${replace ? "substituição" : "extra"})`,
+          `${merged.length} movimentos BAI (${replace ? "substituição+secretaria" : "extra"})`,
         );
       },
       importLancamentos: (rows) => {
@@ -783,9 +827,12 @@ export function buildLedger(extras: Lancamento[]): Lancamento[] {
       fonte: "Movimentos BAI",
     }));
 
-  return [...socio, ...card, ...fundo, ...insc, ...bankOps, ...extras].sort((a, b) =>
-    (a.data || "9999").localeCompare(b.data || "9999"),
-  );
+  return [...socio, ...card, ...fundo, ...insc, ...bankOps, ...extras].sort((a, b) => {
+    const dc = (a.data || "9999").localeCompare(b.data || "9999");
+    if (dc !== 0) return dc;
+    // Mesmo dia: ordem estável por id / doc (lançamentos fora de ordem cronológica de criação)
+    return (a.docInterno || a.id || "").localeCompare(b.docInterno || b.id || "");
+  });
 }
 
 function guessCategoria(desc: string): string {
@@ -954,19 +1001,66 @@ function pushBaiMovimento(
     saldo: prevSaldo + entrada - saida,
     observacoes: opts.observacoes || "",
   };
-  set({ movimentosBaiExtra: [...extra, mov] });
+  const next = sortAndRecalcBai([...extra, mov]);
+  set({ movimentosBaiExtra: next });
   return true;
 }
 
+/** Ordena por data/linha e recalcula saldo corrido a partir do saldo inicial BAI. */
+export function sortAndRecalcBai(rows: MovimentoBai[]): MovimentoBai[] {
+  const sorted = [...rows].sort((a, b) => {
+    const dc = (a.data || "").localeCompare(b.data || "");
+    if (dc !== 0) return dc;
+    return (a.linha || 0) - (b.linha || 0);
+  });
+  let saldo = Number(seed.escola.saldoInicialBai) || 0;
+  return sorted.map((m, i) => {
+    saldo = Math.round((saldo + (Number(m.entrada) || 0) - (Number(m.saida) || 0)) * 100) / 100;
+    return { ...m, linha: i + 1, saldo };
+  });
+}
+
+/**
+ * Extrato BAI unificado.
+ * — Com import (override): usa o CSV e ainda funde movimentos do seed em falta
+ *   (ex.: entradas Transf pelo NI / Fecho TPA registadas na secretaria).
+ * — Sem override: seed + extras da app, ordenados e com saldo recalculado.
+ */
 export function movimentosAll(extra: MovimentoBai[] = [], override = false): MovimentoBai[] {
-  if (override && extra.length) return extra;
+  const fp = (m: MovimentoBai) =>
+    `${m.data}|${Number(m.entrada) || 0}|${Number(m.saida) || 0}|${(m.banco || "").trim()}|${(m.descricao || "").trim()}`;
+
+  if (override && extra.length) {
+    const ids = new Set(extra.map((m) => m.id));
+    const fps = new Set(extra.map(fp));
+    const merged = [...extra];
+    for (const s of seed.movimentosBai) {
+      if (ids.has(s.id) || fps.has(fp(s))) continue;
+      // Fundir sobretudo registos manuais recentes da secretaria (após linha 62)
+      if ((s.linha || 0) > 62 || /Transf pelo NI|Fecho TPA/i.test(`${s.banco} ${s.descricao}`)) {
+        merged.push(s);
+        ids.add(s.id);
+        fps.add(fp(s));
+      }
+    }
+    // Extras da app (APP-*) que não estejam no CSV
+    for (const e of extra) {
+      if (!ids.has(e.id)) {
+        merged.push(e);
+        ids.add(e.id);
+      }
+    }
+    return sortAndRecalcBai(merged);
+  }
+
   if (extra.length) {
     const ids = new Set(extra.map((m) => m.id));
-    return [...seed.movimentosBai.filter((m) => !ids.has(m.id)), ...extra].sort((a, b) =>
-      a.data === b.data ? a.linha - b.linha : a.data.localeCompare(b.data),
-    );
+    const fps = new Set(extra.map(fp));
+    const base = seed.movimentosBai.filter((m) => !ids.has(m.id) && !fps.has(fp(m)));
+    return sortAndRecalcBai([...base, ...extra]);
   }
-  return seed.movimentosBai;
+
+  return sortAndRecalcBai(seed.movimentosBai);
 }
 
 export function fundoAtmAll(extra: FundoAtm[] = []): FundoAtm[] {
