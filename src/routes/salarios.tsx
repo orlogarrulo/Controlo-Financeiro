@@ -3,7 +3,6 @@ import { FileText, Pencil, Plus, Printer, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
-import { PrintActions } from "@/components/print-actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -264,6 +263,112 @@ function autorizacaoPagamentoHtml(
 </div>
 </body></html>`;
 }
+
+
+function reciboHonorarioHtml(
+  escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
+  r: ReciboSalario,
+) {
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  return `<div class="sheet">
+<div class="head">
+  <img src="${logo}" alt="Logo"/>
+  <div>
+    <strong>${escola.nome}</strong><br/>
+    <span class="muted">${escola.subtitulo || "Luanda"} · ${escola.ano || ""}</span>
+  </div>
+</div>
+<p class="kicker">Recibo de honorários / prestação de serviços</p>
+<div class="row"><span>N.º <strong>${r.id}</strong></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
+<p>Pagámos a <strong>${r.nome}</strong> (${r.funcao || "—"}) a quantia de <strong>${formatKz(r.liquido)}</strong> referente a <strong>${r.mes}</strong>.</p>
+<table class="vals">
+  <tr><td>Honorário de referência</td><td class="num">${formatKz(r.salarioBruto)}</td></tr>
+  ${r.descontoDias > 0 ? `<tr><td>Desconto dias (${r.diasTrab}/${r.diasUteis})</td><td class="num">−${formatKz(r.descontoDias)}</td></tr>` : ""}
+  ${(r.outrosDesc || 0) > 0 ? `<tr><td>Outros descontos</td><td class="num">−${formatKz(r.outrosDesc)}</td></tr>` : ""}
+  <tr class="tot"><td>Líquido</td><td class="num">${formatKz(r.liquido)}</td></tr>
+</table>
+${r.iban ? `<p class="muted">IBAN: ${r.iban}</p>` : ""}
+<p class="muted">${escola.notaFiscal || ""}</p>
+<div class="sign2">
+  <div>O prestador<br/><br/>_________________</div>
+  <div>A secretaria<br/><br/>_________________</div>
+</div>
+</div>`;
+}
+
+function listaFuncionariosHtml(
+  escola: { nome: string; subtitulo?: string; ano?: string },
+  rows: { nome: string; funcao: string; salario: number; diasTrab: number; diasUteis: number; mes: string }[],
+  titulo = "Lista de funcionários e honorários",
+) {
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const body = rows
+    .map(
+      (r) =>
+        `<tr>
+          <td>${r.nome}</td>
+          <td>${r.funcao || "—"}</td>
+          <td class="num">${formatKz(r.salario)}</td>
+          <td class="num">${r.diasTrab}/${r.diasUteis}</td>
+          <td>${r.mes || "—"}</td>
+        </tr>`,
+    )
+    .join("");
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>${titulo}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  body { font-family: system-ui, sans-serif; font-size: 12px; color: #0f172a; }
+  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:14px; }
+  .head img { width:56px; height:56px; object-fit:contain; }
+  h1 { font-size: 15px; margin: 0 0 12px; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:10px; text-transform:uppercase; color:#64748b; border-bottom:2px solid #cbd5e1; padding:8px 6px; }
+  td { padding:8px 6px; border-bottom:1px solid #e2e8f0; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .muted { color:#64748b; font-size:11px; }
+</style></head><body>
+<div class="head"><img src="${logo}" alt="Logo"/><div><strong>${escola.nome}</strong><br/><span class="muted">${escola.subtitulo || ""} · ${escola.ano || ""}</span></div></div>
+<h1>${titulo}</h1>
+<table>
+  <thead><tr><th>Funcionário</th><th>Função</th><th class="num">Salário</th><th class="num">Dias trab.</th><th>Mês</th></tr></thead>
+  <tbody>${body}</tbody>
+</table>
+<p class="muted">Documento gerado pela secretaria · apenas listagem (não é captura de ecrã).</p>
+</body></html>`;
+}
+
+function pacoteRecibosComAutorizacaoHtml(
+  escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
+  recibos: ReciboSalario[],
+) {
+  const authInner = autorizacaoPagamentoHtml(escola, recibos);
+  // extract body of auth - simpler: full pages
+  const sheets = recibos.map((r) => reciboHonorarioHtml(escola, r)).join('<div class="break"></div>');
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Recibos e autorização</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
+  .break { page-break-after: always; }
+  .sheet { page-break-after: always; }
+  .sheet:last-child { page-break-after: auto; }
+  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:12px; }
+  .head img { width:56px; height:56px; object-fit:contain; }
+  .kicker { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#009543; font-weight:700; }
+  .row { display:flex; justify-content:space-between; margin:8px 0; }
+  .muted { color:#64748b; font-size:11px; }
+  table.vals { width:100%; margin:12px 0; border-collapse:collapse; }
+  table.vals td { padding:6px 0; border-top:1px solid #e2e8f0; }
+  table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
+  table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
+  .sign2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; font-size:11px; }
+</style></head><body>
+${sheets}
+<div class="break"></div>
+${authInner.replace("<!DOCTYPE html>", "").replace(/<html[^>]*>/, "").replace("</html>", "").replace(/<head>[\\s\\S]*?<\\/head>/, "").replace(/<body[^>]*>/, "").replace("</body>", "")}
+</body></html>`;
+}
+
 
 function openPrintHtml(html: string, title: string) {
   const w = window.open("", "_blank", "noopener,noreferrer");
@@ -610,13 +715,26 @@ function Salarios() {
                 </Button>
               </>
             ) : null}
-            <PrintActions
-              targetRef={printRef}
-              filename="salarios.pdf"
-              landscape
-              shareTitle="Salários · École Consulaire"
-              printLabel="Imprimir lista"
-            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                const list = rows.map((r) => ({
+                  nome: r.nome,
+                  funcao: r.funcao,
+                  salario: r.salario,
+                  diasTrab: r.diasTrab,
+                  diasUteis: r.diasUteis,
+                  mes: r.mes,
+                }));
+                openPrintHtml(
+                  listaFuncionariosHtml(escola, list),
+                  "Lista funcionários",
+                );
+              }}
+            >
+              Imprimir lista
+            </Button>
           </div>
         }
       />
@@ -717,9 +835,48 @@ function Salarios() {
                 openPrintHtml(autorizacaoPagamentoHtml(escola, list), "Autorização pagamento honorários");
               }}
             >
-              Autorização sócios
+              Ver autorização
             </Button>
-            <PrintActions targetRef={listPrintRef} filename="recibos-honorarios.pdf" shareTitle="Recibos honorários" printLabel="Imprimir lista" />
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                const list = recibosFiltrados;
+                if (!list.length) {
+                  toast.error("Não há recibos na lista filtrada.");
+                  return;
+                }
+                openPrintHtml(pacoteRecibosComAutorizacaoHtml(escola, list), "Recibos + autorização");
+              }}
+            >
+              Imprimir todos (recibos + cartas)
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                const list = recibosFiltrados.map((r) => ({
+                  nome: r.nome,
+                  funcao: r.funcao,
+                  salario: r.liquido,
+                  diasTrab: r.diasTrab,
+                  diasUteis: r.diasUteis,
+                  mes: r.mes,
+                }));
+                if (!list.length) {
+                  toast.error("Lista vazia.");
+                  return;
+                }
+                openPrintHtml(
+                  listaFuncionariosHtml(escola, list, "Lista de recibos de honorários"),
+                  "Lista recibos",
+                );
+              }}
+            >
+              Imprimir listagem
+            </Button>
           </div>
         </div>
         <div ref={listPrintRef} className="overflow-x-auto rounded-[var(--radius)] border border-[var(--color-line)]">
@@ -752,16 +909,38 @@ function Salarios() {
                     </td>
                     <td className="px-3 py-2">{r.pago ? "Pago" : "Por pagar"}</td>
                     <td className="no-print px-3 py-2">
-                      {canEdit ? (
+                      <div className="flex flex-wrap gap-1">
                         <Button
                           type="button"
                           size="sm"
                           variant="secondary"
-                          onClick={() => setReciboSalarioPago(r.id, !r.pago, todayIso())}
+                          onClick={() =>
+                            openPrintHtml(
+                              `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Recibo</title>
+<style>@page{size:A4;margin:14mm}body{font-family:Georgia,serif;font-size:12px}
+.head{display:flex;gap:12px;align-items:center;border-bottom:2px solid #009543;padding-bottom:10px;margin-bottom:12px}
+.head img{width:56px;height:56px;object-fit:contain}.kicker{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#009543;font-weight:700}
+.row{display:flex;justify-content:space-between;margin:8px 0}.muted{color:#64748b;font-size:11px}
+table.vals{width:100%;margin:12px 0;border-collapse:collapse}table.vals td{padding:6px 0;border-top:1px solid #e2e8f0}
+table.vals .num{text-align:right}table.vals .tot{font-weight:700;border-top:2px solid #0f172a}
+.sign2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px;font-size:11px}</style></head><body>${reciboHonorarioHtml(escola, r)}</body></html>`,
+                              `Recibo ${r.nome}`,
+                            )
+                          }
                         >
-                          {r.pago ? "Marcar por pagar" : "Marcar pago"}
+                          Ver recibo
                         </Button>
-                      ) : null}
+                        {canEdit ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setReciboSalarioPago(r.id, !r.pago, todayIso())}
+                          >
+                            {r.pago ? "Marcar por pagar" : "Marcar pago"}
+                          </Button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))

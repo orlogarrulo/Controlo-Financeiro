@@ -22,6 +22,7 @@ function Banco() {
   const baiExtra = useFinance((s) => s.movimentosBaiExtra);
   const baiOverride = useFinance((s) => s.baiOverride);
   const importBai = useFinance((s) => s.importBaiMovimentos);
+  const syncBaiFromExtras = useFinance((s) => s.syncBaiFromExtras);
   const operators = useFinance((s) => s.operators);
   const active = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(active, operators);
@@ -49,6 +50,25 @@ function Banco() {
           />
         }
       />
+      {canEdit ? (
+        <div className="no-print mb-3">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              const n = syncBaiFromExtras();
+              if (n > 0) toast.success(`${n} movimento(s) BAI criado(s) a partir de despesas / salários`);
+              else toast.message("Saldo já estava alinhado com as despesas da app");
+            }}
+          >
+            Actualizar saldo a partir de despesas
+          </Button>
+          <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+            Use se registou despesas (cartão/transferência) e o saldo BAI não desceu — por exemplo despesas de 22 a 28.
+          </p>
+        </div>
+      ) : null}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Saldo actual (cartão/extrato)" value={last?.saldo ?? 0} compact tone="forest" />
         <Kpi label="Entradas" value={entradas} compact />

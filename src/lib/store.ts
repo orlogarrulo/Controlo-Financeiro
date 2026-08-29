@@ -99,6 +99,8 @@ type Store = ExtraState & {
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
+  /** Cria movimentos BAI em falta a partir de despesas (cartão/transferência) já registadas. */
+  syncBaiFromExtras: () => number;
   addSalario: (s: Salario) => void;
   updateSalario: (id: string, patch: Partial<Salario>) => void;
 };
@@ -436,7 +438,89 @@ export const useFinance = create<Store>()(
         }
         get().pushAudit("recibo_salario_pago", `${id} · ${pago}`);
       },
-            importBaiMovimentos: (rows, replace) => {
+      
+      syncBaiFromExtras: () => {
+        const extras = get().extras || [];
+        const existing = new Set((get().movimentosBaiExtra || []).map((m) => m.id));
+        // também ids APP-SAL-*
+        let movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+        let last = movs[movs.length - 1];
+        let saldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
+        let linha = last?.linha ?? 0;
+        const toAdd: MovimentoBai[] = [];
+        const sorted = [...extras]
+          .filter(
+            (e) =>
+              e.tipo === "despesa" &&
+              (e.origem === "cartao" || e.origem === "banco") &&
+              (e.valor || 0) > 0,
+          )
+          .sort((a, b) => (a.data || "").localeCompare(b.data || ""));
+        for (const e of sorted) {
+          const movId = `APP-${e.id}`;
+          if (existing.has(movId)) continue;
+          // já no seed?
+          if (movs.some((m) => m.id === movId)) continue;
+          const isLev =
+            /levantamento|atm/i.test(e.pagamento || "") ||
+            /levantamento|atm/i.test(e.categoria || "") ||
+            /levantamento|atm/i.test(e.descricao || "");
+          const tipoBai = isLev ? "ATM" : e.origem === "banco" ? "TRANSF" : "CARTAO";
+          const saida = Number(e.valor) || 0;
+          saldo = saldo - saida;
+          linha += 1;
+          toAdd.push({
+            id: movId,
+            linha,
+            data: e.data,
+            banco: `${tipoBai}-APP`,
+            descricao: e.descricao || e.categoria || "Despesa conta BAI",
+            entrada: 0,
+            saida,
+            saldo,
+            observacoes: `Sync lançamento ${e.id}${e.fornecedor ? ` · ${e.fornecedor}` : ""}`,
+          });
+          existing.add(movId);
+          if (isLev) {
+            const atmId = `ATM-${e.id}`;
+            if (!(get().fundoAtmExtra || []).some((a) => a.id === atmId)) {
+              set({
+                fundoAtmExtra: [
+                  ...(get().fundoAtmExtra || []),
+                  { id: atmId, data: e.data, valor: saida },
+                ],
+              });
+            }
+          }
+        }
+        // recibos salário pagos sem movimento
+        for (const r of get().recibosSalario || []) {
+          if (!r.pago || !(r.liquido > 0)) continue;
+          const movId = `APP-SAL-${r.id}`;
+          if (existing.has(movId)) continue;
+          const saida = Number(r.liquido) || 0;
+          saldo = saldo - saida;
+          linha += 1;
+          toAdd.push({
+            id: movId,
+            linha,
+            data: r.dataPag || r.criadoEm?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+            banco: "SALARIO-APP",
+            descricao: `Honorários ${r.nome} · ${r.mes}`,
+            entrada: 0,
+            saida,
+            saldo,
+            observacoes: `Sync recibo ${r.id}`,
+          });
+          existing.add(movId);
+        }
+        if (toAdd.length) {
+          set({ movimentosBaiExtra: [...get().movimentosBaiExtra, ...toAdd] });
+          get().pushAudit("bai_sync_extras", `${toAdd.length} movimentos`);
+        }
+        return toAdd.length;
+      },
+      importBaiMovimentos: (rows, replace) => {
         set({
           movimentosBaiExtra: rows,
           baiOverride: replace,
