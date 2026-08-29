@@ -314,7 +314,6 @@ function Banco() {
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
 
       <Dialog open={novaMovOpen} onOpenChange={setNovaMovOpen}>
         <DialogContent className="max-w-md">
@@ -434,6 +433,6 @@ function Banco() {
           </div>
         </DialogContent>
       </Dialog>
-
+    </div>
   );
 }
