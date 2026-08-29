@@ -576,9 +576,9 @@ function reciboHonorarioHtml(
       <span class="mu">${escola.subtitulo || "Luanda"} · ${escola.ano || ""}</span>
     </div>
   </header>
-  <p class="ki">Recibo de honorários / prestação de serviços</p>
+  <p class="ki" style="text-align:center">Recibo de honorários / prestação de serviços</p>
   <div class="rw"><span>N.º <b>${r.id}</b></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
-  <p class="tx">Pagámos a <b>${r.nome}</b> (${r.funcao || "—"}) a quantia de <b>${formatKz(r.liquido)}</b> referente a ${descricao}, durante o período <b>${ini}</b> a <b>${fim}</b>.</p>
+  <p class="tx">Pagámos a <b>${r.nome}</b> a quantia de <b>${formatKz(r.liquido)}</b> referente a ${descricao}, durante o período <b>${ini}</b> a <b>${fim}</b>.</p>
   <table class="tb">
     <tr><td>Honorário de referência</td><td class="n">${formatKz(r.salarioBruto)}</td></tr>
     ${r.descontoDias > 0 ? `<tr><td>Desconto dias (${r.diasTrab}/${r.diasUteis})</td><td class="n">−${formatKz(r.descontoDias)}</td></tr>` : ""}
@@ -792,6 +792,7 @@ html, body {
   color: #009543;
   font-weight: 700;
   margin: 0 0 1.5mm;
+  text-align: center;
 }
 .recibo .rw {
   display: flex;
