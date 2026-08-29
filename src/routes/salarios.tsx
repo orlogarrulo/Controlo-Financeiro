@@ -445,14 +445,62 @@ function dataDocFinancas(iso?: string): string {
 }
 
 /** Resumo curto do objecto (cláusula 2) para o recibo de honorários. */
-function resumoTrabalhoPrestacao(funcao?: string, categoria?: string): string {
-  const perfil = perfilContrato(funcao || "", categoria);
-  // Usar a frase de natureza sem prefixos longos
-  const o = perfil.objecto || "";
-  const m = o.match(/tem por objecto\s+(.+?)(?:\s+Constituem|\s+Os serviços|$)/i);
-  let s = (m ? m[1] : perfil.categoria + (funcao ? ` — ${funcao}` : "")).trim();
-  if (s.length > 220) s = s.slice(0, 217) + "…";
-  return s || funcao || "Prestação de serviços";
+const ESCOLA_CURTA =
+  "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida";
+
+/** Período 01–30 do mês do recibo, formato DD-MM-AA. */
+function periodoPrestacaoMes(mesKey?: string, mesLabel?: string): { ini: string; fim: string } {
+  let y: number;
+  let m: number;
+  if (mesKey && /^\d{4}-\d{2}$/.test(mesKey)) {
+    const [ys, ms] = mesKey.split("-");
+    y = Number(ys);
+    m = Number(ms);
+  } else {
+    const now = new Date();
+    y = now.getFullYear();
+    m = now.getMonth() + 1;
+  }
+  const mm = String(m).padStart(2, "0");
+  const yy = String(y).slice(-2);
+  return { ini: `01-${mm}-${yy}`, fim: `30-${mm}-${yy}` };
+}
+
+/**
+ * Descrição curta da prestação conforme a função (para o texto do recibo).
+ */
+function descricaoPrestacaoPorFuncao(funcao?: string): string {
+  const f = (funcao || "").toLowerCase();
+  if (/vigil|segur|guarda|porteir|rond/.test(f)) {
+    return `prestação de serviços de vigilância e segurança física das instalações, bens e pessoas da ${ESCOLA_CURTA}`;
+  }
+  if (/limp|higien|faxin|cantina|cozinh/.test(f)) {
+    return `prestação de serviços de limpeza e higiene das instalações da ${ESCOLA_CURTA}`;
+  }
+  if (/manut|eletric|electric|canal|serral|jardim|patrim/.test(f)) {
+    return `prestação de serviços de manutenção e conservação das instalações da ${ESCOLA_CURTA}`;
+  }
+  if (/admin|secret|financ|contab|tesour/.test(f)) {
+    return `prestação de serviços técnico-administrativos e de apoio à gestão financeira da ${ESCOLA_CURTA}`;
+  }
+  if (/direc|director|diretor|coorden/.test(f) && /pedag/.test(f)) {
+    return `prestação de serviços de direcção pedagógica da ${ESCOLA_CURTA}`;
+  }
+  if (/direc|director|diretor/.test(f)) {
+    return `prestação de serviços de direcção administrativa da ${ESCOLA_CURTA}`;
+  }
+  if (/professor|docente|enseignant|educador|maitre|maître|mestre/.test(f)) {
+    return `prestação de serviços docentes e educativos na ${ESCOLA_CURTA}`;
+  }
+  if (/motor|motorista|condutor/.test(f)) {
+    return `prestação de serviços de transporte e condução ao serviço da ${ESCOLA_CURTA}`;
+  }
+  const perfil = perfilContrato(funcao || "");
+  return `prestação de serviços de ${perfil.categoria.toLowerCase()} na ${ESCOLA_CURTA}`;
+}
+
+function resumoTrabalhoPrestacao(funcao?: string, _categoria?: string): string {
+  return descricaoPrestacaoPorFuncao(funcao);
 }
 
 function autorizacaoPagamentoHtml(
@@ -499,7 +547,6 @@ function autorizacaoPagamentoHtml(
   </div>
 </div>
 <h1>AUTORIZAÇÃO / SOLICITAÇÃO DE PAGAMENTO DE HONORÁRIOS</h1>
-<p class="muted" style="text-align:center">Pagamento a debitar da conta Banco BAI da escola</p>
 <p>A Administração <strong>autoriza</strong> o pagamento dos honorários referentes a <strong>${mes}</strong>, conforme a lista seguinte, por transferência ou cartão a partir da conta BAI da ${escola.nomeCurto || "escola"}.</p>
 <table>
   <thead><tr><th>Prestador</th><th>Função</th><th style="text-align:right">Valor líquido</th><th>IBAN</th></tr></thead>
@@ -518,9 +565,10 @@ function reciboHonorarioHtml(
   r: ReciboSalario,
 ) {
   const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
-  const trabalho = resumoTrabalhoPrestacao(r.funcao, undefined);
+  const descricao = descricaoPrestacaoPorFuncao(r.funcao);
+  const { ini, fim } = periodoPrestacaoMes(r.mesKey, r.mes);
   const dataDoc = dataDocFinancas(r.dataPag || todayIso());
-  return `<div class="sheet">
+  return `<div class="sheet-a5">
 <div class="head">
   <img src="${logo}" alt="Logo"/>
   <div>
@@ -530,8 +578,7 @@ function reciboHonorarioHtml(
 </div>
 <p class="kicker">Recibo de honorários / prestação de serviços</p>
 <div class="row"><span>N.º <strong>${r.id}</strong></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
-<p>Pagámos a <strong>${r.nome}</strong> (${r.funcao || "—"}) a quantia de <strong>${formatKz(r.liquido)}</strong> referente a <strong>${r.mes}</strong>.</p>
-<p class="trabalho"><strong>Trabalho prestado (objecto):</strong> ${trabalho}</p>
+<p class="texto-recibo">Pagámos a <strong>${r.nome}</strong> (${r.funcao || "—"}) a quantia de <strong>${formatKz(r.liquido)}</strong> referente a ${descricao}, durante o período <strong>${ini}</strong> a <strong>${fim}</strong>.</p>
 <table class="vals">
   <tr><td>Honorário de referência</td><td class="num">${formatKz(r.salarioBruto)}</td></tr>
   ${r.descontoDias > 0 ? `<tr><td>Desconto dias (${r.diasTrab}/${r.diasUteis})</td><td class="num">−${formatKz(r.descontoDias)}</td></tr>` : ""}
@@ -539,10 +586,9 @@ function reciboHonorarioHtml(
   <tr class="tot"><td>Líquido</td><td class="num">${formatKz(r.liquido)}</td></tr>
 </table>
 ${r.iban ? `<p class="muted">IBAN: ${r.iban}</p>` : ""}
-<p class="muted">${escola.notaFiscal || ""}</p>
 <div class="sign2">
   <div><span class="sign-label">O prestador</span><span class="sign-line"></span></div>
-  <div><span class="sign-label">A secretaria</span><span class="sign-line"></span></div>
+  <div><span class="sign-label">Departamento de Finanças</span><span class="sign-line"></span></div>
 </div>
 <p class="doc-foot-inline">Documento gerado pelo Departamento de Finanças, ${dataDoc}</p>
 </div>`;
@@ -594,7 +640,14 @@ function pacoteRecibosComAutorizacaoHtml(
   recibos: ReciboSalario[],
 ) {
   const authInner = autorizacaoPagamentoHtml(escola, recibos);
-  const sheets = recibos.map((r) => reciboHonorarioHtml(escola, r)).join('<div class="break"></div>');
+  // Emparelhar 2 recibos A5 por página A4
+  const pairs: string[] = [];
+  for (let i = 0; i < recibos.length; i += 2) {
+    const a = reciboHonorarioHtml(escola, recibos[i]);
+    const b = recibos[i + 1] ? reciboHonorarioHtml(escola, recibos[i + 1]) : "";
+    pairs.push(`<div class="page-a4-pair">${a}${b}</div>`);
+  }
+  const sheets = pairs.join('<div class="break"></div>');
   let authBody = authInner;
   const bodyOpen = authBody.indexOf("<body");
   if (bodyOpen >= 0) {
@@ -606,17 +659,10 @@ function pacoteRecibosComAutorizacaoHtml(
   }
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4; margin: 14mm; }
-  body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
+  @page { size: A4; margin: 8mm; }
+  body { font-family: Georgia, serif; font-size: 11px; color: #0f172a; margin: 0; }
   .break { page-break-after: always; height: 0; }
-  .sheet {
-    page-break-after: always;
-    page-break-inside: avoid;
-    padding: 8mm 2mm 14mm;
-    min-height: 240mm;
-    box-sizing: border-box;
-  }
-  .sheet:last-child { page-break-after: auto; }
+  ${cssReciboA5()}
   .head {
     display:flex;
     gap:14px;
@@ -755,38 +801,69 @@ function wrapReciboPage(
 ) {
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4; margin: 14mm; }
-  body { font-family: Georgia, serif; font-size: 12px; color: #0f172a; }
-  .sheet { padding: 8mm 2mm 14mm; min-height: 240mm; box-sizing: border-box; }
-  .head {
-    display:flex; gap:14px; align-items:center;
-    border-bottom:2px solid #009543;
-    padding-bottom:16px; margin-bottom:28px;
-  }
-  .head img { width:64px; height:64px; object-fit:contain; }
-  .kicker {
-    font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
-    color:#009543; font-weight:700; margin: 0 0 16px;
-  }
-  .row { display:flex; justify-content:space-between; margin:14px 0 20px; }
-  .muted { color:#64748b; font-size:11px; }
-  table.vals { width:100%; margin:20px 0 28px; border-collapse:collapse; }
-  table.vals td { padding:10px 0; border-top:1px solid #e2e8f0; }
-  table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
-  table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
-  .trabalho { font-size:11px; line-height:1.4; color:#334155; margin:10px 0 14px; }
-  .sign2 {
-    display:grid; grid-template-columns:1fr 1fr; gap:48px;
-    margin-top:64px; padding-top:8px; font-size:11px;
-  }
-  .sign2 .sign-label { display:block; text-align:center; margin-bottom:72px; }
-  .sign2 .sign-line {
-    display:block; border-top:1px solid #94a3b8; padding-top:8px; text-align:center;
-  }
-  .doc-foot-inline { margin-top:28px; font-size:9px; color:#64748b; text-align:right; }
-</style></head><body>${reciboHonorarioHtml(escola, r)}</body></html>`;
+  @page { size: A4; margin: 8mm; }
+  body { font-family: Georgia, serif; font-size: 11px; color: #0f172a; margin: 0; }
+  ${cssReciboA5()}
+</style></head><body>
+<div class="page-a4">
+  ${reciboHonorarioHtml(escola, r)}
+</div>
+</body></html>`;
 }
 
+/** CSS partilhado: dois recibos A5 por folha A4. */
+function cssReciboA5(): string {
+  return `
+  .page-a4 {
+    width: 100%;
+    min-height: 277mm;
+    box-sizing: border-box;
+  }
+  .page-a4-pair {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 277mm;
+    box-sizing: border-box;
+  }
+  .sheet-a5 {
+    height: 138mm;
+    max-height: 138mm;
+    overflow: hidden;
+    padding: 6mm 8mm 4mm;
+    box-sizing: border-box;
+    border-bottom: 1px dashed #cbd5e1;
+    page-break-inside: avoid;
+  }
+  .page-a4-pair .sheet-a5:last-child { border-bottom: none; }
+  .head {
+    display:flex; gap:10px; align-items:center;
+    border-bottom:2px solid #009543;
+    padding-bottom:8px; margin-bottom:10px;
+  }
+  .head img { width:48px; height:48px; object-fit:contain; }
+  .kicker {
+    font-size:9px; letter-spacing:0.12em; text-transform:uppercase;
+    color:#009543; font-weight:700; margin: 0 0 8px;
+  }
+  .row { display:flex; justify-content:space-between; margin:6px 0 8px; font-size:11px; }
+  .muted { color:#64748b; font-size:10px; }
+  .texto-recibo { font-size:11px; line-height:1.4; margin: 0 0 8px; text-align: justify; }
+  table.vals { width:100%; margin:6px 0 10px; border-collapse:collapse; font-size:11px; }
+  table.vals td { padding:4px 0; border-top:1px solid #e2e8f0; }
+  table.vals .num { text-align:right; font-variant-numeric:tabular-nums; }
+  table.vals .tot { font-weight:700; border-top:2px solid #0f172a; }
+  .sign2 {
+    display:grid; grid-template-columns:1fr 1fr; gap:28px;
+    margin-top:20px; font-size:10px;
+  }
+  .sign2 .sign-label { display:block; text-align:center; margin-bottom:36px; }
+  .sign2 .sign-line {
+    display:block; border-top:1px solid #94a3b8; padding-top:4px; text-align:center;
+  }
+  .doc-foot-inline { margin-top:10px; font-size:8px; color:#64748b; text-align:right; }
+`;
+}
 
 function SalarioFormFields({
   form,
