@@ -100,6 +100,8 @@ export type Aluno = {
   alimentacao?: number;
   curso: number;
   mensalidade1: number;
+  /** Nº de meses de propina incluídos na liquidação da matrícula (1–9). */
+  mesesPropina?: number;
   dataPag: string;
   bruto: number;
   descPct: number;

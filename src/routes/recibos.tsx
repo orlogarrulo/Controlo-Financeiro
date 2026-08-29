@@ -288,16 +288,25 @@ function ReciboInscricao({
   aluno: ReturnType<typeof alunosAll>[number];
   escola: ReturnType<typeof getSeed>["escola"];
 }) {
+  const mesesP = aluno.mesesPropina && aluno.mesesPropina > 0 ? aluno.mesesPropina : aluno.mensalidade1 > 0 ? 1 : 0;
   const lines: { label: string; value: number }[] = [
     { label: "Inscrição / matrícula", value: aluno.inscricao },
+    { label: "Seguro escolar", value: aluno.seguro },
     { label: "Manuais", value: aluno.manuais },
     { label: "Uniforme", value: aluno.uniforme },
-    { label: "Seguro escolar", value: aluno.seguro },
-    { label: "Actividades extras", value: aluno.extras },
+    { label: "ATL", value: aluno.extras },
     { label: "Transporte", value: aluno.transporte || 0 },
     { label: "Alimentação", value: aluno.alimentacao || 0 },
     { label: "Curso intensivo", value: aluno.curso },
-    { label: "1.ª mensalidade", value: aluno.mensalidade1 },
+    {
+      label:
+        mesesP > 1
+          ? `Propinas (${mesesP} meses)`
+          : mesesP === 1
+            ? "Propina (1 mês)"
+            : "Propinas",
+      value: aluno.mensalidade1,
+    },
   ].filter((l) => l.value > 0);
 
   const pagador =

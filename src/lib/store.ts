@@ -109,6 +109,15 @@ type Store = ExtraState & {
   removeReciboSalario: (id: string) => void;
   /** Cria movimentos BAI em falta a partir de despesas (cartão/transferência) já registadas. */
   syncBaiFromExtras: () => number;
+  /** Movimento manual no extrato BAI (entrada ou saída bancária sem despesa). */
+  addBaiMovimentoManual: (input: {
+    data: string;
+    valor: number;
+    tipo: "entrada" | "saida";
+    descricao: string;
+    banco?: string;
+    observacoes?: string;
+  }) => void;
   addSalario: (s: Salario) => void;
   updateSalario: (id: string, patch: Partial<Salario>) => void;
 };
@@ -507,6 +516,26 @@ export const useFinance = create<Store>()(
         get().pushAudit("recibo_salario_pago", `${id} · ${pago}`);
       },
       
+
+      addBaiMovimentoManual: (input) => {
+        const valor = Number(input.valor) || 0;
+        if (valor <= 0) throw new Error("Indique um valor positivo.");
+        const id = `APP-MAN-${Date.now().toString(36).toUpperCase()}`;
+        const ok = pushBaiMovimento(get, set, {
+          id,
+          data: input.data,
+          entrada: input.tipo === "entrada" ? valor : 0,
+          saida: input.tipo === "saida" ? valor : 0,
+          banco: input.banco || (input.tipo === "entrada" ? "ENTRADA-APP" : "SAIDA-APP"),
+          descricao: input.descricao || (input.tipo === "entrada" ? "Entrada manual BAI" : "Saída manual BAI"),
+          observacoes: input.observacoes || "Movimentação manual · Banco BAI",
+        });
+        if (!ok) throw new Error("Movimento já existia.");
+        get().pushAudit(
+          input.tipo === "entrada" ? "bai_entrada_manual" : "bai_saida_manual",
+          `${id} · ${valor}`,
+        );
+      },
       syncBaiFromExtras: () => {
         const extras = get().extras || [];
         const existing = new Set((get().movimentosBaiExtra || []).map((m) => m.id));

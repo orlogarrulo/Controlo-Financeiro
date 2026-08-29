@@ -162,6 +162,8 @@ type FormState = {
   alimentacao: string;
   curso: string;
   mensalidade1: string;
+  /** 0 = não incluir propina nesta liquidação; 1–9 meses */
+  mesesPropina: string;
   propina: string;
   telefone: string;
   email: string;
@@ -192,6 +194,7 @@ function emptyForm(): FormState {
     alimentacao: "0",
     curso: "0",
     mensalidade1: "0",
+    mesesPropina: "1",
     propina: "0",
     telefone: "",
     email: "",
@@ -308,8 +311,8 @@ function calcTotais(f: FormState) {
   const manuais = num(f.manuais);
   const uniforme = num(f.uniforme);
   const extras = num(f.extras);
-  const transporte = isMaternelleTurma(f.turma) ? num(f.transporte) : 0;
-  const alimentacao = isMaternelleTurma(f.turma) ? num(f.alimentacao) : 0;
+  const transporte = num(f.transporte);
+  const alimentacao = num(f.alimentacao);
   const curso = num(f.curso);
   const mensalidade1 = num(f.mensalidade1);
   const bruto =
@@ -556,40 +559,77 @@ function MatriculaForm({
             <Input value={form.uniforme} onChange={(e) => setForm({ ...form, uniforme: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>ATL / extras</Label>
-            <Input value={form.extras} onChange={(e) => setForm({ ...form, extras: e.target.value })} />
+            <Label>ATL</Label>
+            <Input
+              value={form.extras}
+              onChange={(e) => setForm({ ...form, extras: e.target.value })}
+              inputMode="decimal"
+              placeholder="0"
+            />
           </div>
-          {isMaternelleTurma(form.turma) ? (
-            <>
-              <div className="space-y-1.5">
-                <Label>Transporte (Maternelle)</Label>
-                <Input
-                  value={form.transporte}
-                  onChange={(e) => setForm({ ...form, transporte: e.target.value })}
-                  inputMode="decimal"
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Alimentação (Maternelle)</Label>
-                <Input
-                  value={form.alimentacao}
-                  onChange={(e) => setForm({ ...form, alimentacao: e.target.value })}
-                  inputMode="decimal"
-                  placeholder="0"
-                />
-              </div>
-            </>
-          ) : null}
+          <div className="space-y-1.5">
+            <Label>Transporte</Label>
+            <Input
+              value={form.transporte}
+              onChange={(e) => setForm({ ...form, transporte: e.target.value })}
+              inputMode="decimal"
+              placeholder="0"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Alimentação</Label>
+            <Input
+              value={form.alimentacao}
+              onChange={(e) => setForm({ ...form, alimentacao: e.target.value })}
+              inputMode="decimal"
+              placeholder="0"
+            />
+          </div>
           <div className="space-y-1.5">
             <Label>Curso intensivo</Label>
             <Input value={form.curso} onChange={(e) => setForm({ ...form, curso: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>1.ª mensalidade (se incluída)</Label>
+            <Label>Meses de propina a pagar agora (1–9)</Label>
+            <select
+              className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+              value={form.mesesPropina}
+              onChange={(e) => {
+                const meses = e.target.value;
+                const prop = num(form.propina);
+                const total = (Number(meses) || 0) * prop;
+                setForm({
+                  ...form,
+                  mesesPropina: meses,
+                  mensalidade1: String(total),
+                });
+              }}
+            >
+              <option value="0">0 — não incluir propina nesta liquidação</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                <option key={n} value={String(n)}>
+                  {n} {n === 1 ? "mês" : "meses"}
+                  {num(form.propina) > 0
+                    ? ` · ${formatKz(n * num(form.propina))}`
+                    : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Total = propina mensal × nº de meses. Pode ajustar o valor abaixo.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              Total propinas nesta liquidação
+              {num(form.mesesPropina) > 0
+                ? ` (${form.mesesPropina} ${num(form.mesesPropina) === 1 ? "mês" : "meses"})`
+                : ""}
+            </Label>
             <Input
               value={form.mensalidade1}
               onChange={(e) => setForm({ ...form, mensalidade1: e.target.value })}
+              inputMode="decimal"
             />
           </div>
           <div className="space-y-1.5">
@@ -653,6 +693,23 @@ function MatriculaForm({
             ) : null}
           </div>
         </div>
+        <ul className="mt-2 space-y-0.5 text-[12px] text-[var(--color-muted)]">
+          {totais.inscricao > 0 ? <li>Inscrição: {formatKz(totais.inscricao)}</li> : null}
+          {totais.seguro > 0 ? <li>Seguro: {formatKz(totais.seguro)}</li> : null}
+          {totais.manuais > 0 ? <li>Manuais: {formatKz(totais.manuais)}</li> : null}
+          {totais.uniforme > 0 ? <li>Uniforme: {formatKz(totais.uniforme)}</li> : null}
+          {totais.extras > 0 ? <li>ATL: {formatKz(totais.extras)}</li> : null}
+          {totais.transporte > 0 ? <li>Transporte: {formatKz(totais.transporte)}</li> : null}
+          {totais.alimentacao > 0 ? <li>Alimentação: {formatKz(totais.alimentacao)}</li> : null}
+          {totais.curso > 0 ? <li>Curso intensivo: {formatKz(totais.curso)}</li> : null}
+          {totais.mensalidade1 > 0 ? (
+            <li>
+              Propinas
+              {num(form.mesesPropina) > 0 ? ` (${form.mesesPropina} mês${num(form.mesesPropina) > 1 ? "es" : ""})` : ""}
+              : {formatKz(totais.mensalidade1)}
+            </li>
+          ) : null}
+        </ul>
         <p className="mt-3 text-sm font-medium text-[var(--color-forest)]">
           Total a pagar: {formatKz(totais.liquido)}
           {form.seguroExterno ? " (sem seguro da escola)" : ""}
@@ -802,6 +859,9 @@ function Alunos() {
       alimentacao: String(a.alimentacao ?? 0),
       curso: String(a.curso ?? 0),
       mensalidade1: String(a.mensalidade1 ?? 0),
+      mesesPropina: String(
+        a.mesesPropina ?? (a.mensalidade1 && a.mensalidade1 > 0 ? 1 : 0),
+      ),
       propina: String(a.propina ?? 0),
       telefone: a.telefone || "",
       email: a.email || "",
@@ -860,6 +920,7 @@ function Alunos() {
       alimentacao: t.alimentacao,
       curso: t.curso,
       mensalidade1: t.mensalidade1,
+      mesesPropina: num(form.mesesPropina) || 0,
       dataPag: form.dataPag,
       bruto: t.bruto,
       descPct: 0,
@@ -916,6 +977,7 @@ function Alunos() {
         alimentacao: t.alimentacao,
         curso: t.curso,
         mensalidade1: t.mensalidade1,
+        mesesPropina: num(form.mesesPropina) || 0,
         propina: num(form.propina),
         dataPag: form.dataPag.trim(),
         bruto: t.bruto,

@@ -4,15 +4,16 @@ import { PrintActions } from "@/components/print-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Printer } from "lucide-react";
+import { Pencil, Plus, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { getSeed, movimentosAll, useFinance } from "@/lib/store";
+import type { Origem } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
 import type { MovimentoBai } from "@/data/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatDate, formatKz } from "@/lib/format";
+import { formatDate, formatKz, todayIso } from "@/lib/format";
 
 export const Route = createFileRoute("/banco")({ component: Banco });
 
@@ -32,6 +33,94 @@ function Banco() {
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
   const saidas = movs.reduce((s, m) => s + m.saida, 0);
   const faturas = getSeed().faturasCartao;
+  const addBaiManual = useFinance((s) => s.addBaiMovimentoManual);
+  const addCaptura = useFinance((s) => s.addCaptura);
+  const cats = getSeed().categorias.filter((c) => c.tipo === "despesa");
+  const [novaMovOpen, setNovaMovOpen] = useState(false);
+  const [movForm, setMovForm] = useState({
+    data: todayIso(),
+    tipo: "entrada" as "entrada" | "saida",
+    valor: "",
+    descricao: "",
+    banco: "Transf pelo NI",
+    // saída = despesa da escola?
+    comoDespesa: true,
+    categoria: cats[0]?.nome || "Outras Despesas",
+    fornecedor: "",
+  });
+
+  function openNovaMov() {
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1 pode registar movimentações.");
+      return;
+    }
+    setMovForm({
+      data: todayIso(),
+      tipo: "entrada",
+      valor: "",
+      descricao: "",
+      banco: "Transf pelo NI",
+      comoDespesa: true,
+      categoria: cats[0]?.nome || "Outras Despesas",
+      fornecedor: "",
+    });
+    setNovaMovOpen(true);
+  }
+
+  function guardarNovaMov() {
+    const valor = Number(movForm.valor) || 0;
+    if (valor <= 0) {
+      toast.error("Indique o valor.");
+      return;
+    }
+    if (!movForm.descricao.trim()) {
+      toast.error("Indique a descrição.");
+      return;
+    }
+    try {
+      if (movForm.tipo === "entrada") {
+        addBaiManual({
+          data: movForm.data,
+          valor,
+          tipo: "entrada",
+          descricao: movForm.descricao.trim(),
+          banco: movForm.banco.trim() || "ENTRADA-APP",
+          observacoes: "Entrada manual · Banco BAI",
+        });
+        toast.success(`Entrada de ${formatKz(valor)} registada no Banco BAI`);
+      } else if (movForm.comoDespesa) {
+        // Um só registo: Lista de despesas + saída BAI (addCaptura já debita o BAI)
+        addCaptura({
+          data: movForm.data,
+          tipo: "despesa",
+          categoria: movForm.categoria,
+          descricao: movForm.descricao.trim(),
+          fornecedor: movForm.fornecedor.trim(),
+          fatura: "",
+          valor,
+          pagamento: "Transferência BAI",
+          origem: "banco" as Origem,
+          observacoes: "Registado a partir do Banco BAI",
+        });
+        toast.success(`Despesa de ${formatKz(valor)} na Lista de despesas e saída no BAI`);
+      } else {
+        // Só extrato (ex.: comissão bancária já refletida noutro sítio)
+        addBaiManual({
+          data: movForm.data,
+          valor,
+          tipo: "saida",
+          descricao: movForm.descricao.trim(),
+          banco: movForm.banco.trim() || "SAIDA-APP",
+          observacoes: "Saída só no extrato · sem Lista de despesas",
+        });
+        toast.success(`Saída de ${formatKz(valor)} só no extrato BAI`);
+      }
+      setNovaMovOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
+    }
+  }
+
 
   useEffect(() => {
     try {
@@ -51,14 +140,22 @@ function Banco() {
         title="Movimentos Banco BAI"
         description={`${escola.contaBai} · ${escola.cartao}. Saldo inicial ${formatKz(escola.saldoInicialBai)}.`}
         actions={
-          <PrintActions
-            targetRef={printRef}
-            filename="extrato-bai.pdf"
-            landscape
-            shareTitle="Extrato BAI · École Consulaire"
-            shareText="Documento gerado pela secretaria da École Consulaire."
-            printLabel="Imprimir extrato"
-          />
+          <div className="flex flex-wrap gap-2">
+            {canEdit ? (
+              <Button type="button" onClick={openNovaMov}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Nova movimentação BAI
+              </Button>
+            ) : null}
+            <PrintActions
+              targetRef={printRef}
+              filename="extrato-bai.pdf"
+              landscape
+              shareTitle="Extrato BAI · École Consulaire"
+              shareText="Documento gerado pela secretaria da École Consulaire."
+              printLabel="Imprimir extrato"
+            />
+          </div>
         }
       />
       {canEdit ? (
@@ -218,5 +315,125 @@ function Banco() {
         </DialogContent>
       </Dialog>
     </div>
+
+      <Dialog open={novaMovOpen} onOpenChange={setNovaMovOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova movimentação BAI</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <p className="text-[12px] leading-relaxed text-[var(--color-muted)]">
+              <strong>Entrada:</strong> transferências recebidas, fecho TPA, etc. (só extrato BAI).
+              <br />
+              <strong>Saída como despesa:</strong> um único registo — aparece na Lista de despesas e debita o BAI (não use também Nova despesa).
+              <br />
+              <strong>Saída só extrato:</strong> movimentos bancários sem despesa operacional (ex. comissão já tratada).
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label>Data</Label>
+                <Input
+                  type="date"
+                  value={movForm.data}
+                  onChange={(e) => setMovForm({ ...movForm, data: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Tipo</Label>
+                <select
+                  className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                  value={movForm.tipo}
+                  onChange={(e) =>
+                    setMovForm({ ...movForm, tipo: e.target.value as "entrada" | "saida" })
+                  }
+                >
+                  <option value="entrada">Entrada (crédito)</option>
+                  <option value="saida">Saída (débito)</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Valor (Kz)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={movForm.valor}
+                onChange={(e) => setMovForm({ ...movForm, valor: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Descrição</Label>
+              <Input
+                value={movForm.descricao}
+                onChange={(e) => setMovForm({ ...movForm, descricao: e.target.value })}
+                placeholder={
+                  movForm.tipo === "entrada"
+                    ? "Ex.: Transf pelo NI / Fecho TPA"
+                    : "Ex.: Pagamento fornecedor X"
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Rubrica no extrato</Label>
+              <Input
+                value={movForm.banco}
+                onChange={(e) => setMovForm({ ...movForm, banco: e.target.value })}
+                placeholder="Transf pelo NI"
+              />
+            </div>
+            {movForm.tipo === "saida" ? (
+              <>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={movForm.comoDespesa}
+                    onChange={(e) => setMovForm({ ...movForm, comoDespesa: e.target.checked })}
+                  />
+                  <span>
+                    É despesa da escola — registar também na <strong>Lista de despesas</strong>{" "}
+                    (recomendado; evita duplicar com Nova despesa)
+                  </span>
+                </label>
+                {movForm.comoDespesa ? (
+                  <>
+                    <div className="space-y-1">
+                      <Label>Categoria</Label>
+                      <select
+                        className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                        value={movForm.categoria}
+                        onChange={(e) => setMovForm({ ...movForm, categoria: e.target.value })}
+                      >
+                        {cats.map((c) => (
+                          <option key={c.nome} value={c.nome}>
+                            {c.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Fornecedor (opcional)</Label>
+                      <Input
+                        value={movForm.fornecedor}
+                        onChange={(e) => setMovForm({ ...movForm, fornecedor: e.target.value })}
+                      />
+                    </div>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <Button type="button" variant="secondary" onClick={() => setNovaMovOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={guardarNovaMov}>
+                Guardar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
   );
 }
