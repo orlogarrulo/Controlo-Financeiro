@@ -10,6 +10,7 @@ import type {
   MovimentoBai,
   Origem,
   Salario,
+  ReciboSalario,
   Seed,
 } from "@/data/types";
 import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
@@ -56,6 +57,8 @@ type ExtraState = {
   alunosOverrides: Record<string, Partial<Aluno>>;
   mensalidades: Mensalidade[];
   fundoExtra: FundoPagamento[];
+  /** Levantamentos ATM registados na app (somam ao fundo). */
+  fundoAtmExtra: FundoAtm[];
   /** Movimentos BAI importados (CSV) — substituem ou complementam o seed. */
   movimentosBaiExtra: MovimentoBai[];
   /** Se true, usa só movimentosBaiExtra (import completo do extrato). */
@@ -71,6 +74,7 @@ type ExtraState = {
   sessionLog: { at: string; by: string; action: "entrada" | "saida"; detail: string }[];
   /** Funcionários / folhas de salário adicionados na app. */
   salariosExtra: Salario[];
+  recibosSalario: ReciboSalario[];
   /** Sobrescritas de salários do seed (por id). */
   salariosOverrides: Record<string, Partial<Salario>>;
 };
@@ -93,6 +97,8 @@ type Store = ExtraState & {
   removeFundoPagamento: (id: string) => void;
   importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
   importLancamentos: (rows: CapturaInput[]) => number;
+  addRecibosSalario: (rows: ReciboSalario[]) => void;
+  setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
   addSalario: (s: Salario) => void;
   updateSalario: (id: string, patch: Partial<Salario>) => void;
 };
@@ -107,6 +113,7 @@ export const useFinance = create<Store>()(
       alunosOverrides: {},
       mensalidades: initialMensalidades,
       fundoExtra: [],
+      fundoAtmExtra: [],
       movimentosBaiExtra: [],
       baiOverride: false,
       fotos: {},
@@ -115,6 +122,7 @@ export const useFinance = create<Store>()(
       auditLog: [],
       sessionLog: [],
       salariosExtra: [],
+      recibosSalario: [],
       salariosOverrides: {},
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
@@ -219,6 +227,82 @@ export const useFinance = create<Store>()(
         };
         set({ extras: [...extras, row] });
         if (input.foto) set({ fotos: { ...get().fotos, [id]: input.foto } });
+        // Sai da conta BAI (cartão TPA, transferência ou levantamento ATM)
+        const saiDaContaBai =
+          (input.origem === "cartao" || input.origem === "banco") &&
+          input.tipo === "despesa" &&
+          input.valor > 0;
+        const entradaNaContaBai =
+          input.origem === "cartao" && input.tipo === "entrada" && input.valor > 0;
+        const isLevantamento =
+          saiDaContaBai &&
+          (/levantamento|atm/i.test(input.pagamento || "") ||
+            /levantamento|atm/i.test(input.categoria || "") ||
+            /levantamento|atm/i.test(input.descricao || "") ||
+            input.pagamento === "Levantamento ATM BAI");
+
+        if (saiDaContaBai) {
+          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+          const last = movs[movs.length - 1];
+          const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
+          const saida = Number(input.valor) || 0;
+          const tipoBai = isLevantamento
+            ? "ATM"
+            : input.origem === "banco"
+              ? "TRANSF"
+              : "CARTAO";
+          const mov: MovimentoBai = {
+            id: `APP-${id}`,
+            linha: (last?.linha ?? 0) + 1,
+            data: input.data,
+            banco: `${tipoBai}-APP`,
+            descricao:
+              input.descricao ||
+              input.categoria ||
+              (isLevantamento
+                ? "Levantamento ATM BAI"
+                : input.origem === "banco"
+                  ? "Transferência conta BAI"
+                  : "Despesa cartão BAI"),
+            entrada: 0,
+            saida,
+            saldo: prevSaldo - saida,
+            observacoes: `Lançamento ${id}${input.fornecedor ? ` · ${input.fornecedor}` : ""}`,
+          };
+          set({ movimentosBaiExtra: [...get().movimentosBaiExtra, mov] });
+          get().pushAudit("bai_saida_app", `${mov.id} · -${saida} · ${tipoBai}`);
+
+          // Levantamento: dinheiro sai do BAI e entra no fundo de maneio
+          if (isLevantamento) {
+            const atmId = `ATM-${id}`;
+            const atmRow: FundoAtm = {
+              id: atmId,
+              data: input.data,
+              valor: saida,
+            };
+            set({ fundoAtmExtra: [...(get().fundoAtmExtra || []), atmRow] });
+            get().pushAudit("fundo_atm_app", `${atmId} · +${saida}`);
+          }
+        }
+        if (entradaNaContaBai) {
+          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+          const last = movs[movs.length - 1];
+          const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
+          const entrada = Number(input.valor) || 0;
+          const mov: MovimentoBai = {
+            id: `APP-${id}`,
+            linha: (last?.linha ?? 0) + 1,
+            data: input.data,
+            banco: "CARTAO-APP",
+            descricao: input.descricao || input.categoria || "Entrada conta BAI",
+            entrada,
+            saida: 0,
+            saldo: prevSaldo + entrada,
+            observacoes: `Lançamento ${id}`,
+          };
+          set({ movimentosBaiExtra: [...get().movimentosBaiExtra, mov] });
+          get().pushAudit("bai_entrada_app", `${mov.id} · +${entrada}`);
+        }
         get().pushAudit("criar_lancamento", `${id} · ${row.descricao} · ${row.valor}`);
         return row;
       },
@@ -294,7 +378,65 @@ export const useFinance = create<Store>()(
         get().pushAudit("apagar_lancamento", id);
         set({ extras: get().extras.filter((e) => e.id !== id) });
       },
-      importBaiMovimentos: (rows, replace) => {
+      addRecibosSalario: (rows: ReciboSalario[]) => {
+        const prev = get().recibosSalario || [];
+        const ids = new Set(prev.map((r) => r.id));
+        const merged = [...prev];
+        for (const r of rows) {
+          if (ids.has(r.id)) {
+            const i = merged.findIndex((x) => x.id === r.id);
+            if (i >= 0) merged[i] = r;
+          } else {
+            merged.push(r);
+            ids.add(r.id);
+          }
+        }
+        set({ recibosSalario: merged });
+        get().pushAudit("recibos_salario", `${rows.length} recibo(s)`);
+      },
+      setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => {
+        const prev = (get().recibosSalario || []).find((r) => r.id === id);
+        set({
+          recibosSalario: (get().recibosSalario || []).map((r) =>
+            r.id === id
+              ? { ...r, pago, dataPag: dataPag || r.dataPag }
+              : r,
+          ),
+        });
+        // Pagamento de honorários sai da conta BAI
+        if (prev && pago && !prev.pago && prev.liquido > 0) {
+          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+          const last = movs[movs.length - 1];
+          const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
+          const saida = Number(prev.liquido) || 0;
+          const movId = `APP-SAL-${id}`;
+          if (!(get().movimentosBaiExtra || []).some((m) => m.id === movId)) {
+            const mov: MovimentoBai = {
+              id: movId,
+              linha: (last?.linha ?? 0) + 1,
+              data: dataPag || prev.dataPag || new Date().toISOString().slice(0, 10),
+              banco: "SALARIO-APP",
+              descricao: `Honorários ${prev.nome} · ${prev.mes}`,
+              entrada: 0,
+              saida,
+              saldo: prevSaldo - saida,
+              observacoes: `Recibo ${id}`,
+            };
+            set({ movimentosBaiExtra: [...get().movimentosBaiExtra, mov] });
+            get().pushAudit("bai_saida_salario", `${movId} · -${saida}`);
+          }
+        }
+        // Se desmarcar pago, remove movimento app associado (se existir)
+        if (prev && !pago && prev.pago) {
+          const movId = `APP-SAL-${id}`;
+          set({
+            movimentosBaiExtra: (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
+          });
+          get().pushAudit("bai_estorno_salario", movId);
+        }
+        get().pushAudit("recibo_salario_pago", `${id} · ${pago}`);
+      },
+            importBaiMovimentos: (rows, replace) => {
         set({
           movimentosBaiExtra: rows,
           baiOverride: replace,
@@ -370,6 +512,7 @@ export const useFinance = create<Store>()(
           alunosOverrides: {},
           mensalidades: initialMensalidades,
           fundoExtra: [],
+          fundoAtmExtra: [],
           movimentosBaiExtra: [],
           baiOverride: false,
           fotos: {},
@@ -377,6 +520,7 @@ export const useFinance = create<Store>()(
           sessionLog: [],
           salariosExtra: [],
           salariosOverrides: {},
+          recibosSalario: [],
           faturasPropina: [],
         }),
     }),
@@ -390,6 +534,7 @@ export const useFinance = create<Store>()(
         alunosOverrides: s.alunosOverrides,
         mensalidades: s.mensalidades,
         fundoExtra: s.fundoExtra,
+        fundoAtmExtra: s.fundoAtmExtra,
         movimentosBaiExtra: s.movimentosBaiExtra,
         baiOverride: s.baiOverride,
         fotos: s.fotos,
@@ -398,6 +543,7 @@ export const useFinance = create<Store>()(
         auditLog: s.auditLog,
         sessionLog: s.sessionLog,
         salariosExtra: s.salariosExtra,
+        recibosSalario: s.recibosSalario || [],
         salariosOverrides: s.salariosOverrides,
         faturasPropina: s.faturasPropina,
       }),
@@ -545,6 +691,7 @@ export function computeTotals(
   alunosOverrides: Record<string, Partial<Aluno>> = {},
   movimentosBaiExtra: MovimentoBai[] = [],
   baiOverride = false,
+  fundoAtmExtra: FundoAtm[] = [],
 ): Totals {
   const alunos = alunosAll(alunosExtra, alunosOverrides);
   const inscricoesLiquido = alunos.reduce((s, a) => s + a.liquido, 0);
@@ -566,7 +713,13 @@ export function computeTotals(
 
   const ledger = buildLedger(extras);
   const custosOperacionais = ledger
-    .filter((l) => l.tipo === "despesa" && l.origem !== "socio")
+    .filter((l) => {
+      if (l.tipo !== "despesa" || l.origem === "socio") return false;
+      // Levantamento ATM = mudança de forma de dinheiro, não custo
+      const blob = `${l.pagamento} ${l.categoria} ${l.descricao}`;
+      if (/levantamento\s*atm/i.test(blob)) return false;
+      return true;
+    })
     .reduce((s, l) => s + l.valor, 0);
   const extraEntradas = extras.filter((l) => l.tipo === "entrada").reduce((s, l) => s + l.valor, 0);
 
@@ -574,7 +727,7 @@ export function computeTotals(
   const custosTotais = socioDespesas + custosOperacionais;
   const baiRows = movimentosAll(movimentosBaiExtra, baiOverride);
   const lastBai = baiRows[baiRows.length - 1];
-  const fundoLevantado = seed.fundoAtm.reduce((s, a) => s + a.valor, 0);
+  const fundoLevantado = fundoAtmAll(fundoAtmExtra).reduce((s, a) => s + a.valor, 0);
   const fundoGasto =
     seed.fundoPagamentos.reduce((s, p) => s + p.valor, 0) +
     extras.filter((e) => e.origem === "fundo").reduce((s, e) => s + e.valor, 0);
@@ -635,8 +788,10 @@ export function movimentosAll(extra: MovimentoBai[] = [], override = false): Mov
   return seed.movimentosBai;
 }
 
-export function fundoAtmAll(): FundoAtm[] {
-  return seed.fundoAtm;
+export function fundoAtmAll(extra: FundoAtm[] = []): FundoAtm[] {
+  if (!extra.length) return seed.fundoAtm;
+  const ids = new Set(extra.map((a) => a.id));
+  return [...seed.fundoAtm.filter((a) => !ids.has(a.id)), ...extra];
 }
 
 export function fundoPagAll(extra: FundoPagamento[]): FundoPagamento[] {

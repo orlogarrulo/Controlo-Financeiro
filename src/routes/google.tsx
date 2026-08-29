@@ -297,7 +297,7 @@ function GooglePage() {
               variant={lastExport === "bai" ? "default" : "secondary"}
               onClick={() => exportBai()}
             >
-              Cartão BAI
+              Banco BAI
             </Button>
             <Button
               type="button"

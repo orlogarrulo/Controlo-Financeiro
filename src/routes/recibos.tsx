@@ -8,7 +8,6 @@ import {
   alunosAll,
   fundoPagAll,
   getSeed,
-  salariosAll,
   useFinance,
 } from "@/lib/store";
 import { formatDateLong, formatKz } from "@/lib/format";
@@ -19,7 +18,7 @@ type ListItem = {
   id: string;
   label: string;
   search: string;
-  kind: "aluno" | "fundo" | "salario";
+  kind: "aluno" | "fundo";
 };
 
 /** descPct no seed pode ser 10 (=10%) ou 0.1 (=10%). */
@@ -131,11 +130,8 @@ function Recibos() {
   const extraA = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const extraF = useFinance((s) => s.fundoExtra);
-  const salariosExtra = useFinance((s) => s.salariosExtra ?? []);
-  const salariosOverrides = useFinance((s) => s.salariosOverrides ?? {});
   const alunos = alunosAll(extraA, alunosOverrides);
   const fundo = fundoPagAll(extraF);
-  const salarios = salariosAll(salariosExtra, salariosOverrides);
   const escola = getSeed().escola;
   const [q, setQ] = useState("");
   const [q2, setQ2] = useState("");
@@ -175,17 +171,8 @@ function Recibos() {
         kind: "fundo" as const,
       };
     });
-    const s: ListItem[] = salarios.map((x) => {
-      const search = [x.id, x.nome, x.funcao, x.categoria, x.mes].filter(Boolean).join(" ").toLowerCase();
-      return {
-        id: `SALREC-${x.id}`,
-        label: `${x.id} · ${x.nome} · ${x.funcao} · ${x.mes}`,
-        search,
-        kind: "salario" as const,
-      };
-    });
-    return [...a, ...f, ...s];
-  }, [alunos, fundo, salarios]);
+    return [...a, ...f];
+  }, [alunos, fundo]);
 
   function filterList(query: string, excludeId?: string) {
     const qq = query.trim().toLowerCase();
@@ -201,10 +188,8 @@ function Recibos() {
 
   const aluno = alunos.find((a) => a.recibo === sel);
   const rm = fundo.find((p) => p.id === sel);
-  const sal = salarios.find((s) => `SALREC-${s.id}` === sel);
   const aluno2 = alunos.find((a) => a.recibo === sel2);
   const rm2 = fundo.find((p) => p.id === sel2);
-  const sal2 = salarios.find((s) => `SALREC-${s.id}` === sel2);
   const printRef = useRef<HTMLDivElement>(null);
   const pdfName = `recibo-${(sel || "doc").replace(/[^\w\-]+/g, "_")}.pdf`;
 
@@ -213,7 +198,7 @@ function Recibos() {
       <PageHeader
         kicker="Impressão A5 · 2 por A4"
         title="Recibos"
-        description="Pesquise por nome do aluno, ID do recibo, encarregado, fornecedor, funcionário ou descrição. Até dois recibos por folha A4. No telemóvel use Enviar / Exportar PDF para WhatsApp ou e-mail."
+        description="Pesquise por nome do aluno, ID do recibo, encarregado, fornecedor ou descrição. Recibos de salários/honorários estão em Salários. Até dois recibos por folha A4. No telemóvel use Enviar / Exportar PDF para WhatsApp ou e-mail."
         actions={
           <PrintActions
             targetRef={printRef}
@@ -255,8 +240,6 @@ function Recibos() {
             <ReciboInscricao aluno={aluno} escola={escola} />
           ) : rm ? (
             <ReciboManeio pag={rm} escola={escola} />
-          ) : sal ? (
-            <ReciboSalario row={sal} escola={escola} />
           ) : (
             <p className="no-print text-sm text-[var(--color-muted)]">Seleccione um recibo.</p>
           )}
@@ -267,8 +250,6 @@ function Recibos() {
               <ReciboInscricao aluno={aluno2} escola={escola} />
             ) : rm2 ? (
               <ReciboManeio pag={rm2} escola={escola} />
-            ) : sal2 ? (
-              <ReciboSalario row={sal2} escola={escola} />
             ) : null}
           </div>
         ) : null}
@@ -440,73 +421,6 @@ function ReciboManeio({
       <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
         <div>
           <p>O recebedor</p>
-          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
-        </div>
-        <div data-assinatura-escola="1">
-          <p>A secretaria</p>
-          <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura / carimbo</p>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function ReciboSalario({
-  row,
-  escola,
-}: {
-  row: ReturnType<typeof salariosAll>[number];
-  escola: ReturnType<typeof getSeed>["escola"];
-}) {
-  const falta = Math.max(0, row.diasUteis - row.diasTrab);
-  const desc = row.diasUteis ? (row.salario / row.diasUteis) * falta : 0;
-  const liquido = row.salario - desc - (row.outrosDesc || 0);
-  return (
-    <article className="print-sheet mx-auto max-w-xl rounded-[var(--radius-lg)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] p-5">
-      <PrintHeader escola={escola} />
-      <p className="text-[10px] font-medium tracking-[0.18em] text-[var(--color-forest)] uppercase">
-        Recibo de salário
-      </p>
-      <div className="mt-2 flex justify-between text-sm">
-        <span>
-          N.º <strong>{row.id}</strong>
-        </span>
-        <span>{row.dataPag ? formatDateLong(row.dataPag) : "—"}</span>
-      </div>
-      <p className="mt-3 text-sm">
-        Pagámos a <strong>{row.nome}</strong> ({row.funcao}) a quantia de{" "}
-        <strong>{formatKz(liquido)}</strong> referente a {row.mes}.
-      </p>
-      <table className="mt-3 w-full text-sm">
-        <tbody>
-          <tr className="border-t border-[var(--color-line)]">
-            <td className="py-1.5">Salário bruto</td>
-            <td className="py-1.5 text-right tabular-nums">{formatKz(row.salario)}</td>
-          </tr>
-          {desc > 0 ? (
-            <tr className="border-t border-[var(--color-line)]">
-              <td className="py-1.5">
-                Desconto faltas ({row.diasTrab}/{row.diasUteis} dias)
-              </td>
-              <td className="py-1.5 text-right tabular-nums">−{formatKz(desc)}</td>
-            </tr>
-          ) : null}
-          {(row.outrosDesc || 0) > 0 ? (
-            <tr className="border-t border-[var(--color-line)]">
-              <td className="py-1.5">Outros descontos</td>
-              <td className="py-1.5 text-right tabular-nums">−{formatKz(row.outrosDesc)}</td>
-            </tr>
-          ) : null}
-          <tr className="border-t-2 border-[var(--color-ink)] font-medium">
-            <td className="py-2">Líquido</td>
-            <td className="py-2 text-right tabular-nums">{formatKz(liquido)}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p className="mt-3 text-[10px] text-[var(--color-muted)]">{escola.notaFiscal}</p>
-      <div className="mt-6 grid grid-cols-2 gap-4 text-[10px]">
-        <div>
-          <p>O funcionário</p>
           <p className="mt-6 border-t border-[var(--color-line-strong)] pt-1">Assinatura</p>
         </div>
         <div data-assinatura-escola="1">

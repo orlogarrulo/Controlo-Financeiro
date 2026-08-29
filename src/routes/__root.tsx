@@ -19,7 +19,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "Centro financeiro da École Consulaire du Congo de Luanda — lançamentos, propinas, cartão BAI e captura por foto.",
+          "Centro financeiro da École Consulaire du Congo de Luanda — lançamentos, propinas, Banco BAI e captura por foto.",
       },
     ],
     links: [

@@ -44,7 +44,8 @@ function Fundo() {
   const operators = useFinance((s) => s.operators);
   const active = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(active, operators);
-  const atms = fundoAtmAll();
+  const fundoAtmExtra = useFinance((s) => s.fundoAtmExtra ?? []);
+  const atms = fundoAtmAll(fundoAtmExtra);
   const pags = fundoPagAll(extra);
   const lev = atms.reduce((s, a) => s + a.valor, 0);
   const gasto = pags.reduce((s, p) => s + p.valor, 0);

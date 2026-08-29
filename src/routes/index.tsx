@@ -32,12 +32,13 @@ function Dashboard() {
   const alunosExtra = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra);
+  const fundoAtmExtra = useFinance((s) => s.fundoAtmExtra ?? []);
   const baiOverride = useFinance((s) => s.baiOverride);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const isAdmin = isCollaborator1(activeOperator, operators);
   const sessionLog = useFinance((s) => s.sessionLog);
-  const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides, movimentosBaiExtra, baiOverride);
+  const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides, movimentosBaiExtra, baiOverride, fundoAtmExtra);
   const ledger = buildLedger(extras);
   const cats = categoriaTotals(ledger.filter((l) => l.tipo === "despesa" && l.origem !== "inscricao"))
     .filter((c) => c.despesas > 0)
@@ -80,7 +81,7 @@ function Dashboard() {
           title="Quadro financeiro"
           description={
             isAdmin
-              ? "Visão geral: matrículas, cartão BAI, fundo e resultado."
+              ? "Visão geral: matrículas, Banco BAI, fundo e resultado."
               : undefined
           }
           actions={
@@ -121,7 +122,7 @@ function Dashboard() {
 
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 print-sheet">
         <Kpi label="A reembolsar ao sócio" value={t.socioEntradas} tone="amber" />
-        <Kpi label="Saldo cartão BAI" value={t.saldoBai} tone="forest" />
+        <Kpi label="Saldo Banco BAI" value={t.saldoBai} tone="forest" />
         <Kpi label="Fundo de maneio" value={t.fundoRestante} />
         <Kpi label="Propinas recebidas" value={t.propinasRecebidas} />
       </div>
@@ -176,7 +177,7 @@ function Dashboard() {
                   Ativo
                 </p>
                 <div className="space-y-2">
-                  <Row k="Cartão Multicaixa BAI" v={t.saldoBai} />
+                  <Row k="Banco BAI (cartão / conta)" v={t.saldoBai} />
                   <Row k="Fundo de maneio" v={t.fundoRestante} />
                   <div className="my-1 h-px bg-[var(--color-line)]" />
                   <Row k="Total do ativo" v={t.saldoBai + t.fundoRestante} bold />

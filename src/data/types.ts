@@ -169,15 +169,43 @@ export type Salario = {
   diasTrab: number;
   outrosDesc: number;
   dataPag: string;
-  /** Data de início do contrato de trabalho */
+  /** Data de início do contrato de prestação de serviços */
   dataInicioContrato?: string;
-  /** Contactos e identificação (cadastro completo) */
+  /** Data de fim (ano lectivo ≈ 9 meses) */
+  dataFimContrato?: string;
   telefone?: string;
   email?: string;
   morada?: string;
-  /** Nº BI ou Passaporte */
   documento?: string;
   nacionalidade?: string;
+  /** IBAN para pagamento */
+  iban?: string;
+  /** Local de prestação (ex.: Luanda) */
+  localPrestacao?: string;
+  /** Objecto resumido do contrato */
+  objectoContrato?: string;
+  /** Se já existe contrato gerado/registado */
+  temContrato?: boolean;
+};
+
+/** Recibo de honorários / prestação de serviços (mês) */
+export type ReciboSalario = {
+  id: string;
+  funcionarioId: string;
+  nome: string;
+  funcao: string;
+  mes: string;
+  mesKey: string;
+  diasUteis: number;
+  diasTrab: number;
+  salarioBruto: number;
+  descontoDias: number;
+  outrosDesc: number;
+  liquido: number;
+  dataPag: string;
+  pago: boolean;
+  iban?: string;
+  criadoEm: string;
 };
 
 export type Escola = {

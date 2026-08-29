@@ -723,7 +723,6 @@ function Alunos() {
 
 
   const [q, setQ] = useState("");
-  const [grupo, setGrupo] = useState("todos");
   const [turmaFiltro, setTurmaFiltro] = useState("todas");
   const [editing, setEditing] = useState<Aluno | null>(null);
   const [creating, setCreating] = useState(false);
@@ -745,13 +744,11 @@ function Alunos() {
   const [exportBusy, setExportBusy] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
 
-  const grupos = useMemo(() => ["todos", ...new Set(alunos.map((a) => a.grupo))], [alunos]);
   const turmasDisponiveis = useMemo(
     () => ["todas", ...TURMAS.filter((t) => alunos.some((a) => a.turma === t))],
     [alunos],
   );
   const filtered = alunos.filter((a) => {
-    if (grupo !== "todos" && a.grupo !== grupo) return false;
     if (turmaFiltro !== "todas" && a.turma !== turmaFiltro) return false;
     if (!q) return true;
     return `${a.nome} ${a.id} ${a.familia} ${a.encarregado} ${a.pai || ""} ${a.mae || ""}`
@@ -1450,20 +1447,6 @@ function Alunos() {
         />
         <select
           className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-          value={grupo}
-          onChange={(e) => {
-            setGrupo(e.target.value);
-            setTurmaFiltro("todas");
-          }}
-        >
-          {grupos.map((g) => (
-            <option key={g} value={g}>
-              {g === "todos" ? "Todos os grupos" : g}
-            </option>
-          ))}
-        </select>
-        <select
-          className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
           value={turmaFiltro}
           onChange={(e) => setTurmaFiltro(e.target.value)}
           aria-label="Filtrar por classe"
@@ -1491,7 +1474,7 @@ function Alunos() {
           <p className="font-display text-lg leading-tight">Matrículas · lista por classes</p>
           <p className="text-[11px] text-[var(--color-muted)]">
             {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
-            {turmaFiltro !== "todas" ? ` · ${turmaFiltro}` : grupo !== "todos" ? ` · ${grupo}` : ""}
+            {turmaFiltro !== "todas" ? ` · ${turmaFiltro}` : ""}
           </p>
         </div>
       </header>

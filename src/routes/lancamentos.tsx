@@ -26,8 +26,8 @@ export const Route = createFileRoute("/lancamentos")({
 
 const FONTES: { id: Origem | "todas"; label: string }[] = [
   { id: "todas", label: "Todas as fontes" },
-  { id: "cartao", label: "Cartão BAI" },
-  { id: "banco", label: "Transferência" },
+  { id: "cartao", label: "Cartão físico BAI" },
+  { id: "banco", label: "Transferência BAI" },
   { id: "fundo", label: "Dinheiro" },
   { id: "socio", label: "Sócio" },
   { id: "formulario", label: "Outras" },
@@ -35,9 +35,9 @@ const FONTES: { id: Origem | "todas"; label: string }[] = [
 
 const ORIGEM_LABEL: Record<string, string> = {
   socio: "Sócio",
-  cartao: "Cartão",
+  cartao: "Cartão físico",
   fundo: "Dinheiro",
-  banco: "Transf.",
+  banco: "Transf. BAI",
   formulario: "Outra",
   inscricao: "—",
   propina: "—",

@@ -23,12 +23,14 @@ import type { Origem } from "@/data/types";
 
 export const Route = createFileRoute("/capturar")({ component: Capturar });
 
-const ORIGENS_DESPESA: { value: Origem; label: string }[] = [
-  { value: "cartao", label: "Cartão Multicaixa (BAI)" },
-  { value: "banco", label: "Transferência bancária BAI" },
-  { value: "fundo", label: "Dinheiro (fundo de maneio)" },
-  { value: "socio", label: "Pago pelo sócio" },
-  { value: "formulario", label: "Outra origem" },
+/** value = origem; pagamento opcional para distinguir levantamento */
+const ORIGENS_DESPESA: { value: Origem; label: string; pagamento?: string }[] = [
+  { value: "cartao", label: "Cartão físico Multicaixa BAI", pagamento: "Cartão Multicaixa" },
+  { value: "banco", label: "Transferência da conta BAI (ao fornecedor)", pagamento: "Transferência BAI" },
+  { value: "banco", label: "Levantamento ATM BAI → fundo de maneio", pagamento: "Levantamento ATM BAI" },
+  { value: "fundo", label: "Dinheiro já no fundo de maneio", pagamento: "Dinheiro" },
+  { value: "socio", label: "Pago pelo sócio", pagamento: "Sócio" },
+  { value: "formulario", label: "Outra origem", pagamento: "Outro" },
 ];
 
 function Capturar() {
@@ -161,16 +163,40 @@ function Capturar() {
               />
             </Field>
             <Field label="Pago com / origem">
+              <p className="mb-1 text-[11px] leading-relaxed text-[var(--color-muted)]">
+                Tudo o que sai da conta BAI (cartão, transferência ao fornecedor ou levantamento ATM)
+                actualiza o saldo em Banco BAI. O levantamento ATM entra também no fundo de maneio.
+              </p>
               <Select
-                value={form.origem}
-                onValueChange={(v) => setForm({ ...form, origem: v as Origem })}
+                value={`${form.origem}::${form.pagamento || ""}`}
+                onValueChange={(v) => {
+                  const opt =
+                    ORIGENS_DESPESA.find((o) => `${o.value}::${o.pagamento || ""}` === v) ||
+                    ORIGENS_DESPESA.find((o) => o.value === (v.split("::")[0] as Origem));
+                  if (!opt) return;
+                  setForm({
+                    ...form,
+                    origem: opt.value,
+                    pagamento: opt.pagamento || form.pagamento,
+                    categoria:
+                      opt.pagamento === "Levantamento ATM BAI"
+                        ? "Levantamento ATM"
+                        : form.categoria === "Levantamento ATM"
+                          ? (cats[0]?.nome || form.categoria)
+                          : form.categoria,
+                    descricao:
+                      opt.pagamento === "Levantamento ATM BAI"
+                        ? form.descricao || "Levantamento ATM BAI para fundo de maneio"
+                        : form.descricao,
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {ORIGENS_DESPESA.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
+                    <SelectItem key={`${o.value}::${o.pagamento || ""}`} value={`${o.value}::${o.pagamento || ""}`}>
                       {o.label}
                     </SelectItem>
                   ))}

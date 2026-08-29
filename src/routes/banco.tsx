@@ -35,8 +35,8 @@ function Banco() {
   return (
     <div>
       <PageHeader
-        kicker="BAI Express · Cartão 9"
-        title="Movimentos do cartão"
+        kicker="Banco BAI · Conta e cartão"
+        title="Movimentos Banco BAI"
         description={`${escola.contaBai} · ${escola.cartao}. Saldo inicial ${formatKz(escola.saldoInicialBai)}.`}
         actions={
           <PrintActions
@@ -50,7 +50,7 @@ function Banco() {
         }
       />
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Saldo atual" value={last?.saldo ?? 0} compact tone="forest" />
+        <Kpi label="Saldo actual (cartão/extrato)" value={last?.saldo ?? 0} compact tone="forest" />
         <Kpi label="Entradas" value={entradas} compact />
         <Kpi label="Saídas" value={saidas} compact />
         <Kpi label="Faturas TPA" value={String(faturas.length)} />

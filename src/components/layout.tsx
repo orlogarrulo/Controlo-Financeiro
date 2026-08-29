@@ -33,7 +33,7 @@ const NAV = [
   { to: "/alunos", label: "Matrículas", icon: Users },
   { to: "/mensalidades", label: "Propinas", icon: Receipt },
   { to: "/recibos", label: "Recibos", icon: FileSpreadsheet },
-  { to: "/banco", label: "Cartão BAI", icon: Landmark },
+  { to: "/banco", label: "Banco BAI", icon: Landmark },
   { to: "/fundo", label: "Fundo", icon: Wallet },
   { to: "/salarios", label: "Salários", icon: Banknote },
   { to: "/google", label: "Google Sheets", icon: Cloud },
