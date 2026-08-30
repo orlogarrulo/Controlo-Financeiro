@@ -856,8 +856,8 @@ export async function exportElementPdf(
 
 
 /**
- * Extrato BAI em PDF A4 horizontal com texto seleccionável (não é screenshot).
- * rows: array de objectos com campos data, banco, descricao, entrada, saida, saldo, observacoes
+ * Extrato BAI — PDF A4 horizontal, design branco/limpo (como os outros separadores).
+ * Texto legível; várias páginas se necessário. filterLabel: "Todas" | "Entradas" | "Saídas".
  */
 export async function exportBaiTablePdf(
   rows: {
@@ -874,132 +874,114 @@ export async function exportBaiTablePdf(
     title?: string;
     escola?: string;
     saldoInicial?: number;
+    filterLabel?: string;
   },
 ): Promise<{ blob: Blob; filename: string }> {
-  const { jsPDF } = await ensureLibs();
+  const { html2canvas, jsPDF } = await ensureLibs();
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("pt-AO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+  const fmtDate = (s: string) => {
+    const d = (s || "").slice(0, 10);
+    if (d.length < 10) return d || "—";
+    const [y, m, day] = d.split("-");
+    return `${day}/${m}/${y}`;
+  };
+
+  const totE = rows.reduce((s, r) => s + (Number(r.entrada) || 0), 0);
+  const totS = rows.reduce((s, r) => s + (Number(r.saida) || 0), 0);
+  const lastSaldo = rows.length ? Number(rows[rows.length - 1].saldo) || 0 : Number(opts?.saldoInicial) || 0;
+  const escola = opts?.escola || "École Consulaire du Congo";
+  const title = opts?.title || "Extrato Banco BAI";
+  const filtro = opts?.filterLabel || "Todas as movimentações";
+  const logoSrc =
+    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
+
+  // Chunk rows for readable pages (~28 lines / page landscape)
+  const perPage = 28;
+  const chunks: typeof rows[] = [];
+  for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
+  if (!chunks.length) chunks.push([]);
+
   const pdf = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const marginX = 8;
-  const marginTop = 12;
-  const marginBottom = 10;
-  const usableW = pageW - marginX * 2;
+  const margin = 8;
 
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("pt-AO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+  for (let pi = 0; pi < chunks.length; pi++) {
+    const chunk = chunks[pi];
+    let body = "";
+    chunk.forEach((r, i) => {
+      const bg = i % 2 ? "#f7faf8" : "#ffffff";
+      const ent = Number(r.entrada) || 0;
+      const sai = Number(r.saida) || 0;
+      body += `<tr style="background:${bg};">
+        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;white-space:nowrap;">${fmtDate(r.data || "")}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;">${(r.banco || "").replace(/</g, "")}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;">${(r.descricao || "").replace(/</g, "")}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;text-align:right;font-variant-numeric:tabular-nums;color:${ent ? "#1f5c4a" : "#999"};">${ent ? fmt(ent) : "—"}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;text-align:right;font-variant-numeric:tabular-nums;color:${sai ? "#9b2c2c" : "#999"};">${sai ? fmt(sai) : "—"}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;text-align:right;font-variant-numeric:tabular-nums;">${fmt(Number(r.saldo) || 0)}</td>
+      </tr>`;
+    });
 
-  // Column widths (mm) — total ≈ usableW
-  const cols = [
-    { key: "data", label: "Data", w: 22 },
-    { key: "banco", label: "Banco", w: 28 },
-    { key: "descricao", label: "Descrição", w: 78 },
-    { key: "entrada", label: "Entrada", w: 28 },
-    { key: "saida", label: "Saída", w: 28 },
-    { key: "saldo", label: "Saldo", w: 30 },
-  ] as const;
+    const footer =
+      pi === chunks.length - 1
+        ? `<div style="margin-top:10px;padding-top:8px;border-top:2px solid #1f5c4a;font-size:10px;">
+            <strong>Total entradas:</strong> ${fmt(totE)} Kz &nbsp;·&nbsp;
+            <strong>Total saídas:</strong> ${fmt(totS)} Kz &nbsp;·&nbsp;
+            <strong>Saldo final:</strong> ${fmt(lastSaldo)} Kz
+          </div>`
+        : `<div style="margin-top:8px;font-size:9px;color:#888;text-align:right;">Página ${pi + 1} / ${chunks.length}</div>`;
 
-  let y = marginTop;
-  const escola = opts?.escola || "École Consulaire du Congo";
-  const title = opts?.title || "Extrato Banco BAI";
+    const html = `
+<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#ffffff;padding:10px 12px;box-sizing:border-box;">
+  <div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #1f5c4a;padding-bottom:10px;margin-bottom:10px;">
+    <img src="${logoSrc}" width="56" height="56" alt="" style="width:56px;height:56px;object-fit:contain;" crossorigin="anonymous" />
+    <div style="flex:1;">
+      <p style="margin:0;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">${escola}</p>
+      <p style="margin:3px 0 0;font-size:15px;font-weight:700;">${title}</p>
+      <p style="margin:2px 0 0;font-size:10px;color:#555;">${filtro} · ${rows.length} movimento(s)${opts?.saldoInicial != null ? ` · Saldo inicial ${fmt(opts.saldoInicial)} Kz` : ""}</p>
+    </div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:9.5px;">
+    <thead>
+      <tr style="background:#1f5c4a;color:#fff;">
+        <th style="padding:6px;text-align:left;width:11%;">Data</th>
+        <th style="padding:6px;text-align:left;width:14%;">Banco</th>
+        <th style="padding:6px;text-align:left;width:35%;">Descrição</th>
+        <th style="padding:6px;text-align:right;width:13%;">Entrada</th>
+        <th style="padding:6px;text-align:right;width:13%;">Saída</th>
+        <th style="padding:6px;text-align:right;width:14%;">Saldo</th>
+      </tr>
+    </thead>
+    <tbody>${body || '<tr><td colspan="6" style="padding:12px;color:#888;">Sem movimentos neste filtro.</td></tr>'}</tbody>
+  </table>
+  ${footer}
+  <p style="margin-top:8px;font-size:8px;color:#999;text-align:center;">Documento gerado pelo Departamento de Finanças · página ${pi + 1}/${chunks.length}</p>
+</div>`;
 
-  function header() {
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.setTextColor(31, 92, 74);
-    pdf.text(escola, marginX, y);
-    y += 6;
-    pdf.setFontSize(11);
-    pdf.setTextColor(20, 20, 20);
-    pdf.text(title, marginX, y);
-    y += 5;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(8);
-    pdf.setTextColor(80, 80, 80);
-    const when = new Date().toLocaleString("pt-PT");
-    pdf.text(`${rows.length} movimentos · gerado ${when}`, marginX, y);
-    y += 4;
-    if (opts?.saldoInicial != null) {
-      pdf.text(`Saldo inicial: ${fmt(opts.saldoInicial)} Kz`, marginX, y);
-      y += 4;
+    const stage = makeStage(true);
+    try {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "width:100%;background:#ffffff;color:#111;box-sizing:border-box;";
+      wrap.innerHTML = html;
+      stage.appendChild(wrap);
+      await waitImages(stage);
+      await wait(80);
+      const canvas = await capture(stage, html2canvas, 1.7, true);
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+      const w = canvas.width * ratio;
+      const h = canvas.height * ratio;
+      const x = (pageW - w) / 2;
+      const y = margin;
+      if (pi > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.93), "JPEG", x, y, w, h);
+    } finally {
+      stage.remove();
     }
-    // table header
-    pdf.setFillColor(31, 92, 74);
-    pdf.rect(marginX, y, usableW, 7, "F");
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(8);
-    let x = marginX + 1;
-    for (const c of cols) {
-      const alignRight = c.key === "entrada" || c.key === "saida" || c.key === "saldo";
-      if (alignRight) {
-        pdf.text(c.label, x + c.w - 1, y + 4.8, { align: "right" });
-      } else {
-        pdf.text(c.label, x, y + 4.8);
-      }
-      x += c.w;
-    }
-    y += 8;
-    pdf.setTextColor(20, 20, 20);
-    pdf.setFont("helvetica", "normal");
   }
-
-  function newPage() {
-    pdf.addPage();
-    y = marginTop;
-    header();
-  }
-
-  header();
-
-  pdf.setFontSize(7.5);
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const desc = (r.descricao || "").slice(0, 70);
-    const banco = (r.banco || "").slice(0, 22);
-    const lineH = 5.2;
-    if (y + lineH > pageH - marginBottom) newPage();
-
-    if (i % 2 === 1) {
-      pdf.setFillColor(244, 250, 247);
-      pdf.rect(marginX, y - 3.5, usableW, lineH, "F");
-    }
-
-    let x = marginX + 1;
-    const cells: { t: string; w: number; right?: boolean }[] = [
-      { t: (r.data || "").slice(0, 10), w: cols[0].w },
-      { t: banco, w: cols[1].w },
-      { t: desc, w: cols[2].w },
-      { t: r.entrada ? fmt(Number(r.entrada)) : "", w: cols[3].w, right: true },
-      { t: r.saida ? fmt(Number(r.saida)) : "", w: cols[4].w, right: true },
-      { t: fmt(Number(r.saldo) || 0), w: cols[5].w, right: true },
-    ];
-    for (const cell of cells) {
-      if (cell.right) {
-        pdf.text(cell.t, x + cell.w - 1, y, { align: "right" });
-      } else {
-        pdf.text(cell.t, x, y);
-      }
-      x += cell.w;
-    }
-    y += lineH;
-  }
-
-  // footer totals
-  if (y + 12 > pageH - marginBottom) newPage();
-  y += 3;
-  pdf.setDrawColor(31, 92, 74);
-  pdf.line(marginX, y, marginX + usableW, y);
-  y += 5;
-  const totE = rows.reduce((s, r) => s + (Number(r.entrada) || 0), 0);
-  const totS = rows.reduce((s, r) => s + (Number(r.saida) || 0), 0);
-  const last = rows[rows.length - 1];
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(9);
-  pdf.text(
-    `Total entradas: ${fmt(totE)} Kz   ·   Total saídas: ${fmt(totS)} Kz   ·   Saldo final: ${fmt(Number(last?.saldo) || 0)} Kz`,
-    marginX,
-    y,
-  );
 
   return {
     blob: pdf.output("blob"),

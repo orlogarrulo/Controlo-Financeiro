@@ -29,11 +29,20 @@ function Banco() {
   const operators = useFinance((s) => s.operators);
   const active = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(active, operators);
+  const [filtroTipo, setFiltroTipo] = useState<"todas" | "entradas" | "saidas">("todas");
   const movs = movimentosAll(baiExtra, baiOverride, baiDeletedIds);
   const last = movs[movs.length - 1];
   const [editM, setEditM] = useState<MovimentoBai | null>(null);
+  const movsFiltrados = movs.filter((m) => {
+    if (filtroTipo === "entradas") return (m.entrada || 0) > 0;
+    if (filtroTipo === "saidas") return (m.saida || 0) > 0;
+    return true;
+  });
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
   const saidas = movs.reduce((s, m) => s + m.saida, 0);
+  const saldoApp = last?.saldo ?? escola.saldoInicialBai ?? 0;
+  const saldoRealBanco = 890395.53;
+  const diferencaSaldo = Math.round((saldoApp - saldoRealBanco) * 100) / 100;
   const faturas = getSeed().faturasCartao;
   const addBaiManual = useFinance((s) => s.addBaiMovimentoManual);
   const addCaptura = useFinance((s) => s.addCaptura);
@@ -138,8 +147,14 @@ function Banco() {
 
   async function exportarExtratoPdf() {
     try {
+      const label =
+        filtroTipo === "entradas"
+          ? "Somente entradas"
+          : filtroTipo === "saidas"
+            ? "Somente saídas"
+            : "Todas as movimentações";
       const { blob, filename } = await exportBaiTablePdf(
-        movs.map((m) => ({
+        movsFiltrados.map((m) => ({
           data: m.data,
           banco: m.banco,
           descricao: m.descricao,
@@ -149,10 +164,11 @@ function Banco() {
           observacoes: m.observacoes,
         })),
         {
-          filename: `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`,
+          filename: `extrato-bai-${filtroTipo}-${new Date().toISOString().slice(0, 10)}.pdf`,
           title: "Extrato Banco BAI · A4 horizontal",
           escola: escola.nome || "École Consulaire du Congo",
           saldoInicial: escola.saldoInicialBai,
+          filterLabel: label,
         },
       );
       const r = await shareOrDownloadPdf(blob, filename, {
@@ -243,6 +259,36 @@ function Banco() {
       </div>
 
       <h2 className="font-display mb-2 text-xl">Extrato</h2>
+      <div className="no-print mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-[var(--color-muted)]">Visualizar:</span>
+        {(
+          [
+            ["todas", "Todas"],
+            ["entradas", "Só entradas"],
+            ["saidas", "Só saídas"],
+          ] as const
+        ).map(([id, label]) => (
+          <Button
+            key={id}
+            type="button"
+            size="sm"
+            variant={filtroTipo === id ? "default" : "secondary"}
+            onClick={() => setFiltroTipo(id)}
+          >
+            {label}
+          </Button>
+        ))}
+        <span className="text-xs text-[var(--color-muted)]">
+          {movsFiltrados.length} de {movs.length} · impressão usa o filtro activo
+        </span>
+      </div>
+      {Math.abs(diferencaSaldo) > 1 ? (
+        <p className="no-print mb-3 rounded-[var(--radius-sm)] border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Saldo na app: <strong>{formatKz(saldoApp)}</strong> · Saldo real no banco:{" "}
+          <strong>{formatKz(saldoRealBanco)}</strong> · Diferença:{" "}
+          <strong>{formatKz(diferencaSaldo)}</strong> (faltam saídas ou sobram entradas no extrato da app — importe o CSV BAI real ou registe as despesas em falta).
+        </p>
+      ) : null}
       <div ref={printRef}>
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
         <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
@@ -270,7 +316,7 @@ function Banco() {
             </tr>
           </thead>
           <tbody>
-            {movs.map((m) => (
+            {movsFiltrados.map((m) => (
               <tr key={m.id} className="border-t border-[var(--color-line)]">
                 <td className="px-3 py-2 whitespace-nowrap">{formatDate(m.data)}</td>
                 <td className="px-3 py-2 font-mono text-[11px]">{m.banco}</td>
