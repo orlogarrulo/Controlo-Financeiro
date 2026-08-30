@@ -40,9 +40,6 @@ function Banco() {
   });
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
   const saidas = movs.reduce((s, m) => s + m.saida, 0);
-  const saldoApp = last?.saldo ?? escola.saldoInicialBai ?? 0;
-  const saldoRealBanco = 890395.53;
-  const diferencaSaldo = Math.round((saldoApp - saldoRealBanco) * 100) / 100;
   const faturas = getSeed().faturasCartao;
   const addBaiManual = useFinance((s) => s.addBaiMovimentoManual);
   const addCaptura = useFinance((s) => s.addCaptura);
@@ -211,8 +208,9 @@ function Banco() {
             size="sm"
             onClick={() => {
               const n = syncBaiFromExtras();
-              if (n > 0) toast.success(`${n} movimento(s) BAI criado(s) a partir de despesas / salários`);
-              else toast.message("Saldo já estava alinhado com as despesas da app");
+              // Limpa duplicados APP-sync e sincroniza só salários
+              if (n > 0) toast.success(`${n} salário(s) alinhado(s) no extrato BAI`);
+              else toast.message("Extrato limpo de sync duplicados · despesas ficam na lista de lançamentos");
             }}
           >
             Actualizar saldo a partir de despesas
@@ -282,13 +280,7 @@ function Banco() {
           {movsFiltrados.length} de {movs.length} · impressão usa o filtro activo
         </span>
       </div>
-      {Math.abs(diferencaSaldo) > 1 ? (
-        <p className="no-print mb-3 rounded-[var(--radius-sm)] border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Saldo na app: <strong>{formatKz(saldoApp)}</strong> · Saldo real no banco:{" "}
-          <strong>{formatKz(saldoRealBanco)}</strong> · Diferença:{" "}
-          <strong>{formatKz(diferencaSaldo)}</strong> (faltam saídas ou sobram entradas no extrato da app — importe o CSV BAI real ou registe as despesas em falta).
-        </p>
-      ) : null}
+      
       <div ref={printRef}>
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
         <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />

@@ -682,67 +682,35 @@ export const useFinance = create<Store>()(
         );
       },
       syncBaiFromExtras: () => {
-        const extras = get().extras || [];
+        // Despesas (cartão/transferência) NÃO são recriadas no extrato BAI —
+        // evitam duplicar saídas já reflectidas no banco. Ficam na lista de despesas.
+        // Apenas salários pagos sem movimento BAI são sincronizados.
         const existing = new Set((get().movimentosBaiExtra || []).map((m) => m.id));
-        // também ids APP-SAL-*
         let movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride, get().movimentosBaiDeletedIds || []);
         let last = movs[movs.length - 1];
         let saldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
         let linha = last?.linha ?? 0;
         const toAdd: MovimentoBai[] = [];
-        const sorted = [...extras]
-          .filter(
-            (e) =>
-              e.tipo === "despesa" &&
-              (e.origem === "cartao" || e.origem === "banco") &&
-              (e.valor || 0) > 0,
-          )
-          .sort((a, b) => (a.data || "").localeCompare(b.data || ""));
-        for (const e of sorted) {
-          // ID único mesmo se vários lançamentos partilharam o mesmo doc (bug antigo)
-          const movId = `APP-${e.id}-${e.data}-${Math.round((e.valor || 0) * 100)}-${(e.descricao || "").slice(0, 24).replace(/\s+/g, "_")}`;
-          if (existing.has(movId)) continue;
-          if (movs.some((m) => m.id === movId)) continue;
-          // evitar duplicar por valor+data+descrição já no extrato app
-          const fingerprint = `${e.data}|${Number(e.valor)}|${(e.descricao || "").trim()}`;
-          if (movs.some((m) => m.banco.endsWith("-APP") && `${m.data}|${m.saida}|${(m.descricao || "").trim()}` === fingerprint)) continue;
-          const isLev =
-            /levantamento|atm/i.test(e.pagamento || "") ||
-            /levantamento|atm/i.test(e.categoria || "") ||
-            /levantamento|atm/i.test(e.descricao || "");
-          const tipoBai = isLev ? "ATM" : e.origem === "banco" ? "TRANSF" : "CARTAO";
-          const saida = Number(e.valor) || 0;
-          saldo = saldo - saida;
-          linha += 1;
-          toAdd.push({
-            id: movId,
-            linha,
-            data: e.data,
-            banco: `${tipoBai}-APP`,
-            descricao: e.descricao || e.categoria || "Despesa conta BAI",
-            entrada: 0,
-            saida,
-            saldo,
-            observacoes: `Sync lançamento ${e.id}${e.fornecedor ? ` · ${e.fornecedor}` : ""}`,
-          });
-          existing.add(movId);
-          if (isLev) {
-            const atmId = `ATM-${e.id}`;
-            if (!(get().fundoAtmExtra || []).some((a) => a.id === atmId)) {
-              set({
-                fundoAtmExtra: [
-                  ...(get().fundoAtmExtra || []),
-                  { id: atmId, data: e.data, valor: saida },
-                ],
-              });
-            }
-          }
+
+        // Limpar do extra quaisquer Sync lançamento / *-APP de despesas (legado)
+        const cleanedExtra = (get().movimentosBaiExtra || []).filter((m) => {
+          const id = String(m.id || "");
+          const banco = String(m.banco || "");
+          const obs = String(m.observacoes || "");
+          if (id.startsWith("APP-SAL-") || banco === "SALARIO-APP") return true;
+          if (banco.endsWith("-APP") && /Sync lançamento/i.test(obs)) return false;
+          if (/Sync lançamento/i.test(obs)) return false;
+          return true;
+        });
+        if (cleanedExtra.length !== (get().movimentosBaiExtra || []).length) {
+          set({ movimentosBaiExtra: sortAndRecalcBai(cleanedExtra) });
         }
-        // recibos salário pagos sem movimento
+
         for (const r of get().recibosSalario || []) {
           if (!r.pago || !(r.liquido > 0)) continue;
           const movId = `APP-SAL-${r.id}`;
           if (existing.has(movId)) continue;
+          if (movs.some((m) => m.id === movId)) continue;
           const saida = Number(r.liquido) || 0;
           saldo = saldo - saida;
           linha += 1;
@@ -762,13 +730,29 @@ export const useFinance = create<Store>()(
         if (toAdd.length) {
           set({
             movimentosBaiExtra: sortAndRecalcBai([
-              ...get().movimentosBaiExtra,
+              ...(get().movimentosBaiExtra || []).filter((m) => {
+                const banco = String(m.banco || "");
+                const obs = String(m.observacoes || "");
+                if (m.id.startsWith("APP-SAL-") || banco === "SALARIO-APP") return true;
+                if (/Sync lançamento/i.test(obs)) return false;
+                return true;
+              }),
               ...toAdd,
             ]),
           });
-          get().pushAudit("bai_sync_extras", `${toAdd.length} movimentos`);
-        } else if ((get().movimentosBaiExtra || []).length) {
-          set({ movimentosBaiExtra: sortAndRecalcBai(get().movimentosBaiExtra) });
+          get().pushAudit("bai_sync_extras", `${toAdd.length} salários`);
+        } else {
+          set({
+            movimentosBaiExtra: sortAndRecalcBai(
+              (get().movimentosBaiExtra || []).filter((m) => {
+                const banco = String(m.banco || "");
+                const obs = String(m.observacoes || "");
+                if (String(m.id || "").startsWith("APP-SAL-") || banco === "SALARIO-APP") return true;
+                if (/Sync lançamento/i.test(obs)) return false;
+                return true;
+              }),
+            ),
+          });
         }
         return toAdd.length;
       },
@@ -993,12 +977,10 @@ export const useFinance = create<Store>()(
         const keepExtra = extra.filter((m) => {
           const id = String(m?.id || "");
           const banco = String(m?.banco || "");
-          return (
-            id.startsWith("APP-") ||
-            id.startsWith("ATM-MAN-") ||
-            banco === "SALARIO-APP" ||
-            banco === "PROPINA-APP"
-          );
+          // Só salários / propinas / ATM manual — NÃO sync de lançamentos (duplicam saídas)
+          if (id.startsWith("APP-SAL-") || banco === "SALARIO-APP" || banco === "PROPINA-APP") return true;
+          if (id.startsWith("ATM-MAN-")) return true;
+          return false;
         });
         return {
           ...s,
@@ -1405,14 +1387,25 @@ export function movimentosAll(
   const fp = (m: MovimentoBai) =>
     `${m.data}|${Number(m.entrada) || 0}|${Number(m.saida) || 0}|${(m.banco || "").trim()}|${(m.descricao || "").trim()}`;
 
-  const notDeleted = (m: MovimentoBai) => !deleted.has(m.id);
+  /** Apenas "Sync lançamento …" (duplicados das fotos) — saídas originais do seed mantêm-se todas. */
+  const isDuplicateAppSync = (m: MovimentoBai) => {
+    const id = String(m.id || "");
+    const banco = String(m.banco || "");
+    const obs = String(m.observacoes || "");
+    if (id.startsWith("APP-SAL-") || banco === "SALARIO-APP") return false;
+    // Só os sync de lançamentos BAI-2026-08-xxx das fotos
+    if (/Sync lançamento/i.test(obs)) return true;
+    if (/Sync lançamento/i.test(String(m.descricao || ""))) return true;
+    return false;
+  };
+
+  const notDeleted = (m: MovimentoBai) => !deleted.has(m.id) && !isDuplicateAppSync(m);
 
   if (override && extra.length) {
-    // Extrato importado (CSV) prevalece; aplica exclusões manuais
     return sortAndRecalcBai(extra.filter(notDeleted));
   }
 
-  // Modo normal: seed + extras, sem duplicar por id/fingerprint, respeitando apagados
+  // Modo normal: seed + extras, sem duplicar por fingerprint
   const ids = new Set<string>();
   const fps = new Set<string>();
   const out: MovimentoBai[] = [];
