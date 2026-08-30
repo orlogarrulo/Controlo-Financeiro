@@ -632,13 +632,72 @@ async function htmlToPdfBlob(
 }
 
 /**
- * Vários HTML (ex.: faturas) → um único documento de impressão (uma secção por página).
- * PDF idêntico = «Guardar como PDF» no diálogo.
+ * Entrega documento oficial:
+ * — PC: impressão HTML exacta (Guardar como PDF no diálogo)
+ * — Telemóvel: gera ficheiro PDF real e abre partilha (WhatsApp, e-mail, …)
+ */
+export type PdfDelivery = "shared" | "opened" | "downloaded";
+
+async function deliverOfficialHtml(
+  html: string,
+  opts: {
+    filename: string;
+    landscape?: boolean;
+    forceSinglePage?: boolean;
+    openPrint?: boolean;
+    shareTitle?: string;
+    shareText?: string;
+  },
+): Promise<{ blob: Blob; filename: string; delivery?: PdfDelivery }> {
+  const filename = opts.filename.endsWith(".pdf")
+    ? opts.filename
+    : opts.filename.replace(/\.(html|htm)$/i, "") + ".pdf";
+  const mobile = isMobileDevice();
+
+  if (!mobile && opts.openPrint !== false) {
+    openPrintHtml(html, { autoPrint: true });
+  }
+
+  // Sempre gerar PDF real no telemóvel (partilha); no PC só se não abriu impressão
+  let blob: Blob;
+  try {
+    const pdf = await htmlToPdfBlob(html, {
+      filename,
+      landscape: opts.landscape,
+      forceSinglePage: opts.forceSinglePage,
+    });
+    blob = pdf.blob;
+  } catch {
+    blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  }
+
+  let delivery: PdfDelivery | undefined;
+  if (mobile && blob.type === "application/pdf") {
+    try {
+      delivery = await shareOrDownloadPdf(blob, filename, {
+        title: opts.shareTitle,
+        text: opts.shareText,
+      });
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        delivery = "downloaded";
+      } else {
+        downloadBlob(blob, filename);
+        delivery = "downloaded";
+      }
+    }
+  }
+
+  return { blob, filename, delivery };
+}
+
+/**
+ * Vários HTML (ex.: faturas) → impressão (PC) ou PDF partilhável (telemóvel).
  */
 export async function htmlFragmentsToMultiPageA4Pdf(
   fragments: string[],
   opts?: { filename?: string; title?: string },
-): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
+): Promise<{ blob: Blob; filename: string; delivery?: PdfDelivery }> {
   if (!fragments.length) throw new Error("Sem conteúdo para imprimir");
 
   const pages = fragments
@@ -658,34 +717,31 @@ export async function htmlFragmentsToMultiPageA4Pdf(
 </style>
 </head><body>${pages}</body></html>`;
 
-  openPrintHtml(html, { autoPrint: true });
-
   const filename = opts?.filename || `documento-${Date.now()}.pdf`;
-  return {
-    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
-    filename: filename.replace(/\.pdf$/i, ".html"),
-    exactPrint: true,
-  };
+  return deliverOfficialHtml(html, {
+    filename,
+    forceSinglePage: false,
+    openPrint: true,
+    shareTitle: opts?.title || "Documentos · École Consulaire",
+    shareText: "Documentos gerados pelo Departamento de Finanças.",
+  });
 }
 
 /**
- * Fatura/recibo/lista → abre o documento de impressão exacto (HTML nativo).
- * PDF idêntico = no diálogo: «Guardar como PDF».
+ * Fatura/recibo/lista → impressão exacta (PC) ou PDF para WhatsApp/e-mail (telemóvel).
  */
 export async function htmlFragmentToA4Pdf(
   html: string,
   opts?: { filename?: string; title?: string; openPrint?: boolean },
-): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
-  const open = opts?.openPrint !== false;
-  if (open) {
-    openPrintHtml(html, { autoPrint: true });
-  }
+): Promise<{ blob: Blob; filename: string; delivery?: PdfDelivery }> {
   const filename = opts?.filename || `documento-${new Date().toISOString().slice(0, 10)}.pdf`;
-  return {
-    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
-    filename: filename.replace(/\.pdf$/i, ".html"),
-    exactPrint: true,
-  };
+  return deliverOfficialHtml(html, {
+    filename,
+    forceSinglePage: true,
+    openPrint: opts?.openPrint !== false,
+    shareTitle: opts?.title,
+    shareText: opts?.title || "Documento da École Consulaire",
+  });
 }
 
 export async function elementToPdfBlob(
@@ -845,7 +901,6 @@ function openPdfInNewTab(blob: Blob, filename: string): "opened" | "downloaded" 
   return "opened";
 }
 
-export type PdfDelivery = "shared" | "opened" | "downloaded";
 
 /**
  * PC: abre o PDF no browser (ver → guardar / imprimir / enviar).
@@ -1181,30 +1236,31 @@ export function openPrintHtml(html: string, opts?: { autoPrint?: boolean }): voi
 }
 
 /**
- * Listas oficiais: abre o documento de impressão exacto.
- * PDF = «Guardar como PDF» no diálogo (idêntico à impressão).
+ * Listas oficiais:
+ * — PC: impressão HTML exacta
+ * — Telemóvel: PDF + partilha (WhatsApp, e-mail, …)
  */
 export async function printAndPdfOfficialList(
   opts: Parameters<typeof buildOfficialListHtml>[0] & {
     filename?: string;
     openPrint?: boolean;
+    shareTitle?: string;
+    shareText?: string;
   },
-): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
+): Promise<{ blob: Blob; filename: string; delivery?: PdfDelivery }> {
   const html = buildOfficialListHtml(opts);
   const filename =
     opts.filename ||
     `${(opts.title || "lista").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
 
-  if (opts.openPrint !== false) {
-    openPrintHtml(html, { autoPrint: true });
-  }
-
-  // Não gerar PDF por canvas — seria diferente da impressão.
-  return {
-    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
-    filename: filename.replace(/\.pdf$/i, ".html"),
-    exactPrint: true,
-  };
+  return deliverOfficialHtml(html, {
+    filename,
+    landscape: Boolean(opts.landscape),
+    forceSinglePage: false,
+    openPrint: opts.openPrint !== false,
+    shareTitle: opts.shareTitle || opts.title,
+    shareText: opts.shareText || "Documento gerado pelo Departamento de Finanças.",
+  });
 }
 
 type BaiRow = {
@@ -1391,18 +1447,16 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
 export async function exportBaiTablePdf(
   rows: BaiRow[],
   opts?: BaiPdfOpts,
-): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
+): Promise<{ blob: Blob; filename: string; delivery?: PdfDelivery }> {
   const html = buildBaiExtratoHtml(rows, opts);
   const filename = opts?.filename || `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`;
 
-  if (opts?.openPrint !== false) {
-    openPrintHtml(html, { autoPrint: true });
-  }
-
-  // PDF idêntico à impressão = «Guardar como PDF» no diálogo do browser
-  return {
-    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
-    filename: filename.replace(/\.pdf$/i, ".html"),
-    exactPrint: true,
-  };
+  return deliverOfficialHtml(html, {
+    filename,
+    landscape: true,
+    forceSinglePage: false,
+    openPrint: opts?.openPrint !== false,
+    shareTitle: opts?.title || "Extrato BAI · École Consulaire",
+    shareText: "Extrato bancário · Departamento de Finanças.",
+  });
 }

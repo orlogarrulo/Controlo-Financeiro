@@ -192,7 +192,12 @@ function Fundo() {
         rows,
         footerNote: `Restante em caixa: ${formatKz(lev - gasto)}`,
       });
-      toast.success("Documento aberto — escolha impressora ou «Guardar como PDF»");
+      const mobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+      toast.success(
+        mobile
+          ? "PDF gerado — escolha WhatsApp, e-mail ou outra app na caixa de partilha"
+          : "Documento aberto — escolha impressora ou «Guardar como PDF»",
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
     }

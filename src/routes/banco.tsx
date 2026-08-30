@@ -170,7 +170,12 @@ function Banco() {
           openPrint: true,
         },
       );
-      toast.success("Documento aberto — escolha impressora ou «Guardar como PDF» (idêntico à impressão)");
+      const mobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+      toast.success(
+        mobile
+          ? "PDF do extrato — partilhe por WhatsApp ou e-mail"
+          : "Documento aberto — escolha impressora ou «Guardar como PDF» (idêntico à impressão)",
+      );
       // Em PC também disponibiliza o PDF num separador (para guardar/enviar)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir extrato");
