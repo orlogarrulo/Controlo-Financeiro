@@ -108,6 +108,11 @@ type Store = ExtraState & {
   addFundoPagamento: (p: Omit<import("@/data/types").FundoPagamento, "id"> & { id?: string }) => void;
   updateFundoPagamento: (id: string, patch: Partial<import("@/data/types").FundoPagamento>) => void;
   removeFundoPagamento: (id: string) => void;
+  /**
+   * Cria um bloco de levantamento no Fundo SEM debitar o BAI.
+   * Use quando o levantamento já existe no extrato BAI e só falta o bloco para associar pagamentos em dinheiro.
+   */
+  addFundoAtm: (input: { data: string; valor: number; id?: string; obs?: string }) => string;
   importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
   /** Apaga um movimento do extrato BAI e recalcula saldos em cadeia. */
   deleteBaiMovimento: (id: string) => void;
@@ -279,6 +284,25 @@ export const useFinance = create<Store>()(
       removeFundoPagamento: (id) => {
         set({ fundoExtra: get().fundoExtra.filter((x) => x.id !== id) });
         get().pushAudit("fundo_apagar", id);
+      },
+      addFundoAtm: (input) => {
+        const valor = Number(input.valor) || 0;
+        if (valor <= 0) throw new Error("Indique um valor de levantamento maior que zero.");
+        const data = input.data || new Date().toISOString().slice(0, 10);
+        const id =
+          input.id?.trim() ||
+          `ATM-MAN-${data.replace(/-/g, "")}-${Math.round(valor)}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+        const existing = fundoAtmAll(get().fundoAtmExtra || []);
+        if (existing.some((a) => a.id === id)) {
+          throw new Error(`Já existe o bloco ATM ${id}.`);
+        }
+        const row: FundoAtm = { id, data, valor };
+        set({ fundoAtmExtra: [...(get().fundoAtmExtra || []), row] });
+        get().pushAudit(
+          "fundo_atm_manual",
+          `${id} · ${valor} · ${data}${input.obs ? ` · ${input.obs}` : ""} (sem débito BAI)`,
+        );
+        return id;
       },
       addCaptura: (input) => {
         const extras = get().extras;

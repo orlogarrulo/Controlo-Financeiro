@@ -1,6 +1,6 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
-import { Pencil, Printer, Plus, UserPlus, Mail, FileText } from "lucide-react";
+import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -796,6 +796,8 @@ function Alunos() {
     html: string;
     linhas: { key: string; label: string; value: number; on: boolean }[];
     mesesProp: number;
+    /** fatura = cobrança; recibo = comprovativo de pagamento */
+    modo: "fatura" | "recibo";
   } | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -1060,8 +1062,11 @@ function Alunos() {
     pagoMes: number;
     contacto: EscolaContacto;
     linhas?: LinhaFat[];
+    modo?: "fatura" | "recibo";
   }): string {
     const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto, linhas } = opts;
+    const modo = opts.modo || "fatura";
+    const isRecibo = modo === "recibo";
     const linhasAtivas = (linhas || []).filter((l) => l.on && l.value > 0);
     const linhasHtml = linhasAtivas.length
       ? `<table style="width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:12px;">
@@ -1114,7 +1119,11 @@ function Alunos() {
     <!-- Título + ref -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #009543;padding-bottom:12px;">
       <div>
-        <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#dc241f;">Facture <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Fatura</span></p>
+        <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:${isRecibo ? "#009543" : "#dc241f"};">${
+          isRecibo
+            ? `Reçu <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Recibo / Comprovativo</span>`
+            : `Facture <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Fatura</span>`
+        }</p>
         <p style="margin:6px 0 0;font-size:12px;color:#475569;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
       </div>
       <div style="text-align:right;background:#e6f4ec;color:#0b3d2c;padding:12px 16px;border-radius:8px;min-width:140px;border:1px solid #b7dfc8;">
@@ -1147,14 +1156,24 @@ function Alunos() {
     <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
       <div style="flex:1;padding:16px 18px;background:#fff;">
         <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;"><span style="font-weight:700;color:#0b3d2c;">Description</span> <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Descrição</span></p>
-        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Fatura / liquidação</span> — ${mesRef}</p>
-        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${pagoMes > 0 ? "Inclui valores já registados em Propinas" : "Itens seleccionados pelo Departamento de Finanças"}</p>
+        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">${
+          isRecibo
+            ? `Reçu de paiement <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Comprovativo de pagamento</span>`
+            : `Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Fatura / liquidação</span>`
+        } — ${mesRef}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${
+          isRecibo
+            ? "Documento comprovativo dos itens seleccionados (pagamento efectuado)"
+            : pagoMes > 0
+              ? "Inclui valores já registados em Propinas"
+              : "Itens seleccionados pelo Departamento de Finanças"
+        }</p>
         ${linhasHtml}
       </div>
       <div style="min-width:160px;background:#e6f4ec;color:#0b3d2c;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;border-left:1px solid #b7dfc8;">
-        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#009543;font-weight:700;">Total</p>
+        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#009543;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
         <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#0b3d2c;">${formatKz(valor)}</p>
-        <p style="margin:6px 0 0;font-size:10px;color:#3d6b56;">até ${prazo.limite}</p>
+        <p style="margin:6px 0 0;font-size:10px;color:#3d6b56;">${isRecibo ? "Pago" : `até ${prazo.limite}`}</p>
       </div>
     </div>
 
@@ -1266,6 +1285,7 @@ function Alunos() {
       pagoMes,
       contacto,
       linhas,
+      modo: "fatura",
     });
     setInvoicePreview({
       aluno: a,
@@ -1279,6 +1299,48 @@ function Alunos() {
       html,
       linhas,
       mesesProp,
+      modo: "fatura",
+    });
+  }
+
+  /** Recibo / comprovativo: mesmos itens com check, texto de pagamento efectuado. */
+  function abrirRecibo(a: Aluno) {
+    const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
+    const { pagoMes } = resolverValorPropina(a, mesLetivo);
+    const contacto = loadContacto();
+    const mesesProp = a.mesesPropina && a.mesesPropina > 0 ? a.mesesPropina : 1;
+    let linhas = linhasMatriculaBase(a, mesesProp);
+    // No recibo, permitir todos os itens (mesmo valor 0) para o utilizador preencher
+    linhas = linhas.map((l) => ({
+      ...l,
+      on: l.value > 0,
+    }));
+    const total = totalLinhas(linhas);
+    const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
+    const html = buildInvoiceHtml({
+      a,
+      numero,
+      valor: total || 0,
+      mesRef,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      linhas,
+      modo: "recibo",
+    });
+    setInvoicePreview({
+      aluno: a,
+      numero,
+      valor: total || 0,
+      mesRef,
+      mesKey,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      html,
+      linhas,
+      mesesProp,
+      modo: "recibo",
     });
   }
 
@@ -1317,6 +1379,7 @@ function Alunos() {
       pagoMes: invoicePreview.pagoMes,
       contacto: invoicePreview.contacto,
       linhas,
+      modo: invoicePreview.modo || "fatura",
     });
     setInvoicePreview({
       ...invoicePreview,
@@ -1358,40 +1421,68 @@ function Alunos() {
     const ja = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
     const numero = ja?.numero || invoicePreview.numero;
     const contacto = invoicePreview.contacto || loadContacto();
-    const html = buildInvoiceHtml({ a, numero, valor, mesRef, mesLetivo, pagoMes, contacto });
-    setInvoicePreview({ aluno: a, numero, valor, mesRef, mesKey, mesLetivo, pagoMes, contacto, html });
+    const linhas = invoicePreview.linhas;
+    const total = totalLinhas(linhas) || valor;
+    const html = buildInvoiceHtml({
+      a,
+      numero,
+      valor: total,
+      mesRef,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      linhas,
+      modo: invoicePreview.modo || "fatura",
+    });
+    setInvoicePreview({
+      ...invoicePreview,
+      aluno: a,
+      numero,
+      valor: total,
+      mesRef,
+      mesKey,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      html,
+      linhas,
+    });
   }
 
   /** A partir da pré-visualização: gera PDF A4 e regista a fatura. */
   async function confirmarFaturaPdf(enviarEmail: boolean) {
     if (!invoicePreview) return;
     const { aluno: a, numero, valor, mesRef, mesKey, html } = invoicePreview;
+    const isRecibo = invoicePreview.modo === "recibo";
     const email = (a.email || "").trim();
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     setInvoiceBusy(true);
     try {
       const { blob, filename: name } = await htmlFragmentToA4Pdf(html, {
-        filename: `fatura-${numero}.pdf`,
-        title: `Fatura ${numero}`,
+        filename: `${isRecibo ? "recibo" : "fatura"}-${numero}.pdf`,
+        title: `${isRecibo ? "Recibo" : "Fatura"} ${numero}`,
       });
       if (!blob || blob.size < 400) throw new Error("PDF vazio — tente de novo");
       await shareOrDownloadPdf(blob, name, {
-        title: `Fatura ${numero} — ${a.nome}`,
-        text: `Fatura ${mesRef} · ${a.nome} · ${formatKz(valor)}`,
+        title: `${isRecibo ? "Recibo" : "Fatura"} ${numero} — ${a.nome}`,
+        text: `${isRecibo ? "Recibo" : "Fatura"} ${mesRef} · ${a.nome} · ${formatKz(valor)}`,
       });
-      const ja = (faturasPropina || []).some((f) => f.numero === numero);
-      if (!ja && typeof addFaturaPropina === "function") {
-        addFaturaPropina({
-          id: numero,
-          numero,
-          alunoId: a.id,
-          alunoNome: a.nome,
-          mesRef,
-          mesKey,
-          valor,
-          email: email || undefined,
-          emitidoEm: new Date().toISOString(),
-        });
+      // Só regista no histórico de faturas de propina quando é fatura (não recibo avulso)
+      if (!isRecibo) {
+        const ja = (faturasPropina || []).some((f) => f.numero === numero);
+        if (!ja && typeof addFaturaPropina === "function") {
+          addFaturaPropina({
+            id: numero,
+            numero,
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesRef,
+            mesKey,
+            valor,
+            email: email || undefined,
+            emitidoEm: new Date().toISOString(),
+          });
+        }
       }
       toast.success(`PDF A4 gerado · ${numero}`);
       if (enviarEmail && email) {
@@ -1702,11 +1793,20 @@ function Alunos() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      title="Ver modelo da fatura e gerar PDF"
+                      title="Fatura (cobrança) — seleccionar itens e gerar PDF"
                       onClick={() => abrirFatura(a)}
                     >
                       <FileText className="size-3.5" />
                       <span className="ml-1 hidden sm:inline">Fatura</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Recibo / comprovativo de pagamento — itens pagos"
+                      onClick={() => abrirRecibo(a)}
+                    >
+                      <Receipt className="size-3.5" />
+                      <span className="ml-1 hidden lg:inline">Recibo</span>
                     </Button>
                     {canEdit ? (
                       <Button size="sm" variant="secondary" onClick={() => openEdit(a)}>
@@ -1817,12 +1917,19 @@ function Alunos() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="size-5" />
-              Fatura {invoicePreview?.numero}
+              {invoicePreview?.modo === "recibo" ? (
+                <Receipt className="size-5" />
+              ) : (
+                <FileText className="size-5" />
+              )}
+              {invoicePreview?.modo === "recibo" ? "Recibo / Comprovativo" : "Fatura"}{" "}
+              {invoicePreview?.numero}
             </DialogTitle>
           </DialogHeader>
           <p className="text-xs text-[var(--color-muted)]">
-            Modelo A4 com logotipo. Escolha o mês se precisar e depois «Gerar PDF».
+            {invoicePreview?.modo === "recibo"
+              ? "Comprovativo de pagamento. Marque os itens pagos, ajuste valores se necessário e gere o PDF para os pais."
+              : "Fatura de cobrança. Marque os itens, ajuste valores se necessário e gere o PDF."}
           </p>
           {invoicePreview ? (
             <div className="space-y-3">
@@ -1908,11 +2015,10 @@ function Alunos() {
                   </div>
                   <ul className="space-y-1.5">
                     {invoicePreview.linhas.map((l) => (
-                      <li key={l.key} className="flex items-center gap-2 text-sm">
+                      <li key={l.key} className="flex flex-wrap items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={l.on}
-                          disabled={l.value <= 0 && l.key !== "propinas"}
                           onChange={(e) => {
                             const linhas = invoicePreview.linhas.map((x) =>
                               x.key === l.key ? { ...x, on: e.target.checked } : x,
@@ -1920,13 +2026,31 @@ function Alunos() {
                             refrescarFatura({ linhas });
                           }}
                         />
-                        <span className="min-w-0 flex-1">{l.label}</span>
-                        <span className="tabular-nums text-[var(--color-muted)]">
-                          {l.value > 0 ? formatKz(l.value) : "—"}
-                        </span>
+                        <span className="min-w-[7rem] flex-1">{l.label}</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="h-8 w-28 text-right tabular-nums"
+                          value={l.value || ""}
+                          title="Valor editável (mesmo se o cadastro estiver a zero)"
+                          onChange={(e) => {
+                            const v = Number(e.target.value) || 0;
+                            const linhas = invoicePreview.linhas.map((x) =>
+                              x.key === l.key
+                                ? { ...x, value: v, on: v > 0 ? true : x.on }
+                                : x,
+                            );
+                            refrescarFatura({ linhas });
+                          }}
+                        />
                       </li>
                     ))}
                   </ul>
+                  <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                    Pode marcar qualquer item e alterar o valor. Itens a zero no cadastro deixam de
+                    bloquear o check.
+                  </p>
                   <p className="mt-2 text-sm font-semibold text-[var(--color-forest)]">
                     Total fatura: {formatKz(invoicePreview.valor)}
                   </p>
@@ -1947,6 +2071,8 @@ function Alunos() {
                           mesLetivo: invoicePreview.mesLetivo,
                           pagoMes: invoicePreview.pagoMes,
                           contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -1967,6 +2093,8 @@ function Alunos() {
                           mesLetivo: invoicePreview.mesLetivo,
                           pagoMes: invoicePreview.pagoMes,
                           contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -1988,6 +2116,8 @@ function Alunos() {
                           mesLetivo: invoicePreview.mesLetivo,
                           pagoMes: invoicePreview.pagoMes,
                           contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -2008,6 +2138,8 @@ function Alunos() {
                           mesLetivo: invoicePreview.mesLetivo,
                           pagoMes: invoicePreview.pagoMes,
                           contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
