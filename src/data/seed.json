@@ -1752,125 +1752,37 @@
       "observacoes": "Pgmto Funcionários via outra conta empresa (sobram 34 000 nessa conta)"
     },
     {
-      "id": "BAI-060",
-      "linha": 60,
-      "data": "2026-08-22",
-      "banco": "Transf. pelo NI / Fecho TPA",
-      "descricao": "Vendas do dia do Evento 50 anos",
-      "entrada": 30666.0,
-      "saida": 0.0,
-      "saldo": 1044700.56,
-      "observacoes": "Vendas Evento 50 anos – 30 666 Kz"
-    },
-    {
       "id": "BAI-061",
-      "linha": 61,
+      "linha": 60,
       "data": "2026-08-22",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
       "saida": 20000.0,
-      "saldo": 1024700.56,
+      "saldo": 994034.56,
       "observacoes": "Compras Evento 50 anos - Inês Passi"
     },
     {
-      "id": "BAI-062",
-      "linha": 62,
-      "data": "2026-08-22",
-      "banco": "Transf. / crédito a id.",
-      "descricao": "Entrada a identificar",
-      "entrada": 40000.0,
-      "saida": 0.0,
-      "saldo": 1064700.56,
-      "observacoes": "ENTRADA DESCONHECIDA – a identificar mais tarde (fecha saldo 1 064 700,56)"
-    },
-    {
-      "id": "BAI-063",
-      "linha": 63,
-      "data": "2026-08-26",
-      "banco": "Transf pelo NI",
-      "descricao": "Transferência recebida · Transf pelo NI",
-      "entrada": 150000.0,
-      "saida": 0.0,
-      "saldo": 1214700.56,
-      "observacoes": "Registo manual secretaria"
-    },
-    {
-      "id": "BAI-064",
-      "linha": 64,
-      "data": "2026-08-26",
-      "banco": "Transf pelo NI",
-      "descricao": "Transferência recebida · Transf pelo NI",
-      "entrada": 180000.0,
-      "saida": 0.0,
-      "saldo": 1394700.56,
-      "observacoes": "Registo manual secretaria"
-    },
-    {
-      "id": "BAI-065",
-      "linha": 65,
-      "data": "2026-08-26",
-      "banco": "Transf pelo NI",
-      "descricao": "Transferência recebida · Transf pelo NI",
-      "entrada": 30000.0,
-      "saida": 0.0,
-      "saldo": 1424700.56,
-      "observacoes": "Registo manual secretaria"
-    },
-    {
-      "id": "BAI-066",
-      "linha": 66,
-      "data": "2026-08-26",
-      "banco": "Transf pelo NI",
-      "descricao": "Transferência recebida · Transf pelo NI",
-      "entrada": 30000.0,
-      "saida": 0.0,
-      "saldo": 1454700.56,
-      "observacoes": "Registo manual secretaria"
-    },
-    {
-      "id": "BAI-067",
-      "linha": 67,
-      "data": "2026-08-26",
-      "banco": "Transf pelo NI",
-      "descricao": "Transferência recebida · Transf pelo NI",
-      "entrada": 40000.0,
-      "saida": 0.0,
-      "saldo": 1494700.56,
-      "observacoes": "Registo manual secretaria"
-    },
-    {
-      "id": "BAI-068",
-      "linha": 68,
-      "data": "2026-08-26",
-      "banco": "Transf pelo NI",
-      "descricao": "Transferência recebida · Transf pelo NI",
-      "entrada": 27000.0,
-      "saida": 0.0,
-      "saldo": 1521700.56,
-      "observacoes": "Registo manual secretaria"
-    },
-    {
-      "id": "BAI-069",
-      "linha": 69,
-      "data": "2026-08-26",
-      "banco": "Transf pelo NI",
-      "descricao": "Transferência recebida · Transf pelo NI",
-      "entrada": 30000.0,
-      "saida": 0.0,
-      "saldo": 1551700.56,
-      "observacoes": "Registo manual secretaria"
-    },
-    {
       "id": "BAI-070",
-      "linha": 70,
+      "linha": 61,
       "data": "2026-08-28",
-      "banco": "Fecho TPA",
-      "descricao": "Fecho TPA / Multicaixa",
-      "entrada": 147340.0,
+      "banco": "Fecho TPA / Multicaixa",
+      "descricao": "Fecho de terminal de pagamento (TPA) — lote matrículas/recibos",
+      "entrada": 558000.0,
       "saida": 0.0,
-      "saldo": 1699040.56,
-      "observacoes": "Registo manual secretaria"
+      "saldo": 1552034.56,
+      "observacoes": "Corrigido: substitui desdobramentos manuais (150k+180k+30.666+40k+147.340). Total fecho real 558.000 Kz"
+    },
+    {
+      "id": "BAI-071",
+      "linha": 62,
+      "data": "2026-08-28",
+      "banco": "Comissão TPA",
+      "descricao": "Comissão de fecho TPA",
+      "entrada": 0.0,
+      "saida": 6315.6,
+      "saldo": 1545718.96,
+      "observacoes": "Comissão associada ao fecho de 558.000 Kz"
     }
   ],
   "faturasCartao": [
@@ -2627,7 +2539,7 @@
       "extras": 0,
       "curso": 0,
       "mensalidade1": 0,
-      "dataPag": "",
+      "dataPag": "2026-08-26",
       "bruto": 180000,
       "descPct": 0,
       "liquido": 180000,
@@ -2638,7 +2550,8 @@
       "recibo": "EF/016",
       "obs": "Data de pagamento em falta no Excel",
       "propina": 170000,
-      "statusPag": "registado"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "4E-01",
