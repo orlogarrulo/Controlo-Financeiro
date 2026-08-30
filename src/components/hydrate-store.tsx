@@ -99,6 +99,22 @@ function hasLocalData(): boolean {
   );
 }
 
+
+/** Mantém só movimentos gerados na app (salários, propinas, ATM manual) — não congela extrato antigo. */
+function sanitizeBaiExtra(extra: unknown[]): unknown[] {
+  return (extra || []).filter((row) => {
+    const m = row as { id?: string; banco?: string };
+    const id = String(m?.id || "");
+    const banco = String(m?.banco || "");
+    return (
+      id.startsWith("APP-") ||
+      id.startsWith("ATM-MAN-") ||
+      banco === "SALARIO-APP" ||
+      banco === "PROPINA-APP"
+    );
+  });
+}
+
 function applyPayload(p: FinanceCloudPayload) {
   useFinance.setState({
     extras: (p.extras as never[]) || [],
@@ -108,9 +124,9 @@ function applyPayload(p: FinanceCloudPayload) {
     mensalidades: (p.mensalidades as never[]) || [],
     fundoExtra: (p.fundoExtra as never[]) || [],
     fundoAtmExtra: (p.fundoAtmExtra as never[]) || [],
-    movimentosBaiExtra: (p.movimentosBaiExtra as never[]) || [],
-    movimentosBaiDeletedIds: (p.movimentosBaiDeletedIds as string[]) || [],
-    baiOverride: Boolean(p.baiOverride),
+    movimentosBaiExtra: sanitizeBaiExtra((p.movimentosBaiExtra as never[]) || []) as never[],
+    movimentosBaiDeletedIds: [],
+    baiOverride: false,
     fotos: p.fotos || {},
     operators: p.operators?.length ? p.operators : useFinance.getState().operators,
     auditLog: (p.auditLog as never[]) || [],

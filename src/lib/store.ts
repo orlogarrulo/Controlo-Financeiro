@@ -949,9 +949,31 @@ export const useFinance = create<Store>()(
         }),
     }),
     {
-      name: "ecc-financeiro-v2",
+      name: "ecc-financeiro-v3",
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
+      version: 3,
+      migrate: (persisted: unknown) => {
+        // Força extrato BAI a partir do seed (saídas + BAI-MAT-*), sem entradas antigas congeladas
+        const s = (persisted || {}) as Record<string, unknown>;
+        const extra = Array.isArray(s.movimentosBaiExtra) ? (s.movimentosBaiExtra as { id?: string; banco?: string }[]) : [];
+        const keepExtra = extra.filter((m) => {
+          const id = String(m?.id || "");
+          const banco = String(m?.banco || "");
+          return (
+            id.startsWith("APP-") ||
+            id.startsWith("ATM-MAN-") ||
+            banco === "SALARIO-APP" ||
+            banco === "PROPINA-APP"
+          );
+        });
+        return {
+          ...s,
+          movimentosBaiExtra: keepExtra,
+          baiOverride: false,
+          movimentosBaiDeletedIds: [],
+        };
+      },
       partialize: (s) => ({
         extras: s.extras,
         alunosExtra: s.alunosExtra,

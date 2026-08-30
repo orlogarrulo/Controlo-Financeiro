@@ -59,3 +59,15 @@ src/routes/alunos.tsx
   - observações = **Inscrição + Seguro + Manuais + Cadernos + ATL + Curso + Propina Set** (valores discriminados)
 - Despesas operacionais do banco (ATM, cartão, evento, etc.) mantidas.
 - Formulário / fatura / recibo já listam cada rubrica em linhas separadas (incl. Cadernos).
+
+
+## Extrato BAI não actualiza na app (saldo antigo)
+
+**Causa:** `localStorage` / nuvem com `baiOverride` ou CSV antigo — **sobrepõe** o `seed.json`.
+
+**Correcção (v3):**
+- Storage `ecc-financeiro-v3` + migrate: limpa override, remove entradas antigas do extra, mantém só `APP-*` / salários / propinas.
+- Hidratação da nuvem: mesma sanitização; `baiOverride = false`.
+- Seed: 49 saídas + 41 entradas `BAI-MAT-*` → saldo **1 705 718,96 Kz**.
+
+Após deploy: hard refresh (Ctrl+Shift+R). Se ainda vir saldo antigo, DevTools → Application → Local Storage → apagar `ecc-financeiro-v1` e `v2`.
