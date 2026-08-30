@@ -1235,840 +1235,862 @@
       "observacoes": "P3-01 · Cartão Multicaixa · Seguro 30 000"
     },
     {
-      "id": "BAI-MAT-CM2-01-10",
+      "id": "BAI-006",
       "linha": 13,
+      "data": "2026-07-27",
+      "banco": "Comissao-Fecho",
+      "descricao": "Comissão de fecho TPA",
+      "entrada": 0.0,
+      "saida": 6429.6,
+      "saldo": 622025.18,
+      "observacoes": ""
+    },
+    {
+      "id": "BAI-008",
+      "linha": 14,
+      "data": "2026-07-27",
+      "banco": "Comissao-Fecho",
+      "descricao": "Comissão de fecho TPA",
+      "entrada": 0.0,
+      "saida": 2508.0,
+      "saldo": 619517.18,
+      "observacoes": ""
+    },
+    {
+      "id": "BAI-MAT-CM2-01-10",
+      "linha": 15,
       "data": "2026-07-27",
       "banco": "TPA / Multicaixa",
       "descricao": "Inscrição · Kaila Abigail Katata Da Silva (CM2)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 778454.78,
+      "saldo": 769517.18,
       "observacoes": "CM2-01 · Cartão Multicaixa · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-CM2-01-11",
-      "linha": 14,
+      "linha": 16,
       "data": "2026-07-27",
       "banco": "TPA / Multicaixa",
       "descricao": "Seguro · Kaila Abigail Katata Da Silva (CM2)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 808454.78,
+      "saldo": 799517.18,
       "observacoes": "CM2-01 · Cartão Multicaixa · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-CM2-01-9",
-      "linha": 15,
+      "linha": 17,
       "data": "2026-07-27",
       "banco": "TPA / Multicaixa",
       "descricao": "Curso intensivo · Kaila Abigail Katata Da Silva (CM2)",
       "entrada": 40000.0,
       "saida": 0.0,
-      "saldo": 848454.78,
+      "saldo": 839517.18,
       "observacoes": "CM2-01 · Cartão Multicaixa · Curso intensivo 40 000"
     },
     {
       "id": "BAI-MAT-P3-02-12",
-      "linha": 16,
+      "linha": 18,
       "data": "2026-07-29",
       "banco": "TPA / Multicaixa",
       "descricao": "Inscrição · Wendy Ayanna Chimuco Sabino (Maternelle P3)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 998454.78,
+      "saldo": 989517.18,
       "observacoes": "P3-02 · Cartão Multicaixa · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-P3-02-13",
-      "linha": 17,
+      "linha": 19,
       "data": "2026-07-29",
       "banco": "TPA / Multicaixa",
       "descricao": "Propina Setembro · Wendy Ayanna Chimuco Sabino (Maternelle P3)",
       "entrada": 170000.0,
       "saida": 0.0,
-      "saldo": 1168454.78,
+      "saldo": 1159517.18,
       "observacoes": "P3-02 · Cartão Multicaixa · Propina Setembro 170 000"
     },
     {
       "id": "BAI-MAT-P3-02-14",
-      "linha": 18,
+      "linha": 20,
       "data": "2026-07-29",
       "banco": "TPA / Multicaixa",
       "descricao": "Seguro · Wendy Ayanna Chimuco Sabino (Maternelle P3)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 1198454.78,
+      "saldo": 1189517.18,
       "observacoes": "P3-02 · Cartão Multicaixa · Seguro 30 000"
     },
     {
       "id": "BAI-010",
-      "linha": 19,
+      "linha": 21,
       "data": "2026-07-31",
       "banco": "Comissao_gest_M",
       "descricao": "Comissão de gestão mensal",
       "entrada": 0.0,
       "saida": 4500.0,
-      "saldo": 1193954.78,
+      "saldo": 1185017.18,
       "observacoes": ""
     },
     {
       "id": "BAI-011",
-      "linha": 20,
+      "linha": 22,
       "data": "2026-07-31",
       "banco": "IVA sobre comis",
       "descricao": "IVA sobre comissão",
       "entrada": 0.0,
       "saida": 630.0,
-      "saldo": 1193324.78,
+      "saldo": 1184387.18,
       "observacoes": ""
     },
     {
       "id": "BAI-012",
-      "linha": 21,
+      "linha": 23,
       "data": "2026-07-31",
       "banco": "Comissao Alug T",
       "descricao": "Comissão aluguer TPA",
       "entrada": 0.0,
       "saida": 10000.0,
-      "saldo": 1183324.78,
+      "saldo": 1174387.18,
       "observacoes": ""
     },
     {
       "id": "BAI-013",
-      "linha": 22,
+      "linha": 24,
       "data": "2026-07-31",
       "banco": "IVA Comissao Al",
       "descricao": "IVA comissão aluguer",
       "entrada": 0.0,
       "saida": 1400.0,
-      "saldo": 1181924.78,
+      "saldo": 1172987.18,
       "observacoes": ""
     },
     {
       "id": "BAI-014",
-      "linha": 23,
-      "data": "2026-07-31",
-      "banco": "Imposto de Selo",
-      "descricao": "Imposto de selo",
-      "entrada": 0.0,
-      "saida": 8.05,
-      "saldo": 1181916.73,
-      "observacoes": ""
-    },
-    {
-      "id": "BAI-015",
-      "linha": 24,
-      "data": "2026-07-31",
-      "banco": "Juros devedores",
-      "descricao": "Juros devedores",
-      "entrada": 0.0,
-      "saida": 207.93,
-      "saldo": 1181708.8,
-      "observacoes": ""
-    },
-    {
-      "id": "BAI-016",
       "linha": 25,
       "data": "2026-07-31",
       "banco": "Imposto de Selo",
       "descricao": "Imposto de selo",
       "entrada": 0.0,
-      "saida": 0.21,
-      "saldo": 1181708.59,
+      "saida": 8.05,
+      "saldo": 1172979.13,
       "observacoes": ""
     },
     {
-      "id": "BAI-017",
+      "id": "BAI-015",
       "linha": 26,
-      "data": "2026-08-02",
-      "banco": "Depósito numerário",
-      "descricao": "Depósito numerário — Imayami + Crisber (360.000)",
-      "entrada": 360000.0,
-      "saida": 0.0,
-      "saldo": 1541708.59,
-      "observacoes": "6E-01 + CM1-01 · 2×180.000 · 2026-08-18"
+      "data": "2026-07-31",
+      "banco": "Juros devedores",
+      "descricao": "Juros devedores",
+      "entrada": 0.0,
+      "saida": 207.93,
+      "saldo": 1172771.2,
+      "observacoes": ""
+    },
+    {
+      "id": "BAI-016",
+      "linha": 27,
+      "data": "2026-07-31",
+      "banco": "Imposto de Selo",
+      "descricao": "Imposto de selo",
+      "entrada": 0.0,
+      "saida": 0.21,
+      "saldo": 1172770.99,
+      "observacoes": ""
     },
     {
       "id": "BAI-MAT-P1-01-15",
-      "linha": 27,
+      "linha": 28,
       "data": "2026-08-02",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Érick Libânio Sebastião da Silva (Maternelle P1)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 1691708.59,
+      "saldo": 1322770.99,
       "observacoes": "P1-01 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-P1-01-16",
-      "linha": 28,
+      "linha": 29,
       "data": "2026-08-02",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Érick Libânio Sebastião da Silva (Maternelle P1)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 1721708.59,
+      "saldo": 1352770.99,
       "observacoes": "P1-01 · Transferência · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-P2-01-17",
-      "linha": 29,
+      "linha": 30,
       "data": "2026-08-02",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Eloá Marina Sebastião da Silva (Maternelle P2)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 1871708.59,
+      "saldo": 1502770.99,
       "observacoes": "P2-01 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-P2-01-18",
-      "linha": 30,
+      "linha": 31,
       "data": "2026-08-02",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Eloá Marina Sebastião da Silva (Maternelle P2)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 1901708.59,
+      "saldo": 1532770.99,
       "observacoes": "P2-01 · Transferência · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-P3-03-19",
-      "linha": 31,
+      "linha": 32,
       "data": "2026-08-04",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Gael Hanji Ventura Quimbundo (Maternelle P3)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2051708.59,
+      "saldo": 1682770.99,
       "observacoes": "P3-03 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-P3-03-20",
-      "linha": 32,
+      "linha": 33,
       "data": "2026-08-04",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Gael Hanji Ventura Quimbundo (Maternelle P3)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 2081708.59,
+      "saldo": 1712770.99,
       "observacoes": "P3-03 · Transferência · Seguro 30 000"
     },
     {
+      "id": "BAI-020",
+      "linha": 34,
+      "data": "2026-08-06",
+      "banco": "Comissao-Fecho",
+      "descricao": "Comissão de fecho TPA",
+      "entrada": 0.0,
+      "saida": 1710.0,
+      "saldo": 1711060.99,
+      "observacoes": ""
+    },
+    {
       "id": "BAI-021",
-      "linha": 33,
+      "linha": 35,
       "data": "2026-08-06",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
       "saida": 46000.0,
-      "saldo": 2035708.59,
+      "saldo": 1665060.99,
       "observacoes": ""
     },
     {
       "id": "BAI-022",
-      "linha": 34,
+      "linha": 36,
       "data": "2026-08-06",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
       "saida": 100000.0,
-      "saldo": 1935708.59,
+      "saldo": 1565060.99,
       "observacoes": "Gráfica Tamaco - panfletos"
     },
     {
       "id": "BAI-MAT-CM2-03-21",
-      "linha": 35,
+      "linha": 37,
       "data": "2026-08-06",
       "banco": "Transf. pelo NI",
       "descricao": "Curso intensivo · Keane António Teixeira Correia de Azevedo (CM2)",
       "entrada": 40000.0,
       "saida": 0.0,
-      "saldo": 1975708.59,
+      "saldo": 1605060.99,
       "observacoes": "CM2-03 · Transferência · Curso intensivo 40 000"
     },
     {
       "id": "BAI-MAT-CM2-03-22",
-      "linha": 36,
+      "linha": 38,
       "data": "2026-08-06",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Keane António Teixeira Correia de Azevedo (CM2)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2125708.59,
+      "saldo": 1755060.99,
       "observacoes": "CM2-03 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-023",
-      "linha": 37,
+      "linha": 39,
       "data": "2026-08-07",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
       "saida": 10000.0,
-      "saldo": 2115708.59,
+      "saldo": 1745060.99,
       "observacoes": ""
     },
     {
       "id": "BAI-MAT-P1-02-23",
-      "linha": 38,
+      "linha": 40,
       "data": "2026-08-07",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Ivander Trindade Bernardo Clementino (Maternelle P1)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2265708.59,
+      "saldo": 1895060.99,
       "observacoes": "P1-02 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-P1-02-24",
-      "linha": 39,
+      "linha": 41,
       "data": "2026-08-07",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Ivander Trindade Bernardo Clementino (Maternelle P1)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 2295708.59,
+      "saldo": 1925060.99,
       "observacoes": "P1-02 · Transferência · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-P3-04-25",
-      "linha": 40,
+      "linha": 42,
       "data": "2026-08-07",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Ivanna Chayane Bernardo Clementino (Maternelle P3)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2445708.59,
+      "saldo": 2075060.99,
       "observacoes": "P3-04 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-P3-04-26",
-      "linha": 41,
+      "linha": 43,
       "data": "2026-08-07",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Ivanna Chayane Bernardo Clementino (Maternelle P3)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 2475708.59,
+      "saldo": 2105060.99,
       "observacoes": "P3-04 · Transferência · Seguro 30 000"
     },
     {
       "id": "BAI-024",
-      "linha": 42,
+      "linha": 44,
       "data": "2026-08-08",
       "banco": "ATM-MCX504808*3",
       "descricao": "Levantamento p/ pagamento em dinheiro",
       "entrada": 0.0,
       "saida": 20000.0,
-      "saldo": 2455708.59,
+      "saldo": 2085060.99,
       "observacoes": ""
     },
     {
       "id": "BAI-025",
-      "linha": 43,
-      "data": "2026-08-09",
-      "banco": "TPA-MCX504808**",
-      "descricao": "Pagamento com cartão",
-      "entrada": 0.0,
-      "saida": 12251.0,
-      "saldo": 2443457.59,
-      "observacoes": "Maxi - Produtos de higiene"
-    },
-    {
-      "id": "BAI-026",
-      "linha": 44,
-      "data": "2026-08-09",
-      "banco": "TPA-MCX504808**",
-      "descricao": "Pagamento com cartão",
-      "entrada": 0.0,
-      "saida": 162493.43,
-      "saldo": 2280964.16,
-      "observacoes": "Sistec - Cartuchos Impressora"
-    },
-    {
-      "id": "BAI-027",
       "linha": 45,
       "data": "2026-08-09",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
+      "saida": 12251.0,
+      "saldo": 2072809.99,
+      "observacoes": "Maxi - Produtos de higiene"
+    },
+    {
+      "id": "BAI-026",
+      "linha": 46,
+      "data": "2026-08-09",
+      "banco": "TPA-MCX504808**",
+      "descricao": "Pagamento com cartão",
+      "entrada": 0.0,
+      "saida": 162493.43,
+      "saldo": 1910316.56,
+      "observacoes": "Sistec - Cartuchos Impressora"
+    },
+    {
+      "id": "BAI-027",
+      "linha": 47,
+      "data": "2026-08-09",
+      "banco": "TPA-MCX504808**",
+      "descricao": "Pagamento com cartão",
+      "entrada": 0.0,
       "saida": 18000.0,
-      "saldo": 2262964.16,
+      "saldo": 1892316.56,
       "observacoes": "Compra saco de gesso e lixas"
     },
     {
       "id": "BAI-028",
-      "linha": 46,
+      "linha": 48,
       "data": "2026-08-09",
       "banco": "ATM-MCX504808*2",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
       "saida": 20000.0,
-      "saldo": 2242964.16,
+      "saldo": 1872316.56,
       "observacoes": ""
     },
     {
       "id": "BAI-029",
-      "linha": 47,
+      "linha": 49,
       "data": "2026-08-11",
       "banco": "ATM-MCX504808*3",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
       "saida": 50000.0,
-      "saldo": 2192964.16,
+      "saldo": 1822316.56,
       "observacoes": ""
     },
     {
       "id": "BAI-030",
-      "linha": 48,
+      "linha": 50,
       "data": "2026-08-11",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
       "saida": 2250.0,
-      "saldo": 2190714.16,
+      "saldo": 1820066.56,
       "observacoes": "Compra Rolos p/ multicaixa"
     },
     {
       "id": "BAI-MAT-CM2-04-27",
-      "linha": 49,
+      "linha": 51,
       "data": "2026-08-12",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Marciel Uziel Francisco Venâncio (CM2)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2340714.16,
+      "saldo": 1970066.56,
       "observacoes": "CM2-04 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-P3-05-28",
-      "linha": 50,
+      "linha": 52,
       "data": "2026-08-12",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Kuami Hazael Francisco Venâncio (Maternelle P3)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2490714.16,
+      "saldo": 2120066.56,
       "observacoes": "P3-05 · Transferência · Inscrição 150 000"
     },
     {
-      "id": "BAI-032",
-      "linha": 51,
+      "id": "BAI-034",
+      "linha": 53,
       "data": "2026-08-13",
-      "banco": "Transf. pelo NI",
-      "descricao": "Transferência recebida (NI)",
-      "entrada": 2000.0,
-      "saida": 0.0,
-      "saldo": 2492714.16,
-      "observacoes": "Caderno(s) Escolar(s)"
+      "banco": "Comissao-Fecho",
+      "descricao": "Comissão de fecho TPA",
+      "entrada": 0.0,
+      "saida": 6954.0,
+      "saldo": 2113112.56,
+      "observacoes": ""
     },
     {
       "id": "BAI-035",
-      "linha": 52,
+      "linha": 54,
       "data": "2026-08-13",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
       "saida": 21198.0,
-      "saldo": 2471516.16,
+      "saldo": 2091914.56,
       "observacoes": "Sonangol Combustível Viatura"
     },
     {
       "id": "BAI-036",
-      "linha": 53,
+      "linha": 55,
       "data": "2026-08-14",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
       "saida": 28750.0,
-      "saldo": 2442766.16,
+      "saldo": 2063164.56,
       "observacoes": "A reembolsar"
     },
     {
       "id": "BAI-037",
-      "linha": 54,
+      "linha": 56,
       "data": "2026-08-14",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
       "saida": 2000.0,
-      "saldo": 2440766.16,
+      "saldo": 2061164.56,
       "observacoes": "A reembolsar"
     },
     {
       "id": "BAI-038",
-      "linha": 55,
+      "linha": 57,
       "data": "2026-08-17",
       "banco": "Serviço Especial",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
       "saida": 34590.0,
-      "saldo": 2406176.16,
+      "saldo": 2026574.56,
       "observacoes": "Pagmto ZAP Fibra - internet"
     },
     {
       "id": "BAI-039",
-      "linha": 56,
+      "linha": 58,
       "data": "2026-08-17",
       "banco": "ATM-MCX504808**3",
       "descricao": "Levantamento ATM",
       "entrada": 0.0,
       "saida": 20000.0,
-      "saldo": 2386176.16,
+      "saldo": 2006574.56,
       "observacoes": ""
     },
     {
       "id": "BAI-040",
-      "linha": 57,
-      "data": "2026-08-17",
-      "banco": "TPA-MCX504808**",
-      "descricao": "Pagamento com cartão",
-      "entrada": 0.0,
-      "saida": 17500.0,
-      "saldo": 2368676.16,
-      "observacoes": "FNK - Peixe p/ funcionários"
-    },
-    {
-      "id": "BAI-041",
-      "linha": 58,
-      "data": "2026-08-17",
-      "banco": "ATM-MCX504808*3",
-      "descricao": "Levantamento ATM",
-      "entrada": 0.0,
-      "saida": 10000.0,
-      "saldo": 2358676.16,
-      "observacoes": ""
-    },
-    {
-      "id": "BAI-042",
       "linha": 59,
       "data": "2026-08-17",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
+      "saida": 17500.0,
+      "saldo": 1989074.56,
+      "observacoes": "FNK - Peixe p/ funcionários"
+    },
+    {
+      "id": "BAI-041",
+      "linha": 60,
+      "data": "2026-08-17",
+      "banco": "ATM-MCX504808*3",
+      "descricao": "Levantamento ATM",
+      "entrada": 0.0,
+      "saida": 10000.0,
+      "saldo": 1979074.56,
+      "observacoes": ""
+    },
+    {
+      "id": "BAI-042",
+      "linha": 61,
+      "data": "2026-08-17",
+      "banco": "TPA-MCX504808**",
+      "descricao": "Pagamento com cartão",
+      "entrada": 0.0,
       "saida": 19040.0,
-      "saldo": 2339636.16,
+      "saldo": 1960034.56,
       "observacoes": "Kero - Compra funcionários"
     },
     {
       "id": "BAI-MAT-6E-01-29",
-      "linha": 60,
+      "linha": 62,
       "data": "2026-08-18",
       "banco": "Depósito numerário",
       "descricao": "Inscrição · Imayami Suriel António Cristovão de Sousa (6ème)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2489636.16,
+      "saldo": 2110034.56,
       "observacoes": "6E-01 · Dinheiro · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-6E-01-30",
-      "linha": 61,
+      "linha": 63,
       "data": "2026-08-18",
       "banco": "Depósito numerário",
       "descricao": "Seguro · Imayami Suriel António Cristovão de Sousa (6ème)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 2519636.16,
+      "saldo": 2140034.56,
       "observacoes": "6E-01 · Dinheiro · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-CM1-01-31",
-      "linha": 62,
+      "linha": 64,
       "data": "2026-08-18",
       "banco": "Depósito numerário",
       "descricao": "Inscrição · Crisber Uluwami António Cristovão de Sousa (CM1)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2669636.16,
+      "saldo": 2290034.56,
       "observacoes": "CM1-01 · Dinheiro · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-CM1-01-32",
-      "linha": 63,
+      "linha": 65,
       "data": "2026-08-18",
       "banco": "Depósito numerário",
       "descricao": "Seguro · Crisber Uluwami António Cristovão de Sousa (CM1)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 2699636.16,
+      "saldo": 2320034.56,
       "observacoes": "CM1-01 · Dinheiro · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-3E-01-33",
-      "linha": 64,
+      "linha": 66,
       "data": "2026-08-20",
       "banco": "TPA / Multicaixa",
       "descricao": "Curso intensivo · Belangela Nito Daniel Kanvadioko (3ème)",
       "entrada": 40000.0,
       "saida": 0.0,
-      "saldo": 2739636.16,
+      "saldo": 2360034.56,
       "observacoes": "3E-01 · Cartão Multicaixa · Curso intensivo 40 000"
     },
     {
       "id": "BAI-MAT-3E-01-34",
-      "linha": 65,
+      "linha": 67,
       "data": "2026-08-20",
       "banco": "TPA / Multicaixa",
       "descricao": "Inscrição · Belangela Nito Daniel Kanvadioko (3ème)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2889636.16,
+      "saldo": 2510034.56,
       "observacoes": "3E-01 · Cartão Multicaixa · Inscrição 150 000"
     },
     {
-      "id": "BAI-045",
-      "linha": 66,
-      "data": "2026-08-21",
-      "banco": "Transf. pelo NI",
-      "descricao": "Transferência recebida – Curso Intensivo Belangela",
-      "entrada": 40000.0,
-      "saida": 0.0,
-      "saldo": 2929636.16,
-      "observacoes": "Curso intensivo francês – Belangela Nito Daniel Kanvadioko"
-    },
-    {
       "id": "BAI-046",
-      "linha": 67,
+      "linha": 68,
       "data": "2026-08-21",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Curso Intensivo",
       "entrada": 0.0,
       "saida": 80000.0,
-      "saldo": 2849636.16,
+      "saldo": 2430034.56,
       "observacoes": "Pagamento Curso Intensivo Francês - Inês Passi"
     },
     {
       "id": "BAI-047",
-      "linha": 68,
+      "linha": 69,
       "data": "2026-08-21",
       "banco": "ATM-MCX504808*3",
       "descricao": "Levantamento ATM - Fundo Maneio Evento 50 anos",
       "entrada": 0.0,
       "saida": 60000.0,
-      "saldo": 2789636.16,
+      "saldo": 2370034.56,
       "observacoes": "Fundo maneio Evento 50 anos"
     },
     {
       "id": "BAI-048",
-      "linha": 69,
+      "linha": 70,
       "data": "2026-08-21",
       "banco": "ATM-MCX504808*4",
       "descricao": "Levantamento ATM - Fundo Maneio Evento 50 anos",
       "entrada": 0.0,
       "saida": 60000.0,
-      "saldo": 2729636.16,
+      "saldo": 2310034.56,
       "observacoes": "Fundo maneio Evento 50 anos"
     },
     {
       "id": "BAI-049",
-      "linha": 70,
-      "data": "2026-08-21",
-      "banco": "TPA-MCX504808**",
-      "descricao": "Pagamento com cartão",
-      "entrada": 0.0,
-      "saida": 52500.0,
-      "saldo": 2677136.16,
-      "observacoes": "CM S22026/18259 - Evento 50 anos"
-    },
-    {
-      "id": "BAI-050",
       "linha": 71,
       "data": "2026-08-21",
       "banco": "TPA-MCX504808**",
       "descricao": "Pagamento com cartão",
       "entrada": 0.0,
+      "saida": 52500.0,
+      "saldo": 2257534.56,
+      "observacoes": "CM S22026/18259 - Evento 50 anos"
+    },
+    {
+      "id": "BAI-050",
+      "linha": 72,
+      "data": "2026-08-21",
+      "banco": "TPA-MCX504808**",
+      "descricao": "Pagamento com cartão",
+      "entrada": 0.0,
       "saida": 31100.0,
-      "saldo": 2646036.16,
+      "saldo": 2226434.56,
       "observacoes": "FRS22026/9376 - Evento 50 anos"
     },
     {
       "id": "BAI-051",
-      "linha": 72,
-      "data": "2026-08-21",
-      "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada - Evento 50 anos",
-      "entrada": 0.0,
-      "saida": 100000.0,
-      "saldo": 2546036.16,
-      "observacoes": "Compras Evento 50 anos - Rosária Perdigão (reforço)"
-    },
-    {
-      "id": "BAI-052",
       "linha": 73,
       "data": "2026-08-21",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
-      "saida": 20000.0,
-      "saldo": 2526036.16,
-      "observacoes": "Compras Evento 50 anos"
+      "saida": 100000.0,
+      "saldo": 2126434.56,
+      "observacoes": "Compras Evento 50 anos - Rosária Perdigão (reforço)"
     },
     {
-      "id": "BAI-053",
+      "id": "BAI-052",
       "linha": 74,
       "data": "2026-08-21",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
-      "saida": 200000.0,
-      "saldo": 2326036.16,
-      "observacoes": "Compras Evento 50 anos - Rosária Perdigão"
+      "saida": 20000.0,
+      "saldo": 2106434.56,
+      "observacoes": "Compras Evento 50 anos"
     },
     {
-      "id": "BAI-054",
+      "id": "BAI-053",
       "linha": 75,
       "data": "2026-08-21",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
-      "saida": 135000.0,
-      "saldo": 2191036.16,
-      "observacoes": "Compras Evento 50 anos - Mabouana Pierette"
+      "saida": 200000.0,
+      "saldo": 1906434.56,
+      "observacoes": "Compras Evento 50 anos - Rosária Perdigão"
     },
     {
-      "id": "BAI-055",
+      "id": "BAI-054",
       "linha": 76,
       "data": "2026-08-21",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
+      "saida": 135000.0,
+      "saldo": 1771434.56,
+      "observacoes": "Compras Evento 50 anos - Mabouana Pierette"
+    },
+    {
+      "id": "BAI-055",
+      "linha": 77,
+      "data": "2026-08-21",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
       "saida": 59400.0,
-      "saldo": 2131636.16,
+      "saldo": 1712034.56,
       "observacoes": "Compras Evento 50 anos - Sabores do Oriente"
     },
     {
       "id": "BAI-056",
-      "linha": 77,
+      "linha": 78,
       "data": "2026-08-21",
       "banco": "ATM-MCX504808*",
       "descricao": "Levantamento ATM - Fundo Maneio Evento 50 anos",
       "entrada": 0.0,
       "saida": 120000.0,
-      "saldo": 2011636.16,
+      "saldo": 1592034.56,
       "observacoes": "Fundo maneio Evento 50 anos (gasóleo e restantes)"
     },
     {
       "id": "BAI-MAT-P2-02-35",
-      "linha": 78,
+      "linha": 79,
       "data": "2026-08-21",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Kesane Aimé Teixeira Correia de Azevedo (Maternelle P2)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2161636.16,
+      "saldo": 1742034.56,
       "observacoes": "P2-02 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-057",
-      "linha": 79,
-      "data": "2026-08-22",
-      "banco": "MB-Transf.p/NI",
-      "descricao": "Transferência efectuada - Evento 50 anos",
-      "entrada": 0.0,
-      "saida": 300000.0,
-      "saldo": 1861636.16,
-      "observacoes": "Pgmto DJ e Diversos - Evento 50 anos"
-    },
-    {
-      "id": "BAI-058",
       "linha": 80,
       "data": "2026-08-22",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
-      "saida": 80000.0,
-      "saldo": 1781636.16,
-      "observacoes": "Pgmto Funcionários via outra conta empresa (sobram 6 000 nessa conta)"
+      "saida": 300000.0,
+      "saldo": 1442034.56,
+      "observacoes": "Pgmto DJ e Diversos - Evento 50 anos"
     },
     {
-      "id": "BAI-059",
+      "id": "BAI-058",
       "linha": 81,
       "data": "2026-08-22",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
-      "saida": 50000.0,
-      "saldo": 1731636.16,
-      "observacoes": "Pgmto Funcionários via outra conta empresa (sobram 34 000 nessa conta)"
+      "saida": 80000.0,
+      "saldo": 1362034.56,
+      "observacoes": "Pgmto Funcionários via outra conta empresa (sobram 6 000 nessa conta)"
     },
     {
-      "id": "BAI-061",
+      "id": "BAI-059",
       "linha": 82,
       "data": "2026-08-22",
       "banco": "MB-Transf.p/NI",
       "descricao": "Transferência efectuada - Evento 50 anos",
       "entrada": 0.0,
+      "saida": 50000.0,
+      "saldo": 1312034.56,
+      "observacoes": "Pgmto Funcionários via outra conta empresa (sobram 34 000 nessa conta)"
+    },
+    {
+      "id": "BAI-061",
+      "linha": 83,
+      "data": "2026-08-22",
+      "banco": "MB-Transf.p/NI",
+      "descricao": "Transferência efectuada - Evento 50 anos",
+      "entrada": 0.0,
       "saida": 20000.0,
-      "saldo": 1711636.16,
+      "saldo": 1292034.56,
       "observacoes": "Compras Evento 50 anos - Inês Passi"
     },
     {
       "id": "BAI-MAT-3E-02-36",
-      "linha": 83,
+      "linha": 84,
       "data": "2026-08-26",
       "banco": "Transf. pelo NI",
       "descricao": "Inscrição · Graciela Kashala Katembo (3ème)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 1861636.16,
+      "saldo": 1442034.56,
       "observacoes": "3E-02 · Transferência · Inscrição 150 000"
     },
     {
       "id": "BAI-MAT-3E-02-37",
-      "linha": 84,
+      "linha": 85,
       "data": "2026-08-26",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Graciela Kashala Katembo (3ème)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 1891636.16,
+      "saldo": 1472034.56,
       "observacoes": "3E-02 · Transferência · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-CM2-03-38",
-      "linha": 85,
+      "linha": 86,
       "data": "2026-08-26",
       "banco": "Transf. pelo NI",
       "descricao": "ATL · Keane António Teixeira Correia de Azevedo (CM2)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 1921636.16,
+      "saldo": 1502034.56,
       "observacoes": "CM2-03 · Transferência · ATL 30 000"
     },
     {
       "id": "BAI-MAT-CM2-03-39",
-      "linha": 86,
+      "linha": 87,
       "data": "2026-08-26",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Keane António Teixeira Correia de Azevedo (CM2)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 1951636.16,
+      "saldo": 1532034.56,
       "observacoes": "CM2-03 · Transferência · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-P2-02-40",
-      "linha": 87,
+      "linha": 88,
       "data": "2026-08-26",
       "banco": "Transf. pelo NI",
       "descricao": "Seguro · Kesane Aimé Teixeira Correia de Azevedo (Maternelle P2)",
       "entrada": 30000.0,
       "saida": 0.0,
-      "saldo": 1981636.16,
+      "saldo": 1562034.56,
       "observacoes": "P2-02 · Transferência · Seguro 30 000"
     },
     {
       "id": "BAI-MAT-P3-06-41",
-      "linha": 88,
+      "linha": 89,
       "data": "2026-08-27",
       "banco": "TPA / Multicaixa",
       "descricao": "Inscrição · Christian Ondjaki dos Santos González (Maternelle P3)",
       "entrada": 150000.0,
       "saida": 0.0,
-      "saldo": 2131636.16,
+      "saldo": 1712034.56,
       "observacoes": "P3-06 · Cartão Multicaixa · Inscrição 150 000"
+    },
+    {
+      "id": "BAI-071",
+      "linha": 90,
+      "data": "2026-08-28",
+      "banco": "Comissão TPA",
+      "descricao": "Comissão de fecho TPA",
+      "entrada": 0.0,
+      "saida": 6315.6,
+      "saldo": 1705718.96,
+      "observacoes": "Comissão do fecho de 558.000 Kz"
     }
   ],
   "faturasCartao": [
@@ -2488,7 +2510,8 @@
       "obs": "",
       "propina": 250000,
       "statusPag": "pago",
-      "metodoPagamento": "Cartão Multicaixa"
+      "metodoPagamento": "Cartão Multicaixa",
+      "dataNascimento": ""
     },
     {
       "id": "CM2-02",
@@ -2515,7 +2538,8 @@
       "obs": "",
       "propina": 250000,
       "statusPag": "pago",
-      "metodoPagamento": "Cartão Multicaixa"
+      "metodoPagamento": "Cartão Multicaixa",
+      "dataNascimento": ""
     },
     {
       "id": "4E-01",
@@ -2542,7 +2566,8 @@
       "obs": "Desconto inscrição (valor 135000)",
       "propina": 260000,
       "statusPag": "pago",
-      "metodoPagamento": "Cartão Multicaixa"
+      "metodoPagamento": "Cartão Multicaixa",
+      "dataNascimento": ""
     },
     {
       "id": "P3-01",
@@ -2569,7 +2594,8 @@
       "obs": "Desconto inscrição (valor 135000)",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Cartão Multicaixa"
+      "metodoPagamento": "Cartão Multicaixa",
+      "dataNascimento": ""
     },
     {
       "id": "P3-02",
@@ -2596,7 +2622,8 @@
       "obs": "Propina Setembro incluída na liquidação (170000)",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Cartão Multicaixa"
+      "metodoPagamento": "Cartão Multicaixa",
+      "dataNascimento": ""
     },
     {
       "id": "P2-01",
@@ -2623,7 +2650,8 @@
       "obs": "",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "P1-01",
@@ -2650,7 +2678,8 @@
       "obs": "",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "P3-03",
@@ -2677,7 +2706,8 @@
       "obs": "",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "CM2-03",
@@ -2704,7 +2734,8 @@
       "obs": "Inscrição+Curso 06-08 · Seguro+ATL pagos 26-08-2026 por transferência",
       "propina": 250000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "P2-02",
@@ -2731,7 +2762,8 @@
       "obs": "Inscrição paga 21-08 · Seguro pago 26-08-2026",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "P3-04",
@@ -2758,7 +2790,8 @@
       "obs": "",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "P1-02",
@@ -2785,7 +2818,8 @@
       "obs": "",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "CM2-04",
@@ -2812,7 +2846,8 @@
       "obs": "Seguro próprio (externo)",
       "propina": 250000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "P3-05",
@@ -2839,7 +2874,8 @@
       "obs": "Seguro próprio (externo)",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "6E-01",
@@ -2866,7 +2902,8 @@
       "obs": "",
       "propina": 250000,
       "statusPag": "pago",
-      "metodoPagamento": "Dinheiro"
+      "metodoPagamento": "Dinheiro",
+      "dataNascimento": ""
     },
     {
       "id": "CM1-01",
@@ -2893,7 +2930,8 @@
       "obs": "",
       "propina": 250000,
       "statusPag": "pago",
-      "metodoPagamento": "Dinheiro"
+      "metodoPagamento": "Dinheiro",
+      "dataNascimento": ""
     },
     {
       "id": "3E-01",
@@ -2920,7 +2958,8 @@
       "obs": "Seguro próprio (externo)",
       "propina": 260000,
       "statusPag": "pago",
-      "metodoPagamento": "Cartão Multicaixa"
+      "metodoPagamento": "Cartão Multicaixa",
+      "dataNascimento": ""
     },
     {
       "id": "3E-02",
@@ -2947,7 +2986,8 @@
       "obs": "",
       "propina": 260000,
       "statusPag": "pago",
-      "metodoPagamento": "Transferência"
+      "metodoPagamento": "Transferência",
+      "dataNascimento": ""
     },
     {
       "id": "P3-06",
@@ -2974,7 +3014,8 @@
       "obs": "Seguro próprio (externo)",
       "propina": 170000,
       "statusPag": "pago",
-      "metodoPagamento": "Cartão Multicaixa"
+      "metodoPagamento": "Cartão Multicaixa",
+      "dataNascimento": ""
     }
   ],
   "mensalidades": [

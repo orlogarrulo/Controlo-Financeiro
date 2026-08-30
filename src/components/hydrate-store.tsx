@@ -107,6 +107,7 @@ function applyPayload(p: FinanceCloudPayload) {
     alunosDeletedIds: (p.alunosDeletedIds as string[]) || [],
     mensalidades: (p.mensalidades as never[]) || [],
     fundoExtra: (p.fundoExtra as never[]) || [],
+    fundoAtmExtra: (p.fundoAtmExtra as never[]) || [],
     movimentosBaiExtra: (p.movimentosBaiExtra as never[]) || [],
     movimentosBaiDeletedIds: (p.movimentosBaiDeletedIds as string[]) || [],
     baiOverride: Boolean(p.baiOverride),
@@ -116,6 +117,8 @@ function applyPayload(p: FinanceCloudPayload) {
     sessionLog: (p.sessionLog as never[]) || [],
     salariosExtra: (p.salariosExtra as never[]) || [],
     salariosOverrides: (p.salariosOverrides as never) || {},
+    salariosDeletedIds: (p.salariosDeletedIds as string[]) || [],
+    recibosSalario: (p.recibosSalario as never[]) || [],
   });
 }
 

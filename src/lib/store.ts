@@ -625,38 +625,36 @@ export const useFinance = create<Store>()(
         set({
           recibosSalario: (get().recibosSalario || []).map((r) =>
             r.id === id
-              ? { ...r, pago, dataPag: dataPag || r.dataPag }
+              ? { ...r, pago, dataPag: dataPag || r.dataPag || new Date().toISOString().slice(0, 10) }
               : r,
           ),
         });
-        // Pagamento de honorários sai da conta BAI
+        // Pagamento de honorários debita a conta BAI e recalcula o saldo
         if (prev && pago && !prev.pago && prev.liquido > 0) {
-          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride, get().movimentosBaiDeletedIds || []);
-          const last = movs[movs.length - 1];
-          const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
           const saida = Number(prev.liquido) || 0;
           const movId = `APP-SAL-${id}`;
-          if (!(get().movimentosBaiExtra || []).some((m) => m.id === movId)) {
-            const mov: MovimentoBai = {
-              id: movId,
-              linha: (last?.linha ?? 0) + 1,
-              data: dataPag || prev.dataPag || new Date().toISOString().slice(0, 10),
-              banco: "SALARIO-APP",
-              descricao: `Honorários ${prev.nome} · ${prev.mes}`,
-              entrada: 0,
-              saida,
-              saldo: prevSaldo - saida,
-              observacoes: `Recibo ${id}`,
-            };
-            set({ movimentosBaiExtra: [...get().movimentosBaiExtra, mov] });
-            get().pushAudit("bai_saida_salario", `${movId} · -${saida}`);
-          }
+          const extra = (get().movimentosBaiExtra || []).filter((m) => m.id !== movId);
+          const mov: MovimentoBai = {
+            id: movId,
+            linha: 0,
+            data: dataPag || prev.dataPag || new Date().toISOString().slice(0, 10),
+            banco: "SALARIO-APP",
+            descricao: `Honorários / salário · ${prev.nome} · ${prev.mes}`,
+            entrada: 0,
+            saida,
+            saldo: 0,
+            observacoes: `Recibo ${id} · pago → debita BAI`,
+          };
+          set({ movimentosBaiExtra: sortAndRecalcBai([...extra, mov]) });
+          get().pushAudit("bai_saida_salario", `${movId} · -${saida}`);
         }
-        // Se desmarcar pago, remove movimento app associado (se existir)
+        // Desmarcar pago: remove débito BAI e recalcula
         if (prev && !pago && prev.pago) {
           const movId = `APP-SAL-${id}`;
           set({
-            movimentosBaiExtra: (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
+            movimentosBaiExtra: sortAndRecalcBai(
+              (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
+            ),
           });
           get().pushAudit("bai_estorno_salario", movId);
         }
@@ -1161,7 +1159,19 @@ export function computeTotals(
   const custosTotais = socioDespesas + custosOperacionais;
   const baiRows = movimentosAll(movimentosBaiExtra, baiOverride, movimentosBaiDeletedIds);
   const lastBai = baiRows[baiRows.length - 1];
-  const fundoLevantado = fundoAtmAll(fundoAtmExtra).reduce((s, a) => s + a.valor, 0);
+  // Fundo: levantamentos ATM (BAI + blocos) aumentam o fundo; entradas/saídas do fundo só movem o saldo do fundo
+  const blocos = fundoAtmAll(fundoAtmExtra);
+  const blocoKeys = new Set(blocos.map((a) => `${a.data}|${Number(a.valor) || 0}`));
+  let fundoLevantado = blocos.reduce((s, a) => s + (Number(a.valor) || 0), 0);
+  for (const m of baiRows) {
+    const sai = Number(m.saida) || 0;
+    if (sai <= 0) continue;
+    const blob = `${m.banco || ""} ${m.descricao || ""}`;
+    if (!/ATM|Levantamento/i.test(blob)) continue;
+    if (blocoKeys.has(`${m.data}|${sai}`)) continue;
+    if (blocos.some((b) => b.id === m.id)) continue;
+    fundoLevantado += sai;
+  }
   const fundoGasto =
     seed.fundoPagamentos.reduce((s, p) => s + p.valor, 0) +
     extras.filter((e) => e.origem === "fundo").reduce((s, e) => s + e.valor, 0);
@@ -1338,12 +1348,25 @@ export function fundoAtmAll(extra: FundoAtm[] = []): FundoAtm[] {
     extra.filter((a) => a.valor === 0 && a.data === "1970-01-01").map((a) => a.id),
   );
   const liveExtra = extra.filter((a) => !(a.valor === 0 && a.data === "1970-01-01"));
-  if (!liveExtra.length && !deleted.size) return seed.fundoAtm;
   const ids = new Set(liveExtra.map((a) => a.id));
-  return [
+  // Blocos manuais / seed
+  const base = [
     ...seed.fundoAtm.filter((a) => !ids.has(a.id) && !deleted.has(a.id)),
     ...liveExtra,
   ];
+  const baseKeys = new Set(base.map((a) => `${a.data}|${Number(a.valor) || 0}`));
+  // Levantamentos ATM no extrato BAI (seed) → entram no Fundo (não são custo)
+  for (const m of seed.movimentosBai) {
+    const sai = Number(m.saida) || 0;
+    if (sai <= 0) continue;
+    const blob = `${m.banco || ""} ${m.descricao || ""}`;
+    if (!/ATM|Levantamento/i.test(blob)) continue;
+    const key = `${m.data}|${sai}`;
+    if (baseKeys.has(key) || deleted.has(m.id) || ids.has(m.id)) continue;
+    base.push({ id: m.id, data: m.data, valor: sai });
+    baseKeys.add(key);
+  }
+  return base;
 }
 
 export function fundoPagAll(extra: FundoPagamento[]): FundoPagamento[] {

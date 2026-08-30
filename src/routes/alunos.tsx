@@ -1258,6 +1258,81 @@ function Alunos() {
     `;
   }
 
+
+  async function imprimirAlunosPorClasse() {
+    const lista = [...alunos].sort((a, b) => {
+      const tc = (a.turma || "").localeCompare(b.turma || "", "pt");
+      if (tc !== 0) return tc;
+      return (a.nome || "").localeCompare(b.nome || "", "pt");
+    });
+    const byClass = new Map<string, typeof lista>();
+    for (const a of lista) {
+      const k = a.turma || "Sem classe";
+      if (!byClass.has(k)) byClass.set(k, []);
+      byClass.get(k)!.push(a);
+    }
+    const logoSrc = `${location.origin}/logo-escola.jpg`;
+    const fmt = (n: number) =>
+      new Intl.NumberFormat("pt-AO", { maximumFractionDigits: 0 }).format(n || 0) + " Kz";
+    const fmtDate = (s?: string) => {
+      if (!s) return "—";
+      const d = s.slice(0, 10);
+      if (d.length < 8) return "—";
+      const [y, m, day] = d.split("-");
+      return `${day}/${m}/${y}`;
+    };
+    let body = "";
+    for (const [turma, rows] of byClass) {
+      body += `<h2 style="margin:18px 0 8px;font-size:14px;color:#1f5c4a;border-bottom:2px solid #1f5c4a;padding-bottom:4px;">${turma} <span style="font-weight:400;color:#666">(${rows.length})</span></h2>`;
+      body += `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+        <thead>
+          <tr style="background:#1f5c4a;color:#fff;">
+            <th style="padding:6px 8px;text-align:left;">ID</th>
+            <th style="padding:6px 8px;text-align:left;">Classe</th>
+            <th style="padding:6px 8px;text-align:left;">Nome</th>
+            <th style="padding:6px 8px;text-align:left;">Data de nascimento</th>
+            <th style="padding:6px 8px;text-align:right;">Propina mensal</th>
+          </tr>
+        </thead>
+        <tbody>`;
+      rows.forEach((a, i) => {
+        const bg = i % 2 ? "#f4faf7" : "#fff";
+        body += `<tr style="background:${bg};">
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${a.id}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${a.turma || ""}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${a.nome || ""}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${fmtDate(a.dataNascimento)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-variant-numeric:tabular-nums;">${fmt(Number(a.propina) || 0)}</td>
+        </tr>`;
+      });
+      body += `</tbody></table>`;
+    }
+    const html = `
+<div style="font-family:Arial,Helvetica,sans-serif;color:#111;padding:12px 16px;">
+  <div style="display:flex;align-items:center;gap:14px;border-bottom:3px solid #1f5c4a;padding-bottom:12px;margin-bottom:12px;">
+    <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;" crossorigin="anonymous" />
+    <div>
+      <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">${escola.nome || "École Consulaire"}</p>
+      <p style="margin:4px 0 0;font-size:16px;font-weight:700;">Lista de alunos por classe</p>
+      <p style="margin:2px 0 0;font-size:11px;color:#555;">Ano lectivo ${escola.ano || ""} · Propina mensal de referência · ${lista.length} alunos</p>
+    </div>
+  </div>
+  ${body}
+  <p style="margin-top:16px;font-size:9px;color:#888;text-align:center;">Documento gerado automaticamente · Departamento de Finanças</p>
+</div>`;
+    try {
+      const { blob, filename } = await htmlFragmentToA4Pdf(html, {
+        filename: `alunos-por-classe-${new Date().toISOString().slice(0, 10)}.pdf`,
+      });
+      if (!blob || blob.size < 400) throw new Error("PDF vazio");
+      await shareOrDownloadPdf(blob, filename);
+      toast.success(`PDF A4 · ${lista.length} alunos por classe`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+    }
+  }
+
+
   /** Abre o modelo da fatura (com logo) — NÃO grava nem gera PDF ainda. */
   function abrirFatura(a: Aluno) {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
@@ -1698,6 +1773,14 @@ function Alunos() {
               }}
             >
               <FileText className="mr-1 size-4" /> Ver / Exportar PDF
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="PDF A4 com logotipo — alunos por classe (ID, classe, nome, data nascimento, propina)"
+              onClick={() => void imprimirAlunosPorClasse()}
+            >
+              <FileText className="mr-1 size-4" /> Imprimir por classe
             </Button>
             {canEdit ? (
               <Button

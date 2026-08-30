@@ -254,7 +254,7 @@ function GooglePage() {
         title="Google Sheets e Forms · Import / Export"
         description={
           canImport
-            ? "CSVs simples e organizados para o contabilista (backup oficial). Pode editar no Sheets/Excel e reimportar. Também serve de rede de segurança se a app falhar."
+            ? "Backup CSV / Excel e reconciliação com o extrato BAI. As matrículas na app (BAI-MAT-*) são a fonte das entradas de alunos; use o Excel de entradas antigas para confrontar fechos TPA e transferências históricas."
             : "Pode exportar CSV. A importação está reservada ao Colaborador 1."
         }
       />
@@ -373,7 +373,7 @@ function GooglePage() {
             <h2 className="font-display text-xl">Importar CSV</h2>
             <p className="mt-2 text-sm text-[var(--color-muted)]">
               {mode === "bai" &&
-                "Cole ou carregue o CSV do Excel Movimentos (Data;Banco;Descrição;Entrada;Saída;Saldo;Observações). Substitui o extrato na app para reconciliar."}
+                "CSV BAI: Data;Banco;Descrição;Entrada;Saída;Saldo;Observações. Preferir modo extra (não apagar saídas). As entradas de alunos já estão na app (BAI-MAT-*). Reconcilie com o Excel «Entradas antigas»: cada fecho TPA / transferência antiga deve corresponder à soma das linhas BAI-MAT-* no mesmo período."}
               {mode === "forms" && "Cole o CSV exportado do Google Forms (respostas)."}
               {mode === "lancamentos" && "CSV no formato master (mesmas colunas do export)."}
             </p>
@@ -455,19 +455,36 @@ function GooglePage() {
 
       <section className="mt-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-bg)] p-5 text-sm text-[var(--color-muted)]">
         <h2 className="font-display text-lg text-[var(--color-ink)]">Como reconciliar com o Excel</h2>
-        <ol className="mt-2 list-decimal space-y-1 pl-5">
+        <ol className="mt-2 list-decimal space-y-1.5 pl-5">
           <li>
-            No Excel <strong>BAI Express</strong>, guarde a folha Movimentos como CSV (separador{" "}
-            <code>;</code>).
+            Use o ficheiro <strong>Extrato_BAI_Entradas_Antigas.xlsx</strong> — contém só as{" "}
+            <strong>entradas históricas</strong> do banco (fechos TPA, transferências NI, depósitos),{" "}
+            <em>sem</em> as entradas novas da app.
           </li>
           <li>
-            Aqui escolha <strong>Extrato BAI</strong> → Carregar ficheiro CSV (ou colar).
+            Na app (separador <strong>Banco</strong>), as entradas actuais são as matrículas discriminadas{" "}
+            (<code className="rounded bg-[var(--color-surface)] px-1">BAI-MAT-*</code>: inscrição, seguro,
+            manuais, cadernos, propina…). As <strong>saídas</strong> (ATM, cartão, evento, comissões)
+            mantêm-se.
           </li>
           <li>
-            A app substitui o extrato e mostra o painel de reconciliação (saldo deve ser{" "}
-            <strong>1 064 700,56 Kz</strong> se estiver alinhado com o ficheiro reconciliado).
+            Para cada linha do Excel antigo: some as <code className="rounded bg-[var(--color-surface)] px-1">BAI-MAT-*</code>{" "}
+            com a mesma data (ou o período do fecho TPA) até igualar o valor. Anote no Excel «OK → IDs» ou
+            «A investigar».
           </li>
-          <li>Opcional: exporte o master da app e compare com a Contabilidade Dinâmica.</li>
+          <li>
+            Exemplo: um fecho TPA de 564.000 pode ser a soma de vários Multicaixa no mesmo dia; uma
+            transferência NI de 180.000 costuma ser 1 matrícula (inscrição + seguro).
+          </li>
+          <li>
+            Exportar <strong>Banco BAI</strong> nesta página gera o CSV actual da app para o Sheets /
+            contabilista.
+          </li>
+          <li>
+            Se importar o CSV do banco real: preferir juntar como extra; só substituir o extrato se o
+            ficheiro for a fonte de verdade completa (entradas + saídas). Evite apagar as saídas já
+            registadas.
+          </li>
         </ol>
       </section>
     </div>

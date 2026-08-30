@@ -97,6 +97,8 @@ export type FundoPagamento = {
 export type Aluno = {
   id: string;
   nome: string;
+  /** Data de nascimento (YYYY-MM-DD). */
+  dataNascimento?: string;
   turma: string;
   grupo: string;
   inscricao: number;

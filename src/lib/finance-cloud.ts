@@ -11,6 +11,7 @@ export type FinanceCloudPayload = {
   alunosDeletedIds?: string[];
   mensalidades: unknown[];
   fundoExtra: unknown[];
+  fundoAtmExtra?: unknown[];
   movimentosBaiExtra: unknown[];
   movimentosBaiDeletedIds?: string[];
   baiOverride: boolean;
@@ -20,6 +21,8 @@ export type FinanceCloudPayload = {
   sessionLog: unknown[];
   salariosExtra: unknown[];
   salariosOverrides: Record<string, unknown>;
+  salariosDeletedIds?: string[];
+  recibosSalario?: unknown[];
   clientUpdatedAt?: string;
 };
 
@@ -36,10 +39,13 @@ function emptyPayload(): FinanceCloudPayload {
     alunosOverrides: {},
     mensalidades: [],
     fundoExtra: [],
+    fundoAtmExtra: [],
     movimentosBaiExtra: [],
     movimentosBaiDeletedIds: [],
     alunosDeletedIds: [],
     baiOverride: false,
+    salariosDeletedIds: [],
+    recibosSalario: [],
     fotos: {},
     operators: [],
     auditLog: [],
@@ -129,6 +135,7 @@ export function sliceFromStore(s: {
   alunosDeletedIds?: string[];
   mensalidades: unknown[];
   fundoExtra: unknown[];
+  fundoAtmExtra?: unknown[];
   movimentosBaiExtra: unknown[];
   movimentosBaiDeletedIds?: string[];
   baiOverride: boolean;
@@ -138,6 +145,8 @@ export function sliceFromStore(s: {
   sessionLog: unknown[];
   salariosExtra: unknown[];
   salariosOverrides: Record<string, unknown>;
+  salariosDeletedIds?: string[];
+  recibosSalario?: unknown[];
 }): FinanceCloudPayload {
   return {
     extras: s.extras,
@@ -146,6 +155,7 @@ export function sliceFromStore(s: {
     alunosDeletedIds: s.alunosDeletedIds || [],
     mensalidades: s.mensalidades,
     fundoExtra: s.fundoExtra,
+    fundoAtmExtra: s.fundoAtmExtra || [],
     movimentosBaiExtra: s.movimentosBaiExtra,
     movimentosBaiDeletedIds: s.movimentosBaiDeletedIds || [],
     baiOverride: s.baiOverride,
@@ -155,5 +165,7 @@ export function sliceFromStore(s: {
     sessionLog: s.sessionLog.slice(-100),
     salariosExtra: s.salariosExtra,
     salariosOverrides: s.salariosOverrides,
+    salariosDeletedIds: s.salariosDeletedIds || [],
+    recibosSalario: s.recibosSalario || [],
   };
 }
