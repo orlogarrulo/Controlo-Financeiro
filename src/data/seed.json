@@ -1282,12 +1282,12 @@
       "id": "BAI-017",
       "linha": 17,
       "data": "2026-08-02",
-      "banco": "Transf. pelo NI",
-      "descricao": "Transferência recebida (NI)",
+      "banco": "Depósito numerário",
+      "descricao": "Depósito em dinheiro — Matrículas 3E-02 + CM1-02",
       "entrada": 360000.0,
       "saida": 0.0,
       "saldo": 1532770.99,
-      "observacoes": "Matrícula(s)"
+      "observacoes": "2×180.000 Kz em numerário · 3E-02 Aluno 1 (3ème) + CM1-02 Aluno 2 (CM1) · placeholders para editar nomes · data depósito 2026-08-02"
     },
     {
       "id": "BAI-018",
@@ -1298,7 +1298,7 @@
       "entrada": 180000.0,
       "saida": 0.0,
       "saldo": 1712770.99,
-      "observacoes": "Matrícula(s)"
+      "observacoes": "Matrícula(s) · Possível matrícula P3-05 Gael Quimbundo (data 2026-08-03)"
     },
     {
       "id": "BAI-019",
@@ -1767,11 +1767,11 @@
       "linha": 61,
       "data": "2026-08-28",
       "banco": "Fecho TPA / Multicaixa",
-      "descricao": "Fecho de terminal de pagamento (TPA) — lote matrículas/recibos",
+      "descricao": "Fecho de terminal de pagamento (TPA) — lote 558.000 Kz",
       "entrada": 558000.0,
       "saida": 0.0,
       "saldo": 1552034.56,
-      "observacoes": "Corrigido: substitui desdobramentos manuais (150k+180k+30.666+40k+147.340). Total fecho real 558.000 Kz"
+      "observacoes": "Corrigido: substitui desdobramentos manuais incorrectos. Fecho real 558.000 Kz"
     },
     {
       "id": "BAI-071",
@@ -1782,7 +1782,7 @@
       "entrada": 0.0,
       "saida": 6315.6,
       "saldo": 1545718.96,
-      "observacoes": "Comissão associada ao fecho de 558.000 Kz"
+      "observacoes": "Comissão do fecho de 558.000 Kz"
     }
   ],
   "faturasCartao": [
@@ -2200,7 +2200,8 @@
       "recibo": "EF/001",
       "obs": "Desconto 10% 2.º irmão",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "P1-02",
@@ -2223,9 +2224,10 @@
       "bi": "",
       "familia": "Sebastião da Silva",
       "recibo": "EF/002",
-      "obs": "",
+      "obs": "Pago em dinheiro (depósito bancário 360.000 com irmão/irmã)",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Dinheiro"
     },
     {
       "id": "P2-03",
@@ -2248,9 +2250,10 @@
       "bi": "",
       "familia": "Sebastião da Silva",
       "recibo": "EF/003",
-      "obs": "",
+      "obs": "Pago em dinheiro (depósito bancário 360.000 com irmão/irmã)",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Dinheiro"
     },
     {
       "id": "P2-04",
@@ -2275,7 +2278,8 @@
       "recibo": "EF/004",
       "obs": "",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "P3-05",
@@ -2300,7 +2304,8 @@
       "recibo": "EF/005",
       "obs": "",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "P3-06",
@@ -2325,7 +2330,8 @@
       "recibo": "EF/006",
       "obs": "",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "P3-07",
@@ -2350,7 +2356,8 @@
       "recibo": "EF/007",
       "obs": "Inclui 1.ª mensalidade (Set/26)",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "P1-08",
@@ -2375,7 +2382,8 @@
       "recibo": "EF/008",
       "obs": "Seguro em falta. Recibo marcado Pendente no Excel.",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "P3-09",
@@ -2400,7 +2408,8 @@
       "recibo": "EF/009",
       "obs": "Seguro em falta",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "CM1-01",
@@ -2425,7 +2434,8 @@
       "recibo": "EF/015",
       "obs": "Recibo de inscrição ainda não existia no Excel",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "CM2-01",
@@ -2450,7 +2460,8 @@
       "recibo": "EF/010",
       "obs": "Manuais 40.000 + Curso intensivo 40.000",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "CM2-02",
@@ -2475,7 +2486,8 @@
       "recibo": "EF/011",
       "obs": "Manuais 54.000",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "CM2-03",
@@ -2500,7 +2512,8 @@
       "recibo": "EF/012",
       "obs": "Seguro em falta. Curso intensivo 40.000",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "CM2-04",
@@ -2525,7 +2538,8 @@
       "recibo": "EF/013",
       "obs": "Seguro em falta",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "6E-01",
@@ -2576,7 +2590,8 @@
       "recibo": "EF/014",
       "obs": "Desconto 10% 2.º irmão",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
     },
     {
       "id": "3E-01",
@@ -2601,7 +2616,60 @@
       "recibo": "EF/017",
       "obs": "Curso intensivo 40.000. Data de pagamento em falta.",
       "propina": 170000,
-      "statusPag": "pago"
+      "statusPag": "pago",
+      "metodoPagamento": "Transferência"
+    },
+    {
+      "id": "3E-02",
+      "nome": "Aluno 1 (a editar)",
+      "turma": "3ème",
+      "grupo": "3ème",
+      "inscricao": 150000,
+      "manuais": 0,
+      "uniforme": 0,
+      "seguro": 30000,
+      "extras": 0,
+      "curso": 0,
+      "mensalidade1": 0,
+      "dataPag": "2026-08-02",
+      "bruto": 180000,
+      "descPct": 0,
+      "liquido": 180000,
+      "encarregado": "",
+      "telefone": "",
+      "bi": "",
+      "familia": "",
+      "recibo": "EF/018",
+      "obs": "Placeholder — editar nome. Pago 180.000 em dinheiro (depósito 360.000 com CM1-02).",
+      "propina": 170000,
+      "statusPag": "pago",
+      "metodoPagamento": "Dinheiro"
+    },
+    {
+      "id": "CM1-02",
+      "nome": "Aluno 2 (a editar)",
+      "turma": "CM1",
+      "grupo": "CM1",
+      "inscricao": 150000,
+      "manuais": 0,
+      "uniforme": 0,
+      "seguro": 30000,
+      "extras": 0,
+      "curso": 0,
+      "mensalidade1": 0,
+      "dataPag": "2026-08-02",
+      "bruto": 180000,
+      "descPct": 0,
+      "liquido": 180000,
+      "encarregado": "",
+      "telefone": "",
+      "bi": "",
+      "familia": "",
+      "recibo": "EF/019",
+      "obs": "Placeholder — editar nome. Pago 180.000 em dinheiro (depósito 360.000 com 3E-02).",
+      "propina": 170000,
+      "statusPag": "pago",
+      "metodoPagamento": "Dinheiro"
     }
   ],
   "mensalidades": [
@@ -2913,6 +2981,44 @@
       "id": "3E-01",
       "nome": "Belangela Nito Daniel Kanvadioko",
       "turma": "3ème",
+      "propina": 170000,
+      "pagamentos": {
+        "set": 0,
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
+      },
+      "obs": ""
+    },
+    {
+      "id": "3E-02",
+      "nome": "Aluno 1 (a editar)",
+      "turma": "3ème",
+      "propina": 170000,
+      "pagamentos": {
+        "set": 0,
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
+      },
+      "obs": ""
+    },
+    {
+      "id": "CM1-02",
+      "nome": "Aluno 2 (a editar)",
+      "turma": "CM1",
       "propina": 170000,
       "pagamentos": {
         "set": 0,
