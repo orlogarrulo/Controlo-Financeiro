@@ -113,6 +113,8 @@ type Store = ExtraState & {
    * Use quando o levantamento já existe no extrato BAI e só falta o bloco para associar pagamentos em dinheiro.
    */
   addFundoAtm: (input: { data: string; valor: number; id?: string; obs?: string }) => string;
+  /** Apaga bloco ATM do Fundo. Nunca altera o extrato BAI. */
+  removeFundoAtm: (id: string) => void;
   importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
   /** Apaga um movimento do extrato BAI e recalcula saldos em cadeia. */
   deleteBaiMovimento: (id: string) => void;
@@ -303,6 +305,32 @@ export const useFinance = create<Store>()(
           `${id} · ${valor} · ${data}${input.obs ? ` · ${input.obs}` : ""} (sem débito BAI)`,
         );
         return id;
+      },
+      removeFundoAtm: (id) => {
+        const extra = get().fundoAtmExtra || [];
+        const inExtra = extra.some((a) => a.id === id);
+        // Se o bloco veio do seed, "apagar" = sobrescrever com valor 0 via extra negativo? 
+        // Preferimos registar exclusão colocando-o fora da lista unificada:
+        // fundoAtmAll = seed filtrado por ids em extra + extra. Para esconder seed, 
+        // marcamos com valor 0 e filtramos no all, ou removemos só de extra.
+        if (inExtra) {
+          set({ fundoAtmExtra: extra.filter((a) => a.id !== id) });
+        } else {
+          // Bloco só no seed: registar exclusão como extra com valor 0 e flag via id especial
+          // Simples: adicionar stub excluído e filtrar em fundoAtmAll
+          const tombstone: FundoAtm = { id, data: "1970-01-01", valor: 0 };
+          set({
+            fundoAtmExtra: [...extra.filter((a) => a.id !== id), tombstone],
+          });
+        }
+        // Desligar pagamentos deste bloco (mantêm-se no histórico, sem origem ATM)
+        const pags = get().fundoExtra || [];
+        if (pags.some((p) => p.atm === id)) {
+          set({
+            fundoExtra: pags.map((p) => (p.atm === id ? { ...p, atm: "" } : p)),
+          });
+        }
+        get().pushAudit("fundo_atm_apagar", `${id} (sem alteração BAI)`);
       },
       addCaptura: (input) => {
         const extras = get().extras;
@@ -1272,9 +1300,17 @@ export function movimentosAll(extra: MovimentoBai[] = [], override = false): Mov
 }
 
 export function fundoAtmAll(extra: FundoAtm[] = []): FundoAtm[] {
-  if (!extra.length) return seed.fundoAtm;
-  const ids = new Set(extra.map((a) => a.id));
-  return [...seed.fundoAtm.filter((a) => !ids.has(a.id)), ...extra];
+  // Tombstones: valor 0 + data 1970-01-01 = bloco apagado (esconde também o seed)
+  const deleted = new Set(
+    extra.filter((a) => a.valor === 0 && a.data === "1970-01-01").map((a) => a.id),
+  );
+  const liveExtra = extra.filter((a) => !(a.valor === 0 && a.data === "1970-01-01"));
+  if (!liveExtra.length && !deleted.size) return seed.fundoAtm;
+  const ids = new Set(liveExtra.map((a) => a.id));
+  return [
+    ...seed.fundoAtm.filter((a) => !ids.has(a.id) && !deleted.has(a.id)),
+    ...liveExtra,
+  ];
 }
 
 export function fundoPagAll(extra: FundoPagamento[]): FundoPagamento[] {

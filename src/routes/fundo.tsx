@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useEffect, useState } from "react";
-import { Pencil, Plus, Landmark } from "lucide-react";
+import { Pencil, Plus, Landmark, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
 import { PrintActions } from "@/components/print-actions";
@@ -41,6 +41,8 @@ function Fundo() {
   const extra = useFinance((s) => s.fundoExtra);
   const add = useFinance((s) => s.addFundoPagamento);
   const addAtm = useFinance((s) => s.addFundoAtm);
+  const removeAtm = useFinance((s) => s.removeFundoAtm);
+  const removePag = useFinance((s) => s.removeFundoPagamento);
   const update = useFinance((s) => s.updateFundoPagamento);
   const operators = useFinance((s) => s.operators);
   const active = useFinance((s) => s.activeOperator);
@@ -189,13 +191,20 @@ function Fundo() {
       <div className="mb-5 grid grid-cols-3 gap-3">
         <Kpi label="Levantado" value={lev} compact />
         <Kpi label="Gasto" value={gasto} compact />
-        <Kpi label="Restante" value={lev - gasto} compact tone="forest" />
+        <Kpi label="Restante (físico)" value={lev - gasto} compact tone="forest" />
       </div>
+      <p className="mb-4 text-[11px] text-[var(--color-muted)]">
+        Estes totais são só do <strong>fundo de maneio</strong> (dinheiro em caixa). O saldo do
+        cartão/conta está no separador <strong>Banco BAI</strong> e não muda quando cria ou apaga
+        blocos ATM aqui.
+      </p>
 
       <h2 className="font-display mb-2 text-xl">Levantamentos ATM</h2>
       <p className="mb-2 text-xs text-[var(--color-muted)]">
-        Cada bloco ATM é a “origem” dos pagamentos em dinheiro. Se o levantamento já está no
-        Banco BAI mas não aparece aqui, use <strong>Novo bloco ATM</strong> (não debita o BAI de novo).
+        Cada bloco ATM é a “origem” dos pagamentos em dinheiro no fundo.{" "}
+        <strong>Criar ou apagar um bloco aqui NÃO altera o saldo do Banco BAI</strong> — o
+        levantamento no banco regista-se só no separador Banco BAI. Use «Novo bloco ATM» apenas
+        para espelhar no fundo o dinheiro físico já saído do cartão.
       </p>
       <div className="mb-4 overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
         <table className="w-full text-sm">
@@ -206,14 +215,15 @@ function Fundo() {
               <th className="px-3 py-2 text-right">Valor</th>
               <th className="px-3 py-2 text-right">Já gasto</th>
               <th className="px-3 py-2 text-left">Estado</th>
+              <th className="no-print px-2 py-2"></th>
             </tr>
           </thead>
           <tbody>
             {atms.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-sm text-[var(--color-muted)]">
+                <td colSpan={6} className="px-3 py-6 text-center text-sm text-[var(--color-muted)]">
                   Ainda não há blocos ATM. Clique em <strong>Novo bloco ATM</strong> para criar um
-                  a partir de um levantamento já registado no Banco BAI.
+                  a partir de um levantamento já registado no Banco BAI (sem debitar o banco de novo).
                 </td>
               </tr>
             ) : (
@@ -230,6 +240,39 @@ function Fundo() {
                       <Badge variant={rest <= 0 ? "outline" : "default"}>
                         {rest <= 0 ? "Esgotado" : `Restam ${formatKz(rest)}`}
                       </Badge>
+                    </td>
+                    <td className="no-print px-2 py-2">
+                      {canEdit ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="text-red-700 hover:bg-red-50"
+                          title="Apagar bloco (não altera o Banco BAI)"
+                          onClick={() => {
+                            const nPag = pags.filter((p) => p.atm === a.id).length;
+                            if (
+                              !confirm(
+                                `Apagar o bloco ${a.id} (${formatKz(a.valor)})?\n\n` +
+                                  `O saldo do Banco BAI NÃO será alterado.\n` +
+                                  (nPag
+                                    ? `${nPag} pagamento(s) ligados ficam sem bloco ATM.\n`
+                                    : "") +
+                                  `O «Restante» do fundo será recalculado.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            try {
+                              removeAtm(a.id);
+                              toast.success("Bloco ATM apagado · fundo recalculado · BAI intacto");
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : "Falha ao apagar");
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -295,9 +338,24 @@ function Fundo() {
                 <td className="px-3 py-2 text-right tabular-nums">{formatKz(p.valor)}</td>
                 <td className="no-print px-3 py-2 text-right">
                   {canEdit ? (
-                    <Button size="sm" variant="secondary" onClick={() => setEditing(p)}>
-                      <Pencil className="size-3.5" />
-                    </Button>
+                    <div className="inline-flex gap-1">
+                      <Button size="sm" variant="secondary" onClick={() => setEditing(p)}>
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="text-red-700 hover:bg-red-50"
+                        title="Apagar pagamento"
+                        onClick={() => {
+                          if (!confirm(`Apagar pagamento ${p.id} · ${formatKz(p.valor)}?`)) return;
+                          removePag(p.id);
+                          toast.success("Pagamento apagado · restante do fundo recalculado");
+                        }}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
                   ) : null}
                 </td>
               </tr>
