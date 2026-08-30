@@ -22,13 +22,14 @@ function Banco() {
   const printRef = useRef<HTMLDivElement>(null);
   const baiExtra = useFinance((s) => s.movimentosBaiExtra);
   const baiOverride = useFinance((s) => s.baiOverride);
+  const baiDeletedIds = useFinance((s) => s.movimentosBaiDeletedIds || []);
   const importBai = useFinance((s) => s.importBaiMovimentos);
   const deleteBai = useFinance((s) => s.deleteBaiMovimento);
   const syncBaiFromExtras = useFinance((s) => s.syncBaiFromExtras);
   const operators = useFinance((s) => s.operators);
   const active = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(active, operators);
-  const movs = movimentosAll(baiExtra, baiOverride);
+  const movs = movimentosAll(baiExtra, baiOverride, baiDeletedIds);
   const last = movs[movs.length - 1];
   const [editM, setEditM] = useState<MovimentoBai | null>(null);
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);

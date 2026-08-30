@@ -8,9 +8,11 @@ export type FinanceCloudPayload = {
   extras: unknown[];
   alunosExtra: unknown[];
   alunosOverrides: Record<string, unknown>;
+  alunosDeletedIds?: string[];
   mensalidades: unknown[];
   fundoExtra: unknown[];
   movimentosBaiExtra: unknown[];
+  movimentosBaiDeletedIds?: string[];
   baiOverride: boolean;
   fotos: Record<string, string>;
   operators: string[];
@@ -35,6 +37,8 @@ function emptyPayload(): FinanceCloudPayload {
     mensalidades: [],
     fundoExtra: [],
     movimentosBaiExtra: [],
+    movimentosBaiDeletedIds: [],
+    alunosDeletedIds: [],
     baiOverride: false,
     fotos: {},
     operators: [],
@@ -122,9 +126,11 @@ export function sliceFromStore(s: {
   extras: unknown[];
   alunosExtra: unknown[];
   alunosOverrides: Record<string, unknown>;
+  alunosDeletedIds?: string[];
   mensalidades: unknown[];
   fundoExtra: unknown[];
   movimentosBaiExtra: unknown[];
+  movimentosBaiDeletedIds?: string[];
   baiOverride: boolean;
   fotos: Record<string, string>;
   operators: string[];
@@ -137,9 +143,11 @@ export function sliceFromStore(s: {
     extras: s.extras,
     alunosExtra: s.alunosExtra,
     alunosOverrides: s.alunosOverrides,
+    alunosDeletedIds: s.alunosDeletedIds || [],
     mensalidades: s.mensalidades,
     fundoExtra: s.fundoExtra,
     movimentosBaiExtra: s.movimentosBaiExtra,
+    movimentosBaiDeletedIds: s.movimentosBaiDeletedIds || [],
     baiOverride: s.baiOverride,
     fotos: s.fotos,
     operators: s.operators,

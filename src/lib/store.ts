@@ -86,6 +86,10 @@ type ExtraState = {
   /** Funcionários / folhas de salário adicionados na app. */
   salariosExtra: Salario[];
   salariosDeletedIds: string[];
+  /** IDs de alunos do seed (ou extras) que foram apagados — não voltam a aparecer. */
+  alunosDeletedIds: string[];
+  /** IDs de movimentos BAI apagados (seed ou extra) — exclusão estável sem congelar o extrato. */
+  movimentosBaiDeletedIds: string[];
   recibosSalario: ReciboSalario[];
   /** Sobrescritas de salários do seed (por id). */
   salariosOverrides: Record<string, Partial<Salario>>;
@@ -118,6 +122,7 @@ type Store = ExtraState & {
   importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
   /** Apaga um movimento do extrato BAI e recalcula saldos em cadeia. */
   deleteBaiMovimento: (id: string) => void;
+  removeAluno: (id: string) => void;
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
@@ -220,6 +225,8 @@ export const useFinance = create<Store>()(
       sessionLog: [],
       salariosExtra: [],
       salariosDeletedIds: [],
+      alunosDeletedIds: [],
+      movimentosBaiDeletedIds: [],
       recibosSalario: [],
       salariosOverrides: {},
       setActiveOperator: (name) => set({ activeOperator: name }),
@@ -391,7 +398,7 @@ export const useFinance = create<Store>()(
             input.pagamento === "Levantamento ATM BAI");
 
         if (saiDaContaBai) {
-          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride, get().movimentosBaiDeletedIds || []);
           const last = movs[movs.length - 1];
           const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
           const saida = Number(input.valor) || 0;
@@ -434,7 +441,7 @@ export const useFinance = create<Store>()(
           }
         }
         if (entradaNaContaBai) {
-          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride, get().movimentosBaiDeletedIds || []);
           const last = movs[movs.length - 1];
           const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
           const entrada = Number(input.valor) || 0;
@@ -624,7 +631,7 @@ export const useFinance = create<Store>()(
         });
         // Pagamento de honorários sai da conta BAI
         if (prev && pago && !prev.pago && prev.liquido > 0) {
-          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+          const movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride, get().movimentosBaiDeletedIds || []);
           const last = movs[movs.length - 1];
           const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
           const saida = Number(prev.liquido) || 0;
@@ -680,7 +687,7 @@ export const useFinance = create<Store>()(
         const extras = get().extras || [];
         const existing = new Set((get().movimentosBaiExtra || []).map((m) => m.id));
         // também ids APP-SAL-*
-        let movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+        let movs = movimentosAll(get().movimentosBaiExtra, get().baiOverride, get().movimentosBaiDeletedIds || []);
         let last = movs[movs.length - 1];
         let saldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
         let linha = last?.linha ?? 0;
@@ -801,21 +808,47 @@ export const useFinance = create<Store>()(
         );
       },
       deleteBaiMovimento: (id) => {
-        const current = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
-        const target = current.find((m) => m.id === id);
-        if (!target) {
+        const deletedSet = new Set([...(get().movimentosBaiDeletedIds || []), id]);
+        const current = movimentosAll(
+          get().movimentosBaiExtra,
+          get().baiOverride,
+          Array.from(deletedSet),
+        );
+        const target = current.find((m) => m.id === id) ||
+          (get().movimentosBaiExtra || []).find((m) => m.id === id);
+        if (!target && !seed.movimentosBai.some((m) => m.id === id)) {
           throw new Error("Movimento BAI não encontrado.");
         }
-        // Manter todos excepto o apagado; forçar override para o extrato ficar consistente
-        const next = sortAndRecalcBai(current.filter((m) => m.id !== id));
+        // Soft-delete: marca o ID e remove só dos extras (não congela o extrato inteiro)
         set({
-          movimentosBaiExtra: next,
-          baiOverride: true,
+          movimentosBaiDeletedIds: Array.from(deletedSet),
+          movimentosBaiExtra: sortAndRecalcBai(
+            (get().movimentosBaiExtra || []).filter((m) => m.id !== id),
+          ),
         });
+        const t = target || seed.movimentosBai.find((m) => m.id === id)!;
         get().pushAudit(
           "bai_apagar",
-          `${id} · ${target.descricao || ""} · E:${target.entrada || 0} S:${target.saida || 0}`,
+          `${id} · ${t.descricao || ""} · E:${t.entrada || 0} S:${t.saida || 0}`,
         );
+      },
+      removeAluno: (id) => {
+        const ops = get().operators;
+        const by = get().activeOperator || "—";
+        if (by !== ops[0]) {
+          throw new Error("Apenas o Colaborador 1 pode apagar alunos.");
+        }
+        const deleted = Array.from(new Set([...(get().alunosDeletedIds || []), id]));
+        set({
+          alunosDeletedIds: deleted,
+          alunosExtra: (get().alunosExtra || []).filter((a) => a.id !== id),
+          mensalidades: get().mensalidades.filter((m) => m.id !== id),
+        });
+        // limpar override se existir
+        const ov = { ...(get().alunosOverrides || {}) };
+        delete ov[id];
+        set({ alunosOverrides: ov });
+        get().pushAudit("apagar_aluno", id);
       },
       importLancamentos: (rows) => {
         let n = 0;
@@ -900,32 +933,37 @@ export const useFinance = create<Store>()(
           extras: [],
           alunosExtra: [],
           alunosOverrides: {},
+          alunosDeletedIds: [],
           mensalidades: initialMensalidades,
           fundoExtra: [],
           fundoAtmExtra: [],
           movimentosBaiExtra: [],
+          movimentosBaiDeletedIds: [],
           baiOverride: false,
           fotos: {},
           auditLog: [],
           sessionLog: [],
           salariosExtra: [],
           salariosOverrides: {},
+          salariosDeletedIds: [],
           recibosSalario: [],
           faturasPropina: [],
         }),
     }),
     {
-      name: "ecc-financeiro-v1",
+      name: "ecc-financeiro-v2",
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
       partialize: (s) => ({
         extras: s.extras,
         alunosExtra: s.alunosExtra,
         alunosOverrides: s.alunosOverrides,
+        alunosDeletedIds: s.alunosDeletedIds || [],
         mensalidades: s.mensalidades,
         fundoExtra: s.fundoExtra,
         fundoAtmExtra: s.fundoAtmExtra,
         movimentosBaiExtra: s.movimentosBaiExtra,
+        movimentosBaiDeletedIds: s.movimentosBaiDeletedIds || [],
         baiOverride: s.baiOverride,
         fotos: s.fotos,
         activeOperator: s.activeOperator,
@@ -1086,8 +1124,10 @@ export function computeTotals(
   movimentosBaiExtra: MovimentoBai[] = [],
   baiOverride = false,
   fundoAtmExtra: FundoAtm[] = [],
+  alunosDeletedIds: string[] = [],
+  movimentosBaiDeletedIds: string[] = [],
 ): Totals {
-  const alunos = alunosAll(alunosExtra, alunosOverrides);
+  const alunos = alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds);
   const inscricoesLiquido = alunos.reduce((s, a) => s + a.liquido, 0);
   const mensal1 = alunos.reduce((s, a) => s + (a.mensalidade1 || 0), 0);
   const propinasRecebidas =
@@ -1119,7 +1159,7 @@ export function computeTotals(
 
   const proveitos = inscricoesLiquido - mensal1 + propinasRecebidas + extraEntradas;
   const custosTotais = socioDespesas + custosOperacionais;
-  const baiRows = movimentosAll(movimentosBaiExtra, baiOverride);
+  const baiRows = movimentosAll(movimentosBaiExtra, baiOverride, movimentosBaiDeletedIds);
   const lastBai = baiRows[baiRows.length - 1];
   const fundoLevantado = fundoAtmAll(fundoAtmExtra).reduce((s, a) => s + a.valor, 0);
   const fundoGasto =
@@ -1221,7 +1261,7 @@ function pushBaiMovimento(
 ) {
   const extra = get().movimentosBaiExtra || [];
   if (extra.some((m) => m.id === opts.id)) return false;
-  const movs = movimentosAll(extra, get().baiOverride);
+  const movs = movimentosAll(extra, get().baiOverride, []);
   const last = movs[movs.length - 1];
   const prevSaldo = last?.saldo ?? seed.escola.saldoInicialBai ?? 0;
   const entrada = Number(opts.entrada) || 0;
@@ -1262,41 +1302,34 @@ export function sortAndRecalcBai(rows: MovimentoBai[]): MovimentoBai[] {
  *   (ex.: entradas Transf pelo NI / Fecho TPA registadas na secretaria).
  * — Sem override: seed + extras da app, ordenados e com saldo recalculado.
  */
-export function movimentosAll(extra: MovimentoBai[] = [], override = false): MovimentoBai[] {
+export function movimentosAll(
+  extra: MovimentoBai[] = [],
+  override = false,
+  deletedIds: string[] = [],
+): MovimentoBai[] {
+  const deleted = new Set(deletedIds);
   const fp = (m: MovimentoBai) =>
     `${m.data}|${Number(m.entrada) || 0}|${Number(m.saida) || 0}|${(m.banco || "").trim()}|${(m.descricao || "").trim()}`;
 
+  const notDeleted = (m: MovimentoBai) => !deleted.has(m.id);
+
   if (override && extra.length) {
-    const ids = new Set(extra.map((m) => m.id));
-    const fps = new Set(extra.map(fp));
-    const merged = [...extra];
-    for (const s of seed.movimentosBai) {
-      if (ids.has(s.id) || fps.has(fp(s))) continue;
-      // Fundir sobretudo registos manuais recentes da secretaria (após linha 62)
-      if ((s.linha || 0) > 62 || /Transf pelo NI|Fecho TPA/i.test(`${s.banco} ${s.descricao}`)) {
-        merged.push(s);
-        ids.add(s.id);
-        fps.add(fp(s));
-      }
-    }
-    // Extras da app (APP-*) que não estejam no CSV
-    for (const e of extra) {
-      if (!ids.has(e.id)) {
-        merged.push(e);
-        ids.add(e.id);
-      }
-    }
-    return sortAndRecalcBai(merged);
+    // Extrato importado (CSV) prevalece; aplica exclusões manuais
+    return sortAndRecalcBai(extra.filter(notDeleted));
   }
 
-  if (extra.length) {
-    const ids = new Set(extra.map((m) => m.id));
-    const fps = new Set(extra.map(fp));
-    const base = seed.movimentosBai.filter((m) => !ids.has(m.id) && !fps.has(fp(m)));
-    return sortAndRecalcBai([...base, ...extra]);
+  // Modo normal: seed + extras, sem duplicar por id/fingerprint, respeitando apagados
+  const ids = new Set<string>();
+  const fps = new Set<string>();
+  const out: MovimentoBai[] = [];
+  for (const m of [...seed.movimentosBai, ...extra]) {
+    if (!notDeleted(m)) continue;
+    if (ids.has(m.id) || fps.has(fp(m))) continue;
+    ids.add(m.id);
+    fps.add(fp(m));
+    out.push(m);
   }
-
-  return sortAndRecalcBai(seed.movimentosBai);
+  return sortAndRecalcBai(out);
 }
 
 export function fundoAtmAll(extra: FundoAtm[] = []): FundoAtm[] {

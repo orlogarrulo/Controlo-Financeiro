@@ -156,6 +156,7 @@ type FormState = {
   /** 2+ irmãos no mesmo agregado (propina 75.000). */
   agregadoIrmaos: boolean;
   manuais: string;
+  cadernos: string;
   uniforme: string;
   extras: string;
   transporte: string;
@@ -188,6 +189,7 @@ function emptyForm(): FormState {
     transferidoCampusCidade: false,
     agregadoIrmaos: false,
     manuais: "0",
+    cadernos: "0",
     uniforme: "0",
     extras: "0",
     transporte: "0",
@@ -309,6 +311,7 @@ function calcTotais(f: FormState) {
   const inscricao = num(f.inscricao);
   const seguro = f.seguroExterno ? 0 : num(f.seguro);
   const manuais = num(f.manuais);
+  const cadernos = num(f.cadernos);
   const uniforme = num(f.uniforme);
   const extras = num(f.extras);
   const transporte = num(f.transporte);
@@ -316,11 +319,12 @@ function calcTotais(f: FormState) {
   const curso = num(f.curso);
   const mensalidade1 = num(f.mensalidade1);
   const bruto =
-    inscricao + seguro + manuais + uniforme + extras + transporte + alimentacao + curso + mensalidade1;
+    inscricao + seguro + manuais + cadernos + uniforme + extras + transporte + alimentacao + curso + mensalidade1;
   return {
     inscricao,
     seguro,
     manuais,
+    cadernos,
     uniforme,
     extras,
     transporte,
@@ -555,6 +559,10 @@ function MatriculaForm({
             <Input value={form.manuais} onChange={(e) => setForm({ ...form, manuais: e.target.value })} />
           </div>
           <div className="space-y-1.5">
+            <Label>Cadernos</Label>
+            <Input value={form.cadernos} onChange={(e) => setForm({ ...form, cadernos: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
             <Label>Uniforme</Label>
             <Input value={form.uniforme} onChange={(e) => setForm({ ...form, uniforme: e.target.value })} />
           </div>
@@ -697,6 +705,7 @@ function MatriculaForm({
           {totais.inscricao > 0 ? <li>Inscrição: {formatKz(totais.inscricao)}</li> : null}
           {totais.seguro > 0 ? <li>Seguro: {formatKz(totais.seguro)}</li> : null}
           {totais.manuais > 0 ? <li>Manuais: {formatKz(totais.manuais)}</li> : null}
+          {totais.cadernos > 0 ? <li>Cadernos: {formatKz(totais.cadernos)}</li> : null}
           {totais.uniforme > 0 ? <li>Uniforme: {formatKz(totais.uniforme)}</li> : null}
           {totais.extras > 0 ? <li>ATL: {formatKz(totais.extras)}</li> : null}
           {totais.transporte > 0 ? <li>Transporte: {formatKz(totais.transporte)}</li> : null}
@@ -767,7 +776,8 @@ function Alunos() {
   const operators = useFinance((s) => s.operators);
   const activeOperator = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(activeOperator, operators);
-  const alunos = alunosAll(extraA, overrides);
+  const deletedAlunos = useFinance((s) => s.alunosDeletedIds || []);
+  const alunos = alunosAll(extraA, overrides, deletedAlunos);
   const escola = getSeed().escola;
   const printRef = useRef<HTMLDivElement>(null);
   const search = Route.useSearch();
@@ -857,6 +867,7 @@ function Alunos() {
         a.transferidoCampusCidade && (a.propina === CAMPUS_CIDADE_PROPINA_IRMAOS || (a.obs || "").includes("75.000")),
       ),
       manuais: String(a.manuais ?? 0),
+      cadernos: String(a.cadernos ?? 0),
       uniforme: String(a.uniforme ?? 0),
       extras: String(a.extras ?? 0),
       transporte: String(a.transporte ?? 0),
@@ -917,6 +928,7 @@ function Alunos() {
       grupo: grupoFromTurma(form.turma),
       inscricao: t.inscricao,
       manuais: t.manuais,
+      cadernos: t.cadernos,
       uniforme: t.uniforme,
       seguro: t.seguro,
       extras: t.extras,
@@ -975,6 +987,7 @@ function Alunos() {
         inscricao: t.inscricao,
         seguro: t.seguro,
         manuais: t.manuais,
+        cadernos: t.cadernos,
         uniforme: t.uniforme,
         extras: t.extras,
         transporte: t.transporte,
@@ -1035,6 +1048,7 @@ function Alunos() {
       { key: "inscricao", label: "Inscrição", value: Number(a.inscricao) || 0, on: (Number(a.inscricao) || 0) > 0 },
       { key: "seguro", label: "Seguro escolar", value: Number(a.seguro) || 0, on: (Number(a.seguro) || 0) > 0 },
       { key: "manuais", label: "Manuais", value: Number(a.manuais) || 0, on: (Number(a.manuais) || 0) > 0 },
+      { key: "cadernos", label: "Cadernos", value: Number(a.cadernos) || 0, on: (Number(a.cadernos) || 0) > 0 },
       { key: "uniforme", label: "Uniforme", value: Number(a.uniforme) || 0, on: (Number(a.uniforme) || 0) > 0 },
       { key: "atl", label: "ATL", value: Number(a.extras) || 0, on: (Number(a.extras) || 0) > 0 },
       { key: "transporte", label: "Transporte", value: Number(a.transporte) || 0, on: (Number(a.transporte) || 0) > 0 },

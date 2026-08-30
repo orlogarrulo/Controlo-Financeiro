@@ -101,6 +101,8 @@ export type Aluno = {
   grupo: string;
   inscricao: number;
   manuais: number;
+  /** Cadernos (compra à parte). */
+  cadernos?: number;
   uniforme: number;
   seguro: number;
   extras: number;
