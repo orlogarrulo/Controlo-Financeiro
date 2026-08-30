@@ -1,4 +1,4 @@
-import { FileDown, Printer, Share2 } from "lucide-react";
+import { ExternalLink, FileDown, Printer, Share2 } from "lucide-react";
 import { useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,10 @@ import {
 } from "@/lib/pdf-export";
 
 /**
- * Mesmo fluxo do Quadro:
- * — PC: Imprimir (diálogo nativo / Guardar como PDF)
+ * Fluxo unificado (Quadro e restantes):
+ * — PC: Imprimir + Exportar PDF (abre no browser)
  * — Telemóvel: Preparar PDF → Partilhar (WhatsApp, e-mail, …)
+ * PDF gerado a partir da área de impressão com estilo formal (texto escuro, A4).
  */
 export function PrintActions({
   targetRef,
@@ -19,7 +20,7 @@ export function PrintActions({
   shareTitle,
   shareText,
   printLabel = "Imprimir",
-  pdfLabel = "Preparar PDF",
+  pdfLabel,
   landscape = false,
 }: {
   targetRef: RefObject<HTMLElement | null>;
@@ -37,38 +38,62 @@ export function PrintActions({
   function onPrint() {
     try {
       window.print();
-      if (!mobile) {
-        toast.message("No diálogo: escolha a impressora ou «Guardar como PDF».");
-      }
+      toast.message("No diálogo: impressora ou «Guardar como PDF».");
     } catch {
       toast.error("Impressão bloqueada pelo browser.");
     }
   }
 
-  async function onPrepareShare() {
+  async function generatePdf(): Promise<{ blob: Blob; name: string }> {
+    if (!targetRef.current) throw new Error("Área de impressão não encontrada");
+    const { blob, filename: name } = await elementToPdfBlob(targetRef.current, {
+      filename,
+      stamp: true,
+      landscape,
+    });
+    if (!blob || blob.type !== "application/pdf" || blob.size < 400) {
+      throw new Error("Não foi possível gerar o PDF");
+    }
+    return { blob, name };
+  }
+
+  async function onExportDesktop() {
     if (busy) return;
     setBusy(true);
-    setReady(null);
     try {
-      if (!targetRef.current) throw new Error("Área de impressão não encontrada");
-      const { blob, filename: name } = await elementToPdfBlob(targetRef.current, {
-        filename,
-        stamp: true,
-        landscape,
+      const { blob, name } = await generatePdf();
+      const result = await shareOrDownloadPdf(blob, name, {
+        title: shareTitle,
+        text: shareText,
       });
-      if (!blob || blob.type !== "application/pdf" || blob.size < 400) {
-        throw new Error("Não foi possível gerar o PDF");
+      if (result === "opened") {
+        toast.success("PDF aberto — pode guardar ou enviar");
+      } else {
+        toast.message("PDF descarregado");
       }
-      setReady({ blob, name });
-      toast.success("PDF pronto — toque em «Partilhar»");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível gerar o PDF");
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
     } finally {
       setBusy(false);
     }
   }
 
-  async function onShareNow() {
+  async function onPrepareMobile() {
+    if (busy) return;
+    setBusy(true);
+    setReady(null);
+    try {
+      const { blob, name } = await generatePdf();
+      setReady({ blob, name });
+      toast.success("PDF pronto — toque em «Partilhar»");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onShareMobile() {
     if (!ready || busy) return;
     setBusy(true);
     try {
@@ -83,7 +108,7 @@ export function PrintActions({
         toast.success("PDF aberto");
         setReady(null);
       } else {
-        toast.message("PDF descarregado — abra o ficheiro e partilhe");
+        toast.message("PDF descarregado — abra e partilhe");
       }
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
@@ -96,9 +121,9 @@ export function PrintActions({
           a.download = ready.name;
           a.click();
           URL.revokeObjectURL(url);
-          toast.message("PDF descarregado — abra-o e partilhe");
+          toast.message("PDF descarregado");
         } catch {
-          toast.error("Não foi possível partilhar neste aparelho");
+          toast.error("Não foi possível partilhar");
         }
       }
     } finally {
@@ -108,26 +133,31 @@ export function PrintActions({
 
   return (
     <div className="no-print flex flex-wrap items-center gap-2">
-      {/* PC: só impressão nativa (clara). Telemóvel: também disponível se quiser. */}
       {!mobile ? (
-        <Button variant="secondary" type="button" onClick={onPrint}>
-          <Printer className="mr-1 size-4" /> {printLabel}
-        </Button>
+        <>
+          <Button variant="secondary" type="button" onClick={onPrint}>
+            <Printer className="mr-1 size-4" /> {printLabel}
+          </Button>
+          <Button type="button" onClick={() => void onExportDesktop()} disabled={busy}>
+            <ExternalLink className="mr-1 size-4" />
+            {busy ? "A gerar…" : pdfLabel || "Exportar PDF"}
+          </Button>
+        </>
       ) : (
         <>
           <Button
             type="button"
             variant={ready ? "secondary" : "default"}
-            onClick={() => void onPrepareShare()}
+            onClick={() => void onPrepareMobile()}
             disabled={busy}
           >
             <FileDown className="mr-1 size-4" />
-            {busy && !ready ? "A gerar…" : ready ? "Gerar de novo" : pdfLabel}
+            {busy && !ready ? "A gerar…" : ready ? "Gerar de novo" : pdfLabel || "Preparar PDF"}
           </Button>
           {ready ? (
             <Button
               type="button"
-              onClick={() => void onShareNow()}
+              onClick={() => void onShareMobile()}
               disabled={busy}
               className="bg-[var(--color-forest)] text-white hover:opacity-95"
             >

@@ -91,6 +91,59 @@ const STAGE_CSS = `
   [data-pdf-stage] *::after {
     box-sizing: border-box !important;
     opacity: 1 !important;
+    /* Nunca texto branco/claro em fundo claro */
+    color: inherit !important;
+  }
+  [data-pdf-stage] {
+    color: #0f172a !important;
+    background: #ffffff !important;
+  }
+  [data-pdf-stage] p,
+  [data-pdf-stage] span,
+  [data-pdf-stage] td,
+  [data-pdf-stage] th,
+  [data-pdf-stage] li,
+  [data-pdf-stage] label,
+  [data-pdf-stage] h1,
+  [data-pdf-stage] h2,
+  [data-pdf-stage] h3,
+  [data-pdf-stage] h4,
+  [data-pdf-stage] div {
+    color: #0f172a !important;
+  }
+  [data-pdf-stage] .text-white,
+  [data-pdf-stage] [class*="text-white"],
+  [data-pdf-stage] [class*="text-\[var\(--color-forest-fg\)\]"] {
+    color: #0f172a !important;
+  }
+  [data-pdf-stage] [class*="text-\[var\(--color-muted\)\]"],
+  [data-pdf-stage] .text-muted {
+    color: #334155 !important;
+  }
+  [data-pdf-stage] thead th,
+  [data-pdf-stage] th {
+    color: #0f172a !important;
+    background: #e8f0ec !important;
+  }
+  /* Grids: 2 colunas no PDF (evita cortes do layout móvel de 1 coluna estreita) */
+  [data-pdf-stage] .grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  [data-pdf-stage] .grid > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  [data-pdf-stage] .print-sheet {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  /* Fundos verdes dos KPI: manter legível com texto escuro se necessário */
+  [data-pdf-stage] [class*="bg-\[var\(--color-forest\)\]"] {
+    background: #e8f0ec !important;
+    color: #0f172a !important;
   }
   [data-pdf-stage] .no-print { display: none !important; }
   [data-pdf-stage] nav,
@@ -325,7 +378,23 @@ function prepareClone(source: HTMLElement): HTMLElement {
   clone.style.width = "100%";
   clone.style.maxWidth = "100%";
   clone.style.background = "#ffffff";
+  clone.style.color = "#0f172a";
+  clone.style.fontFamily = "Georgia, 'Times New Roman', Times, serif";
   clone.querySelectorAll(".no-print").forEach((n) => n.remove());
+  // Forçar tinta escura em todos os nós de texto (evita letra branca do tema)
+  clone.querySelectorAll("*").forEach((node) => {
+    const el = node as HTMLElement;
+    if (!el.style) return;
+    const cs = el.getAttribute("class") || "";
+    if (/text-white|forest-fg|color-forest-fg/i.test(cs)) {
+      el.style.setProperty("color", "#0f172a", "important");
+      el.style.setProperty("background", "#ffffff", "important");
+    }
+    // Remover cores claras herdadas de CSS variables do tema escuro
+    if (el.style.color === "white" || el.style.color === "#fff" || el.style.color === "rgb(255, 255, 255)") {
+      el.style.color = "#0f172a";
+    }
+  });
   clone.querySelectorAll('[class*="break-before"], [style*="break-before"]').forEach((node) => {
     const el = node as HTMLElement;
     const spacer = document.createElement("div");
