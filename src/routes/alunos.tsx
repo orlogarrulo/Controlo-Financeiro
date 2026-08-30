@@ -4,6 +4,7 @@ import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt } from "lucide
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
+import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1828,6 +1829,12 @@ function Alunos() {
                 <UserPlus className="mr-1 size-4" /> Nova matrícula
               </Button>
             ) : null}
+            <PrintActions
+              targetRef={printRef}
+              filename="matriculas.pdf"
+              shareTitle="Matrículas · École Consulaire"
+              shareText="Lista de matrículas · Departamento de Finanças."
+            />
             <Button
               className="shrink-0"
               variant="secondary"
@@ -1836,7 +1843,7 @@ function Alunos() {
                 setExportOpen(true);
               }}
             >
-              <FileText className="mr-1 size-4" /> Ver / Exportar PDF
+              <FileText className="mr-1 size-4" /> Ver / Exportar
             </Button>
             <Button
               className="shrink-0"

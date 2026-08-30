@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
-import { exportBaiTablePdf, shareOrDownloadPdf } from "@/lib/pdf-export";
+import { PrintActions } from "@/components/print-actions";
 
 export const Route = createFileRoute("/banco")({ component: Banco });
 
@@ -142,45 +142,6 @@ function Banco() {
   }, []);
 
 
-  async function exportarExtratoPdf() {
-    try {
-      const label =
-        filtroTipo === "entradas"
-          ? "Somente entradas"
-          : filtroTipo === "saidas"
-            ? "Somente saídas"
-            : "Todas as movimentações";
-      // Impressão HTML padronizada (Georgia/Times, como Salários) + PDF opcional
-      const { blob, filename } = await exportBaiTablePdf(
-        movsFiltrados.map((m) => ({
-          data: m.data,
-          banco: m.banco,
-          descricao: m.descricao,
-          entrada: m.entrada,
-          saida: m.saida,
-          saldo: m.saldo,
-          observacoes: m.observacoes,
-        })),
-        {
-          filename: `extrato-bai-${filtroTipo}-${new Date().toISOString().slice(0, 10)}.pdf`,
-          title: "Extrato Banco BAI",
-          escola: escola.nome || "École Consulaire du Congo",
-          saldoInicial: escola.saldoInicialBai,
-          filterLabel: label,
-          openPrint: true,
-        },
-      );
-      const mobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-      toast.success(
-        mobile
-          ? "PDF do extrato — partilhe por WhatsApp ou e-mail"
-          : "Documento aberto — escolha impressora ou «Guardar como PDF» (idêntico à impressão)",
-      );
-      // Em PC também disponibiliza o PDF num separador (para guardar/enviar)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao imprimir extrato");
-    }
-  }
 
   return (
     <div>
@@ -196,10 +157,13 @@ function Banco() {
                 Nova movimentação BAI
               </Button>
             ) : null}
-            <Button type="button" variant="secondary" onClick={() => void exportarExtratoPdf()}>
-              <Printer className="mr-1.5 h-4 w-4" />
-              Imprimir extrato A4
-            </Button>
+            <PrintActions
+              targetRef={printRef}
+              filename="extrato-bai.pdf"
+              landscape
+              shareTitle="Extrato BAI · École Consulaire"
+              shareText="Extrato bancário gerado pelo Departamento de Finanças."
+            />
           </div>
         }
       />

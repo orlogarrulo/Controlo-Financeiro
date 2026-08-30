@@ -3,6 +3,7 @@ import { FileText, Pencil, Plus, Printer, Trash2, UserPlus } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
+import { PrintActions } from "@/components/print-actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -1348,9 +1349,16 @@ function Salarios() {
                 </Button>
               </>
             ) : null}
+            <PrintActions
+              targetRef={printRef}
+              filename="salarios.pdf"
+              shareTitle="Salários · École Consulaire"
+              shareText="Lista de funcionários · Departamento de Finanças."
+            />
             <Button
               type="button"
               variant="secondary"
+              className="hidden sm:inline-flex"
               onClick={() => {
                 const now = new Date();
                 const mesAtual = now.toLocaleDateString("pt-PT", { month: "long", year: "numeric" });

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { MESES_LABEL, MESES_LETIVOS } from "@/data/types";
 import { estadoPropinaMes, getSeed, useFinance, type EstadoPropinaMes } from "@/lib/store";
 import { formatKz } from "@/lib/format";
-import { printAndPdfOfficialList, shareOrDownloadPdf } from "@/lib/pdf-export";
+import { PrintActions } from "@/components/print-actions";
 import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
 
 export const Route = createFileRoute("/mensalidades")({ component: Mensalidades });
@@ -63,74 +63,18 @@ function Mensalidades() {
     }
   }
 
-  async function imprimirPropinas() {
-    try {
-      const columns = [
-        { key: "aluno", label: "Aluno", width: "18%" },
-        { key: "propina", label: "Propina", align: "right" as const, width: "10%" },
-        ...MESES_LETIVOS.map((m) => ({
-          key: m,
-          label: MESES_LABEL[m] || m,
-          align: "right" as const,
-          width: `${Math.floor(62 / MESES_LETIVOS.length)}%`,
-        })),
-        { key: "estado", label: "Estado", width: "10%" },
-      ];
-      const listRows = rows.map((r) => {
-        const paid = MESES_LETIVOS.reduce((s, m) => s + (r.pagamentos[m] || 0), 0);
-        const monthsPaid = MESES_LETIVOS.filter((m) => (r.pagamentos[m] || 0) > 0).length;
-        const emAtraso = MESES_LETIVOS.filter((m) => {
-          const v = r.pagamentos[m] || 0;
-          return estadoPropinaMes(m, v, r.pagamentosEm?.[m]) === "atraso";
-        }).length;
-        const status =
-          monthsPaid === 0 && emAtraso === 0
-            ? "Em prazo"
-            : emAtraso > 0 && monthsPaid < 10
-              ? "Com atrasos"
-              : monthsPaid >= 10
-                ? "Pago"
-                : "Parcial";
-        const row: Record<string, string | number> = {
-          aluno: `${r.nome} (${r.id})`,
-          propina: formatKz(r.propina),
-          estado: status,
-        };
-        for (const m of MESES_LETIVOS) {
-          const v = r.pagamentos[m] || 0;
-          row[m] = v ? formatKz(v) : "—";
-        }
-        return row;
-      });
-      const { blob, filename } = await printAndPdfOfficialList({
-        title: "Propinas · mensalidades",
-        escola: escola.nome || "École Consulaire",
-        subtitle: `Total recebido ${formatKz(grand)}`,
-        landscape: true,
-        filename: `propinas-${new Date().toISOString().slice(0, 10)}.pdf`,
-        openPrint: true,
-        columns,
-        rows: listRows,
-        footerNote: `Total recebido: ${formatKz(grand)}`,
-      });
-      const mobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-      toast.success(
-        mobile
-          ? "PDF gerado — escolha WhatsApp, e-mail ou outra app na caixa de partilha"
-          : "Documento aberto — escolha impressora ou «Guardar como PDF»",
-      );
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
-    }
-  }
 
   return (
     <div>
       <PageHeader
         actions={
-          <Button type="button" variant="secondary" className="no-print" onClick={() => void imprimirPropinas()}>
-            <Printer className="mr-1 size-4" /> Imprimir / PDF
-          </Button>
+          <PrintActions
+            targetRef={printRef}
+            filename="propinas.pdf"
+            landscape
+            shareTitle="Propinas · École Consulaire"
+            shareText="Documento gerado pelo Departamento de Finanças."
+          />
         }
         kicker="Setembro a Junho"
         title="Mensalidades"

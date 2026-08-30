@@ -9,15 +9,17 @@ import {
 } from "@/lib/pdf-export";
 
 /**
- * Imprimir (layout exacto) + no telemóvel preparar PDF para WhatsApp / e-mail.
+ * Mesmo fluxo do Quadro:
+ * — PC: Imprimir (diálogo nativo / Guardar como PDF)
+ * — Telemóvel: Preparar PDF → Partilhar (WhatsApp, e-mail, …)
  */
 export function PrintActions({
   targetRef,
   filename,
   shareTitle,
   shareText,
-  printLabel = "Imprimir / Guardar PDF",
-  pdfLabel,
+  printLabel = "Imprimir",
+  pdfLabel = "Preparar PDF",
   landscape = false,
 }: {
   targetRef: RefObject<HTMLElement | null>;
@@ -36,7 +38,7 @@ export function PrintActions({
     try {
       window.print();
       if (!mobile) {
-        toast.message("No diálogo: impressora ou «Guardar como PDF».");
+        toast.message("No diálogo: escolha a impressora ou «Guardar como PDF».");
       }
     } catch {
       toast.error("Impressão bloqueada pelo browser.");
@@ -54,11 +56,11 @@ export function PrintActions({
         stamp: true,
         landscape,
       });
-      if (blob.type !== "application/pdf") {
+      if (!blob || blob.type !== "application/pdf" || blob.size < 400) {
         throw new Error("Não foi possível gerar o PDF");
       }
       setReady({ blob, name });
-      toast.success("PDF pronto — toque em «Partilhar» (WhatsApp, e-mail, …)");
+      toast.success("PDF pronto — toque em «Partilhar»");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível gerar o PDF");
     } finally {
@@ -105,28 +107,35 @@ export function PrintActions({
   }
 
   return (
-    <div className="no-print flex flex-wrap gap-2">
-      <Button variant="secondary" type="button" onClick={onPrint}>
-        <Printer className="mr-1 size-4" /> {printLabel}
-      </Button>
-      {mobile ? (
+    <div className="no-print flex flex-wrap items-center gap-2">
+      {/* PC: só impressão nativa (clara). Telemóvel: também disponível se quiser. */}
+      {!mobile ? (
+        <Button variant="secondary" type="button" onClick={onPrint}>
+          <Printer className="mr-1 size-4" /> {printLabel}
+        </Button>
+      ) : (
         <>
-          <Button type="button" onClick={() => void onPrepareShare()} disabled={busy}>
+          <Button
+            type="button"
+            variant={ready ? "secondary" : "default"}
+            onClick={() => void onPrepareShare()}
+            disabled={busy}
+          >
             <FileDown className="mr-1 size-4" />
-            {busy && !ready ? "A gerar PDF…" : pdfLabel || "Preparar PDF"}
+            {busy && !ready ? "A gerar…" : ready ? "Gerar de novo" : pdfLabel}
           </Button>
           {ready ? (
             <Button
               type="button"
               onClick={() => void onShareNow()}
               disabled={busy}
-              className="bg-[var(--color-forest)] text-white"
+              className="bg-[var(--color-forest)] text-white hover:opacity-95"
             >
               <Share2 className="mr-1 size-4" /> Partilhar
             </Button>
           ) : null}
         </>
-      ) : null}
+      )}
     </div>
   );
 }
