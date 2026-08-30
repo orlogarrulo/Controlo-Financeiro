@@ -14,6 +14,13 @@ export type Categoria = {
   tipo: TipoLancamento;
 };
 
+/** Natureza do lançamento para evitar duplicação de caixa.
+ *  - normal: despesa/entrada habitual (pode debitar BAI/fundo)
+ *  - adiantamento: pagamento antecipado sem fatura (debita caixa/banco)
+ *  - liquidacao: registo da fatura que liquida adiantamento anterior (NÃO debita de novo)
+ */
+export type NaturezaLancamento = "normal" | "adiantamento" | "liquidacao";
+
 export type Lancamento = {
   id: string;
   n?: number;
@@ -32,7 +39,10 @@ export type Lancamento = {
   ficheiro?: boolean;
   nomeFicheiro?: string;
   foto?: string;
+  /** Liga liquidação ao adiantamento original (docInterno ou id). */
   linkedId?: string;
+  /** Controla se o lançamento debita caixa/banco ou apenas classifica. */
+  natureza?: NaturezaLancamento;
   createdAt?: string;
   /** Nome do colaborador que registou (escritório, até 5 pessoas). */
   criadoPor?: string;

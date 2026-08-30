@@ -4,7 +4,7 @@ import { PrintActions } from "@/components/print-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Plus, Printer } from "lucide-react";
+import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getSeed, movimentosAll, useFinance } from "@/lib/store";
 import type { Origem } from "@/data/types";
@@ -23,6 +23,7 @@ function Banco() {
   const baiExtra = useFinance((s) => s.movimentosBaiExtra);
   const baiOverride = useFinance((s) => s.baiOverride);
   const importBai = useFinance((s) => s.importBaiMovimentos);
+  const deleteBai = useFinance((s) => s.deleteBaiMovimento);
   const syncBaiFromExtras = useFinance((s) => s.syncBaiFromExtras);
   const operators = useFinance((s) => s.operators);
   const active = useFinance((s) => s.activeOperator);
@@ -258,9 +259,34 @@ function Banco() {
                 <td className="px-3 py-2 text-right tabular-nums">{formatKz(m.saldo)}</td>
                 <td className="no-print px-2 py-2">
                   {canEdit ? (
-                    <Button size="sm" variant="secondary" onClick={() => setEditM(m)}>
-                      <Pencil className="size-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" variant="secondary" onClick={() => setEditM(m)} title="Editar">
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="text-red-700 hover:bg-red-50"
+                        title="Apagar e recalcular saldo"
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              `Apagar o movimento de ${formatDate(m.data)}?\n${m.descricao}\nEntrada: ${formatKz(m.entrada)} · Saída: ${formatKz(m.saida)}\n\nO saldo de todos os movimentos posteriores será recalculado automaticamente.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          try {
+                            deleteBai(m.id);
+                            toast.success("Movimento apagado · saldos recalculados");
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Falha ao apagar");
+                          }
+                        }}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
                   ) : null}
                 </td>
               </tr>

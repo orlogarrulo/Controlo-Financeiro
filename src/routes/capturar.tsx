@@ -52,6 +52,8 @@ function Capturar() {
     pagamento: "Cartão Multicaixa",
     origem: "cartao",
     observacoes: "",
+    natureza: "normal",
+    linkedId: "",
   });
 
   async function onFile(file: File | undefined) {
@@ -230,6 +232,40 @@ function Capturar() {
             <Field label="N.º fatura">
               <Input value={form.fatura} onChange={(e) => setForm({ ...form, fatura: e.target.value })} />
             </Field>
+            <Field label="Natureza do lançamento" className="sm:col-span-2">
+              <p className="mb-1 text-[11px] leading-relaxed text-[var(--color-muted)]">
+                Use <strong>Adiantamento</strong> quando paga sem fatura (ex. evento 50 anos).
+                Use <strong>Liquidação</strong> quando a fatura chega depois — classifica a despesa
+                <em> sem debitar novamente</em> o Banco BAI ou o fundo.
+              </p>
+              <Select
+                value={form.natureza || "normal"}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    natureza: v as "normal" | "adiantamento" | "liquidacao",
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal (despesa habitual)</SelectItem>
+                  <SelectItem value="adiantamento">Adiantamento (pagamento antecipado)</SelectItem>
+                  <SelectItem value="liquidacao">Liquidação de adiantamento (só classifica)</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            {(form.natureza === "liquidacao" || form.natureza === "adiantamento") && (
+              <Field label="Ligar a (Nº Interno do adiantamento)" className="sm:col-span-2">
+                <Input
+                  value={form.linkedId || ""}
+                  onChange={(e) => setForm({ ...form, linkedId: e.target.value })}
+                  placeholder="Ex. BAI-2026-08-015 ou FRM-2026-08-003"
+                />
+              </Field>
+            )}
             <Field label="Observações" className="sm:col-span-2">
               <Textarea
                 value={form.observacoes}

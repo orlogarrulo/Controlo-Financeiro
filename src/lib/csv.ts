@@ -17,11 +17,14 @@ const ORIGEM_PT: Record<string, string> = {
   formulario: "Formulário",
 };
 
-/** Colunas estáveis para Google Sheets / Excel (sem formatação a cores). */
+/** Colunas estáveis para Google Sheets / Excel (sem formatação a cores).
+ *  Pensadas para o contabilista: simples, ordenadas, importáveis de volta na APP.
+ */
 export const SHEET_COLUMNS = [
   "Nº Interno",
   "Data",
   "Tipo",
+  "Natureza",
   "Categoria",
   "Descrição",
   "Fornecedor",
@@ -29,11 +32,18 @@ export const SHEET_COLUMNS = [
   "Valor (KZ)",
   "Forma de Pagamento",
   "Origem",
+  "Ligado a (Adiantamento)",
   "Observações",
   "Tem foto",
   "Registado por",
   "Registado em",
 ] as const;
+
+const NATUREZA_PT: Record<string, string> = {
+  normal: "Normal",
+  adiantamento: "Adiantamento",
+  liquidacao: "Liquidação",
+};
 
 export function ledgerToCsv(rows: Lancamento[]): string {
   const header = SHEET_COLUMNS.join(";");
@@ -43,6 +53,7 @@ export function ledgerToCsv(rows: Lancamento[]): string {
         r.docInterno || r.id,
         r.data,
         r.tipo === "entrada" ? "Entrada" : "Despesa",
+        NATUREZA_PT[r.natureza || "normal"] || "Normal",
         r.categoria,
         r.descricao,
         r.fornecedor,
@@ -51,6 +62,7 @@ export function ledgerToCsv(rows: Lancamento[]): string {
         String(r.valor).replace(".", ","),
         r.pagamento,
         ORIGEM_PT[r.origem] ?? r.origem,
+        r.linkedId || "",
         r.observacoes,
         r.foto || r.ficheiro ? "Sim" : "Não",
         r.criadoPor || "",

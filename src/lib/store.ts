@@ -55,6 +55,10 @@ export type CapturaInput = {
   origem: Origem;
   observacoes: string;
   foto?: string;
+  /** normal | adiantamento | liquidacao — liquidação não debita BAI/fundo de novo */
+  natureza?: import("@/data/types").NaturezaLancamento;
+  /** ID do adiantamento que esta liquidação fecha */
+  linkedId?: string;
 };
 
 type ExtraState = {
@@ -105,6 +109,8 @@ type Store = ExtraState & {
   updateFundoPagamento: (id: string, patch: Partial<import("@/data/types").FundoPagamento>) => void;
   removeFundoPagamento: (id: string) => void;
   importBaiMovimentos: (rows: MovimentoBai[], replace: boolean) => void;
+  /** Apaga um movimento do extrato BAI e recalcula saldos em cadeia. */
+  deleteBaiMovimento: (id: string) => void;
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
@@ -291,6 +297,7 @@ export const useFinance = create<Store>()(
         const id = nextMonthlyDoc(prefix, [...seed.lancamentosSocio, ...extras], input.data);
         const by = get().activeOperator || "—";
         const now = new Date().toISOString();
+        const natureza = input.natureza || "normal";
         const row: Lancamento = {
           id,
           data: input.data,
@@ -307,13 +314,18 @@ export const useFinance = create<Store>()(
           fonte: "Formulário / Foto",
           ficheiro: Boolean(input.foto),
           foto: input.foto,
+          natureza,
+          linkedId: input.linkedId,
           createdAt: now,
           criadoPor: by,
         };
         set({ extras: [...extras, row] });
         if (input.foto) set({ fotos: { ...get().fotos, [id]: input.foto } });
+        // Liquidação de adiantamento: classifica a despesa mas NÃO debita BAI/fundo de novo
+        // (o dinheiro já saiu no registo do adiantamento)
         // Sai da conta BAI (cartão TPA, transferência ou levantamento ATM)
         const saiDaContaBai =
+          natureza !== "liquidacao" &&
           (input.origem === "cartao" || input.origem === "banco") &&
           input.tipo === "despesa" &&
           input.valor > 0;
@@ -734,6 +746,23 @@ export const useFinance = create<Store>()(
         get().pushAudit(
           "import_bai",
           `${merged.length} movimentos BAI (${replace ? "substituição+secretaria" : "extra"})`,
+        );
+      },
+      deleteBaiMovimento: (id) => {
+        const current = movimentosAll(get().movimentosBaiExtra, get().baiOverride);
+        const target = current.find((m) => m.id === id);
+        if (!target) {
+          throw new Error("Movimento BAI não encontrado.");
+        }
+        // Manter todos excepto o apagado; forçar override para o extrato ficar consistente
+        const next = sortAndRecalcBai(current.filter((m) => m.id !== id));
+        set({
+          movimentosBaiExtra: next,
+          baiOverride: true,
+        });
+        get().pushAudit(
+          "bai_apagar",
+          `${id} · ${target.descricao || ""} · E:${target.entrada || 0} S:${target.saida || 0}`,
         );
       },
       importLancamentos: (rows) => {

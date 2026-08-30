@@ -254,7 +254,7 @@ function GooglePage() {
         title="Google Sheets e Forms · Import / Export"
         description={
           canImport
-            ? "Exporte o master ou o extrato BAI. Importe CSV do Forms, do Excel BAI ou de lançamentos para reconciliar com a app."
+            ? "CSVs simples e organizados para o contabilista (backup oficial). Pode editar no Sheets/Excel e reimportar. Também serve de rede de segurança se a app falhar."
             : "Pode exportar CSV. A importação está reservada ao Colaborador 1."
         }
       />
@@ -280,9 +280,11 @@ function GooglePage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
-          <h2 className="font-display text-xl">Exportar CSV (todos os separadores)</h2>
+          <h2 className="font-display text-xl">Exportar CSV (backup + contabilista)</h2>
           <p className="mt-2 text-sm text-[var(--color-muted)]">
-            Descarregue CSV para Excel ou Google Sheets. Master: {SHEET_COLUMNS.slice(0, 6).join(", ")}…
+            Separador <code>;</code>, UTF-8 com BOM, valores com vírgula decimal (Excel PT).
+            Colunas do master: {SHEET_COLUMNS.slice(0, 8).join(" · ")}…
+            Guarde estes ficheiros mensalmente como arquivo oficial.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button
