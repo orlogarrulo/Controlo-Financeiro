@@ -150,6 +150,7 @@ function Banco() {
           : filtroTipo === "saidas"
             ? "Somente saídas"
             : "Todas as movimentações";
+      // Impressão HTML padronizada (Georgia/Times, como Salários) + PDF opcional
       const { blob, filename } = await exportBaiTablePdf(
         movsFiltrados.map((m) => ({
           data: m.data,
@@ -162,20 +163,25 @@ function Banco() {
         })),
         {
           filename: `extrato-bai-${filtroTipo}-${new Date().toISOString().slice(0, 10)}.pdf`,
-          title: "Extrato Banco BAI · A4 horizontal",
+          title: "Extrato Banco BAI",
           escola: escola.nome || "École Consulaire du Congo",
           saldoInicial: escola.saldoInicialBai,
           filterLabel: label,
+          openPrint: true,
         },
       );
-      const r = await shareOrDownloadPdf(blob, filename, {
-        title: "Extrato BAI · École Consulaire",
-        text: "Extrato bancário A4 horizontal — texto seleccionável.",
-      });
-      if (r === "opened") toast.success("PDF A4 horizontal aberto (texto seleccionável)");
-      else toast.message("PDF descarregado");
+      toast.success("Janela de impressão aberta — A4 horizontal");
+      // Em PC também disponibiliza o PDF num separador (para guardar/enviar)
+      if (blob.type === "application/pdf") {
+        void shareOrDownloadPdf(blob, filename, {
+          title: "Extrato BAI · École Consulaire",
+          text: "Extrato bancário A4 horizontal.",
+        }).catch(() => {
+          /* impressão já aberta */
+        });
+      }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+      toast.error(e instanceof Error ? e.message : "Erro ao imprimir extrato");
     }
   }
 
@@ -195,7 +201,7 @@ function Banco() {
             ) : null}
             <Button type="button" variant="secondary" onClick={() => void exportarExtratoPdf()}>
               <Printer className="mr-1.5 h-4 w-4" />
-              Imprimir / PDF A4 horizontal
+              Imprimir extrato A4
             </Button>
           </div>
         }

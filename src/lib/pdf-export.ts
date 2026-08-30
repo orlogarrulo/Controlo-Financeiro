@@ -269,20 +269,23 @@ function makeStage(landscape = false): HTMLElement {
   stage.setAttribute("data-pdf-stage", "1");
   if (landscape) stage.setAttribute("data-pdf-landscape", "1");
   const w = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
+  // left:0 + opacity quase 0 — evita capturas em branco (html2canvas em alguns browsers)
   stage.style.cssText = [
     "position:fixed",
-    "left:-12000px",
+    "left:0",
     "top:0",
     `width:${w}px`,
     "background:#ffffff",
-    "color:#111111",
-    "z-index:-1",
+    "color:#0f172a",
+    "z-index:0",
+    "opacity:0.01",
+    "pointer-events:none",
     "overflow:visible",
     "box-sizing:border-box",
-    "padding:24px",
+    "padding:20px",
     "font-size:12px",
     "line-height:1.4",
-    "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
+    "font-family:Georgia,'Times New Roman',Times,serif",
   ].join(";");
   const style = document.createElement("style");
   style.textContent = STAGE_CSS;
@@ -605,16 +608,26 @@ export async function htmlFragmentToA4Pdf(
   try {
     const wrap = document.createElement("div");
     wrap.style.cssText =
-      "width:100%;background:#ffffff;color:#111111;box-sizing:border-box;padding:8px 4px;";
+      "width:100%;background:#ffffff;color:#0f172a;box-sizing:border-box;padding:8px 4px;font-family:Georgia,'Times New Roman',Times,serif;";
     wrap.innerHTML = html;
     stage.appendChild(wrap);
     await waitImages(stage);
-    await wait(100);
-    const canvas = await capture(stage, html2canvas, 1.8, false);
+    await wait(120);
+    const canvas = await html2canvas(stage, {
+      scale: 1.8,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      width: A4_WIDTH_PX,
+      windowWidth: A4_WIDTH_PX,
+      scrollX: 0,
+      scrollY: 0,
+    });
     const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 12;
+    const margin = 10;
     const maxW = pageW - margin * 2;
     const maxH = pageH - margin * 2;
     const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
@@ -622,7 +635,7 @@ export async function htmlFragmentToA4Pdf(
     const h = canvas.height * ratio;
     const x = (pageW - w) / 2;
     const y = margin;
-    pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", x, y, w, h);
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", x, y, w, h);
     return {
       blob: pdf.output("blob"),
       filename: opts?.filename || `documento-${Date.now()}.pdf`,
@@ -855,29 +868,100 @@ export async function exportElementPdf(
 }
 
 
+/** Escapa texto para HTML de impressão. */
+function escHtml(s: string): string {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /**
- * Extrato BAI — PDF A4 horizontal, design branco/limpo (como os outros separadores).
- * Texto legível; várias páginas se necessário. filterLabel: "Todas" | "Entradas" | "Saídas".
+ * Abre documento HTML para impressão (mesmo modelo dos recibos/contratos em Salários).
+ * Fiável: texto nativo, fontes tipográficas, sem canvas em branco.
  */
-export async function exportBaiTablePdf(
-  rows: {
-    data: string;
-    banco?: string;
-    descricao?: string;
-    entrada?: number;
-    saida?: number;
-    saldo?: number;
-    observacoes?: string;
-  }[],
-  opts?: {
-    filename?: string;
-    title?: string;
-    escola?: string;
-    saldoInicial?: number;
-    filterLabel?: string;
-  },
-): Promise<{ blob: Blob; filename: string }> {
-  const { html2canvas, jsPDF } = await ensureLibs();
+export function openPrintHtml(html: string): void {
+  let docHtml = html;
+  if (docHtml.includes("<title>")) {
+    docHtml = docHtml.replace(/<title>[^<]*<\/title>/i, "<title></title>");
+  } else if (docHtml.includes("</head>")) {
+    docHtml = docHtml.replace("</head>", "<title></title></head>");
+  }
+  const blob = new Blob([docHtml], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", " ");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+  iframe.src = url;
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    try {
+      iframe.remove();
+    } catch {
+      /* ignore */
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 3000);
+  };
+
+  const runPrint = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {
+      /* browser bloqueou */
+    }
+    window.setTimeout(cleanup, 2500);
+  };
+
+  iframe.onload = () => {
+    const doc = iframe.contentDocument;
+    const imgs = doc ? Array.from(doc.images || []) : [];
+    if (imgs.length === 0) {
+      window.setTimeout(runPrint, 200);
+      return;
+    }
+    let left = imgs.length;
+    const done = () => {
+      left -= 1;
+      if (left <= 0) window.setTimeout(runPrint, 150);
+    };
+    imgs.forEach((img) => {
+      if (img.complete) done();
+      else {
+        img.onload = done;
+        img.onerror = done;
+      }
+    });
+    window.setTimeout(runPrint, 2500);
+  };
+}
+
+type BaiRow = {
+  data: string;
+  banco?: string;
+  descricao?: string;
+  entrada?: number;
+  saida?: number;
+  saldo?: number;
+  observacoes?: string;
+};
+
+type BaiPdfOpts = {
+  filename?: string;
+  title?: string;
+  escola?: string;
+  saldoInicial?: number;
+  filterLabel?: string;
+  /** Se true (default), abre o diálogo de impressão HTML padronizado. */
+  openPrint?: boolean;
+};
+
+/** HTML do extrato BAI — A4 paisagem, tipografia igual aos outros documentos oficiais. */
+export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
   const fmt = (n: number) =>
     new Intl.NumberFormat("pt-AO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
   const fmtDate = (s: string) => {
@@ -890,85 +974,217 @@ export async function exportBaiTablePdf(
   const totE = rows.reduce((s, r) => s + (Number(r.entrada) || 0), 0);
   const totS = rows.reduce((s, r) => s + (Number(r.saida) || 0), 0);
   const lastSaldo = rows.length ? Number(rows[rows.length - 1].saldo) || 0 : Number(opts?.saldoInicial) || 0;
-  const escola = opts?.escola || "École Consulaire du Congo";
-  const title = opts?.title || "Extrato Banco BAI";
-  const filtro = opts?.filterLabel || "Todas as movimentações";
+  const escola = escHtml(opts?.escola || "École Consulaire du Congo");
+  const title = escHtml(opts?.title || "Extrato Banco BAI");
+  const filtro = escHtml(opts?.filterLabel || "Todas as movimentações");
   const logoSrc =
     typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
+  const emitido = new Date().toLocaleDateString("pt-PT", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 
-  // Chunk rows for readable pages (~28 lines / page landscape)
-  const perPage = 28;
-  const chunks: typeof rows[] = [];
-  for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
-  if (!chunks.length) chunks.push([]);
+  let body = "";
+  rows.forEach((r, i) => {
+    const bg = i % 2 ? "#f4f7f5" : "#ffffff";
+    const ent = Number(r.entrada) || 0;
+    const sai = Number(r.saida) || 0;
+    const obs = (r.observacoes || "").trim();
+    body += `<tr style="background:${bg};">
+      <td class="c-data">${fmtDate(r.data || "")}</td>
+      <td class="c-banco">${escHtml(r.banco || "")}</td>
+      <td class="c-desc">${escHtml(r.descricao || "")}${obs ? `<span class="obs">${escHtml(obs)}</span>` : ""}</td>
+      <td class="num ent">${ent ? fmt(ent) : "—"}</td>
+      <td class="num sai">${sai ? fmt(sai) : "—"}</td>
+      <td class="num">${fmt(Number(r.saldo) || 0)}</td>
+    </tr>`;
+  });
 
-  const pdf = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const margin = 8;
-
-  for (let pi = 0; pi < chunks.length; pi++) {
-    const chunk = chunks[pi];
-    let body = "";
-    chunk.forEach((r, i) => {
-      const bg = i % 2 ? "#f7faf8" : "#ffffff";
-      const ent = Number(r.entrada) || 0;
-      const sai = Number(r.saida) || 0;
-      body += `<tr style="background:${bg};">
-        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;white-space:nowrap;">${fmtDate(r.data || "")}</td>
-        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;">${(r.banco || "").replace(/</g, "")}</td>
-        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;">${(r.descricao || "").replace(/</g, "")}</td>
-        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;text-align:right;font-variant-numeric:tabular-nums;color:${ent ? "#1f5c4a" : "#999"};">${ent ? fmt(ent) : "—"}</td>
-        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;text-align:right;font-variant-numeric:tabular-nums;color:${sai ? "#9b2c2c" : "#999"};">${sai ? fmt(sai) : "—"}</td>
-        <td style="padding:4px 6px;border-bottom:1px solid #e8ece9;text-align:right;font-variant-numeric:tabular-nums;">${fmt(Number(r.saldo) || 0)}</td>
-      </tr>`;
-    });
-
-    const footer =
-      pi === chunks.length - 1
-        ? `<div style="margin-top:10px;padding-top:8px;border-top:2px solid #1f5c4a;font-size:10px;">
-            <strong>Total entradas:</strong> ${fmt(totE)} Kz &nbsp;·&nbsp;
-            <strong>Total saídas:</strong> ${fmt(totS)} Kz &nbsp;·&nbsp;
-            <strong>Saldo final:</strong> ${fmt(lastSaldo)} Kz
-          </div>`
-        : `<div style="margin-top:8px;font-size:9px;color:#888;text-align:right;">Página ${pi + 1} / ${chunks.length}</div>`;
-
-    const html = `
-<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#ffffff;padding:10px 12px;box-sizing:border-box;">
-  <div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #1f5c4a;padding-bottom:10px;margin-bottom:10px;">
-    <img src="${logoSrc}" width="56" height="56" alt="" style="width:56px;height:56px;object-fit:contain;" crossorigin="anonymous" />
-    <div style="flex:1;">
-      <p style="margin:0;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">${escola}</p>
-      <p style="margin:3px 0 0;font-size:15px;font-weight:700;">${title}</p>
-      <p style="margin:2px 0 0;font-size:10px;color:#555;">${filtro} · ${rows.length} movimento(s)${opts?.saldoInicial != null ? ` · Saldo inicial ${fmt(opts.saldoInicial)} Kz` : ""}</p>
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 landscape; margin: 10mm 8mm; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    font-size: 11px;
+    line-height: 1.35;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet { padding: 0 2mm; }
+  .head {
+    display: flex; align-items: center; gap: 14px;
+    border-bottom: 2.5px solid #1f5c4a;
+    padding-bottom: 10px; margin-bottom: 12px;
+  }
+  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .kicker {
+    margin: 0; font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: #1f5c4a; font-weight: 700;
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  .title {
+    margin: 3px 0 0; font-size: 16px; font-weight: 700;
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead { display: table-header-group; }
+  th {
+    background: #1f5c4a; color: #fff;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 7px 6px; text-align: left;
+    border: 1px solid #1a4d3e;
+  }
+  th.r { text-align: right; }
+  td {
+    padding: 5px 6px;
+    border-bottom: 1px solid #d5ddd8;
+    vertical-align: top;
+    font-size: 10.5px;
+  }
+  td.c-data { width: 10%; white-space: nowrap; }
+  td.c-banco { width: 13%; font-family: "Courier New", Courier, monospace; font-size: 9.5px; }
+  td.c-desc { width: 37%; word-wrap: break-word; }
+  td.num {
+    width: 13%; text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 10px; white-space: nowrap;
+  }
+  td.ent { color: #1f5c4a; }
+  td.sai { color: #9b2c2c; }
+  .obs { display: block; margin-top: 2px; font-size: 9px; color: #64748b; font-style: italic; }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  .totals {
+    margin-top: 12px; padding-top: 8px;
+    border-top: 2px solid #1f5c4a;
+    font-size: 11px; font-family: Georgia, "Times New Roman", serif;
+  }
+  .totals strong { color: #1f5c4a; }
+  .foot {
+    margin-top: 14px; text-align: right;
+    font-size: 9px; color: #64748b;
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  @media screen {
+    body { padding: 16px; background: #e8ece9; }
+    .sheet {
+      max-width: 1100px; margin: 0 auto;
+      background: #fff; padding: 16px 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+  }
+</style>
+</head><body>
+<div class="sheet">
+  <div class="head">
+    <img src="${logoSrc}" width="52" height="52" alt="" />
+    <div>
+      <p class="kicker">${escola}</p>
+      <p class="title">${title}</p>
+      <p class="meta">${filtro} · ${rows.length} movimento(s)${opts?.saldoInicial != null ? ` · Saldo inicial ${fmt(opts.saldoInicial)} Kz` : ""} · Emitido em ${emitido}</p>
     </div>
   </div>
-  <table style="width:100%;border-collapse:collapse;font-size:9.5px;">
+  <table>
     <thead>
-      <tr style="background:#1f5c4a;color:#fff;">
-        <th style="padding:6px;text-align:left;width:11%;">Data</th>
-        <th style="padding:6px;text-align:left;width:14%;">Banco</th>
-        <th style="padding:6px;text-align:left;width:35%;">Descrição</th>
-        <th style="padding:6px;text-align:right;width:13%;">Entrada</th>
-        <th style="padding:6px;text-align:right;width:13%;">Saída</th>
-        <th style="padding:6px;text-align:right;width:14%;">Saldo</th>
+      <tr>
+        <th style="width:10%;">Data</th>
+        <th style="width:13%;">Banco</th>
+        <th style="width:37%;">Descrição</th>
+        <th class="r" style="width:13%;">Entrada</th>
+        <th class="r" style="width:13%;">Saída</th>
+        <th class="r" style="width:14%;">Saldo</th>
       </tr>
     </thead>
-    <tbody>${body || '<tr><td colspan="6" style="padding:12px;color:#888;">Sem movimentos neste filtro.</td></tr>'}</tbody>
+    <tbody>
+      ${body || '<tr><td colspan="6" style="padding:16px;color:#64748b;text-align:center;">Sem movimentos neste filtro.</td></tr>'}
+    </tbody>
   </table>
-  ${footer}
-  <p style="margin-top:8px;font-size:8px;color:#999;text-align:center;">Documento gerado pelo Departamento de Finanças · página ${pi + 1}/${chunks.length}</p>
-</div>`;
+  <div class="totals">
+    <strong>Total entradas:</strong> ${fmt(totE)} Kz &nbsp;·&nbsp;
+    <strong>Total saídas:</strong> ${fmt(totS)} Kz &nbsp;·&nbsp;
+    <strong>Saldo final:</strong> ${fmt(lastSaldo)} Kz
+  </div>
+  <p class="foot">Documento gerado pelo Departamento de Finanças · ${escola}</p>
+</div>
+</body></html>`;
+}
 
-    const stage = makeStage(true);
+/**
+ * Extrato BAI — impressão A4 horizontal padronizada (Georgia/Times, como Salários/Recibos).
+ * Por defeito abre o diálogo de impressão HTML (texto nativo, sempre visível).
+ * Também devolve PDF gerado a partir do mesmo HTML, para descarregar se necessário.
+ */
+export async function exportBaiTablePdf(
+  rows: BaiRow[],
+  opts?: BaiPdfOpts,
+): Promise<{ blob: Blob; filename: string }> {
+  const html = buildBaiExtratoHtml(rows, opts);
+  const filename = opts?.filename || `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+  // Impressão fiável (modelo dos outros separadores)
+  if (opts?.openPrint !== false) {
+    openPrintHtml(html);
+  }
+
+  // PDF opcional (para partilha/download) — mesmo layout, captura melhorada
+  try {
+    const { html2canvas, jsPDF } = await ensureLibs();
+    const pdf = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 6;
+
+    const stage = document.createElement("div");
+    stage.setAttribute("data-pdf-stage", "1");
+    stage.setAttribute("data-pdf-landscape", "1");
+    stage.style.cssText = [
+      "position:fixed",
+      "left:0",
+      "top:0",
+      `width:${A4_LANDSCAPE_WIDTH_PX}px`,
+      "background:#ffffff",
+      "color:#0f172a",
+      "z-index:0",
+      "opacity:0.01",
+      "pointer-events:none",
+      "overflow:visible",
+      "box-sizing:border-box",
+      "padding:12px",
+      "font-family:Georgia,'Times New Roman',Times,serif",
+    ].join(";");
+    document.body.appendChild(stage);
+
     try {
       const wrap = document.createElement("div");
-      wrap.style.cssText = "width:100%;background:#ffffff;color:#111;box-sizing:border-box;";
-      wrap.innerHTML = html;
+      wrap.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;";
+      // Extrai só o .sheet para captura limpa
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const sheet = tmp.querySelector(".sheet");
+      wrap.innerHTML = sheet ? sheet.outerHTML : html;
       stage.appendChild(wrap);
       await waitImages(stage);
-      await wait(80);
-      const canvas = await capture(stage, html2canvas, 1.7, true);
+      await wait(120);
+
+      const canvas = await html2canvas(stage, {
+        scale: 1.8,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: A4_LANDSCAPE_WIDTH_PX,
+        windowWidth: A4_LANDSCAPE_WIDTH_PX,
+        scrollX: 0,
+        scrollY: 0,
+      });
+
       const maxW = pageW - margin * 2;
       const maxH = pageH - margin * 2;
       const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
@@ -976,15 +1192,17 @@ export async function exportBaiTablePdf(
       const h = canvas.height * ratio;
       const x = (pageW - w) / 2;
       const y = margin;
-      if (pi > 0) pdf.addPage();
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.93), "JPEG", x, y, w, h);
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", x, y, w, h);
     } finally {
       stage.remove();
     }
-  }
 
-  return {
-    blob: pdf.output("blob"),
-    filename: opts?.filename || `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`,
-  };
+    return { blob: pdf.output("blob"), filename };
+  } catch {
+    // Se o PDF falhar, a impressão HTML já foi aberta
+    return {
+      blob: new Blob([html], { type: "text/html;charset=utf-8" }),
+      filename: filename.replace(/\.pdf$/i, ".html"),
+    };
+  }
 }

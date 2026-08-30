@@ -12,7 +12,12 @@ import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
-import { htmlFragmentToA4Pdf, htmlFragmentsToMultiPageA4Pdf, shareOrDownloadPdf } from "@/lib/pdf-export";
+import {
+  htmlFragmentToA4Pdf,
+  htmlFragmentsToMultiPageA4Pdf,
+  openPrintHtml,
+  shareOrDownloadPdf,
+} from "@/lib/pdf-export";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
 
@@ -1109,8 +1114,9 @@ function Alunos() {
     const total40 = formatKz(Math.round(valor * 1.4));
     const emitida = fmtData(new Date());
     // Cores da bandeira da República do Congo: verde · amarelo · vermelho
+    // Tipografia padronizada com Salários / Banco (Georgia / Times New Roman)
     return `
-<div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0f172a;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;">
+<div style="font-family:Georgia,'Times New Roman',Times,serif;color:#0f172a;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;">
   <!-- Cabeçalho: só logo + cores Congo + lema -->
   <div style="background:#ffffff;padding:0;overflow:hidden;border-bottom:1px solid #e2e8f0;">
     <div style="height:6px;display:flex;">
@@ -1307,28 +1313,62 @@ function Alunos() {
       });
       body += `</tbody></table>`;
     }
-    const html = `
-<div style="font-family:Arial,Helvetica,sans-serif;color:#111;padding:12px 16px;">
-  <div style="display:flex;align-items:center;gap:14px;border-bottom:3px solid #1f5c4a;padding-bottom:12px;margin-bottom:12px;">
-    <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;" crossorigin="anonymous" />
+    const inner = `
+<div class="sheet">
+  <div class="head">
+    <img src="${logoSrc}" width="64" height="64" alt="" />
     <div>
-      <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;font-weight:700;">${escola.nome || "École Consulaire"}</p>
-      <p style="margin:4px 0 0;font-size:16px;font-weight:700;">Lista de alunos por classe</p>
-      <p style="margin:2px 0 0;font-size:11px;color:#555;">Ano lectivo ${escola.ano || ""} · Propina mensal de referência · ${lista.length} alunos</p>
+      <p class="kicker">${escola.nome || "École Consulaire"}</p>
+      <p class="title">Lista de alunos por classe</p>
+      <p class="meta">Ano lectivo ${escola.ano || ""} · Propina mensal de referência · ${lista.length} alunos</p>
     </div>
   </div>
   ${body}
-  <p style="margin-top:16px;font-size:9px;color:#888;text-align:center;">Documento gerado automaticamente · Departamento de Finanças</p>
+  <p class="foot">Documento gerado pelo Departamento de Finanças · ${escola.nome || "École Consulaire"}</p>
 </div>`;
+    const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 12mm 10mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { padding: 0 2mm; }
+  .head { display: flex; align-items: center; gap: 14px; border-bottom: 2.5px solid #1f5c4a;
+    padding-bottom: 10px; margin-bottom: 12px; }
+  .head img { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; }
+  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #1f5c4a; font-weight: 700; }
+  .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
+  h2 { margin: 16px 0 8px; font-size: 13px; color: #1f5c4a; border-bottom: 2px solid #1f5c4a;
+    padding-bottom: 4px; page-break-after: avoid; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  thead { display: table-header-group; }
+  th { background: #1f5c4a; color: #fff; font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; padding: 7px 6px; text-align: left;
+    border: 1px solid #1a4d3e; }
+  td { padding: 5px 6px; border-bottom: 1px solid #d5ddd8; font-size: 10.5px; vertical-align: top; }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #64748b; }
+  @media screen {
+    body { padding: 16px; background: #e8ece9; }
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 16px 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  }
+</style>
+</head><body>${inner}</body></html>`;
     try {
-      const { blob, filename } = await htmlFragmentToA4Pdf(html, {
+      openPrintHtml(docHtml);
+      toast.success(`Impressão aberta · ${lista.length} alunos por classe`);
+      const { blob, filename } = await htmlFragmentToA4Pdf(inner, {
         filename: `alunos-por-classe-${new Date().toISOString().slice(0, 10)}.pdf`,
       });
-      if (!blob || blob.size < 400) throw new Error("PDF vazio");
-      await shareOrDownloadPdf(blob, filename);
-      toast.success(`PDF A4 · ${lista.length} alunos por classe`);
+      if (blob && blob.size >= 400) {
+        await shareOrDownloadPdf(blob, filename);
+      }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+      toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
     }
   }
 
@@ -1547,15 +1587,27 @@ function Alunos() {
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     setInvoiceBusy(true);
     try {
+      // Impressão HTML padronizada (Georgia/Times) — sempre legível
+      const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  html, body { margin: 0; padding: 0; background: #fff;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+</style>
+</head><body>${html}</body></html>`;
+      openPrintHtml(docHtml);
+
       const { blob, filename: name } = await htmlFragmentToA4Pdf(html, {
         filename: `${isRecibo ? "recibo" : "fatura"}-${numero}.pdf`,
         title: `${isRecibo ? "Recibo" : "Fatura"} ${numero}`,
       });
-      if (!blob || blob.size < 400) throw new Error("PDF vazio — tente de novo");
-      await shareOrDownloadPdf(blob, name, {
-        title: `${isRecibo ? "Recibo" : "Fatura"} ${numero} — ${a.nome}`,
-        text: `${isRecibo ? "Recibo" : "Fatura"} ${mesRef} · ${a.nome} · ${formatKz(valor)}`,
-      });
+      if (blob && blob.size >= 400) {
+        await shareOrDownloadPdf(blob, name, {
+          title: `${isRecibo ? "Recibo" : "Fatura"} ${numero} — ${a.nome}`,
+          text: `${isRecibo ? "Recibo" : "Fatura"} ${mesRef} · ${a.nome} · ${formatKz(valor)}`,
+        });
+      }
       // Só regista no histórico de faturas de propina quando é fatura (não recibo avulso)
       if (!isRecibo) {
         const ja = (faturasPropina || []).some((f) => f.numero === numero);
@@ -1573,7 +1625,7 @@ function Alunos() {
           });
         }
       }
-      toast.success(`PDF A4 gerado · ${numero}`);
+      toast.success(`Impressão e PDF · ${numero}`);
       if (enviarEmail && email) {
         const subject = encodeURIComponent(`Fatura ${numero} — ${mesRef} — ${a.nome}`);
         const body = encodeURIComponent(
@@ -1698,47 +1750,86 @@ function Alunos() {
     }
     setExportBusy(true);
     try {
+      const logoSrc = `${location.origin}/logo-escola.jpg`;
       const rows = selected
         .map(
-          (a) =>
-            `<tr>
-              <td style="padding:6px 8px;border-bottom:1px solid #ddd;font-family:monospace;font-size:11px;">${a.id}</td>
-              <td style="padding:6px 8px;border-bottom:1px solid #ddd;">${a.nome}</td>
-              <td style="padding:6px 8px;border-bottom:1px solid #ddd;">${a.turma}</td>
-              <td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;">${formatKz(a.liquido)}</td>
-              <td style="padding:6px 8px;border-bottom:1px solid #ddd;font-family:monospace;font-size:11px;">${a.recibo}</td>
+          (a, i) =>
+            `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
+              <td class="mono">${a.id}</td>
+              <td>${a.nome}</td>
+              <td>${a.turma}</td>
+              <td class="num">${formatKz(a.liquido)}</td>
+              <td class="mono">${a.recibo}</td>
             </tr>`,
         )
         .join("");
-      const html = `
-        <div style="font-family:system-ui,sans-serif;color:#111;">
-          <div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid #1f5c4a;padding-bottom:12px;margin-bottom:14px;">
-            <img src="${location.origin}/logo-escola.jpg" width="56" height="56" style="object-fit:contain" crossorigin="anonymous" />
-            <div>
-              <p style="margin:0;font-size:11px;color:#1f5c4a;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">${escola.nome}</p>
-              <p style="margin:4px 0 0;font-size:18px;font-weight:700;">Lista de matrículas</p>
-              <p style="margin:2px 0 0;font-size:12px;color:#555;">${selected.length} aluno(s) · ${new Date().toLocaleDateString("pt-PT")}</p>
-            </div>
-          </div>
-          <table style="width:100%;border-collapse:collapse;font-size:12px;">
-            <thead>
-              <tr style="background:#1f5c4a;color:#fff;">
-                <th style="text-align:left;padding:8px;">ID</th>
-                <th style="text-align:left;padding:8px;">Nome</th>
-                <th style="text-align:left;padding:8px;">Turma</th>
-                <th style="text-align:right;padding:8px;">Líquido</th>
-                <th style="text-align:left;padding:8px;">Recibo</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>`;
-      const { blob, filename } = await htmlFragmentToA4Pdf(html, {
+      const inner = `
+<div class="sheet">
+  <div class="head">
+    <img src="${logoSrc}" width="56" height="56" alt="" />
+    <div>
+      <p class="kicker">${escola.nome || "École Consulaire"}</p>
+      <p class="title">Lista de matrículas</p>
+      <p class="meta">${selected.length} aluno(s) · ${new Date().toLocaleDateString("pt-PT")}</p>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nome</th>
+        <th>Turma</th>
+        <th class="r">Líquido</th>
+        <th>Recibo</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p class="foot">Documento gerado pelo Departamento de Finanças · ${escola.nome || "École Consulaire"}</p>
+</div>`;
+      const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 12mm 10mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { padding: 0 2mm; }
+  .head { display: flex; align-items: center; gap: 14px; border-bottom: 2.5px solid #1f5c4a;
+    padding-bottom: 10px; margin-bottom: 12px; }
+  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #1f5c4a; font-weight: 700; }
+  .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  th { background: #1f5c4a; color: #fff; font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; padding: 7px 6px; text-align: left;
+    border: 1px solid #1a4d3e; }
+  th.r { text-align: right; }
+  td { padding: 5px 6px; border-bottom: 1px solid #d5ddd8; font-size: 10.5px; vertical-align: top; }
+  td.mono { font-family: "Courier New", Courier, monospace; font-size: 9.5px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums;
+    font-family: "Courier New", Courier, monospace; font-size: 10px; white-space: nowrap; }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #64748b; }
+  @media screen {
+    body { padding: 16px; background: #e8ece9; }
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 16px 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  }
+</style>
+</head><body>${inner}</body></html>`;
+      openPrintHtml(docHtml);
+      toast.success(`Impressão aberta · ${selected.length} aluno(s)`);
+      const { blob, filename } = await htmlFragmentToA4Pdf(inner, {
         filename: `matriculas-selecao-${selected.length}.pdf`,
         title: "Lista de matrículas",
       });
-      await shareOrDownloadPdf(blob, filename, { title: "Lista de matrículas" });
-      toast.success(`PDF com ${selected.length} aluno(s)`);
+      if (blob && blob.size >= 400) {
+        await shareOrDownloadPdf(blob, filename, { title: "Lista de matrículas" });
+      }
       setExportOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao exportar");
