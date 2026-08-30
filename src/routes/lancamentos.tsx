@@ -153,13 +153,7 @@ function Lancamentos() {
         })),
         footerNote: `Total das despesas listadas: ${formatKz(total)}`,
       });
-      toast.success("Impressão aberta · Lista de despesas");
-      if (blob.type === "application/pdf") {
-        await shareOrDownloadPdf(blob, filename, {
-          title: "Lista de despesas · École Consulaire",
-          text: "Documento gerado pelo Departamento de Finanças.",
-        });
-      }
+      toast.success("Documento aberto — escolha impressora ou «Guardar como PDF»");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
     }

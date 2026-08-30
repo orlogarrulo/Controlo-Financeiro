@@ -1360,13 +1360,7 @@ function Alunos() {
 </head><body>${inner}</body></html>`;
     try {
       openPrintHtml(docHtml);
-      toast.success(`Impressão aberta · ${lista.length} alunos por classe`);
-      const { blob, filename } = await htmlFragmentToA4Pdf(inner, {
-        filename: `alunos-por-classe-${new Date().toISOString().slice(0, 10)}.pdf`,
-      });
-      if (blob && blob.size >= 400) {
-        await shareOrDownloadPdf(blob, filename);
-      }
+      toast.success(`Documento aberto · ${lista.length} alunos — use «Guardar como PDF» se precisar de ficheiro`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
     }
@@ -1597,17 +1591,7 @@ function Alunos() {
 </style>
 </head><body>${html}</body></html>`;
       openPrintHtml(docHtml);
-
-      const { blob, filename: name } = await htmlFragmentToA4Pdf(html, {
-        filename: `${isRecibo ? "recibo" : "fatura"}-${numero}.pdf`,
-        title: `${isRecibo ? "Recibo" : "Fatura"} ${numero}`,
-      });
-      if (blob && blob.size >= 400) {
-        await shareOrDownloadPdf(blob, name, {
-          title: `${isRecibo ? "Recibo" : "Fatura"} ${numero} — ${a.nome}`,
-          text: `${isRecibo ? "Recibo" : "Fatura"} ${mesRef} · ${a.nome} · ${formatKz(valor)}`,
-        });
-      }
+      /* PDF exacto = no diálogo escolha «Guardar como PDF» */
       // Só regista no histórico de faturas de propina quando é fatura (não recibo avulso)
       if (!isRecibo) {
         const ja = (faturasPropina || []).some((f) => f.numero === numero);
@@ -1625,7 +1609,7 @@ function Alunos() {
           });
         }
       }
-      toast.success(`Impressão e PDF · ${numero}`);
+      toast.success(`Documento aberto · ${numero} — escolha impressora ou «Guardar como PDF»`);
       if (enviarEmail && email) {
         const subject = encodeURIComponent(`Fatura ${numero} — ${mesRef} — ${a.nome}`);
         const body = encodeURIComponent(
@@ -1723,17 +1707,13 @@ function Alunos() {
         return;
       }
 
-      const { blob, filename } = await htmlFragmentsToMultiPageA4Pdf(fragments, {
+      await htmlFragmentsToMultiPageA4Pdf(fragments, {
         filename: `faturas-propina-${mesKey}.pdf`,
-        title: `Faturas ${mesRef}`,
       });
-      if (!blob || blob.size < 500) throw new Error("PDF vazio");
-
-      await shareOrDownloadPdf(blob, filename, {
-        title: `Faturas de propina — ${mesRef}`,
-        text: `${fragments.length} fatura(s) · ${mesRef}`,
-      });
-      toast.success(`PDF único com ${fragments.length} fatura(s)` + (semValor ? ` · ${semValor} sem propina` : ""));
+      toast.success(
+        `Documento aberto com ${fragments.length} fatura(s) — use «Guardar como PDF»` +
+          (semValor ? ` · ${semValor} sem propina` : ""),
+      );
     } catch (e) {
       console.error(e);
       toast.error(e instanceof Error ? e.message : "Erro ao gerar o PDF das faturas");
@@ -1822,14 +1802,7 @@ function Alunos() {
 </style>
 </head><body>${inner}</body></html>`;
       openPrintHtml(docHtml);
-      toast.success(`Impressão aberta · ${selected.length} aluno(s)`);
-      const { blob, filename } = await htmlFragmentToA4Pdf(inner, {
-        filename: `matriculas-selecao-${selected.length}.pdf`,
-        title: "Lista de matrículas",
-      });
-      if (blob && blob.size >= 400) {
-        await shareOrDownloadPdf(blob, filename, { title: "Lista de matrículas" });
-      }
+      toast.success(`Documento aberto · ${selected.length} aluno(s) — use «Guardar como PDF» se precisar de ficheiro`);
       setExportOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao exportar");

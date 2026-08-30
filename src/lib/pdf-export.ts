@@ -632,64 +632,60 @@ async function htmlToPdfBlob(
 }
 
 /**
- * Vários HTML (ex.: faturas) → um único PDF A4, uma página por fatura.
+ * Vários HTML (ex.: faturas) → um único documento de impressão (uma secção por página).
+ * PDF idêntico = «Guardar como PDF» no diálogo.
  */
 export async function htmlFragmentsToMultiPageA4Pdf(
   fragments: string[],
   opts?: { filename?: string; title?: string },
-): Promise<{ blob: Blob; filename: string }> {
-  if (!fragments.length) throw new Error("Sem conteúdo para o PDF");
-  const { html2canvas, jsPDF } = await ensureLibs();
-  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-  let pageCount = 0;
+): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
+  if (!fragments.length) throw new Error("Sem conteúdo para imprimir");
 
-  for (let i = 0; i < fragments.length; i++) {
-    const stage = makeStage(false);
-    try {
-      const wrap = document.createElement("div");
-      wrap.style.cssText =
-        "width:100%;background:#ffffff;color:#0f172a;box-sizing:border-box;padding:0;margin:0;font-family:Georgia,'Times New Roman',Times,serif;";
-      wrap.innerHTML = fragments[i];
-      stage.appendChild(wrap);
-      await waitImages(stage);
-      await wait(80);
-      const canvas = await html2canvas(wrap, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        width: A4_WIDTH_PX,
-        windowWidth: A4_WIDTH_PX,
-        scrollX: 0,
-        scrollY: 0,
-      });
-      const used = addCanvasToPdf(pdf, canvas, {
-        hasPriorPages: pageCount > 0,
-        forceSinglePage: true,
-      });
-      pageCount += used;
-    } finally {
-      stage.remove();
-    }
-  }
+  const pages = fragments
+    .map(
+      (frag, i) =>
+        `<section class="ecc-page" style="page-break-after:${i < fragments.length - 1 ? "always" : "auto"};break-after:${i < fragments.length - 1 ? "page" : "auto"};">${frag}</section>`,
+    )
+    .join("\n");
 
+  const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ecc-page { min-height: 0; }
+</style>
+</head><body>${pages}</body></html>`;
+
+  openPrintHtml(html, { autoPrint: true });
+
+  const filename = opts?.filename || `documento-${Date.now()}.pdf`;
   return {
-    blob: pdf.output("blob"),
-    filename: opts?.filename || `documento-${Date.now()}.pdf`,
+    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
+    filename: filename.replace(/\.pdf$/i, ".html"),
+    exactPrint: true,
   };
 }
 
-/** HTML de fatura/recibo/lista → PDF A4 vertical padronizado (1 página se possível). */
+/**
+ * Fatura/recibo/lista → abre o documento de impressão exacto (HTML nativo).
+ * PDF idêntico = no diálogo: «Guardar como PDF».
+ */
 export async function htmlFragmentToA4Pdf(
   html: string,
-  opts?: { filename?: string; title?: string },
-): Promise<{ blob: Blob; filename: string }> {
-  return htmlToPdfBlob(html, {
-    filename: opts?.filename,
-    landscape: false,
-    forceSinglePage: true,
-  });
+  opts?: { filename?: string; title?: string; openPrint?: boolean },
+): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
+  const open = opts?.openPrint !== false;
+  if (open) {
+    openPrintHtml(html, { autoPrint: true });
+  }
+  const filename = opts?.filename || `documento-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return {
+    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
+    filename: filename.replace(/\.pdf$/i, ".html"),
+    exactPrint: true,
+  };
 }
 
 export async function elementToPdfBlob(
@@ -1046,47 +1042,94 @@ export function buildOfficialListHtml(opts: {
 </body></html>`;
 }
 
-/** Abre impressão oficial e gera PDF do mesmo HTML (evita páginas em branco). */
-export async function printAndPdfOfficialList(
-  opts: Parameters<typeof buildOfficialListHtml>[0] & {
-    filename?: string;
-    openPrint?: boolean;
-  },
-): Promise<{ blob: Blob; filename: string }> {
-  const html = buildOfficialListHtml(opts);
-  if (opts.openPrint !== false) openPrintHtml(html);
-
-  const filename =
-    opts.filename ||
-    `${(opts.title || "lista").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
-
-  try {
-    return await htmlToPdfBlob(html, {
-      filename,
-      landscape: Boolean(opts.landscape),
-      forceSinglePage: false,
-    });
-  } catch {
-    return {
-      blob: new Blob([html], { type: "text/html;charset=utf-8" }),
-      filename: filename.replace(/\.pdf$/i, ".html"),
-    };
-  }
-}
-
 /**
- * Abre documento HTML para impressão (mesmo modelo dos recibos/contratos em Salários).
- * Fiável: texto nativo, fontes tipográficas, sem canvas em branco.
+ * Garante documento HTML completo e injeta dica no ecrã
+ * (oculta na impressão): «No diálogo escolha Guardar como PDF».
  */
-export function openPrintHtml(html: string): void {
-  let docHtml = html;
+function preparePrintDocument(html: string): string {
+  let docHtml = html.trim();
+  if (!/^<!DOCTYPE/i.test(docHtml) && !/^<html/i.test(docHtml)) {
+    docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4; margin: 10mm; }
+  html, body { margin: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif; }
+</style></head><body>${docHtml}</body></html>`;
+  }
   if (docHtml.includes("<title>")) {
     docHtml = docHtml.replace(/<title>[^<]*<\/title>/i, "<title></title>");
   } else if (docHtml.includes("</head>")) {
     docHtml = docHtml.replace("</head>", "<title></title></head>");
   }
+
+  const chrome = `
+<style id="ecc-print-chrome">
+  .ecc-print-bar {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 99999;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
+    padding: 10px 14px;
+    background: #0b3d2c; color: #fff;
+    font-family: system-ui, -apple-system, sans-serif; font-size: 13px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.2);
+  }
+  .ecc-print-bar strong { font-weight: 700; }
+  .ecc-print-bar button {
+    border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+    font-weight: 600; font-size: 13px;
+  }
+  .ecc-print-bar .primary { background: #fbde4a; color: #0b3d2c; }
+  .ecc-print-bar .ghost { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.45); }
+  body { padding-top: 56px !important; }
+  @media print {
+    .ecc-print-bar { display: none !important; }
+    body { padding-top: 0 !important; }
+  }
+</style>
+<div class="ecc-print-bar" id="ecc-print-bar">
+  <span><strong>Documento oficial</strong> — no diálogo escolha a impressora ou <strong>Guardar como PDF</strong> (resultado idêntico à impressão).</span>
+  <button type="button" class="primary" onclick="window.print()">Imprimir / Guardar PDF</button>
+  <button type="button" class="ghost" onclick="window.close()">Fechar</button>
+</div>`;
+
+  if (docHtml.includes("<body>")) {
+    docHtml = docHtml.replace("<body>", `<body>${chrome}`);
+  } else if (docHtml.includes("<body ")) {
+    docHtml = docHtml.replace(/<body([^>]*)>/i, `<body$1>${chrome}`);
+  }
+  return docHtml;
+}
+
+/**
+ * Abre o MESMO documento da impressão (HTML nativo).
+ * PDF idêntico = no diálogo do browser: destino «Guardar como PDF».
+ * Não usa html2canvas — evita formatação diferente.
+ */
+export function openPrintHtml(html: string, opts?: { autoPrint?: boolean }): void {
+  const docHtml = preparePrintDocument(html);
+  const autoPrint = opts?.autoPrint !== false;
   const blob = new Blob([docHtml], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
+
+  // Janela visível: pré-visualização = impressão = PDF
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (win) {
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    if (autoPrint) {
+      const tryPrint = () => {
+        try {
+          win.focus();
+          win.print();
+        } catch {
+          /* ignore */
+        }
+      };
+      // Esperar imagens / layout
+      window.setTimeout(tryPrint, 600);
+    }
+    return;
+  }
+
+  // Fallback: iframe oculto (popup bloqueado)
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", " ");
   iframe.setAttribute("aria-hidden", "true");
@@ -1109,7 +1152,7 @@ export function openPrintHtml(html: string): void {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
     } catch {
-      /* browser bloqueou */
+      /* ignore */
     }
     window.setTimeout(cleanup, 2500);
   };
@@ -1134,6 +1177,33 @@ export function openPrintHtml(html: string): void {
       }
     });
     window.setTimeout(runPrint, 2500);
+  };
+}
+
+/**
+ * Listas oficiais: abre o documento de impressão exacto.
+ * PDF = «Guardar como PDF» no diálogo (idêntico à impressão).
+ */
+export async function printAndPdfOfficialList(
+  opts: Parameters<typeof buildOfficialListHtml>[0] & {
+    filename?: string;
+    openPrint?: boolean;
+  },
+): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
+  const html = buildOfficialListHtml(opts);
+  const filename =
+    opts.filename ||
+    `${(opts.title || "lista").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+  if (opts.openPrint !== false) {
+    openPrintHtml(html, { autoPrint: true });
+  }
+
+  // Não gerar PDF por canvas — seria diferente da impressão.
+  return {
+    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
+    filename: filename.replace(/\.pdf$/i, ".html"),
+    exactPrint: true,
   };
 }
 
@@ -1321,24 +1391,18 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
 export async function exportBaiTablePdf(
   rows: BaiRow[],
   opts?: BaiPdfOpts,
-): Promise<{ blob: Blob; filename: string }> {
+): Promise<{ blob: Blob; filename: string; exactPrint: true }> {
   const html = buildBaiExtratoHtml(rows, opts);
   const filename = opts?.filename || `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`;
 
   if (opts?.openPrint !== false) {
-    openPrintHtml(html);
+    openPrintHtml(html, { autoPrint: true });
   }
 
-  try {
-    return await htmlToPdfBlob(html, {
-      filename,
-      landscape: true,
-      forceSinglePage: false,
-    });
-  } catch {
-    return {
-      blob: new Blob([html], { type: "text/html;charset=utf-8" }),
-      filename: filename.replace(/\.pdf$/i, ".html"),
-    };
-  }
+  // PDF idêntico à impressão = «Guardar como PDF» no diálogo do browser
+  return {
+    blob: new Blob([html], { type: "text/html;charset=utf-8" }),
+    filename: filename.replace(/\.pdf$/i, ".html"),
+    exactPrint: true,
+  };
 }

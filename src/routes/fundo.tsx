@@ -192,13 +192,7 @@ function Fundo() {
         rows,
         footerNote: `Restante em caixa: ${formatKz(lev - gasto)}`,
       });
-      toast.success("Impressão aberta · Fundo de maneio");
-      if (blob.type === "application/pdf") {
-        await shareOrDownloadPdf(blob, filename, {
-          title: "Fundo de maneio · École Consulaire",
-          text: "Documento gerado pelo Departamento de Finanças.",
-        });
-      }
+      toast.success("Documento aberto — escolha impressora ou «Guardar como PDF»");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
     }

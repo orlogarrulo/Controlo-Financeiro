@@ -170,16 +170,8 @@ function Banco() {
           openPrint: true,
         },
       );
-      toast.success("Janela de impressão aberta — A4 horizontal");
+      toast.success("Documento aberto — escolha impressora ou «Guardar como PDF» (idêntico à impressão)");
       // Em PC também disponibiliza o PDF num separador (para guardar/enviar)
-      if (blob.type === "application/pdf") {
-        void shareOrDownloadPdf(blob, filename, {
-          title: "Extrato BAI · École Consulaire",
-          text: "Extrato bancário A4 horizontal.",
-        }).catch(() => {
-          /* impressão já aberta */
-        });
-      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir extrato");
     }
