@@ -4,7 +4,6 @@ import { Download, Pencil, Search, Trash2, Printer } from "lucide-react";
 import { useMemo, useRef, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
-import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +14,7 @@ import { downloadCsv, ledgerToCsv } from "@/lib/csv";
 import { formatDate, formatKz } from "@/lib/format";
 import type { Lancamento, Origem } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
+import { printAndPdfOfficialList, shareOrDownloadPdf } from "@/lib/pdf-export";
 
 export const Route = createFileRoute("/lancamentos")({
   component: Lancamentos,
@@ -125,6 +125,46 @@ function Lancamentos() {
 
   const total = filtered.reduce((s, r) => s + r.valor, 0);
 
+  async function imprimirListaDespesas() {
+    try {
+      const fonteLabel = FONTES.find((f) => f.id === fonte)?.label || "Todas";
+      const { blob, filename } = await printAndPdfOfficialList({
+        title: "Lista de despesas",
+        escola: escola.nome || "École Consulaire",
+        subtitle: `${fonteLabel} · Total ${formatKz(total)}`,
+        landscape: true,
+        filename: `despesas-${new Date().toISOString().slice(0, 10)}.pdf`,
+        openPrint: true,
+        columns: [
+          { key: "ref", label: "Ref.", width: "12%" },
+          { key: "data", label: "Data", width: "10%" },
+          { key: "fonte", label: "Fonte", width: "12%" },
+          { key: "categoria", label: "Categoria", width: "14%" },
+          { key: "descricao", label: "Descrição", width: "38%" },
+          { key: "valor", label: "Valor", align: "right", width: "14%" },
+        ],
+        rows: filtered.map((r) => ({
+          ref: r.docInterno || r.id,
+          data: formatDate(r.data),
+          fonte: ORIGEM_LABEL[r.origem] || r.origem,
+          categoria: r.categoria || "—",
+          descricao: r.fatura ? `${r.descricao} · Fat. ${r.fatura}` : r.descricao || "—",
+          valor: formatKz(r.valor),
+        })),
+        footerNote: `Total das despesas listadas: ${formatKz(total)}`,
+      });
+      toast.success("Impressão aberta · Lista de despesas");
+      if (blob.type === "application/pdf") {
+        await shareOrDownloadPdf(blob, filename, {
+          title: "Lista de despesas · École Consulaire",
+          text: "Documento gerado pelo Departamento de Finanças.",
+        });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -133,13 +173,9 @@ function Lancamentos() {
         description="Pagamentos da escola por fonte (cartão, transferência, dinheiro, sócio). Matrículas e propinas estão em Matrículas / Propinas — não misturar."
         actions={
           <div className="flex flex-wrap gap-2">
-            <PrintActions
-              targetRef={printRef}
-              filename="lancamentos.pdf"
-              landscape
-              shareTitle="Lançamentos · École Consulaire"
-              shareText="Documento gerado pelo Departamento de Finanças da École Consulaire."
-            />
+            <Button type="button" variant="secondary" className="no-print" onClick={() => void imprimirListaDespesas()}>
+              <Printer className="mr-1 size-4" /> Imprimir / PDF
+            </Button>
             <Button
               variant="secondary"
               className="no-print"

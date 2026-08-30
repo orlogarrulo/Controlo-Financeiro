@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useEffect, useState } from "react";
-import { Pencil, Plus, Landmark, Trash2 } from "lucide-react";
+import { Pencil, Plus, Landmark, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
-import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +12,7 @@ import { fundoAtmAll, fundoPagAll, useFinance, getSeed, movimentosAll } from "@/
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { isCollaborator1 } from "@/lib/can-edit";
 import type { FundoPagamento } from "@/data/types";
+import { printAndPdfOfficialList, shareOrDownloadPdf } from "@/lib/pdf-export";
 
 export const Route = createFileRoute("/fundo")({
   component: Fundo,
@@ -160,6 +160,50 @@ function Fundo() {
     setEditing(null);
   }
 
+  async function imprimirFundo() {
+    try {
+      const rows = [
+        ...atms.map((a) => ({
+          tipo: "ATM / Levantamento",
+          data: formatDate(a.data),
+          descricao: a.obs || a.id,
+          valor: formatKz(a.valor),
+        })),
+        ...pags.map((p) => ({
+          tipo: "Pagamento",
+          data: formatDate(p.data),
+          descricao: `${p.descricao || "—"}${p.recebeu ? ` · ${p.recebeu}` : ""}`,
+          valor: formatKz(p.valor),
+        })),
+      ];
+      const { blob, filename } = await printAndPdfOfficialList({
+        title: "Fundo de maneio",
+        escola: getSeed().escola.nome || "École Consulaire",
+        subtitle: `Levantado ${formatKz(lev)} · Gasto ${formatKz(gasto)} · Restante ${formatKz(lev - gasto)}`,
+        landscape: true,
+        filename: `fundo-maneio-${new Date().toISOString().slice(0, 10)}.pdf`,
+        openPrint: true,
+        columns: [
+          { key: "tipo", label: "Tipo", width: "18%" },
+          { key: "data", label: "Data", width: "12%" },
+          { key: "descricao", label: "Descrição", width: "50%" },
+          { key: "valor", label: "Valor", align: "right", width: "20%" },
+        ],
+        rows,
+        footerNote: `Restante em caixa: ${formatKz(lev - gasto)}`,
+      });
+      toast.success("Impressão aberta · Fundo de maneio");
+      if (blob.type === "application/pdf") {
+        await shareOrDownloadPdf(blob, filename, {
+          title: "Fundo de maneio · École Consulaire",
+          text: "Documento gerado pelo Departamento de Finanças.",
+        });
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -178,13 +222,9 @@ function Fundo() {
                 </Button>
               </>
             ) : null}
-            <PrintActions
-              targetRef={printRef}
-              filename="fundo-maneio.pdf"
-              landscape
-              shareTitle="Fundo de maneio · École Consulaire"
-              shareText="Documento gerado pelo Departamento de Finanças da École Consulaire."
-            />
+            <Button type="button" variant="secondary" className="no-print" onClick={() => void imprimirFundo()}>
+              <Printer className="mr-1 size-4" /> Imprimir / PDF
+            </Button>
           </div>
         }
       />

@@ -76,17 +76,21 @@ const A4_LANDSCAPE_HEIGHT_PX = 794;
 
 const STAGE_CSS = `
   [data-pdf-stage] {
-    color: #1a1a1a !important;
+    color: #0f172a !important;
     font-size: 12px !important;
     line-height: 1.4 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     box-sizing: border-box !important;
+    font-family: Georgia, "Times New Roman", Times, serif !important;
   }
   [data-pdf-stage] *,
   [data-pdf-stage] *::before,
   [data-pdf-stage] *::after {
     box-sizing: border-box !important;
+    opacity: 1 !important;
   }
   [data-pdf-stage] .no-print { display: none !important; }
   [data-pdf-stage] nav,
@@ -269,16 +273,19 @@ function makeStage(landscape = false): HTMLElement {
   stage.setAttribute("data-pdf-stage", "1");
   if (landscape) stage.setAttribute("data-pdf-landscape", "1");
   const w = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
-  // left:0 + opacity quase 0 — evita capturas em branco (html2canvas em alguns browsers)
+  // IMPORTANTE: opacity deve ser 1 — html2canvas captura a opacidade visual.
+  // z-index negativo mantém o stage atrás da UI sem afectar a captura.
   stage.style.cssText = [
     "position:fixed",
     "left:0",
     "top:0",
     `width:${w}px`,
+    "min-height:400px",
     "background:#ffffff",
     "color:#0f172a",
-    "z-index:0",
-    "opacity:0.01",
+    "z-index:-9999",
+    "opacity:1",
+    "visibility:visible",
     "pointer-events:none",
     "overflow:visible",
     "box-sizing:border-box",
@@ -869,12 +876,202 @@ export async function exportElementPdf(
 
 
 /** Escapa texto para HTML de impressão. */
-function escHtml(s: string): string {
+export function escHtml(s: string): string {
   return String(s || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Documento oficial de lista/tabela — A4 (retrato ou paisagem),
+ * tipografia Georgia/Times, cabeçalho com logotipo (modelo Salários/Banco).
+ */
+export function buildOfficialListHtml(opts: {
+  title: string;
+  escola?: string;
+  subtitle?: string;
+  landscape?: boolean;
+  columns: { key: string; label: string; align?: "left" | "right"; width?: string }[];
+  rows: Record<string, string | number>[];
+  footerNote?: string;
+}): string {
+  const escola = escHtml(opts.escola || "École Consulaire");
+  const title = escHtml(opts.title);
+  const subtitle = escHtml(opts.subtitle || "");
+  const logoSrc =
+    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
+  const emitido = new Date().toLocaleDateString("pt-PT", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+  const landscape = Boolean(opts.landscape);
+
+  const th = opts.columns
+    .map(
+      (c) =>
+        `<th class="${c.align === "right" ? "r" : ""}"${c.width ? ` style="width:${c.width}"` : ""}>${escHtml(c.label)}</th>`,
+    )
+    .join("");
+
+  let body = "";
+  opts.rows.forEach((row, i) => {
+    const bg = i % 2 ? "#f4f7f5" : "#ffffff";
+    const cells = opts.columns
+      .map((c) => {
+        const v = row[c.key];
+        const text = v == null || v === "" ? "—" : String(v);
+        return `<td class="${c.align === "right" ? "num" : ""}">${escHtml(text)}</td>`;
+      })
+      .join("");
+    body += `<tr style="background:${bg};">${cells}</tr>`;
+  });
+
+  const foot = opts.footerNote
+    ? `<p class="note">${escHtml(opts.footerNote)}</p>`
+    : "";
+
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm 8mm; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    font-size: ${landscape ? "10px" : "11px"}; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .sheet { padding: 0 2mm; }
+  .head {
+    display: flex; align-items: center; gap: 14px;
+    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 12px;
+  }
+  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .kicker {
+    margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #1f5c4a; font-weight: 700;
+  }
+  .title { margin: 3px 0 0; font-size: ${landscape ? "14px" : "16px"}; font-weight: 700; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead { display: table-header-group; }
+  th {
+    background: #1f5c4a; color: #fff;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 6px 5px; text-align: left; border: 1px solid #1a4d3e;
+  }
+  th.r { text-align: right; }
+  td {
+    padding: 4px 5px; border-bottom: 1px solid #d5ddd8; vertical-align: top;
+    font-size: ${landscape ? "9.5px" : "10.5px"}; word-wrap: break-word;
+  }
+  td.num {
+    text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+    font-family: "Courier New", Courier, monospace; font-size: ${landscape ? "9px" : "10px"};
+  }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  .note { margin-top: 10px; font-size: 10px; color: #334155; }
+  .foot {
+    margin-top: 14px; text-align: right; font-size: 9px; color: #64748b;
+  }
+  @media screen {
+    body { padding: 16px; background: #e8ece9; }
+    .sheet {
+      max-width: ${landscape ? "1100px" : "800px"}; margin: 0 auto;
+      background: #fff; padding: 16px 18px; box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+  }
+</style>
+</head><body>
+<div class="sheet">
+  <div class="head">
+    <img src="${logoSrc}" width="52" height="52" alt="" />
+    <div>
+      <p class="kicker">${escola}</p>
+      <p class="title">${title}</p>
+      <p class="meta">${subtitle ? `${subtitle} · ` : ""}${opts.rows.length} registo(s) · Emitido em ${emitido}</p>
+    </div>
+  </div>
+  <table>
+    <thead><tr>${th}</tr></thead>
+    <tbody>
+      ${body || `<tr><td colspan="${opts.columns.length}" style="padding:16px;text-align:center;color:#64748b;">Sem registos.</td></tr>`}
+    </tbody>
+  </table>
+  ${foot}
+  <p class="foot">Documento gerado pelo Departamento de Finanças · ${escola}</p>
+</div>
+</body></html>`;
+}
+
+/** Abre impressão oficial e gera PDF do mesmo HTML (evita páginas em branco). */
+export async function printAndPdfOfficialList(
+  opts: Parameters<typeof buildOfficialListHtml>[0] & {
+    filename?: string;
+    openPrint?: boolean;
+  },
+): Promise<{ blob: Blob; filename: string }> {
+  const html = buildOfficialListHtml(opts);
+  if (opts.openPrint !== false) openPrintHtml(html);
+
+  const filename =
+    opts.filename ||
+    `${(opts.title || "lista").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+  try {
+    // Captura o .sheet via stage com opacity 1
+    const stage = makeStage(Boolean(opts.landscape));
+    try {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;opacity:1;";
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const sheet = tmp.querySelector(".sheet");
+      wrap.innerHTML = sheet ? sheet.outerHTML : html;
+      stage.appendChild(wrap);
+      await waitImages(stage);
+      await wait(120);
+      const { html2canvas, jsPDF } = await ensureLibs();
+      const wPx = opts.landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
+      const canvas = await html2canvas(stage, {
+        scale: 1.8,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: wPx,
+        windowWidth: wPx,
+        scrollX: 0,
+        scrollY: 0,
+      });
+      const pdf = new jsPDF({
+        orientation: opts.landscape ? "l" : "p",
+        unit: "mm",
+        format: "a4",
+      });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+      const w = canvas.width * ratio;
+      const h = canvas.height * ratio;
+      const x = (pageW - w) / 2;
+      const y = margin;
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", x, y, w, h);
+      return { blob: pdf.output("blob"), filename };
+    } finally {
+      stage.remove();
+    }
+  } catch {
+    return {
+      blob: new Blob([html], { type: "text/html;charset=utf-8" }),
+      filename: filename.replace(/\.pdf$/i, ".html"),
+    };
+  }
 }
 
 /**
@@ -1141,29 +1338,11 @@ export async function exportBaiTablePdf(
     const pageH = pdf.internal.pageSize.getHeight();
     const margin = 6;
 
-    const stage = document.createElement("div");
-    stage.setAttribute("data-pdf-stage", "1");
-    stage.setAttribute("data-pdf-landscape", "1");
-    stage.style.cssText = [
-      "position:fixed",
-      "left:0",
-      "top:0",
-      `width:${A4_LANDSCAPE_WIDTH_PX}px`,
-      "background:#ffffff",
-      "color:#0f172a",
-      "z-index:0",
-      "opacity:0.01",
-      "pointer-events:none",
-      "overflow:visible",
-      "box-sizing:border-box",
-      "padding:12px",
-      "font-family:Georgia,'Times New Roman',Times,serif",
-    ].join(";");
-    document.body.appendChild(stage);
+    const stage = makeStage(true);
 
     try {
       const wrap = document.createElement("div");
-      wrap.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;";
+      wrap.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;opacity:1;";
       // Extrai só o .sheet para captura limpa
       const tmp = document.createElement("div");
       tmp.innerHTML = html;
