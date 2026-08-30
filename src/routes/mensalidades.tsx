@@ -10,6 +10,7 @@ import { MESES_LABEL, MESES_LETIVOS } from "@/data/types";
 import { estadoPropinaMes, getSeed, useFinance, type EstadoPropinaMes } from "@/lib/store";
 import { formatKz } from "@/lib/format";
 import { printAndPdfOfficialList, shareOrDownloadPdf } from "@/lib/pdf-export";
+import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
 
 export const Route = createFileRoute("/mensalidades")({ component: Mensalidades });
 
@@ -36,6 +37,9 @@ function Mensalidades() {
   const setMensalidade = useFinance((s) => s.setMensalidade);
   const confirmPropinaBai = useFinance((s) => s.confirmPropinaBai);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
+  const activeOperator = useFinance((s) => s.activeOperator);
+  const operators = useFinance((s) => s.operators);
+  const canEdit = isCollaborator1(activeOperator, operators);
 
   const monthTotals = MESES_LETIVOS.map((m) => rows.reduce((s, r) => s + (r.pagamentos[m] || 0), 0));
   const grand = monthTotals.reduce((s, n) => s + n, 0);
@@ -46,6 +50,10 @@ function Mensalidades() {
   }
 
   function salvarBai(id: string, mes: string) {
+    if (!canEdit) {
+      toast.error(VIEW_ONLY_MSG);
+      return;
+    }
     try {
       const r = confirmPropinaBai(id, mes);
       if (r.ok) toast.success(r.message);
@@ -130,7 +138,10 @@ function Mensalidades() {
         description="Prazo sem multa: do dia 30 do mês da propina até ao dia 10 do mês seguinte. Fora disso: pendente com multa (ou pago com multa se pagar tarde)."
       />
       <p className="mb-3 text-sm text-[var(--color-muted)]">
-        Total recebido: {formatKz(grand)}. Introduza o valor e clique em «BAI» para confirmar. Estados: Pago · Pago c/ multa · Em prazo · Pendente · multa.
+        Total recebido: {formatKz(grand)}.{" "}
+        {canEdit
+          ? "Introduza o valor e clique em «BAI» para confirmar. Estados: Pago · Pago c/ multa · Em prazo · Pendente · multa."
+          : "Modo consulta — só visualizar e imprimir. Edição reservada ao Colaborador 1."}
       </p>
       <div ref={printRef}>
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
@@ -193,13 +204,19 @@ function Mensalidades() {
                     return (
                       <td key={m} className="px-1 py-1 align-top">
                         <div className="no-print flex flex-col items-stretch gap-0.5">
-                          <Input
-                            className="h-9 min-w-20 px-2 text-right text-xs"
-                            type="number"
-                            min={0}
-                            value={val || ""}
-                            onChange={(e) => setMensalidade(r.id, m, Number(e.target.value) || 0)}
-                          />
+                          {canEdit ? (
+                            <Input
+                              className="h-9 min-w-20 px-2 text-right text-xs"
+                              type="number"
+                              min={0}
+                              value={val || ""}
+                              onChange={(e) => setMensalidade(r.id, m, Number(e.target.value) || 0)}
+                            />
+                          ) : (
+                            <p className="h-9 min-w-20 px-2 text-right text-xs leading-9 tabular-nums">
+                              {val ? formatKz(val) : "—"}
+                            </p>
+                          )}
                           <span
                             className={
                               "text-center text-[9px] font-medium leading-tight " +
@@ -215,7 +232,7 @@ function Mensalidades() {
                           >
                             {lab.text}
                           </span>
-                          {val > 0 ? (
+                          {canEdit && val > 0 ? (
                             <Button
                               type="button"
                               size="sm"

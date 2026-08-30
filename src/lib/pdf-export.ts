@@ -459,20 +459,29 @@ function addCoverPage(
 ): void {
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const margin = 10;
+  const margin = PDF_MARGIN_MM;
   const maxW = pageW - margin * 2;
   const maxH = pageH - margin * 2;
   const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
   const w = canvas.width * ratio;
   const h = canvas.height * ratio;
   const x = (pageW - w) / 2;
-  const y = (pageH - h) / 2;
+  const y = margin + Math.max(0, (maxH - h) / 2);
   if (!isFirst) pdf.addPage();
-  pdf.addImage(canvas.toDataURL("image/jpeg", 0.88), "JPEG", x, y, w, h);
+  pdf.addImage(canvas.toDataURL("image/jpeg", 0.9), "JPEG", x, y, w, h);
 }
 
 
-/** Desenha o canvas no PDF: largura total da página; fatias verticais sem cortar linhas a meio. */
+/** Margem única em todos os PDFs oficiais (mm). */
+const PDF_MARGIN_MM = 8;
+
+/**
+ * Desenha o canvas no PDF A4 com regras FIXAS:
+ * - margem 8 mm em todos os lados
+ * - largura do conteúdo = largura da página − 16 mm
+ * - multipágina por fatias se necessário
+ * - forceSinglePage: reduz escala para caber numa folha (faturas)
+ */
 function addCanvasToPdf(
   pdf: InstanceType<JsPdfCtor>,
   canvas: HTMLCanvasElement,
@@ -480,23 +489,19 @@ function addCanvasToPdf(
     landscape?: boolean;
     hasPriorPages?: boolean;
     tighter?: boolean;
-    /** Escala o conteúdo para caber sempre numa única página (sem fatias). */
     forceSinglePage?: boolean;
   },
 ): number {
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const margin = opts.landscape ? 10 : opts.tighter ? 9 : 12;
+  const margin = PDF_MARGIN_MM;
   const contentW = pageW - margin * 2;
-  // Folga inferior para não colar no rodapé / não cortar última linha
-  const contentH = pageH - margin * 2 - (opts.landscape ? 6 : 8);
+  const contentH = pageH - margin * 2;
 
-  // Escala: a largura do canvas mapeia SEMPRE para contentW (sem crop lateral)
   let drawW = contentW;
   let scale = contentW / canvas.width;
   let fullH = canvas.height * scale;
 
-  // Tabela completa numa página: reduzir escala se for mais alta que a folha
   if (opts.forceSinglePage && fullH > contentH) {
     scale = contentH / canvas.height;
     drawW = canvas.width * scale;
@@ -509,30 +514,22 @@ function addCanvasToPdf(
     pages++;
   };
 
-  // Cabe numa página (com 3% de folga) ou forceSinglePage
-  if (opts.forceSinglePage || fullH <= contentH * 1.03) {
+  if (opts.forceSinglePage || fullH <= contentH * 1.02) {
     ensurePage();
     const h = Math.min(fullH, contentH);
     const x = margin + (contentW - drawW) / 2;
-    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, margin, drawW, h);
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.93), "JPEG", x, margin, drawW, h);
     return pages;
   }
 
-  // Multipágina — fatias em coordenadas do canvas
   const pxPerPage = contentH / scale;
-  const rowStep = Math.max(14, Math.round((opts.landscape ? 16 : 20) * (opts.landscape ? 1.35 : 1.5)));
   const pageCanvas = document.createElement("canvas");
   const ctx = pageCanvas.getContext("2d");
   if (!ctx) throw new Error("Canvas indisponível");
 
   let srcY = 0;
   while (srcY < canvas.height - 1) {
-    let sliceH = Math.min(pxPerPage, canvas.height - srcY);
-    const isLast = srcY + sliceH >= canvas.height - 2;
-    if (!isLast) {
-      const snapped = Math.floor(sliceH / rowStep) * rowStep;
-      if (snapped > pxPerPage * 0.5) sliceH = snapped;
-    }
+    const sliceH = Math.min(pxPerPage, canvas.height - srcY);
     pageCanvas.width = canvas.width;
     pageCanvas.height = Math.max(1, Math.ceil(sliceH));
     ctx.fillStyle = "#ffffff";
@@ -542,7 +539,7 @@ function addCanvasToPdf(
     ensurePage();
     const sliceMmH = sliceH * scale;
     pdf.addImage(
-      pageCanvas.toDataURL("image/jpeg", 0.92),
+      pageCanvas.toDataURL("image/jpeg", 0.93),
       "JPEG",
       margin,
       margin,
@@ -550,16 +547,89 @@ function addCanvasToPdf(
       Math.min(sliceMmH, contentH),
     );
     srcY += sliceH;
-    if (pages > 60) break;
+    if (pages > 80) break;
   }
   return pages;
 }
 
-
 /**
- * HTML simples (ex.: fatura de propina) → PDF A4 vertical, uma página.
- * Usa stage off-screen com opacidade total (evita PDF em branco).
+ * Motor único: HTML → canvas → PDF A4 (retrato ou paisagem).
+ * Todos os separadores devem usar este caminho para tamanho padronizado.
  */
+async function htmlToPdfBlob(
+  html: string,
+  opts?: {
+    filename?: string;
+    landscape?: boolean;
+    forceSinglePage?: boolean;
+  },
+): Promise<{ blob: Blob; filename: string }> {
+  const landscape = Boolean(opts?.landscape);
+  const { html2canvas, jsPDF } = await ensureLibs();
+  const wPx = landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
+  const stage = makeStage(landscape);
+
+  try {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = [
+      "width:100%",
+      "max-width:100%",
+      "background:#ffffff",
+      "color:#0f172a",
+      "box-sizing:border-box",
+      "padding:0",
+      "margin:0",
+      "opacity:1",
+      "font-family:Georgia,'Times New Roman',Times,serif",
+    ].join(";");
+
+    // Preferir só o .sheet (documentos oficiais) para largura estável
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    const sheet = tmp.querySelector(".sheet");
+    if (sheet) {
+      wrap.appendChild(sheet.cloneNode(true));
+    } else {
+      // Fragmento (fatura, etc.): envolve em caixa de largura A4
+      const box = document.createElement("div");
+      box.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;";
+      box.innerHTML = html;
+      wrap.appendChild(box);
+    }
+    stage.appendChild(wrap);
+    await waitImages(stage);
+    await wait(100);
+
+    const canvas = await html2canvas(wrap, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      width: wPx,
+      windowWidth: wPx,
+      scrollX: 0,
+      scrollY: 0,
+    });
+
+    const pdf = new jsPDF({
+      orientation: landscape ? "l" : "p",
+      unit: "mm",
+      format: "a4",
+    });
+    addCanvasToPdf(pdf, canvas, {
+      landscape,
+      forceSinglePage: Boolean(opts?.forceSinglePage),
+    });
+
+    return {
+      blob: pdf.output("blob"),
+      filename: opts?.filename || `documento-${new Date().toISOString().slice(0, 10)}.pdf`,
+    };
+  } finally {
+    stage.remove();
+  }
+}
 
 /**
  * Vários HTML (ex.: faturas) → um único PDF A4, uma página por fatura.
@@ -571,30 +641,34 @@ export async function htmlFragmentsToMultiPageA4Pdf(
   if (!fragments.length) throw new Error("Sem conteúdo para o PDF");
   const { html2canvas, jsPDF } = await ensureLibs();
   const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const margin = 10;
-  const maxW = pageW - margin * 2;
-  const maxH = pageH - margin * 2;
+  let pageCount = 0;
 
   for (let i = 0; i < fragments.length; i++) {
     const stage = makeStage(false);
     try {
       const wrap = document.createElement("div");
       wrap.style.cssText =
-        "width:100%;background:#ffffff;color:#111111;box-sizing:border-box;padding:6px 2px;";
+        "width:100%;background:#ffffff;color:#0f172a;box-sizing:border-box;padding:0;margin:0;font-family:Georgia,'Times New Roman',Times,serif;";
       wrap.innerHTML = fragments[i];
       stage.appendChild(wrap);
       await waitImages(stage);
-      await wait(60);
-      const canvas = await capture(stage, html2canvas, 1.6, false);
-      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
-      const w = canvas.width * ratio;
-      const h = canvas.height * ratio;
-      const x = (pageW - w) / 2;
-      const y = margin;
-      if (i > 0) pdf.addPage();
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, y, w, h);
+      await wait(80);
+      const canvas = await html2canvas(wrap, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: A4_WIDTH_PX,
+        windowWidth: A4_WIDTH_PX,
+        scrollX: 0,
+        scrollY: 0,
+      });
+      const used = addCanvasToPdf(pdf, canvas, {
+        hasPriorPages: pageCount > 0,
+        forceSinglePage: true,
+      });
+      pageCount += used;
     } finally {
       stage.remove();
     }
@@ -606,50 +680,16 @@ export async function htmlFragmentsToMultiPageA4Pdf(
   };
 }
 
+/** HTML de fatura/recibo/lista → PDF A4 vertical padronizado (1 página se possível). */
 export async function htmlFragmentToA4Pdf(
   html: string,
   opts?: { filename?: string; title?: string },
 ): Promise<{ blob: Blob; filename: string }> {
-  const { html2canvas, jsPDF } = await ensureLibs();
-  const stage = makeStage(false);
-  try {
-    const wrap = document.createElement("div");
-    wrap.style.cssText =
-      "width:100%;background:#ffffff;color:#0f172a;box-sizing:border-box;padding:8px 4px;font-family:Georgia,'Times New Roman',Times,serif;";
-    wrap.innerHTML = html;
-    stage.appendChild(wrap);
-    await waitImages(stage);
-    await wait(120);
-    const canvas = await html2canvas(stage, {
-      scale: 1.8,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      width: A4_WIDTH_PX,
-      windowWidth: A4_WIDTH_PX,
-      scrollX: 0,
-      scrollY: 0,
-    });
-    const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 10;
-    const maxW = pageW - margin * 2;
-    const maxH = pageH - margin * 2;
-    const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
-    const w = canvas.width * ratio;
-    const h = canvas.height * ratio;
-    const x = (pageW - w) / 2;
-    const y = margin;
-    pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", x, y, w, h);
-    return {
-      blob: pdf.output("blob"),
-      filename: opts?.filename || `documento-${Date.now()}.pdf`,
-    };
-  } finally {
-    stage.remove();
-  }
+  return htmlToPdfBlob(html, {
+    filename: opts?.filename,
+    landscape: false,
+    forceSinglePage: true,
+  });
 }
 
 export async function elementToPdfBlob(
@@ -1021,51 +1061,11 @@ export async function printAndPdfOfficialList(
     `${(opts.title || "lista").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
 
   try {
-    // Captura o .sheet via stage com opacity 1
-    const stage = makeStage(Boolean(opts.landscape));
-    try {
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;opacity:1;";
-      const tmp = document.createElement("div");
-      tmp.innerHTML = html;
-      const sheet = tmp.querySelector(".sheet");
-      wrap.innerHTML = sheet ? sheet.outerHTML : html;
-      stage.appendChild(wrap);
-      await waitImages(stage);
-      await wait(120);
-      const { html2canvas, jsPDF } = await ensureLibs();
-      const wPx = opts.landscape ? A4_LANDSCAPE_WIDTH_PX : A4_WIDTH_PX;
-      const canvas = await html2canvas(stage, {
-        scale: 1.8,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        width: wPx,
-        windowWidth: wPx,
-        scrollX: 0,
-        scrollY: 0,
-      });
-      const pdf = new jsPDF({
-        orientation: opts.landscape ? "l" : "p",
-        unit: "mm",
-        format: "a4",
-      });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 8;
-      const maxW = pageW - margin * 2;
-      const maxH = pageH - margin * 2;
-      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
-      const w = canvas.width * ratio;
-      const h = canvas.height * ratio;
-      const x = (pageW - w) / 2;
-      const y = margin;
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", x, y, w, h);
-      return { blob: pdf.output("blob"), filename };
-    } finally {
-      stage.remove();
-    }
+    return await htmlToPdfBlob(html, {
+      filename,
+      landscape: Boolean(opts.landscape),
+      forceSinglePage: false,
+    });
   } catch {
     return {
       blob: new Blob([html], { type: "text/html;charset=utf-8" }),
@@ -1325,60 +1325,17 @@ export async function exportBaiTablePdf(
   const html = buildBaiExtratoHtml(rows, opts);
   const filename = opts?.filename || `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`;
 
-  // Impressão fiável (modelo dos outros separadores)
   if (opts?.openPrint !== false) {
     openPrintHtml(html);
   }
 
-  // PDF opcional (para partilha/download) — mesmo layout, captura melhorada
   try {
-    const { html2canvas, jsPDF } = await ensureLibs();
-    const pdf = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 6;
-
-    const stage = makeStage(true);
-
-    try {
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;opacity:1;";
-      // Extrai só o .sheet para captura limpa
-      const tmp = document.createElement("div");
-      tmp.innerHTML = html;
-      const sheet = tmp.querySelector(".sheet");
-      wrap.innerHTML = sheet ? sheet.outerHTML : html;
-      stage.appendChild(wrap);
-      await waitImages(stage);
-      await wait(120);
-
-      const canvas = await html2canvas(stage, {
-        scale: 1.8,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        width: A4_LANDSCAPE_WIDTH_PX,
-        windowWidth: A4_LANDSCAPE_WIDTH_PX,
-        scrollX: 0,
-        scrollY: 0,
-      });
-
-      const maxW = pageW - margin * 2;
-      const maxH = pageH - margin * 2;
-      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
-      const w = canvas.width * ratio;
-      const h = canvas.height * ratio;
-      const x = (pageW - w) / 2;
-      const y = margin;
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", x, y, w, h);
-    } finally {
-      stage.remove();
-    }
-
-    return { blob: pdf.output("blob"), filename };
+    return await htmlToPdfBlob(html, {
+      filename,
+      landscape: true,
+      forceSinglePage: false,
+    });
   } catch {
-    // Se o PDF falhar, a impressão HTML já foi aberta
     return {
       blob: new Blob([html], { type: "text/html;charset=utf-8" }),
       filename: filename.replace(/\.pdf$/i, ".html"),

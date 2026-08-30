@@ -12,7 +12,7 @@ import {
 
 const NAV = [
   { to: "/", label: "Quadro", icon: LayoutDashboard },
-  { to: "/capturar", label: "Nova despesa", icon: Camera },
+  { to: "/capturar", label: "Nova despesa", icon: Camera, adminOnly: true },
   { to: "/lancamentos", label: "Lista despesas", icon: BookOpen },
   { to: "/alunos", label: "Matrículas", icon: Users },
   { to: "/mensalidades", label: "Propinas", icon: Receipt },
@@ -92,6 +92,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             setOperatorName={setOperatorName}
             editOps={editOps}
             setEditOps={setEditOps}
+            isAdmin={isAdmin}
           />
           <p className="px-4 pb-5 text-[11px] leading-relaxed text-[var(--color-muted)]">
             {escola.ano} · Isenta de impostos
@@ -230,8 +231,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-[var(--color-line)] bg-[var(--color-bg-elevated)]/95 backdrop-blur-md lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="grid grid-cols-5 px-1 pt-1">
-          {BOTTOM.map((item) => {
+        <div className={cn("grid px-1 pt-1", isAdmin ? "grid-cols-5" : "grid-cols-4")}>
+          {BOTTOM.filter((item) => isAdmin || !item.capture).map((item) => {
             const Icon = item.icon;
             const active = pathname === item.to;
             const capture = Boolean(item.capture);
@@ -292,6 +293,7 @@ function OperatorPanel({
   setOperatorName,
   editOps,
   setEditOps,
+  isAdmin,
 }: {
   operators: string[];
   activeOperator: string;
@@ -299,12 +301,18 @@ function OperatorPanel({
   setOperatorName: (i: number, n: string) => void;
   editOps: boolean;
   setEditOps: (fn: (v: boolean) => boolean) => void;
+  isAdmin: boolean;
 }) {
   return (
     <div className="border-t border-[var(--color-line)] px-3 py-3">
       <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium tracking-[0.12em] text-[var(--color-muted)] uppercase">
         <UserRound className="size-3" /> A trabalhar como
       </p>
+      {!isAdmin ? (
+        <p className="mb-2 rounded-lg bg-[var(--color-forest-soft)] px-2 py-1.5 text-[10px] leading-snug text-[var(--color-forest-deep)]">
+          Modo consulta: só visualizar e imprimir. Edição reservada ao Colaborador 1.
+        </p>
+      ) : null}
       <div className="mb-2 flex flex-col gap-1">
         <button
           type="button"
@@ -344,14 +352,16 @@ function OperatorPanel({
           </option>
         ))}
       </select>
-      <button
-        type="button"
-        className="mt-1.5 text-[10px] text-[var(--color-forest)] underline-offset-2 hover:underline"
-        onClick={() => setEditOps((v) => !v)}
-      >
-        {editOps ? "Fechar nomes" : "Renomear equipa"}
-      </button>
-      {editOps ? (
+      {isAdmin ? (
+        <button
+          type="button"
+          className="mt-1.5 text-[10px] text-[var(--color-forest)] underline-offset-2 hover:underline"
+          onClick={() => setEditOps((v) => !v)}
+        >
+          {editOps ? "Fechar nomes" : "Renomear equipa"}
+        </button>
+      ) : null}
+      {isAdmin && editOps ? (
         <div className="mt-2 space-y-1.5">
           {operators.map((name, i) => (
             <input

@@ -1,8 +1,24 @@
 /** PIN só do Colaborador 1 — não mostrar aos outros. */
 export const EDIT_PIN = "1977";
 
+/** Mensagem padrão quando C2–C5 tentam editar. */
+export const VIEW_ONLY_MSG =
+  "Apenas o Colaborador 1 pode editar. Colaboradores 2–5: só visualizar e imprimir.";
+
 export function isCollaborator1(activeOperator: string, operators: string[]): boolean {
   return Boolean(operators[0] && activeOperator === operators[0]);
+}
+
+/** true = pode criar/editar/apagar; false = só consulta e impressão. */
+export function canEditApp(activeOperator: string, operators: string[]): boolean {
+  return isCollaborator1(activeOperator, operators);
+}
+
+/** Lança erro se não for Colaborador 1 (usar nas mutações do store e na UI). */
+export function assertCanEdit(activeOperator: string, operators: string[]): void {
+  if (!canEditApp(activeOperator, operators)) {
+    throw new Error(VIEW_ONLY_MSG);
+  }
 }
 
 /** Sessão: colaborador escolhido neste browser. */

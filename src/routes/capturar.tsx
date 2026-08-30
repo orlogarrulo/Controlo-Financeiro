@@ -20,6 +20,7 @@ import { compressImage } from "@/lib/image";
 import { ocrImage, parseOcrText } from "@/lib/ocr";
 import { todayIso } from "@/lib/format";
 import type { Origem } from "@/data/types";
+import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
 
 export const Route = createFileRoute("/capturar")({ component: Capturar });
 
@@ -37,6 +38,8 @@ function Capturar() {
   const seed = getSeed();
   const add = useFinance((s) => s.addCaptura);
   const activeOperator = useFinance((s) => s.activeOperator);
+  const operators = useFinance((s) => s.operators);
+  const canEdit = isCollaborator1(activeOperator, operators);
   const nav = useNavigate();
   const [foto, setFoto] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -102,13 +105,42 @@ function Capturar() {
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (!canEdit) {
+      toast.error(VIEW_ONLY_MSG);
+      return;
+    }
     if (!form.descricao.trim() || !form.valor) {
       toast.error("Preencha a descrição e o valor");
       return;
     }
-    const row = add({ ...form, tipo: "despesa", foto });
-    toast.success(`Despesa ${row.docInterno} registada`);
-    void nav({ to: "/lancamentos" });
+    try {
+      const row = add({ ...form, tipo: "despesa", foto });
+      toast.success(`Despesa ${row.docInterno} registada`);
+      void nav({ to: "/lancamentos" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : VIEW_ONLY_MSG);
+    }
+  }
+
+  if (!canEdit) {
+    return (
+      <div>
+        <PageHeader
+          kicker="Despesas"
+          title="Nova despesa"
+          description={VIEW_ONLY_MSG}
+        />
+        <p className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
+          Os Colaboradores 2 a 5 podem consultar e imprimir a lista de despesas, mas não registar novas.
+          Peça ao Colaborador 1 se precisar de um registo.
+        </p>
+        <div className="mt-4">
+          <Button asChild variant="secondary">
+            <Link to="/lancamentos">Ver lista de despesas</Link>
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -14,8 +14,14 @@ import type {
   Seed,
 } from "@/data/types";
 import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
+import { assertCanEdit } from "@/lib/can-edit";
 
 const seed = seedJson as Seed;
+
+/** Bloqueia mutações para Colaboradores 2–5 (só C1 edita). */
+function requireEdit(get: () => { activeOperator: string; operators: string[] }) {
+  assertCanEdit(get().activeOperator || "", get().operators || []);
+}
 
 /** Numeração interna mensal: PREFIXO-AAAA-MM-001 (reinicia cada mês). */
 export function nextMonthlyDoc(
@@ -231,6 +237,7 @@ export const useFinance = create<Store>()(
       salariosOverrides: {},
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
+        requireEdit(get);
         const ops = [...get().operators];
         if (index < 0 || index >= ops.length) return;
         const prev = ops[index];
@@ -255,6 +262,7 @@ export const useFinance = create<Store>()(
         set({ sessionLog: [entry, ...get().sessionLog].slice(0, 1000) });
       },
       addFundoPagamento: (p) => {
+        requireEdit(get);
         const id = p.id || `RM-${Date.now().toString(36).slice(-6).toUpperCase()}`;
         const by = get().activeOperator || "—";
         const row = {
@@ -272,6 +280,7 @@ export const useFinance = create<Store>()(
         get().pushAudit("fundo_criar", id);
       },
       updateFundoPagamento: (id, patch) => {
+        requireEdit(get);
         const inExtra = get().fundoExtra.some((x) => x.id === id);
         if (inExtra) {
           set({
@@ -291,10 +300,12 @@ export const useFinance = create<Store>()(
         get().pushAudit("fundo_editar", id);
       },
       removeFundoPagamento: (id) => {
+        requireEdit(get);
         set({ fundoExtra: get().fundoExtra.filter((x) => x.id !== id) });
         get().pushAudit("fundo_apagar", id);
       },
       addFundoAtm: (input) => {
+        requireEdit(get);
         const valor = Number(input.valor) || 0;
         if (valor <= 0) throw new Error("Indique um valor de levantamento maior que zero.");
         const data = input.data || new Date().toISOString().slice(0, 10);
@@ -314,6 +325,7 @@ export const useFinance = create<Store>()(
         return id;
       },
       removeFundoAtm: (id) => {
+        requireEdit(get);
         const extra = get().fundoAtmExtra || [];
         const inExtra = extra.some((a) => a.id === id);
         // Se o bloco veio do seed, "apagar" = sobrescrever com valor 0 via extra negativo? 
@@ -340,6 +352,7 @@ export const useFinance = create<Store>()(
         get().pushAudit("fundo_atm_apagar", `${id} (sem alteração BAI)`);
       },
       addCaptura: (input) => {
+        requireEdit(get);
         const extras = get().extras;
         const prefix =
           input.tipo === "entrada"
@@ -463,6 +476,7 @@ export const useFinance = create<Store>()(
         return row;
       },
       addAluno: (aluno) => {
+        requireEdit(get);
         const by = get().activeOperator || "—";
         const row = { ...aluno, criadoPor: by, createdAt: new Date().toISOString() };
         set({ alunosExtra: [...get().alunosExtra, row] });
@@ -486,6 +500,7 @@ export const useFinance = create<Store>()(
         }
       },
       updateAluno: (id, patch) => {
+        requireEdit(get);
         const ops = get().operators;
         const by = get().activeOperator || "—";
         // Apenas o Colaborador 1 (primeiro da lista) pode editar alunos
@@ -528,6 +543,7 @@ export const useFinance = create<Store>()(
         }
       },
       setMensalidade: (id, mes, valor) => {
+        requireEdit(get);
         const nextVal = Number(valor) || 0;
         set({
           mensalidades: get().mensalidades.map((m) =>
@@ -538,6 +554,7 @@ export const useFinance = create<Store>()(
       },
       /** Confirma o valor da propina no mês e regista entrada no Banco BAI (id estável por aluno+mês). */
       confirmPropinaBai: (id, mes) => {
+        requireEdit(get);
         const row = get().mensalidades.find((m) => m.id === id);
         if (!row) return { ok: false, message: "Aluno não encontrado em Propinas." };
         const valor = Number(row.pagamentos?.[mes] || 0);
@@ -575,8 +592,12 @@ export const useFinance = create<Store>()(
             : `Propina ${mes} · ${row.nome}: ${valor} Kz no BAI (fora do prazo → Pago c/ multa).`,
         };
       },
-      setFoto: (id, dataUrl) => set({ fotos: { ...get().fotos, [id]: dataUrl } }),
+      setFoto: (id, dataUrl) => {
+        requireEdit(get);
+        set({ fotos: { ...get().fotos, [id]: dataUrl } });
+      },
       updateExtra: (id, patch) => {
+        requireEdit(get);
         const by = get().activeOperator || "—";
         set({
           extras: get().extras.map((e) =>
@@ -588,10 +609,12 @@ export const useFinance = create<Store>()(
         get().pushAudit("editar_lancamento", `${id}`);
       },
       removeExtra: (id) => {
+        requireEdit(get);
         get().pushAudit("apagar_lancamento", id);
         set({ extras: get().extras.filter((e) => e.id !== id) });
       },
       addRecibosSalario: (rows: ReciboSalario[]) => {
+        requireEdit(get);
         const prev = get().recibosSalario || [];
         const ids = new Set(prev.map((r) => r.id));
         const merged = [...prev];
@@ -608,6 +631,7 @@ export const useFinance = create<Store>()(
         get().pushAudit("recibos_salario", `${rows.length} recibo(s)`);
       },
       removeReciboSalario: (id) => {
+        requireEdit(get);
         const prev = (get().recibosSalario || []).find((r) => r.id === id);
         if (!prev) return;
         set({
@@ -621,6 +645,7 @@ export const useFinance = create<Store>()(
         get().pushAudit("recibo_salario_apagar", `${id} · ${prev.nome} · ${prev.mes}`);
       },
       setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => {
+        requireEdit(get);
         const prev = (get().recibosSalario || []).find((r) => r.id === id);
         set({
           recibosSalario: (get().recibosSalario || []).map((r) =>
@@ -663,6 +688,7 @@ export const useFinance = create<Store>()(
       
 
       addBaiMovimentoManual: (input) => {
+        requireEdit(get);
         const valor = Number(input.valor) || 0;
         if (valor <= 0) throw new Error("Indique um valor positivo.");
         const id = `APP-MAN-${Date.now().toString(36).toUpperCase()}`;
@@ -682,6 +708,7 @@ export const useFinance = create<Store>()(
         );
       },
       syncBaiFromExtras: () => {
+        requireEdit(get);
         // Despesas (cartão/transferência) NÃO são recriadas no extrato BAI —
         // evitam duplicar saídas já reflectidas no banco. Ficam na lista de despesas.
         // Apenas salários pagos sem movimento BAI são sincronizados.
@@ -757,6 +784,7 @@ export const useFinance = create<Store>()(
         return toAdd.length;
       },
       importBaiMovimentos: (rows, replace) => {
+        requireEdit(get);
         const fp = (m: MovimentoBai) =>
           `${m.data}|${Number(m.entrada) || 0}|${Number(m.saida) || 0}|${(m.banco || "").trim()}`;
         let merged = [...rows];
@@ -790,6 +818,7 @@ export const useFinance = create<Store>()(
         );
       },
       deleteBaiMovimento: (id) => {
+        requireEdit(get);
         const deletedSet = new Set([...(get().movimentosBaiDeletedIds || []), id]);
         const current = movimentosAll(
           get().movimentosBaiExtra,
@@ -815,6 +844,7 @@ export const useFinance = create<Store>()(
         );
       },
       removeAluno: (id) => {
+        requireEdit(get);
         const ops = get().operators;
         const by = get().activeOperator || "—";
         if (by !== ops[0]) {
@@ -833,6 +863,7 @@ export const useFinance = create<Store>()(
         get().pushAudit("apagar_aluno", id);
       },
       importLancamentos: (rows) => {
+        requireEdit(get);
         let n = 0;
         for (const r of rows) {
           get().addCaptura(r);
@@ -842,12 +873,14 @@ export const useFinance = create<Store>()(
         return n;
       },
       addSalario: (s) => {
+        requireEdit(get);
         const by = get().activeOperator || "—";
         const row = { ...s };
         set({ salariosExtra: [...get().salariosExtra, row] });
         get().pushAudit("criar_salario", `${row.id} · ${row.nome} · ${row.mes}`);
       },
       updateSalario: (id, patch) => {
+        requireEdit(get);
         const ops = get().operators;
         const by = get().activeOperator || "—";
         if (by !== ops[0]) {
@@ -872,6 +905,7 @@ export const useFinance = create<Store>()(
         get().pushAudit("editar_salario", `${id} · ${Object.keys(patch).join(", ")}`);
       },
       removeSalario: (id) => {
+        requireEdit(get);
         const ops = get().operators;
         const by = get().activeOperator || "—";
         if (by !== ops[0]) {
@@ -907,10 +941,12 @@ export const useFinance = create<Store>()(
         return `PROP-${key}-${String(max + 1).padStart(3, "0")}`;
       },
       addFaturaPropina: (f) => {
+        requireEdit(get);
         set({ faturasPropina: [...(get().faturasPropina || []), f] });
         get().pushAudit("emitir_fatura_propina", `${f.numero} · ${f.alunoNome} · ${f.mesRef}`);
       },
-      resetLocal: () =>
+      resetLocal: () => {
+        requireEdit(get);
         set({
           extras: [],
           alunosExtra: [],
@@ -930,11 +966,10 @@ export const useFinance = create<Store>()(
           salariosDeletedIds: [],
           recibosSalario: [],
           faturasPropina: [],
-        }),
-    }),
-    {
-      
+        });
+      },
       resetLocalStorage: () => {
+        requireEdit(get);
         try {
           const keys = ["ecc-financeiro-v1", "ecc-financeiro-v2", "ecc-financeiro-v3"];
           for (const k of keys) {
@@ -944,7 +979,6 @@ export const useFinance = create<Store>()(
               /* ignore */
             }
           }
-          // também limpar chaves zustand com sufixos
           for (let i = localStorage.length - 1; i >= 0; i--) {
             const k = localStorage.key(i);
             if (k && k.startsWith("ecc-financeiro")) {
@@ -958,13 +992,14 @@ export const useFinance = create<Store>()(
         } catch {
           /* ignore */
         }
-        // Recarrega para hidratar só a partir do seed (+ nuvem sanitizada)
         if (typeof window !== "undefined") {
           window.location.reload();
         }
       },
-
-      name: "ecc-financeiro-v3",
+    }),
+    {
+      name: "ecc-financeiro-v3"
+,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
       version: 3,
