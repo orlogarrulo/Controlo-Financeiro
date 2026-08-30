@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader, Kpi } from "@/components/kpi";
-import { PrintActions } from "@/components/print-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
+import { exportBaiTablePdf, shareOrDownloadPdf } from "@/lib/pdf-export";
 
 export const Route = createFileRoute("/banco")({ component: Banco });
 
@@ -135,6 +135,37 @@ function Banco() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+  async function exportarExtratoPdf() {
+    try {
+      const { blob, filename } = await exportBaiTablePdf(
+        movs.map((m) => ({
+          data: m.data,
+          banco: m.banco,
+          descricao: m.descricao,
+          entrada: m.entrada,
+          saida: m.saida,
+          saldo: m.saldo,
+          observacoes: m.observacoes,
+        })),
+        {
+          filename: `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`,
+          title: "Extrato Banco BAI · A4 horizontal",
+          escola: escola.nome || "École Consulaire du Congo",
+          saldoInicial: escola.saldoInicialBai,
+        },
+      );
+      const r = await shareOrDownloadPdf(blob, filename, {
+        title: "Extrato BAI · École Consulaire",
+        text: "Extrato bancário A4 horizontal — texto seleccionável.",
+      });
+      if (r === "opened") toast.success("PDF A4 horizontal aberto (texto seleccionável)");
+      else toast.message("PDF descarregado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -149,14 +180,10 @@ function Banco() {
                 Nova movimentação BAI
               </Button>
             ) : null}
-            <PrintActions
-              targetRef={printRef}
-              filename="extrato-bai.pdf"
-              landscape
-              shareTitle="Extrato BAI · École Consulaire"
-              shareText="Documento gerado pelo Departamento de Finanças da École Consulaire."
-              printLabel="Imprimir extrato"
-            />
+            <Button type="button" variant="secondary" onClick={() => void exportarExtratoPdf()}>
+              <Printer className="mr-1.5 h-4 w-4" />
+              Imprimir / PDF A4 horizontal
+            </Button>
           </div>
         }
       />

@@ -853,3 +853,156 @@ export async function exportElementPdf(
   const { blob, filename: name } = await elementToPdfBlob(el, { filename, stamp: true });
   return shareOrDownloadPdf(blob, name, meta);
 }
+
+
+/**
+ * Extrato BAI em PDF A4 horizontal com texto seleccionável (não é screenshot).
+ * rows: array de objectos com campos data, banco, descricao, entrada, saida, saldo, observacoes
+ */
+export async function exportBaiTablePdf(
+  rows: {
+    data: string;
+    banco?: string;
+    descricao?: string;
+    entrada?: number;
+    saida?: number;
+    saldo?: number;
+    observacoes?: string;
+  }[],
+  opts?: {
+    filename?: string;
+    title?: string;
+    escola?: string;
+    saldoInicial?: number;
+  },
+): Promise<{ blob: Blob; filename: string }> {
+  const { jsPDF } = await ensureLibs();
+  const pdf = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const marginX = 8;
+  const marginTop = 12;
+  const marginBottom = 10;
+  const usableW = pageW - marginX * 2;
+
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("pt-AO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+
+  // Column widths (mm) — total ≈ usableW
+  const cols = [
+    { key: "data", label: "Data", w: 22 },
+    { key: "banco", label: "Banco", w: 28 },
+    { key: "descricao", label: "Descrição", w: 78 },
+    { key: "entrada", label: "Entrada", w: 28 },
+    { key: "saida", label: "Saída", w: 28 },
+    { key: "saldo", label: "Saldo", w: 30 },
+  ] as const;
+
+  let y = marginTop;
+  const escola = opts?.escola || "École Consulaire du Congo";
+  const title = opts?.title || "Extrato Banco BAI";
+
+  function header() {
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(12);
+    pdf.setTextColor(31, 92, 74);
+    pdf.text(escola, marginX, y);
+    y += 6;
+    pdf.setFontSize(11);
+    pdf.setTextColor(20, 20, 20);
+    pdf.text(title, marginX, y);
+    y += 5;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(80, 80, 80);
+    const when = new Date().toLocaleString("pt-PT");
+    pdf.text(`${rows.length} movimentos · gerado ${when}`, marginX, y);
+    y += 4;
+    if (opts?.saldoInicial != null) {
+      pdf.text(`Saldo inicial: ${fmt(opts.saldoInicial)} Kz`, marginX, y);
+      y += 4;
+    }
+    // table header
+    pdf.setFillColor(31, 92, 74);
+    pdf.rect(marginX, y, usableW, 7, "F");
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    let x = marginX + 1;
+    for (const c of cols) {
+      const alignRight = c.key === "entrada" || c.key === "saida" || c.key === "saldo";
+      if (alignRight) {
+        pdf.text(c.label, x + c.w - 1, y + 4.8, { align: "right" });
+      } else {
+        pdf.text(c.label, x, y + 4.8);
+      }
+      x += c.w;
+    }
+    y += 8;
+    pdf.setTextColor(20, 20, 20);
+    pdf.setFont("helvetica", "normal");
+  }
+
+  function newPage() {
+    pdf.addPage();
+    y = marginTop;
+    header();
+  }
+
+  header();
+
+  pdf.setFontSize(7.5);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const desc = (r.descricao || "").slice(0, 70);
+    const banco = (r.banco || "").slice(0, 22);
+    const lineH = 5.2;
+    if (y + lineH > pageH - marginBottom) newPage();
+
+    if (i % 2 === 1) {
+      pdf.setFillColor(244, 250, 247);
+      pdf.rect(marginX, y - 3.5, usableW, lineH, "F");
+    }
+
+    let x = marginX + 1;
+    const cells: { t: string; w: number; right?: boolean }[] = [
+      { t: (r.data || "").slice(0, 10), w: cols[0].w },
+      { t: banco, w: cols[1].w },
+      { t: desc, w: cols[2].w },
+      { t: r.entrada ? fmt(Number(r.entrada)) : "", w: cols[3].w, right: true },
+      { t: r.saida ? fmt(Number(r.saida)) : "", w: cols[4].w, right: true },
+      { t: fmt(Number(r.saldo) || 0), w: cols[5].w, right: true },
+    ];
+    for (const cell of cells) {
+      if (cell.right) {
+        pdf.text(cell.t, x + cell.w - 1, y, { align: "right" });
+      } else {
+        pdf.text(cell.t, x, y);
+      }
+      x += cell.w;
+    }
+    y += lineH;
+  }
+
+  // footer totals
+  if (y + 12 > pageH - marginBottom) newPage();
+  y += 3;
+  pdf.setDrawColor(31, 92, 74);
+  pdf.line(marginX, y, marginX + usableW, y);
+  y += 5;
+  const totE = rows.reduce((s, r) => s + (Number(r.entrada) || 0), 0);
+  const totS = rows.reduce((s, r) => s + (Number(r.saida) || 0), 0);
+  const last = rows[rows.length - 1];
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(9);
+  pdf.text(
+    `Total entradas: ${fmt(totE)} Kz   ·   Total saídas: ${fmt(totS)} Kz   ·   Saldo final: ${fmt(Number(last?.saldo) || 0)} Kz`,
+    marginX,
+    y,
+  );
+
+  return {
+    blob: pdf.output("blob"),
+    filename: opts?.filename || `extrato-bai-${new Date().toISOString().slice(0, 10)}.pdf`,
+  };
+}
