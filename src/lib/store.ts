@@ -985,9 +985,11 @@ export const useFinance = create<Store>()(
       skipHydration: true,
       version: 3,
       migrate: (persisted: unknown) => {
-        // Força extrato BAI a partir do seed (saídas + BAI-MAT-*), sem entradas antigas congeladas
+        // Seed manda: limpa override BAI, extras de alunos (duplicados) e volta ao cadastro do seed
         const s = (persisted || {}) as Record<string, unknown>;
-        const extra = Array.isArray(s.movimentosBaiExtra) ? (s.movimentosBaiExtra as { id?: string; banco?: string }[]) : [];
+        const extra = Array.isArray(s.movimentosBaiExtra)
+          ? (s.movimentosBaiExtra as { id?: string; banco?: string }[])
+          : [];
         const keepExtra = extra.filter((m) => {
           const id = String(m?.id || "");
           const banco = String(m?.banco || "");
@@ -1003,6 +1005,10 @@ export const useFinance = create<Store>()(
           movimentosBaiExtra: keepExtra,
           baiOverride: false,
           movimentosBaiDeletedIds: [],
+          // Evita alunos repetidos vindos de sessões / nuvem antigas
+          alunosExtra: [],
+          alunosOverrides: {},
+          alunosDeletedIds: [],
         };
       },
       partialize: (s) => ({
@@ -1252,14 +1258,39 @@ export function computeTotals(
 }
 
 export function alunosAll(
-  alunosExtra: Aluno[],
+  extras: Aluno[] = [],
   overrides: Record<string, Partial<Aluno>> = {},
+  deletedIds: string[] = [],
 ): Aluno[] {
+  const deleted = new Set(deletedIds);
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
-    return o ? { ...a, ...o } : a;
+    return o ? { ...a, ...o, id: a.id } : a;
   };
-  return [...seed.alunos.map(apply), ...alunosExtra.map(apply)];
+  const norm = (n: string) =>
+    (n || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const out: Aluno[] = [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+
+  const push = (a: Aluno) => {
+    if (deleted.has(a.id) || seenIds.has(a.id)) return;
+    const nn = norm(a.nome);
+    if (nn && seenNames.has(nn)) return; // bloqueia duplicado por nome
+    seenIds.add(a.id);
+    if (nn) seenNames.add(nn);
+    out.push(apply(a));
+  };
+
+  for (const a of seed.alunos) push(a);
+  for (const a of extras) push(a);
+  return out;
 }
 
 export function salariosAll(

@@ -118,9 +118,9 @@ function sanitizeBaiExtra(extra: unknown[]): unknown[] {
 function applyPayload(p: FinanceCloudPayload) {
   useFinance.setState({
     extras: (p.extras as never[]) || [],
-    alunosExtra: (p.alunosExtra as never[]) || [],
-    alunosOverrides: (p.alunosOverrides as never) || {},
-    alunosDeletedIds: (p.alunosDeletedIds as string[]) || [],
+    alunosExtra: [], // cadastro vem do seed; extras da nuvem antigos causavam duplicados
+    alunosOverrides: {},
+    alunosDeletedIds: [],
     mensalidades: (p.mensalidades as never[]) || [],
     fundoExtra: (p.fundoExtra as never[]) || [],
     fundoAtmExtra: (p.fundoAtmExtra as never[]) || [],
