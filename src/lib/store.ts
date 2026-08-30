@@ -949,6 +949,37 @@ export const useFinance = create<Store>()(
         }),
     }),
     {
+      
+      resetLocalStorage: () => {
+        try {
+          const keys = ["ecc-financeiro-v1", "ecc-financeiro-v2", "ecc-financeiro-v3"];
+          for (const k of keys) {
+            try {
+              localStorage.removeItem(k);
+            } catch {
+              /* ignore */
+            }
+          }
+          // também limpar chaves zustand com sufixos
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith("ecc-financeiro")) {
+              try {
+                localStorage.removeItem(k);
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+        // Recarrega para hidratar só a partir do seed (+ nuvem sanitizada)
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+      },
+
       name: "ecc-financeiro-v3",
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,

@@ -357,6 +357,21 @@ function GooglePage() {
             <Button disabled={cloudBusy} onClick={() => void forcePushCloud()}>
               Enviar dados agora
             </Button>
+            <Button
+              variant="secondary"
+              title="Apaga ecc-financeiro-v1/v2/v3 e recarrega a app com o seed (extrato BAI novo)"
+              onClick={() => {
+                if (
+                  confirm(
+                    "Limpar dados locais (ecc-financeiro-v1/v2/v3) e recarregar a app?\n\nO extrato BAI e matrículas voltam ao seed actualizado. Dados só no browser deste dispositivo serão apagados.",
+                  )
+                ) {
+                  resetLocalStorage();
+                }
+              }}
+            >
+              Limpar Local Storage
+            </Button>
           </div>
           {cloudStatus ? (
             <p className="mt-2 text-xs text-[var(--color-muted)]">{cloudStatus}</p>
