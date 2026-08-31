@@ -1303,9 +1303,10 @@ function Alunos() {
       year: "numeric",
     });
     const fmt = (v?: string) => (v && String(v).trim() ? String(v).trim() : "—");
+    const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
     const fotoBlock = a.foto
-      ? `<img src="${a.foto}" alt="" style="width:96px;height:96px;object-fit:cover;border:1px solid #1a4d3e;border-radius:6px;" />`
-      : `<div style="width:96px;height:96px;border:1px dashed #94a3b8;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;">Sem foto</div>`;
+      ? `<img src="${a.foto}" alt="Foto do aluno" style="width:100px;height:120px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:4px;" />`
+      : `<div style="width:100px;height:120px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;padding:4px;">Sem foto</div>`;
 
     const row = (label: string, value: string) =>
       `<tr><td style="padding:6px 8px;border:1px solid #c5d0ca;width:38%;background:#f4f7f5;font-weight:600;font-size:11px;">${label}</td><td style="padding:6px 8px;border:1px solid #c5d0ca;font-size:12px;">${value}</td></tr>`;
@@ -1317,7 +1318,10 @@ function Alunos() {
     font-family: Georgia, "Times New Roman", Times, serif;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .sheet { padding: 0 2mm; }
-  .head { display: flex; align-items: flex-start; gap: 16px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 14px; }
+  .head { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 14px; }
+  .head-logo { width: 64px; height: 64px; object-fit: contain; flex-shrink: 0; }
+  .head-mid { flex: 1; min-width: 0; }
+  .head-foto { flex-shrink: 0; }
   .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #1f5c4a; font-weight: 700; }
   .title { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
   .meta { margin: 4px 0 0; font-size: 11px; color: #555; }
@@ -1331,13 +1335,14 @@ function Alunos() {
 </style></head><body>
 <div class="sheet">
   <div class="head">
-    ${fotoBlock}
-    <div style="flex:1;">
+    <img class="head-logo" src="${logoSrc}" width="64" height="64" alt="" />
+    <div class="head-mid">
       <p class="kicker">${escolaNome}</p>
       <p class="title">Cadastro individual do aluno</p>
       <p class="meta">Ficha para confirmação e assinatura de veracidade pelos pais / encarregado de educação</p>
       <p class="meta">ID ${a.id} · Recibo ${fmt(a.recibo)} · Emitido em ${emitido}</p>
     </div>
+    <div class="head-foto">${fotoBlock}</div>
   </div>
 
   <h2>1. Identificação</h2>
@@ -2640,22 +2645,28 @@ function Alunos() {
               type="button"
               variant="secondary"
               onClick={() => {
+                // Um único link (sem duplicar no WhatsApp: não passar text+url juntos)
                 const url = regulamentoPublicUrl(regLang);
-                const text =
-                  regLang === "fr"
-                    ? `Règlement intérieur — École Consulaire du Congo (Luanda)\nMerci de lire et de confirmer (nom de l’élève et du responsable) :\n${url}`
-                    : `Regulamento interno — École Consulaire du Congo (Luanda)\nPor favor leia o regulamento, marque «Tomei conhecimento», indique o seu nome e o do aluno, e confirme:\n${url}`;
+                const text = [
+                  "Règlement intérieur — École Consulaire du Congo (Luanda)",
+                  "Merci de lire le règlement, cocher « J’ai pris connaissance », indiquer votre nom et celui de l’élève, puis confirmer :",
+                  "",
+                  "Regulamento interno — École Consulaire du Congo (Luanda)",
+                  "Por favor leia o regulamento, marque «Tomei conhecimento», indique o seu nome e o do aluno, e confirme:",
+                  "",
+                  url,
+                ].join("\n");
                 if (navigator.share) {
                   void navigator
-                    .share({ title: "Regulamento interno", text, url })
+                    .share({ title: "Règlement intérieur / Regulamento interno", text })
                     .then(() => toast.success("Link partilhado"))
                     .catch(() => {
-                      void navigator.clipboard?.writeText(url);
-                      toast.success("Link copiado");
+                      void navigator.clipboard?.writeText(text);
+                      toast.success("Texto copiado");
                     });
                 } else {
-                  void navigator.clipboard?.writeText(url).then(
-                    () => toast.success("Link copiado — cole no WhatsApp ou e-mail"),
+                  void navigator.clipboard?.writeText(text).then(
+                    () => toast.success("Texto copiado — cole no WhatsApp ou e-mail"),
                     () => toast.message(url),
                   );
                 }
