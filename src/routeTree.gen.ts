@@ -21,6 +21,7 @@ import { Route as RecibosRouteImport } from './routes/recibos'
 import { Route as SalariosRouteImport } from './routes/salarios'
 import { Route as PendenciasRouteImport } from './routes/pendencias'
 import { Route as AuditoriaRouteImport } from './routes/auditoria'
+import { Route as ArquivoRouteImport } from './routes/arquivo'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -82,6 +83,11 @@ const AuditoriaRoute = AuditoriaRouteImport.update({
   path: '/auditoria',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ArquivoRoute = ArquivoRouteImport.update({
+  id: '/arquivo',
+  path: '/arquivo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/salarios': typeof SalariosRoute
   '/pendencias': typeof PendenciasRoute
   '/auditoria': typeof AuditoriaRoute
+  '/arquivo': typeof ArquivoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/salarios': typeof SalariosRoute
   '/pendencias': typeof PendenciasRoute
   '/auditoria': typeof AuditoriaRoute
+  '/arquivo': typeof ArquivoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/salarios': typeof SalariosRoute
   '/pendencias': typeof PendenciasRoute
   '/auditoria': typeof AuditoriaRoute
+  '/arquivo': typeof ArquivoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/salarios'
     | '/pendencias'
     | '/auditoria'
+    | '/arquivo'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/salarios'
     | '/pendencias'
     | '/auditoria'
+    | '/arquivo'
   id:
     | '__root__'
     | '/'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/salarios'
     | '/pendencias'
     | '/auditoria'
+    | '/arquivo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -184,6 +196,7 @@ export interface RootRouteChildren {
   SalariosRoute: typeof SalariosRoute
   PendenciasRoute: typeof PendenciasRoute
   AuditoriaRoute: typeof AuditoriaRoute
+  ArquivoRoute: typeof ArquivoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -272,6 +285,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuditoriaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/arquivo': {
+      id: '/arquivo'
+      path: '/arquivo'
+      fullPath: '/arquivo'
+      preLoaderRoute: typeof ArquivoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -288,6 +308,7 @@ const rootRouteChildren: RootRouteChildren = {
   SalariosRoute: SalariosRoute,
   PendenciasRoute: PendenciasRoute,
   AuditoriaRoute: AuditoriaRoute,
+  ArquivoRoute: ArquivoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

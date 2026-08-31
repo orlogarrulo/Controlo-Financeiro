@@ -132,6 +132,8 @@ type Store = ExtraState & {
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
+  /** Alinha botões pago com movimentos BAI já existentes (multi-PC / cloud). */
+  reconcileSalariosBai: () => boolean;
   removeReciboSalario: (id: string) => void;
   /** Cria movimentos BAI em falta a partir de despesas (cartão/transferência) já registadas. */
   syncBaiFromExtras: () => number;
@@ -647,6 +649,9 @@ export const useFinance = create<Store>()(
       setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => {
         requireEdit(get);
         const prev = (get().recibosSalario || []).find((r) => r.id === id);
+        const movId = `APP-SAL-${id}`;
+        const jaNoBai = (get().movimentosBaiExtra || []).some((m) => m.id === movId);
+
         set({
           recibosSalario: (get().recibosSalario || []).map((r) =>
             r.id === id
@@ -654,36 +659,73 @@ export const useFinance = create<Store>()(
               : r,
           ),
         });
-        // Pagamento de honorários debita a conta BAI e recalcula o saldo
-        if (prev && pago && !prev.pago && prev.liquido > 0) {
-          const saida = Number(prev.liquido) || 0;
-          const movId = `APP-SAL-${id}`;
-          const extra = (get().movimentosBaiExtra || []).filter((m) => m.id !== movId);
-          const mov: MovimentoBai = {
-            id: movId,
-            linha: 0,
-            data: dataPag || prev.dataPag || new Date().toISOString().slice(0, 10),
-            banco: "SALARIO-APP",
-            descricao: `Honorários / salário · ${prev.nome} · ${prev.mes}`,
-            entrada: 0,
-            saida,
-            saldo: 0,
-            observacoes: `Recibo ${id} · pago → debita BAI`,
-          };
-          set({ movimentosBaiExtra: sortAndRecalcBai([...extra, mov]) });
-          get().pushAudit("bai_saida_salario", `${movId} · -${saida}`);
+
+        // Marcar pago → debita BAI só se o movimento ainda NÃO existir (não duplica)
+        if (prev && pago && prev.liquido > 0) {
+          if (!jaNoBai) {
+            const saida = Number(prev.liquido) || 0;
+            const mov: MovimentoBai = {
+              id: movId,
+              linha: 0,
+              data: dataPag || prev.dataPag || new Date().toISOString().slice(0, 10),
+              banco: "SALARIO-APP",
+              descricao: `Honorários / salário · ${prev.nome} · ${prev.mes}`,
+              entrada: 0,
+              saida,
+              saldo: 0,
+              observacoes: `Recibo ${id} · pago → debita BAI`,
+            };
+            set({
+              movimentosBaiExtra: sortAndRecalcBai([
+                ...(get().movimentosBaiExtra || []),
+                mov,
+              ]),
+            });
+            get().pushAudit("bai_saida_salario", `${movId} · -${saida}`);
+          }
+          // Se já estava no extrato: só alinha o botão, sem novo lançamento
         }
-        // Desmarcar pago: remove débito BAI e recalcula
-        if (prev && !pago && prev.pago) {
-          const movId = `APP-SAL-${id}`;
-          set({
-            movimentosBaiExtra: sortAndRecalcBai(
-              (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
-            ),
-          });
-          get().pushAudit("bai_estorno_salario", movId);
+
+        // Desmarcar pago → remove débito BAI
+        if (prev && !pago) {
+          if (jaNoBai) {
+            set({
+              movimentosBaiExtra: sortAndRecalcBai(
+                (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
+              ),
+            });
+            get().pushAudit("bai_estorno_salario", movId);
+          }
         }
         get().pushAudit("recibo_salario_pago", `${id} · ${pago}`);
+      },
+      reconcileSalariosBai: () => {
+        const recibos = get().recibosSalario || [];
+        const movs = get().movimentosBaiExtra || [];
+        if (!recibos.length) return false;
+        const byId = new Set(movs.map((m) => m.id));
+        let changed = false;
+        const next = recibos.map((r) => {
+          const movId = `APP-SAL-${r.id}`;
+          const has =
+            byId.has(movId) ||
+            movs.some(
+              (m) =>
+                (m.observacoes || "").includes(r.id) ||
+                ((m.banco || "").toUpperCase().includes("SALARIO") &&
+                  (m.descricao || "").includes(r.nome)),
+            );
+          if (has && !r.pago) {
+            changed = true;
+            return { ...r, pago: true };
+          }
+          return r;
+        });
+        if (changed) {
+          set({ recibosSalario: next });
+          get().pushAudit("reconcile_recibos_bai", "pago alinhado com extrato BAI");
+        }
+        return changed;
       },
       
 

@@ -1108,6 +1108,7 @@ function Salarios() {
   const recibosSalario = useFinance((s) => s.recibosSalario || []);
   const addRecibosSalario = useFinance((s) => s.addRecibosSalario);
   const setReciboSalarioPago = useFinance((s) => s.setReciboSalarioPago);
+  const reconcileSalariosBai = useFinance((s) => s.reconcileSalariosBai);
   const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
   const rows = salariosAll(salariosExtra, salariosOverrides, salariosDeletedIds);
 
@@ -1134,6 +1135,14 @@ function Salarios() {
   function clearDeepLink() {
     void navigate({ search: { edit: undefined, focus: undefined }, replace: true });
   }
+
+  useEffect(() => {
+    try {
+      reconcileSalariosBai();
+    } catch {
+      /* ignore */
+    }
+  }, [reconcileSalariosBai]);
 
   useEffect(() => {
     if (search.edit) {

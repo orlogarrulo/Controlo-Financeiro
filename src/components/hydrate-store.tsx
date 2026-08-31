@@ -115,27 +115,59 @@ function sanitizeBaiExtra(extra: unknown[]): unknown[] {
   });
 }
 
+function mergeRecibosPreferPago(local: unknown[], remote: unknown[]): never[] {
+  const map = new Map<string, Record<string, unknown>>();
+  for (const row of [...(remote || []), ...(local || [])]) {
+    const r = row as { id?: string; pago?: boolean };
+    if (!r?.id) continue;
+    const prev = map.get(r.id);
+    if (!prev) map.set(r.id, { ...r });
+    else map.set(r.id, { ...prev, ...r, pago: Boolean(prev.pago || r.pago) });
+  }
+  return Array.from(map.values()) as never[];
+}
+
+function mergeById(local: unknown[], remote: unknown[]): never[] {
+  const map = new Map<string, unknown>();
+  for (const row of [...(remote || []), ...(local || [])]) {
+    const r = row as { id?: string };
+    if (r?.id) map.set(r.id, row);
+  }
+  return Array.from(map.values()) as never[];
+}
+
 function applyPayload(p: FinanceCloudPayload) {
+  const local = useFinance.getState();
   useFinance.setState({
     extras: (p.extras as never[]) || [],
     alunosExtra: [], // cadastro vem do seed; extras da nuvem antigos causavam duplicados
-    alunosOverrides: {},
-    alunosDeletedIds: [],
+    alunosOverrides: (p.alunosOverrides as never) || {},
+    alunosDeletedIds: (p.alunosDeletedIds as string[]) || [],
     mensalidades: (p.mensalidades as never[]) || [],
     fundoExtra: (p.fundoExtra as never[]) || [],
     fundoAtmExtra: (p.fundoAtmExtra as never[]) || [],
-    movimentosBaiExtra: sanitizeBaiExtra((p.movimentosBaiExtra as never[]) || []) as never[],
-    movimentosBaiDeletedIds: [],
+    // Fundir movimentos app (não perder salários pagos de outro PC)
+    movimentosBaiExtra: sanitizeBaiExtra(
+      mergeById(local.movimentosBaiExtra || [], (p.movimentosBaiExtra as never[]) || []),
+    ) as never[],
+    movimentosBaiDeletedIds: (p.movimentosBaiDeletedIds as string[]) || [],
     baiOverride: false,
     fotos: p.fotos || {},
-    operators: p.operators?.length ? p.operators : useFinance.getState().operators,
+    operators: p.operators?.length ? p.operators : local.operators,
     auditLog: (p.auditLog as never[]) || [],
     sessionLog: (p.sessionLog as never[]) || [],
     salariosExtra: (p.salariosExtra as never[]) || [],
     salariosOverrides: (p.salariosOverrides as never) || {},
     salariosDeletedIds: (p.salariosDeletedIds as string[]) || [],
-    recibosSalario: (p.recibosSalario as never[]) || [],
+    // Recibos: se um PC marcou pago, o outro herda pago
+    recibosSalario: mergeRecibosPreferPago(local.recibosSalario || [], p.recibosSalario || []),
   });
+  // Alinha botões com extrato após aplicar nuvem
+  try {
+    useFinance.getState().reconcileSalariosBai?.();
+  } catch {
+    /* ignore */
+  }
 }
 
 async function pushCloud() {
