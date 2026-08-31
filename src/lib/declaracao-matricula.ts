@@ -59,8 +59,8 @@ export function declaracaoMatriculaHtml(
   h1 { text-align:center; font-size:15px; letter-spacing:0.05em; margin: 0 0 28px; text-transform:uppercase; }
   p { margin: 0 0 6px; }
   .local { margin-top: 12px; text-align: left; }
-  .sign { margin-top: 16px; text-align: center; }
-  .sign .line { margin: 14px auto 6px; width: 260px; border-top: 1px solid #334155; }
+  .sign { margin-top: 80px; text-align: center; }
+  .sign .line { margin: 48px auto 10px; width: 280px; border-top: 1px solid #334155; }
   .doc-foot { margin-top:14px; text-align:right; font-size:9px; color:#94a3b8; }
 </style></head><body>
 <div class="head">
@@ -70,7 +70,7 @@ export function declaracaoMatriculaHtml(
     <div class="sub">${escola.subtitulo || "Annexe Nova Vida · Luanda"} · Ano lectivo ${ano}</div>
   </div>
 </div>
-<div style="height:120px;"></div>
+<div style="height:360px;"></div>
 <h1>Declaração de matrícula</h1>
 <p>Declaramos, para os devidos efeitos e a pedido do(a) interessado(a), que <strong>${a.nome}</strong>, filho(a) de ${pai} e de ${mae}, ${biPart}, encontra-se regularmente matriculado(a) e a frequentar a classe <em>${classe.fr}</em> <strong>(${classe.pt})</strong> nesta instituição de ensino, sob o número de processo <strong>${a.id}</strong> durante o ano letivo de ${ano}.</p>
 <p>Por ser verdade e nos ser solicitado, mandamos passar a presente declaração que vai devidamente assinada e autenticada com o carimbo em uso nesta escola.</p>
@@ -80,7 +80,7 @@ export function declaracaoMatriculaHtml(
   <div class="line"></div>
   <p><strong>Srª Pierrette MABOUANA</strong></p>
 </div>
-<p class="doc-foot">Documento gerado pelo Departamento de Finanças · ${dataExtenso()}</p>
+<p class="doc-foot">Documento gerado por Le Secrétariat scolaire · ${dataExtenso()}</p>
 </body></html>`;
 }
 
