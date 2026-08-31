@@ -237,15 +237,29 @@ const STAGE_CSS = `
   }
   [data-pdf-stage] th,
   [data-pdf-stage] td {
-    padding: 5px 6px !important;
-    border: 1px solid #666 !important;
+    padding: 6px 7px !important;
+    border: 1px solid #555 !important;
     vertical-align: top !important;
     word-wrap: break-word !important;
     overflow-wrap: break-word !important;
     word-break: normal !important;
     white-space: normal !important;
-    line-height: 1.35 !important;
+    line-height: 1.45 !important;
     font-size: 11px !important;
+  }
+  /* Evitar corte de texto a meio da linha e fechar limites da tabela por página */
+  [data-pdf-stage] tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  [data-pdf-stage] thead {
+    display: table-header-group !important;
+  }
+  [data-pdf-stage] tbody {
+    display: table-row-group !important;
+  }
+  [data-pdf-stage] table {
+    border: 1px solid #555 !important;
   }
   [data-pdf-stage] th {
     background: #f3efe6 !important;
@@ -707,7 +721,13 @@ async function htmlToPdfBlob(
  */
 export type PdfDelivery = "shared" | "opened" | "downloaded";
 
-async function deliverOfficialHtml(
+/**
+ * Fluxo oficial unificado:
+ * — PC: abre impressão HTML (Guardar como PDF)
+ * — Telemóvel: gera PDF e abre partilha (WhatsApp, Gmail, …)
+ * Usar em todos os botões «PDF» da app.
+ */
+export async function deliverOfficialHtml(
   html: string,
   opts: {
     filename: string;
@@ -1115,17 +1135,19 @@ export function buildOfficialListHtml(opts: {
   }
   .title { margin: 3px 0 0; font-size: ${landscape ? "14px" : "16px"}; font-weight: 700; }
   .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #1a4d3e; }
   thead { display: table-header-group; }
+  tbody { display: table-row-group; }
   th {
     background: #1f5c4a; color: #fff;
     font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-    padding: 6px 5px; text-align: left; border: 1px solid #1a4d3e;
+    padding: 7px 6px; text-align: left; border: 1px solid #1a4d3e;
   }
   th.r { text-align: right; }
   td {
-    padding: 4px 5px; border-bottom: 1px solid #d5ddd8; vertical-align: top;
+    padding: 6px 6px; border: 1px solid #c5d0ca; vertical-align: top;
     font-size: ${landscape ? "9.5px" : "10.5px"}; word-wrap: break-word;
+    overflow-wrap: break-word; line-height: 1.4;
   }
   td.num {
     text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -1423,8 +1445,9 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
     font-family: Georgia, "Times New Roman", serif;
   }
   .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #1a4d3e; }
   thead { display: table-header-group; }
+  tbody { display: table-row-group; }
   th {
     background: #1f5c4a; color: #fff;
     font-family: Georgia, "Times New Roman", serif;
@@ -1435,10 +1458,12 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
   }
   th.r { text-align: right; }
   td {
-    padding: 5px 6px;
-    border-bottom: 1px solid #d5ddd8;
+    padding: 6px 6px;
+    border: 1px solid #c5d0ca;
     vertical-align: top;
     font-size: 10.5px;
+    line-height: 1.4;
+    overflow-wrap: break-word;
   }
   td.c-data { width: 10%; white-space: nowrap; }
   td.c-banco { width: 13%; font-family: "Courier New", Courier, monospace; font-size: 9.5px; }

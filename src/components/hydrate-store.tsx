@@ -11,29 +11,26 @@ import { useFinance } from "@/lib/store";
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
 
 /**
+ * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):
  * 1) Rehidrata localStorage
- * 2) Carrega estado da nuvem (Neon/PGLite) e aplica se for mais recente
- * 3) Em cada alteração local, grava na nuvem (debounce 1,5 s)
+ * 2) Carrega nuvem e funde com local (nunca perde registos de um lado)
+ * 3) Em cada alteração local, grava na nuvem (debounce 1,2 s)
+ * 4) Ao voltar ao separador / rede, puxa de novo a nuvem
+ *
+ * Requisito: DATABASE_URL (Neon) em produção — sem isso só há PGLite no servidor
+ * de preview e o telemóvel/PC podem não partilhar o mesmo backend.
  */
 export function HydrateStore() {
   const applyingRemote = useRef(false);
   const ready = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPull = useRef(0);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
     let cancelled = false;
 
-    async function boot() {
-      try {
-        await useFinance.persist.rehydrate();
-      } catch {
-        /* ignore */
-      }
-      if (cancelled) return;
-
-      const localTs = Number(localStorage.getItem(LOCAL_TS_KEY) || "0");
-
+    async function pullAndMerge(reason: string) {
       try {
         const remote = await loadFinanceCloud();
         if (cancelled) return;
@@ -44,27 +41,48 @@ export function HydrateStore() {
             remote.payload.extras?.length ||
             remote.payload.mensalidades?.length ||
             remote.payload.salariosExtra?.length ||
-            Object.keys(remote.payload.alunosOverrides || {}).length);
+            remote.payload.fundoExtra?.length ||
+            remote.payload.recibosSalario?.length ||
+            remote.payload.movimentosBaiExtra?.length ||
+            Object.keys(remote.payload.alunosOverrides || {}).length ||
+            Object.keys(remote.payload.salariosOverrides || {}).length);
 
-        if (hasRemote && remoteTs >= localTs) {
+        if (hasRemote) {
           applyingRemote.current = true;
+          // Sempre funde (merge por id) — não sobrescreve o lado local
           applyPayload(remote.payload);
-          localStorage.setItem(LOCAL_TS_KEY, String(remoteTs));
+          localStorage.setItem(LOCAL_TS_KEY, String(Math.max(remoteTs, Date.now())));
           applyingRemote.current = false;
-          toast.message(
-            remote.source === "neon"
-              ? "Dados sincronizados da nuvem (Neon)"
-              : "Dados sincronizados (base local do servidor)",
-          );
-        } else if (localTs > 0 || hasLocalData()) {
-          // Local mais recente → enviar para a nuvem
+          lastPull.current = Date.now();
+          if (reason === "boot") {
+            toast.message(
+              remote.source === "neon"
+                ? "Dados sincronizados da nuvem — pode continuar neste dispositivo"
+                : "Dados sincronizados (servidor de pré-visualização)",
+            );
+          }
+        }
+        // Após fundir, envia o estado unificado para a nuvem
+        if (hasLocalData() || hasRemote) {
           await pushCloud();
         }
       } catch (e) {
         console.warn("[cloud] load", e);
-        // Offline: continua só com localStorage
+        if (reason === "boot") {
+          toast.message("Sem nuvem — a trabalhar só neste dispositivo (offline)");
+        }
       }
+    }
 
+    async function boot() {
+      try {
+        await useFinance.persist.rehydrate();
+      } catch {
+        /* ignore */
+      }
+      if (cancelled) return;
+
+      await pullAndMerge("boot");
       ready.current = true;
 
       unsub = useFinance.subscribe(() => {
@@ -72,16 +90,30 @@ export function HydrateStore() {
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => {
           void pushCloud();
-        }, 2500);
+        }, 1200);
       });
     }
 
     void boot();
 
+    // Ao voltar ao ecrã / rede: puxar nuvem (evita trabalho duplicado)
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastPull.current < 8000) return;
+      void pullAndMerge("focus");
+    }
+    function onOnline() {
+      void pullAndMerge("online");
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+
     return () => {
       cancelled = true;
       unsub?.();
       if (timer.current) clearTimeout(timer.current);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
     };
   }, []);
 
@@ -95,6 +127,8 @@ function hasLocalData(): boolean {
     s.extras.length > 0 ||
     s.mensalidades.length > 0 ||
     s.salariosExtra.length > 0 ||
+    (s.fundoExtra || []).length > 0 ||
+    (s.recibosSalario || []).length > 0 ||
     Object.keys(s.alunosOverrides).length > 0
   );
 }
@@ -229,5 +263,6 @@ async function pushCloud() {
     }
   } catch (e) {
     console.warn("[cloud] save", e);
+    // Offline: localStorage continua a guardar; sincroniza quando houver rede
   }
 }

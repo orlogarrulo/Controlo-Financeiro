@@ -22,10 +22,16 @@ import { Route as SalariosRouteImport } from './routes/salarios'
 import { Route as PendenciasRouteImport } from './routes/pendencias'
 import { Route as AuditoriaRouteImport } from './routes/auditoria'
 import { Route as ArquivoRouteImport } from './routes/arquivo'
+import { Route as RegulamentoRouteImport } from './routes/regulamento'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegulamentoRoute = RegulamentoRouteImport.update({
+  id: '/regulamento',
+  path: '/regulamento',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AlunosRoute = AlunosRouteImport.update({
@@ -91,6 +97,7 @@ const ArquivoRoute = ArquivoRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/regulamento': typeof RegulamentoRoute
   '/alunos': typeof AlunosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/regulamento': typeof RegulamentoRoute
   '/alunos': typeof AlunosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
@@ -122,6 +130,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/regulamento': typeof RegulamentoRoute
   '/alunos': typeof AlunosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/regulamento'
     | '/alunos'
     | '/banco'
     | '/capturar'
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/regulamento'
     | '/alunos'
     | '/banco'
     | '/capturar'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/regulamento'
     | '/alunos'
     | '/banco'
     | '/capturar'
@@ -185,6 +197,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  RegulamentoRoute: typeof RegulamentoRoute
   AlunosRoute: typeof AlunosRoute
   BancoRoute: typeof BancoRoute
   CapturarRoute: typeof CapturarRoute
@@ -206,6 +219,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/regulamento': {
+      id: '/regulamento'
+      path: '/regulamento'
+      fullPath: '/regulamento'
+      preLoaderRoute: typeof RegulamentoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/alunos': {
@@ -297,6 +317,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  RegulamentoRoute: RegulamentoRoute,
   AlunosRoute: AlunosRoute,
   BancoRoute: BancoRoute,
   CapturarRoute: CapturarRoute,

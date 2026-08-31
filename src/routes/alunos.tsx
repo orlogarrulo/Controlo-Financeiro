@@ -15,10 +15,16 @@ import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
 import {
+  regulamentoInternoHtml,
+  regulamentoPublicUrl,
+} from "@/lib/regulamento-interno";
+import {
   htmlFragmentToA4Pdf,
   htmlFragmentsToMultiPageA4Pdf,
   openPrintHtml,
   shareOrDownloadPdf,
+  deliverOfficialHtml,
+  isMobileDevice,
 } from "@/lib/pdf-export";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
@@ -180,6 +186,12 @@ type FormState = {
   bi: string;
   familia: string;
   obs: string;
+  dataNascimento: string;
+  foto: string;
+  alergiasMedicamentos: string;
+  alergiasAlimentares: string;
+  clinicaProxima: string;
+  grupoSanguineo: string;
   metodoPagamento: string;
   /** Métodos por rubrica. */
   metodoInscricao: string;
@@ -223,6 +235,12 @@ function emptyForm(): FormState {
     bi: "",
     familia: "",
     obs: "",
+    dataNascimento: "",
+    foto: "",
+    alergiasMedicamentos: "",
+    alergiasAlimentares: "",
+    clinicaProxima: "",
+    grupoSanguineo: "",
     metodoPagamento: "Dinheiro",
     metodoInscricao: "Dinheiro",
     metodoSeguro: "Dinheiro",
@@ -502,6 +520,144 @@ function MatriculaForm({
       <div className="space-y-1.5">
         <Label>BI (opcional)</Label>
         <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Data de nascimento</Label>
+        <Input
+          type="date"
+          value={form.dataNascimento}
+          onChange={(e) => setForm({ ...form, dataNascimento: e.target.value })}
+        />
+      </div>
+
+      {/* Foto + saúde / emergência */}
+      <div className="sm:col-span-2 grid gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)]/40 p-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Foto do aluno</Label>
+          <div className="flex items-start gap-3">
+            {form.foto ? (
+              <img
+                src={form.foto}
+                alt="Foto do aluno"
+                className="size-20 rounded-lg border border-[var(--color-line)] object-cover"
+              />
+            ) : (
+              <div className="flex size-20 items-center justify-center rounded-lg border border-dashed border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[10px] text-[var(--color-muted)]">
+                Sem foto
+              </div>
+            )}
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <Input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="text-xs file:mr-2 file:rounded file:border-0 file:bg-[var(--color-forest)] file:px-2 file:py-1 file:text-xs file:text-white"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2.5 * 1024 * 1024) {
+                    toast.error("Foto demasiado grande (máx. ±2,5 MB). Comprima ou tire outra.");
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const dataUrl = String(reader.result || "");
+                    // Reduzir para caber no store / telemóvel
+                    const img = new Image();
+                    img.onload = () => {
+                      const max = 480;
+                      let w = img.width;
+                      let h = img.height;
+                      if (w > max || h > max) {
+                        const r = Math.min(max / w, max / h);
+                        w = Math.round(w * r);
+                        h = Math.round(h * r);
+                      }
+                      const canvas = document.createElement("canvas");
+                      canvas.width = w;
+                      canvas.height = h;
+                      const ctx = canvas.getContext("2d");
+                      if (ctx) {
+                        ctx.drawImage(img, 0, 0, w, h);
+                        setForm((prev) => ({
+                          ...prev,
+                          foto: canvas.toDataURL("image/jpeg", 0.72),
+                        }));
+                      } else {
+                        setForm((prev) => ({ ...prev, foto: dataUrl }));
+                      }
+                    };
+                    img.onerror = () => setForm((prev) => ({ ...prev, foto: dataUrl }));
+                    img.src = dataUrl;
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+              {form.foto ? (
+                <button
+                  type="button"
+                  className="text-left text-xs text-red-700 underline"
+                  onClick={() => setForm((prev) => ({ ...prev, foto: "" }))}
+                >
+                  Remover foto
+                </button>
+              ) : (
+                <p className="text-[11px] text-[var(--color-muted)]">
+                  Carregue ou tire uma foto (telemóvel). Usada no cadastro impresso.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Grupo sanguíneo</Label>
+          <select
+            className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+            value={form.grupoSanguineo}
+            onChange={(e) => setForm({ ...form, grupoSanguineo: e.target.value })}
+          >
+            <option value="">— Desconhecido / não informado —</option>
+            {["O+", "O−", "A+", "A−", "B+", "B−", "AB+", "AB−"].map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Alergias a medicamentos</Label>
+          <Input
+            value={form.alergiasMedicamentos}
+            onChange={(e) => setForm({ ...form, alergiasMedicamentos: e.target.value })}
+            placeholder="Ex.: penicilina — ou «Nenhuma»"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Alergias alimentares</Label>
+          <Input
+            value={form.alergiasAlimentares}
+            onChange={(e) => setForm({ ...form, alergiasAlimentares: e.target.value })}
+            placeholder="Ex.: amendoim, lactose — ou «Nenhuma»"
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Clínica / hospital mais próximo</Label>
+          <Input
+            value={form.clinicaProxima}
+            onChange={(e) => setForm({ ...form, clinicaProxima: e.target.value })}
+            placeholder="Nome e contacto da clínica de emergência"
+          />
+        </div>
+      </div>
+
+      <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-amber-200 bg-amber-50/80 p-3 text-[11px] leading-relaxed text-amber-950">
+        <strong className="font-semibold">Protecção de dados pessoais (Lei n.º 22/11, de 17 de Junho — Angola).</strong>{" "}
+        A École Consulaire trata os dados deste cadastro (identificação, contactos, saúde e imagem) com
+        respeito pela reserva da vida privada e pelos direitos fundamentais previstos na Constituição da
+        República de Angola e na Lei da Protecção de Dados Pessoais. Os dados destinam-se exclusivamente
+        à gestão escolar e à segurança do aluno; não são cedidos a terceiros sem fundamento legal ou
+        consentimento. O titular (ou encarregado de educação) pode solicitar acesso, rectificação ou
+        apagamento junto da escola, nos termos da referida lei e da Agência de Protecção de Dados (APD).
       </div>
 
       <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-forest)]/40 bg-[var(--color-forest-soft)]/40 p-3">
@@ -881,6 +1037,9 @@ function Alunos() {
   const [declBiEmitido, setDeclBiEmitido] = useState("");
   const [declBiLocal, setDeclBiLocal] = useState("Arquivo de Identificação de Luanda");
   const [declPreview, setDeclPreview] = useState<string | null>(null);
+  const [regOpen, setRegOpen] = useState(false);
+  const [regLang, setRegLang] = useState<"pt" | "fr">("pt");
+  const [regBusy, setRegBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportIds, setExportIds] = useState<Set<string>>(new Set());
   const [exportBusy, setExportBusy] = useState(false);
@@ -955,6 +1114,12 @@ function Alunos() {
       bi: a.bi || "",
       familia: a.familia || "",
       obs: a.obs || "",
+      dataNascimento: a.dataNascimento || "",
+      foto: a.foto || "",
+      alergiasMedicamentos: a.alergiasMedicamentos || "",
+      alergiasAlimentares: a.alergiasAlimentares || "",
+      clinicaProxima: a.clinicaProxima || "",
+      grupoSanguineo: a.grupoSanguineo || "",
       metodoPagamento: a.metodoPagamento || "Dinheiro",
       metodoInscricao: a.metodosPagamento?.inscricao || a.metodoPagamento || "Dinheiro",
       metodoSeguro: a.metodosPagamento?.seguro || a.metodoPagamento || "Dinheiro",
@@ -1059,6 +1224,12 @@ function Alunos() {
       obs: buildObs(form),
       propina: num(form.propina),
       statusPag: t.liquido > 0 ? "pago" : "registado",
+      dataNascimento: form.dataNascimento.trim() || undefined,
+      foto: form.foto || undefined,
+      alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
+      alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
+      clinicaProxima: form.clinicaProxima.trim() || undefined,
+      grupoSanguineo: form.grupoSanguineo.trim() || undefined,
       ...metodosFromForm(form),
       transferidoCampusCidade: form.transferidoCampusCidade,
     };
@@ -1090,6 +1261,12 @@ function Alunos() {
         bi: form.bi.trim(),
         familia: form.familia.trim(),
         obs: buildObs(form),
+        dataNascimento: form.dataNascimento.trim() || undefined,
+        foto: form.foto || undefined,
+        alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
+        alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
+        clinicaProxima: form.clinicaProxima.trim() || undefined,
+        grupoSanguineo: form.grupoSanguineo.trim() || undefined,
         inscricao: t.inscricao,
         seguro: t.seguro,
         manuais: t.manuais,
@@ -1117,8 +1294,129 @@ function Alunos() {
     }
   }
 
+  /** Cadastro individual para assinatura de veracidade pelos pais / encarregado. */
+  async function imprimirCadastroIndividual(a: Aluno) {
+    const escolaNome = escola.nome || "École Consulaire";
+    const emitido = new Date().toLocaleDateString("pt-PT", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+    const fmt = (v?: string) => (v && String(v).trim() ? String(v).trim() : "—");
+    const fotoBlock = a.foto
+      ? `<img src="${a.foto}" alt="" style="width:96px;height:96px;object-fit:cover;border:1px solid #1a4d3e;border-radius:6px;" />`
+      : `<div style="width:96px;height:96px;border:1px dashed #94a3b8;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;">Sem foto</div>`;
 
+    const row = (label: string, value: string) =>
+      `<tr><td style="padding:6px 8px;border:1px solid #c5d0ca;width:38%;background:#f4f7f5;font-weight:600;font-size:11px;">${label}</td><td style="padding:6px 8px;border:1px solid #c5d0ca;font-size:12px;">${value}</td></tr>`;
 
+    const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 12mm; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { padding: 0 2mm; }
+  .head { display: flex; align-items: flex-start; gap: 16px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 14px; }
+  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #1f5c4a; font-weight: 700; }
+  .title { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
+  .meta { margin: 4px 0 0; font-size: 11px; color: #555; }
+  h2 { font-size: 12px; margin: 16px 0 8px; color: #1f5c4a; text-transform: uppercase; letter-spacing: 0.06em; }
+  table { width: 100%; border-collapse: collapse; }
+  .aviso { margin-top: 14px; padding: 10px 12px; border: 1px solid #d4a017; background: #fffbeb; font-size: 10px; line-height: 1.5; color: #422006; }
+  .assinaturas { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .sig { border-top: 1px solid #333; padding-top: 6px; font-size: 11px; }
+  .sig strong { display: block; margin-bottom: 2px; }
+  .foot { margin-top: 18px; font-size: 9px; color: #64748b; text-align: right; }
+</style></head><body>
+<div class="sheet">
+  <div class="head">
+    ${fotoBlock}
+    <div style="flex:1;">
+      <p class="kicker">${escolaNome}</p>
+      <p class="title">Cadastro individual do aluno</p>
+      <p class="meta">Ficha para confirmação e assinatura de veracidade pelos pais / encarregado de educação</p>
+      <p class="meta">ID ${a.id} · Recibo ${fmt(a.recibo)} · Emitido em ${emitido}</p>
+    </div>
+  </div>
+
+  <h2>1. Identificação</h2>
+  <table>
+    ${row("Nome completo", fmt(a.nome))}
+    ${row("Data de nascimento", a.dataNascimento ? formatDate(a.dataNascimento) : "—")}
+    ${row("Classe / turma", fmt(a.turma))}
+    ${row("Grupo / ciclo", fmt(a.grupo))}
+    ${row("Família / apelido", fmt(a.familia))}
+    ${row("BI", fmt(a.bi))}
+  </table>
+
+  <h2>2. Encarregados e contactos</h2>
+  <table>
+    ${row("Pai", fmt(a.pai))}
+    ${row("Mãe", fmt(a.mae))}
+    ${row("Encarregado de educação", fmt(a.encarregado))}
+    ${row("Telefone", fmt(a.telefone))}
+    ${row("E-mail", fmt(a.email))}
+    ${row("Morada", fmt(a.morada))}
+  </table>
+
+  <h2>3. Saúde e emergência</h2>
+  <table>
+    ${row("Grupo sanguíneo", fmt(a.grupoSanguineo))}
+    ${row("Alergias a medicamentos", fmt(a.alergiasMedicamentos))}
+    ${row("Alergias alimentares", fmt(a.alergiasAlimentares))}
+    ${row("Clínica / hospital mais próximo", fmt(a.clinicaProxima))}
+  </table>
+
+  <h2>4. Observações</h2>
+  <table>
+    ${row("Observações", fmt(a.obs))}
+  </table>
+
+  <div class="aviso">
+    <strong>Protecção de dados pessoais — Lei n.º 22/11, de 17 de Junho (Lei da Protecção de Dados Pessoais — Angola).</strong>
+    A escola respeita e protege o registo dos dados pessoais do aluno e dos encarregados de educação,
+    em conformidade com a Constituição da República de Angola e com a referida lei, sob fiscalização da
+    Agência de Protecção de Dados (APD). Os dados (incluindo imagem e informações de saúde) destinam-se
+    exclusivamente à gestão escolar e à segurança do aluno. O titular pode exercer os direitos de informação,
+    acesso, rectificação, oposição e apagamento nos termos legais.
+  </div>
+
+  <p style="margin:18px 0 8px;font-size:12px;line-height:1.5;">
+    Declaro, na qualidade de pai / mãe / encarregado de educação, que as informações constantes deste cadastro
+    são <strong>verdadeiras e completas</strong>, e autorizo o tratamento dos dados pessoais para fins escolares
+    e de emergência, nos termos da Lei n.º 22/11.
+  </p>
+
+  <div class="assinaturas">
+    <div class="sig">
+      <strong>O(A) encarregado(a) de educação</strong>
+      Nome: _________________________________<br/>
+      Data: ____ / ____ / ________ &nbsp;&nbsp; Assinatura: _________________
+    </div>
+    <div class="sig">
+      <strong>A escola (recepção do cadastro)</strong>
+      Nome: _________________________________<br/>
+      Data: ____ / ____ / ________ &nbsp;&nbsp; Assinatura / carimbo: _________
+    </div>
+  </div>
+  <p class="foot">Departamento de Finanças / Secretaria · ${escolaNome} · Documento confidencial</p>
+</div>
+</body></html>`;
+
+    try {
+      const r = await deliverOfficialHtml(html, {
+        filename: `cadastro-${a.id}-${(a.nome || "aluno").replace(/\s+/g, "-").slice(0, 40)}.pdf`,
+        shareTitle: `Cadastro ${a.nome}`,
+        shareText: `Cadastro individual para assinatura · ${a.nome} (${a.id})`,
+      });
+      if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+      else if (isMobileDevice()) toast.success("PDF do cadastro pronto");
+      else toast.success("Cadastro aberto — imprima para assinatura dos pais");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar cadastro");
+    }
+  }
 
   /** Mês lectivo actual (set–jun). */
   function mesLetivoAtual(): { key: string; mesRef: string; mesKey: string } {
@@ -1471,8 +1769,14 @@ function Alunos() {
 </style>
 </head><body>${inner}</body></html>`;
     try {
-      openPrintHtml(docHtml);
-      toast.success(`Documento aberto · ${lista.length} alunos — use «Guardar como PDF» se precisar de ficheiro`);
+      const r = await deliverOfficialHtml(docHtml, {
+        filename: "alunos-por-classe.pdf",
+        shareTitle: "Alunos por classe",
+        shareText: `${lista.length} alunos · École Consulaire`,
+      });
+      if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+      else if (isMobileDevice()) toast.success("PDF pronto");
+      else toast.success(`Documento aberto · ${lista.length} alunos — use «Guardar como PDF» se precisar`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
     }
@@ -1693,7 +1997,6 @@ function Alunos() {
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     setInvoiceBusy(true);
     try {
-      // Impressão HTML padronizada (Georgia/Times) — sempre legível
       const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4 portrait; margin: 8mm; }
@@ -1702,9 +2005,12 @@ function Alunos() {
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 </style>
 </head><body>${html}</body></html>`;
-      openPrintHtml(docHtml);
-      /* PDF exacto = no diálogo escolha «Guardar como PDF» */
-      // Só regista no histórico de faturas de propina quando é fatura (não recibo avulso)
+      // PC: impressão · Telemóvel: partilha WhatsApp / e-mail
+      const result = await deliverOfficialHtml(docHtml, {
+        filename: `${isRecibo ? "recibo" : "fatura"}-${numero}.pdf`,
+        shareTitle: `${isRecibo ? "Recibo" : "Fatura"} ${numero} · ${a.nome}`,
+        shareText: `${isRecibo ? "Recibo" : "Fatura"} ${numero} — ${mesRef} — ${a.nome}`,
+      });
       if (!isRecibo) {
         const ja = (faturasPropina || []).some((f) => f.numero === numero);
         if (!ja && typeof addFaturaPropina === "function") {
@@ -1721,8 +2027,14 @@ function Alunos() {
           });
         }
       }
-      toast.success(`Documento aberto · ${numero} — escolha impressora ou «Guardar como PDF»`);
-      if (enviarEmail && email) {
+      if (result.delivery === "shared") {
+        toast.success("Escolha WhatsApp, Gmail ou outra app");
+      } else if (isMobileDevice()) {
+        toast.success(`PDF pronto · ${numero}`);
+      } else {
+        toast.success(`Documento aberto · ${numero} — escolha impressora ou «Guardar como PDF»`);
+      }
+      if (enviarEmail && email && !isMobileDevice()) {
         const subject = encodeURIComponent(`Fatura ${numero} — ${mesRef} — ${a.nome}`);
         const body = encodeURIComponent(
           `Exmo(a). ${encarregado},\n\nSegue a fatura de mensalidade ${mesRef}.\n\nN.º: ${numero}\nAluno: ${a.nome} (${a.id})\nValor: ${formatKz(valor)}\n\nAnexe o PDF gerado a este e-mail.\n\nDepartamento de Finanças · ${escola.nome || "École Consulaire"}\n`,
@@ -1735,7 +2047,11 @@ function Alunos() {
       }
       setInvoicePreview(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+      if (e instanceof Error && e.name === "AbortError") {
+        toast.message("Partilha cancelada");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+      }
     } finally {
       setInvoiceBusy(false);
     }
@@ -1913,8 +2229,14 @@ function Alunos() {
   }
 </style>
 </head><body>${inner}</body></html>`;
-      openPrintHtml(docHtml);
-      toast.success(`Documento aberto · ${selected.length} aluno(s) — use «Guardar como PDF» se precisar de ficheiro`);
+      const r = await deliverOfficialHtml(docHtml, {
+        filename: "lista-matriculas.pdf",
+        shareTitle: "Lista de matrículas",
+        shareText: `${selected.length} aluno(s) · École Consulaire`,
+      });
+      if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+      else if (isMobileDevice()) toast.success("PDF pronto");
+      else toast.success(`Documento aberto · ${selected.length} aluno(s) — use «Guardar como PDF» se precisar`);
       setExportOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao exportar");
@@ -1930,7 +2252,7 @@ function Alunos() {
         title="Matrículas"
         description={
           canEdit
-            ? "1) Cadastrar aluno (Nova matrícula). 2) Quando quiser, Fatura → ver modelo → Gerar PDF. No dia 30 pode gerar todas de uma vez."
+            ? "1) Cadastrar aluno (Nova matrícula). 2) Quando quiser, Fatura ou Recibo → ver modelo → PDF. No dia 30 pode gerar todas as faturas de uma vez."
             : "Consulta das matrículas. Só o Colaborador 1 pode criar ou editar."
         }
         actions={
@@ -1946,6 +2268,14 @@ function Alunos() {
               onClick={() => setDeclOpen(true)}
             >
               <ScrollText className="mr-1 size-4" /> Declaração de matrícula
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Regulamento interno FR/PT — PDF e link para pais (WhatsApp / e-mail)"
+              onClick={() => setRegOpen(true)}
+            >
+              <FileText className="mr-1 size-4" /> Regulamento interno
             </Button>
             <PrintActions
               targetRef={printRef}
@@ -2084,6 +2414,15 @@ function Alunos() {
                       <Receipt className="size-3.5" />
                       <span className="ml-1 hidden lg:inline">Recibo</span>
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Imprimir cadastro individual para assinatura dos pais"
+                      onClick={() => void imprimirCadastroIndividual(a)}
+                    >
+                      <ScrollText className="size-3.5" />
+                      <span className="ml-1 hidden xl:inline">Cadastro</span>
+                    </Button>
                     {canEdit ? (
                       <Button size="sm" variant="secondary" onClick={() => openEdit(a)}>
                         <Pencil className="size-3.5" />
@@ -2209,10 +2548,136 @@ function Alunos() {
             <Button type="button" variant="secondary" onClick={() => setDeclPreview(null)}>
               Fechar
             </Button>
-            <Button type="button" onClick={() => declPreview && openPrintHtml(declPreview)}>
-              Imprimir / PDF
+            <Button
+              type="button"
+              onClick={() => {
+                if (!declPreview) return;
+                void deliverOfficialHtml(declPreview, {
+                  filename: "declaracao-matricula.pdf",
+                  shareTitle: "Declaração de matrícula",
+                  shareText: "Declaração de matrícula · École Consulaire",
+                }).then((r) => {
+                  if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+                  else if (isMobileDevice()) toast.success("PDF pronto");
+                  else toast.message("No diálogo: impressora ou «Guardar como PDF»");
+                });
+              }}
+            >
+              PDF
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Regulamento interno FR / PT */}
+      <Dialog open={regOpen} onOpenChange={setRegOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Regulamento interno</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[var(--color-muted)]">
+            Documento oficial (multas, 18h00, vestuário, comportamento, denúncias).
+            Para os pais: envie o link — leem, marcam «Tomei conhecimento», indicam nomes e
+            confirmam (sem imprimir). O PDF serve só para arquivo / impressão na escola.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={regLang === "pt" ? "default" : "secondary"}
+              onClick={() => setRegLang("pt")}
+            >
+              Português
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={regLang === "fr" ? "default" : "secondary"}
+              onClick={() => setRegLang("fr")}
+            >
+              Français
+            </Button>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Button
+              type="button"
+              disabled={regBusy}
+              onClick={() => {
+                setRegBusy(true);
+                const contacto = loadContacto();
+                const html = regulamentoInternoHtml(regLang, {
+                  nome: escola.nome,
+                  nomeCurto: escola.nomeCurto,
+                  subtitulo: escola.subtitulo,
+                  ano: escola.ano,
+                  morada: contacto.morada,
+                  telefones: contacto.telefones,
+                  email: contacto.email,
+                });
+                void deliverOfficialHtml(html, {
+                  filename: `regulamento-interno-${regLang}.pdf`,
+                  shareTitle:
+                    regLang === "fr"
+                      ? "Règlement intérieur · École Consulaire"
+                      : "Regulamento interno · École Consulaire",
+                  shareText:
+                    regLang === "fr"
+                      ? "Règlement intérieur à lire et signer"
+                      : "Regulamento interno para leitura e assinatura",
+                })
+                  .then((r) => {
+                    if (r.delivery === "shared")
+                      toast.success("Escolha WhatsApp, Gmail ou outra app");
+                    else if (isMobileDevice()) toast.success("PDF pronto");
+                    else toast.message("No diálogo: impressora ou «Guardar como PDF»");
+                  })
+                  .finally(() => setRegBusy(false));
+              }}
+            >
+              {regBusy ? "A gerar…" : "PDF"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                const url = regulamentoPublicUrl(regLang);
+                const text =
+                  regLang === "fr"
+                    ? `Règlement intérieur — École Consulaire du Congo (Luanda)\nMerci de lire et de confirmer (nom de l’élève et du responsable) :\n${url}`
+                    : `Regulamento interno — École Consulaire du Congo (Luanda)\nPor favor leia o regulamento, marque «Tomei conhecimento», indique o seu nome e o do aluno, e confirme:\n${url}`;
+                if (navigator.share) {
+                  void navigator
+                    .share({ title: "Regulamento interno", text, url })
+                    .then(() => toast.success("Link partilhado"))
+                    .catch(() => {
+                      void navigator.clipboard?.writeText(url);
+                      toast.success("Link copiado");
+                    });
+                } else {
+                  void navigator.clipboard?.writeText(url).then(
+                    () => toast.success("Link copiado — cole no WhatsApp ou e-mail"),
+                    () => toast.message(url),
+                  );
+                }
+              }}
+            >
+              Link (WhatsApp / e-mail)
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                window.open(regulamentoPublicUrl(regLang), "_blank", "noopener,noreferrer");
+              }}
+            >
+              Abrir página pública
+            </Button>
+          </div>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            Link público: <code className="text-[10px]">{regulamentoPublicUrl(regLang)}</code>
+            {" — "}os pais abrem, leem, marcam «Tomei conhecimento» e confirmam.
+            A lista fica em Google Sheets → Regulamento (assinaturas).
+          </p>
         </DialogContent>
       </Dialog>
 
@@ -2274,7 +2739,7 @@ function Alunos() {
               disabled={exportBusy || exportIds.size === 0}
               onClick={() => void exportListaPdf()}
             >
-              {exportBusy ? "A gerar…" : "Gerar PDF"}
+              {exportBusy ? "A gerar…" : "PDF"}
             </Button>
           </div>
         </DialogContent>
@@ -2531,7 +2996,12 @@ function Alunos() {
             <Button type="button" variant="secondary" disabled={invoiceBusy} onClick={() => setInvoicePreview(null)}>
               Fechar
             </Button>
-            {invoicePreview?.modo === "recibo" ? null : (
+            {invoicePreview?.modo === "recibo" ? (
+              <Button type="button" disabled={invoiceBusy} onClick={() => void confirmarFaturaPdf(false)}>
+                <Printer className="mr-1 size-4" />
+                {invoiceBusy ? "A gerar…" : "PDF"}
+              </Button>
+            ) : (
               <>
                 <Button
                   type="button"
@@ -2544,7 +3014,7 @@ function Alunos() {
                 </Button>
                 <Button type="button" disabled={invoiceBusy} onClick={() => void confirmarFaturaPdf(false)}>
                   <Printer className="mr-1 size-4" />
-                  {invoiceBusy ? "A gerar…" : "Gerar PDF"}
+                  {invoiceBusy ? "A gerar…" : "PDF"}
                 </Button>
               </>
             )}

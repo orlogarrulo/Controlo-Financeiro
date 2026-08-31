@@ -133,7 +133,7 @@ function Lancamentos() {
         title="Despesas"
         description="Pagamentos da escola por fonte (cartão, transferência, dinheiro, sócio). Matrículas e propinas estão em Matrículas / Propinas — não misturar."
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="no-print flex flex-row flex-wrap items-center gap-2">
             <PrintActions
               targetRef={printRef}
               filename="despesas.pdf"
@@ -143,7 +143,7 @@ function Lancamentos() {
             />
             <Button
               variant="secondary"
-              className="no-print"
+              className="shrink-0"
               onClick={() => {
                 downloadCsv("Despesas.csv", ledgerToCsv(filtered));
                 toast.success("CSV descarregado");
@@ -151,7 +151,7 @@ function Lancamentos() {
             >
               <Download className="mr-1 size-4" /> CSV
             </Button>
-            <Button asChild className="no-print">
+            <Button asChild className="shrink-0">
               <Link to="/capturar">Nova despesa</Link>
             </Button>
           </div>

@@ -149,10 +149,10 @@ function Banco() {
         title="Movimentos Banco BAI"
         description={`${escola.contaBai} · ${escola.cartao}. Saldo inicial ${formatKz(escola.saldoInicialBai)}.`}
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="no-print flex flex-row flex-wrap items-center gap-2">
             {canEdit ? (
-              <Button type="button" onClick={openNovaMov}>
-                <Plus className="mr-1.5 h-4 w-4" />
+              <Button className="shrink-0" type="button" onClick={openNovaMov}>
+                <Plus className="mr-1 size-4" />
                 Nova movimentação BAI
               </Button>
             ) : null}

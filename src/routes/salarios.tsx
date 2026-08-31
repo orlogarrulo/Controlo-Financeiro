@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { isCollaborator1 } from "@/lib/can-edit";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { getSeed, salariosAll, useFinance } from "@/lib/store";
+import { deliverOfficialHtml, isMobileDevice } from "@/lib/pdf-export";
 import type { ReciboSalario, Salario } from "@/data/types";
 
 export const Route = createFileRoute("/salarios")({
@@ -1417,14 +1418,14 @@ function Salarios() {
         title="Salários e contratos"
         description="Cadastro, contrato (9 meses), recibos mensais, autorização dos sócios e débito no Banco BAI ao marcar pago. Aviso automático nos dias 28–30."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="no-print flex flex-row flex-wrap items-center gap-2">
             {canEdit ? (
               <>
-                <Button type="button" variant="secondary" onClick={openGerarRecibos}>
+                <Button className="shrink-0" type="button" variant="secondary" onClick={openGerarRecibos}>
                   Gerar recibos do mês
                 </Button>
-                <Button type="button" onClick={openNew}>
-                  <UserPlus className="mr-1.5 h-4 w-4" />
+                <Button className="shrink-0" type="button" onClick={openNew}>
+                  <UserPlus className="mr-1 size-4" />
                   Novo funcionário
                 </Button>
               </>
@@ -1438,7 +1439,7 @@ function Salarios() {
             <Button
               type="button"
               variant="secondary"
-              className="hidden sm:inline-flex"
+              className="hidden shrink-0 sm:inline-flex"
               onClick={() => {
                 const now = new Date();
                 const mesAtual = now.toLocaleDateString("pt-PT", { month: "long", year: "numeric" });
@@ -1605,7 +1606,7 @@ function Salarios() {
                 );
               }}
             >
-              Ver PDF (recibos + autorização)
+              PDF
             </Button>
             <Button
               type="button"
@@ -1858,10 +1859,19 @@ function Salarios() {
             <Button
               type="button"
               onClick={() => {
-                if (previewHtml) openPrintHtml(previewHtml.html, previewHtml.title);
+                if (!previewHtml) return;
+                void deliverOfficialHtml(previewHtml.html, {
+                  filename: `${(previewHtml.title || "salarios").replace(/\s+/g, "-").toLowerCase()}.pdf`,
+                  shareTitle: previewHtml.title || "Salários",
+                  shareText: "Documento · Departamento de Finanças · École Consulaire",
+                }).then((r) => {
+                  if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+                  else if (isMobileDevice()) toast.success("PDF pronto");
+                  else toast.message("No diálogo: impressora ou «Guardar como PDF»");
+                });
               }}
             >
-              Imprimir / PDF
+              PDF
             </Button>
           </div>
         </DialogContent>

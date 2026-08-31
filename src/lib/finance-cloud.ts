@@ -188,3 +188,103 @@ export function sliceFromStore(s: {
     faturasPropina: s.faturasPropina || [],
   };
 }
+
+/** ——— Tomadas de conhecimento do regulamento (servidor / nuvem) ——— */
+
+export type RegulamentoAckCloud = {
+  alunoNome: string;
+  encarregadoNome: string;
+  turma?: string;
+  lang?: string;
+  signedAt: string;
+};
+
+async function ensureRegulamentoAcksTable(sql: {
+  query: (text: string, params?: unknown[]) => Promise<unknown[]>;
+}) {
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS regulamento_acks (
+      id TEXT PRIMARY KEY,
+      aluno_nome TEXT NOT NULL,
+      encarregado_nome TEXT NOT NULL,
+      turma TEXT,
+      lang TEXT,
+      signed_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+/** Pais submetem na página pública — grava na nuvem (Neon/PGLite), não só no telemóvel. */
+export const submitRegulamentoAck = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<{ ok: boolean; id: string }> => {
+    const data = (ctx as { data?: RegulamentoAckCloud }).data;
+    if (!data?.alunoNome?.trim() || !data?.encarregadoNome?.trim()) {
+      throw new Error("Nome do aluno e do encarregado são obrigatórios.");
+    }
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    await ensureRegulamentoAcksTable(sql);
+    const id = `ack-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const signedAt = data.signedAt || new Date().toISOString();
+    await sql.query(
+      `INSERT INTO regulamento_acks (id, aluno_nome, encarregado_nome, turma, lang, signed_at)
+       VALUES ($1, $2, $3, $4, $5, $6::timestamptz)`,
+      [
+        id,
+        data.alunoNome.trim().slice(0, 200),
+        data.encarregadoNome.trim().slice(0, 200),
+        (data.turma || "").trim().slice(0, 80),
+        data.lang === "fr" ? "fr" : "pt",
+        signedAt,
+      ],
+    );
+    // E-mail privado só no servidor (nunca enviado ao browser).
+    // Defina REGULAMENTO_NOTIFY_EMAIL no ambiente de produção.
+    // Sem serviço SMTP/Resend configurado, apenas regista no log do servidor.
+    const notify = (process.env.REGULAMENTO_NOTIFY_EMAIL || "").trim();
+    if (notify) {
+      console.info(
+        `[regulamento] Nova tomada de conhecimento → notificar ${notify}: ` +
+          `${data.encarregadoNome} / ${data.alunoNome} (${data.lang || "pt"}) ${signedAt}`,
+      );
+    }
+    return { ok: true, id };
+  },
+);
+
+/** Lista para a escola exportar CSV (PC do escritório). */
+export const listRegulamentoAcks = createServerFn({ method: "GET" }).handler(
+  async (): Promise<RegulamentoAckCloud[]> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    try {
+      await ensureRegulamentoAcksTable(sql);
+      const rows = await sql.query<{
+        aluno_nome: string;
+        encarregado_nome: string;
+        turma: string | null;
+        lang: string | null;
+        signed_at: string | Date;
+      }>(
+        `SELECT aluno_nome, encarregado_nome, turma, lang, signed_at
+         FROM regulamento_acks
+         ORDER BY signed_at DESC
+         LIMIT 1000`,
+      );
+      return rows.map((r) => ({
+        alunoNome: r.aluno_nome,
+        encarregadoNome: r.encarregado_nome,
+        turma: r.turma || undefined,
+        lang: r.lang || undefined,
+        signedAt:
+          typeof r.signed_at === "string"
+            ? r.signed_at
+            : new Date(r.signed_at).toISOString(),
+      }));
+    } catch (e) {
+      console.error("[regulamento] list failed", e);
+      return [];
+    }
+  },
+);

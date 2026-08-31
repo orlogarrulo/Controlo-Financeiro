@@ -1244,6 +1244,11 @@ export function getSeed(): Seed {
 /** Card invoices already booked as socio FAT (avoid double-count). */
 const LINKED_CARD = new Set(["CX-001"]); // Tamaco panfletos = FAT-050
 
+/**
+ * Ledger unificado: seed + extras da app (matrículas novas, fundo extra, capturas).
+ * Lê o estado actual do store para incluir alunosExtra e fundoExtra — evita
+ * trabalho duplicado e totais desfasados entre separadores / dispositivos.
+ */
 export function buildLedger(extras: Lancamento[]): Lancamento[] {
   const socio = seed.lancamentosSocio;
   const card: Lancamento[] = seed.faturasCartao
@@ -1264,7 +1269,22 @@ export function buildLedger(extras: Lancamento[]): Lancamento[] {
       fonte: "Cartão BAI Express",
     }));
 
-  const fundo: Lancamento[] = seed.fundoPagamentos.map((p) => ({
+  // Fundo: seed + pagamentos registados na app (fundoExtra)
+  let fundoSource = seed.fundoPagamentos as FundoPagamento[];
+  let alunosSource = seed.alunos as Aluno[];
+  try {
+    const st = useFinance.getState();
+    fundoSource = fundoPagAll(st.fundoExtra || []);
+    alunosSource = alunosAll(
+      st.alunosExtra || [],
+      st.alunosOverrides || {},
+      st.alunosDeletedIds || [],
+    );
+  } catch {
+    /* SSR / testes sem store */
+  }
+
+  const fundo: Lancamento[] = fundoSource.map((p) => ({
     id: p.id,
     data: p.data,
     categoria: guessCategoria(p.descricao),
@@ -1280,19 +1300,20 @@ export function buildLedger(extras: Lancamento[]): Lancamento[] {
     fonte: "Fundo de Maneio",
   }));
 
-  const insc: Lancamento[] = seed.alunos
+  // Matrículas: seed + alunosExtra (todas as matrículas activas)
+  const insc: Lancamento[] = alunosSource
     .filter((a) => a.liquido > 0)
     .map((a) => ({
-      id: a.recibo,
+      id: a.recibo || a.id,
       data: a.dataPag || "",
       categoria: "Inscrição / Matrícula",
       descricao: `Inscrição ${a.nome}`,
-      fornecedor: a.encarregado,
+      fornecedor: a.encarregado || a.pai || a.mae || "",
       fatura: "",
-      docInterno: a.recibo,
+      docInterno: a.recibo || a.id,
       tipo: "entrada" as const,
       valor: a.liquido,
-      pagamento: "",
+      pagamento: a.metodoPagamento || "",
       observacoes: a.obs,
       origem: "inscricao" as const,
       fonte: "Controlo de Propinas",
@@ -1383,6 +1404,7 @@ export function computeTotals(
   fundoAtmExtra: FundoAtm[] = [],
   alunosDeletedIds: string[] = [],
   movimentosBaiDeletedIds: string[] = [],
+  fundoExtra: FundoPagamento[] = [],
 ): Totals {
   const alunos = alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds);
   const inscricoesLiquido = alunos.reduce((s, a) => s + a.liquido, 0);
@@ -1418,7 +1440,7 @@ export function computeTotals(
   const custosTotais = socioDespesas + custosOperacionais;
   const baiRows = movimentosAll(movimentosBaiExtra, baiOverride, movimentosBaiDeletedIds);
   const lastBai = baiRows[baiRows.length - 1];
-  // Fundo: levantamentos ATM (BAI + blocos) aumentam o fundo; entradas/saídas do fundo só movem o saldo do fundo
+  // Fundo: levantamentos ATM (BAI + blocos) aumentam o fundo; gastos = seed + fundoExtra
   const blocos = fundoAtmAll(fundoAtmExtra);
   const blocoKeys = new Set(blocos.map((a) => `${a.data}|${Number(a.valor) || 0}`));
   let fundoLevantado = blocos.reduce((s, a) => s + (Number(a.valor) || 0), 0);
@@ -1431,9 +1453,13 @@ export function computeTotals(
     if (blocos.some((b) => b.id === m.id)) continue;
     fundoLevantado += sai;
   }
+  // Gastos do fundo: seed + fundoExtra (app) + lançamentos com origem fundo
+  const fundoIds = new Set(fundoPagAll(fundoExtra).map((p) => p.id));
   const fundoGasto =
-    seed.fundoPagamentos.reduce((s, p) => s + p.valor, 0) +
-    extras.filter((e) => e.origem === "fundo").reduce((s, e) => s + e.valor, 0);
+    fundoPagAll(fundoExtra).reduce((s, p) => s + (Number(p.valor) || 0), 0) +
+    extras
+      .filter((e) => e.origem === "fundo" && !fundoIds.has(e.id))
+      .reduce((s, e) => s + e.valor, 0);
 
   return {
     alunos: alunos.length,

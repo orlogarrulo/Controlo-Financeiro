@@ -34,13 +34,25 @@ function Dashboard() {
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra);
   const fundoAtmExtra = useFinance((s) => s.fundoAtmExtra ?? []);
+  const fundoExtra = useFinance((s) => s.fundoExtra ?? []);
   const baiOverride = useFinance((s) => s.baiOverride);
   const movimentosBaiDeletedIds = useFinance((s) => s.movimentosBaiDeletedIds || []);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const isAdmin = isCollaborator1(activeOperator, operators);
   const sessionLog = useFinance((s) => s.sessionLog);
-  const t = computeTotals(extras, mensalidades, alunosExtra, alunosOverrides, movimentosBaiExtra, baiOverride, fundoAtmExtra, alunosDeletedIds, movimentosBaiDeletedIds);
+  const t = computeTotals(
+    extras,
+    mensalidades,
+    alunosExtra,
+    alunosOverrides,
+    movimentosBaiExtra,
+    baiOverride,
+    fundoAtmExtra,
+    alunosDeletedIds,
+    movimentosBaiDeletedIds,
+    fundoExtra,
+  );
   const ledger = buildLedger(extras);
   const cats = categoriaTotals(ledger.filter((l) => l.tipo === "despesa" && l.origem !== "inscricao"))
     .filter((c) => c.despesas > 0)

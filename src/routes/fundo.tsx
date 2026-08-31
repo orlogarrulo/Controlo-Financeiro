@@ -168,13 +168,13 @@ function Fundo() {
         title="Fundo de maneio"
         description="Levantamentos ATM e pagamentos em dinheiro. Editável pelo Colaborador 1."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="no-print flex flex-row flex-wrap items-center gap-2">
             {canEdit ? (
               <>
-                <Button className="no-print" variant="secondary" onClick={openNewAtm}>
+                <Button className="shrink-0" variant="secondary" onClick={openNewAtm}>
                   <Landmark className="mr-1 size-4" /> Novo bloco ATM
                 </Button>
-                <Button className="no-print" onClick={openNew}>
+                <Button className="shrink-0" onClick={openNew}>
                   <Plus className="mr-1 size-4" /> Novo pagamento
                 </Button>
               </>

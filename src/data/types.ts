@@ -162,6 +162,16 @@ export type Aluno = {
    * inscrição 50.000 + seguro 30.000.
    */
   transferidoCampusCidade?: boolean;
+  /** Foto do aluno (data URL / base64) para o cadastro. */
+  foto?: string;
+  /** Alergias a medicamentos. */
+  alergiasMedicamentos?: string;
+  /** Alergias alimentares. */
+  alergiasAlimentares?: string;
+  /** Clínica / hospital mais próximo em caso de emergência. */
+  clinicaProxima?: string;
+  /** Grupo sanguíneo (ex.: A+, O−, desconhecido). */
+  grupoSanguineo?: string;
   criadoPor?: string;
   createdAt?: string;
   editadoPor?: string;

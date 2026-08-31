@@ -48,11 +48,17 @@ export const Route = createRootRoute({
         <PreviewHostBridge />
         <AuthProvider>
           <HydrateStore />
-          <OperatorGate>
-            <AppShell>
-              <Outlet />
-            </AppShell>
-          </OperatorGate>
+          {/* /regulamento é público (pais via WhatsApp/e-mail) — sem login de colaborador */}
+          {typeof window !== "undefined" &&
+          window.location.pathname.startsWith("/regulamento") ? (
+            <Outlet />
+          ) : (
+            <OperatorGate>
+              <AppShell>
+                <Outlet />
+              </AppShell>
+            </OperatorGate>
+          )}
           <Toaster position="top-center" richColors />
         </AuthProvider>
         <Scripts />

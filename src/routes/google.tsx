@@ -16,6 +16,8 @@ import {
   salariosToCsv,
   fundoToCsv,
   mensalidadesToCsv,
+  loadRegulamentoAcks,
+  regulamentoAcksToCsv,
   type ReconcileResult,
 } from "@/lib/csv";
 import {
@@ -27,7 +29,12 @@ import {
   salariosAll,
 } from "@/lib/store";
 import { MESES_LETIVOS } from "@/data/types";
-import { loadFinanceCloud, saveFinanceCloud, sliceFromStore } from "@/lib/finance-cloud";
+import {
+  loadFinanceCloud,
+  saveFinanceCloud,
+  sliceFromStore,
+  listRegulamentoAcks,
+} from "@/lib/finance-cloud";
 import { todayIso, formatKz } from "@/lib/format";
 import type { MovimentoBai } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
@@ -106,8 +113,33 @@ function GooglePage() {
       const seedFundo = seed.fundoPagamentos || [];
       const seedAtm = seed.fundoAtm || [];
       const pags = [...seedFundo, ...(fundoExtra || [])];
-      return fundoToCsv(pags, seedAtm);
+      const atmExtra = useFinance.getState().fundoAtmExtra || [];
+      return fundoToCsv(pags, [...seedAtm, ...atmExtra]);
     });
+  }
+
+  async function exportRegulamento() {
+    try {
+      let rows = loadRegulamentoAcks();
+      try {
+        const remote = await listRegulamentoAcks();
+        const map = new Map<string, (typeof rows)[0]>();
+        for (const r of [...remote, ...rows]) {
+          const k = `${r.signedAt}|${r.alunoNome}|${r.encarregadoNome}`;
+          map.set(k, r);
+        }
+        rows = Array.from(map.values()).sort((a, b) =>
+          (b.signedAt || "").localeCompare(a.signedAt || ""),
+        );
+      } catch {
+        /* offline */
+      }
+      runExport("regulamento", "Regulamento_tomadas_de_conhecimento.csv", () =>
+        regulamentoAcksToCsv(rows),
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao exportar regulamento");
+    }
   }
 
   function exportTudo() {
@@ -118,6 +150,7 @@ function GooglePage() {
       exportPropinas();
       exportSalarios();
       exportFundo();
+      exportRegulamento();
       setLastExport("tudo");
       toast.message("Exportação de todos os CSV concluída");
     } catch (e) {
@@ -328,6 +361,13 @@ function GooglePage() {
               onClick={() => exportFundo()}
             >
               Fundo de maneio
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "regulamento" ? "default" : "secondary"}
+              onClick={() => exportRegulamento()}
+            >
+              Regulamento (assinaturas)
             </Button>
             <Button
               type="button"

@@ -140,7 +140,7 @@ export function PrintActions({
           </Button>
           <Button type="button" onClick={() => void onExportDesktop()} disabled={busy}>
             <ExternalLink className="mr-1 size-4" />
-            {busy ? "A gerar…" : pdfLabel || "Exportar PDF"}
+            {busy ? "A gerar…" : pdfLabel || "PDF"}
           </Button>
         </>
       ) : (
@@ -152,7 +152,7 @@ export function PrintActions({
             disabled={busy}
           >
             <FileDown className="mr-1 size-4" />
-            {busy && !ready ? "A gerar…" : ready ? "Gerar de novo" : pdfLabel || "Preparar PDF"}
+            {busy && !ready ? "A gerar…" : ready ? "Gerar de novo" : pdfLabel || "PDF"}
           </Button>
           {ready ? (
             <Button

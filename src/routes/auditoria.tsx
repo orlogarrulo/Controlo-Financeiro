@@ -39,6 +39,7 @@ function AuditoriaPage() {
   const fundoAtmExtra = useFinance((s) => s.fundoAtmExtra);
   const salariosExtra = useFinance((s) => s.salariosExtra);
   const salariosOverrides = useFinance((s) => s.salariosOverrides);
+  const recibosSalario = useFinance((s) => s.recibosSalario || []);
   const operators = useFinance((s) => s.operators);
   const active = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(active, operators);
@@ -74,7 +75,8 @@ function AuditoriaPage() {
     fundoExtra,
     atms,
     seed,
-  }), [mes, ledger, movs, alunos, mensalidades, salarios, fundoExtra, atms, seed]);
+    recibosSalario,
+  }), [mes, ledger, movs, alunos, mensalidades, salarios, fundoExtra, atms, seed, recibosSalario]);
 
   const okCount = checks.filter((c) => c.status === "ok").length;
   const avisoCount = checks.filter((c) => c.status === "aviso").length;
@@ -148,7 +150,7 @@ function AuditoriaPage() {
         </div>
         <Button onClick={() => void gerarPdf()} disabled={busy || !canEdit}>
           {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileText className="mr-2 size-4" />}
-          Gerar parecer PDF · {mesLabel}
+          PDF · {mesLabel}
         </Button>
       </div>
 
@@ -208,11 +210,19 @@ function runChecks(ctx: {
   ledger: ReturnType<typeof buildLedger>;
   movs: ReturnType<typeof movimentosAll>;
   alunos: ReturnType<typeof alunosAll>;
-  mensalidades: { id: string; nome: string; propina: number }[];
+  mensalidades: { id: string; nome: string; propina: number; pagamentos?: Record<string, number> }[];
   salarios: ReturnType<typeof salariosAll>;
   fundoExtra: { id: string; valor: number }[];
   atms: ReturnType<typeof fundoAtmAll>;
   seed: ReturnType<typeof getSeed>;
+  recibosSalario?: {
+    id: string;
+    funcionarioId?: string;
+    nome: string;
+    mes?: string;
+    mesKey?: string;
+    pago?: boolean;
+  }[];
 }): CheckResult[] {
   const out: CheckResult[] = [];
   const { mes, ledger, movs, alunos, seed } = ctx;
@@ -338,6 +348,92 @@ function runChecks(ctx: {
       neg.length === 0
         ? "Extrato nunca ficou negativo."
         : `${neg.length} movimento(s) com saldo negativo — rever urgência de liquidez.`,
+  });
+
+  // 9. Salários pagos ↔ débitos SALARIO-APP no BAI
+  const recibos = ctx.recibosSalario || [];
+  const pagos = recibos.filter((r) => r.pago);
+  const salBai = movs.filter(
+    (m) =>
+      (m.banco || "").toUpperCase().includes("SALARIO") ||
+      String(m.id || "").startsWith("APP-SAL-"),
+  );
+  const salSemBai = pagos.filter((r) => {
+    const candidates = [
+      `APP-SAL-${r.id}`,
+      r.funcionarioId && r.mesKey ? `APP-SAL-${r.funcionarioId}-${r.mesKey}` : "",
+    ].filter(Boolean);
+    return !salBai.some(
+      (m) =>
+        candidates.includes(String(m.id || "")) ||
+        ((m.observacoes || "").includes(r.nome) &&
+          (r.mesKey ? (m.data || "").startsWith(r.mesKey.slice(0, 7)) : true)),
+    );
+  });
+  out.push({
+    id: "salarios-bai",
+    titulo: "Salários pagos ↔ débitos BAI (SALARIO-APP)",
+    status: pagos.length === 0 ? "ok" : salSemBai.length === 0 ? "ok" : "aviso",
+    detalhe:
+      pagos.length === 0
+        ? "Nenhum recibo de salário marcado como pago."
+        : salSemBai.length === 0
+          ? `${pagos.length} recibo(s) pago(s) com débito correspondente no extrato BAI.`
+          : `${salSemBai.length} de ${pagos.length} pago(s) sem débito BAI visível. Use sincronizar no separador Salários.`,
+  });
+
+  // 10. Propinas vs entradas PROPINA-APP
+  const propBaiMes = movs.filter(
+    (m) =>
+      (m.data || "").startsWith(mes) &&
+      ((m.banco || "").toUpperCase().includes("PROPINA") ||
+        String(m.id || "").startsWith("APP-PROP-")),
+  );
+  const propEntradas = propBaiMes.reduce((s, m) => s + (Number(m.entrada) || 0), 0);
+  const mensPagasMes = (ctx.mensalidades || []).reduce((s, m) => {
+    const vals = Object.values(m.pagamentos || {}) as number[];
+    return s + vals.reduce((a, b) => a + (Number(b) || 0), 0);
+  }, 0);
+  out.push({
+    id: "propinas-bai",
+    titulo: "Propinas confirmadas ↔ entradas BAI",
+    status: "ok",
+    detalhe:
+      propBaiMes.length === 0 && mensPagasMes === 0
+        ? "Sem entradas de propina na app nem no BAI neste período."
+        : `${propBaiMes.length} movimento(s) PROPINA-APP no mês (${formatKz(propEntradas)}). Total na grelha de mensalidades: ${formatKz(mensPagasMes)}.`,
+  });
+
+  // 11. Fundo de maneio
+  const atms = ctx.atms || [];
+  const fundoPags = ctx.fundoExtra || [];
+  const lev = atms.reduce((s, a) => s + (Number(a.valor) || 0), 0);
+  const gastoF = fundoPags.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const restante = lev - gastoF;
+  out.push({
+    id: "fundo-saldo",
+    titulo: "Fundo de maneio (levantado − gasto app)",
+    status: restante >= -0.01 ? "ok" : "erro",
+    detalhe: `Levantado ${formatKz(lev)} · Gasto (app) ${formatKz(gastoF)} · Restante ${formatKz(restante)}.${
+      restante < -0.01 ? " Gasto superior ao levantado — rever registos." : ""
+    }`,
+  });
+
+  // 12. Matrículas ↔ BAI
+  const matBai = movs.filter(
+    (m) =>
+      String(m.id || "").startsWith("APP-MAT-") ||
+      (m.banco || "").toUpperCase().includes("MATRIC") ||
+      /matr[ií]cula/i.test(m.observacoes || ""),
+  );
+  out.push({
+    id: "matriculas-bai",
+    titulo: "Matrículas (cartão) ↔ entradas BAI",
+    status: "ok",
+    detalhe:
+      matBai.length === 0
+        ? "Sem movimentos de matrícula gerados pela app no extrato (normal se pagamento em dinheiro)."
+        : `${matBai.length} movimento(s) de matrícula/propina gerados pela app no extrato BAI.`,
   });
 
   return out;

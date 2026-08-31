@@ -290,43 +290,152 @@ export function alunosToCsv(
   const cols = [
     "ID",
     "Nome",
+    "Data nascimento",
     "Turma",
+    "Grupo",
     "Pai",
     "Mãe",
     "Encarregado",
     "Telefone",
+    "E-mail",
+    "Morada",
+    "BI",
+    "Família",
     "Data pagamento",
     "Inscrição",
     "Seguro",
-    "Propina",
+    "Manuais",
+    "Cadernos",
+    "Uniforme",
+    "ATL/Extras",
+    "Transporte",
+    "Alimentação",
+    "Curso",
+    "Propina mensal",
+    "Meses propina (matrícula)",
     "Bruto",
     "Líquido",
     "Desconto %",
     "Método pagamento",
     "Recibo",
     "Campus Cidade",
+    "Grupo sanguíneo",
+    "Alergias medicamentos",
+    "Alergias alimentares",
+    "Clínica próxima",
+    "Tem foto",
     "Observações",
   ];
-  const lines = rows.map((a) => [
-    a.id,
-    a.nome,
-    a.turma,
-    a.pai || "",
-    a.mae || "",
-    a.encarregado || "",
-    a.telefone || "",
-    a.dataPag || "",
-    a.inscricao ?? "",
-    a.seguro ?? "",
-    a.propina ?? "",
-    a.bruto ?? "",
-    a.liquido ?? "",
-    a.descPct ?? "",
-    a.metodoPagamento || "",
-    a.recibo || "",
-    a.transferidoCampusCidade ? "Sim" : "Não",
-    a.obs || "",
-  ].map(String));
+  const lines = rows.map((a) =>
+    [
+      a.id,
+      a.nome,
+      a.dataNascimento || "",
+      a.turma,
+      a.grupo || "",
+      a.pai || "",
+      a.mae || "",
+      a.encarregado || "",
+      a.telefone || "",
+      a.email || "",
+      a.morada || "",
+      a.bi || "",
+      a.familia || "",
+      a.dataPag || "",
+      a.inscricao ?? "",
+      a.seguro ?? "",
+      a.manuais ?? "",
+      a.cadernos ?? "",
+      a.uniforme ?? "",
+      a.extras ?? "",
+      a.transporte ?? "",
+      a.alimentacao ?? "",
+      a.curso ?? "",
+      a.propina ?? "",
+      a.mesesPropina ?? "",
+      a.bruto ?? "",
+      a.liquido ?? "",
+      a.descPct ?? "",
+      a.metodoPagamento || "",
+      a.recibo || "",
+      a.transferidoCampusCidade ? "Sim" : "Não",
+      a.grupoSanguineo || "",
+      a.alergiasMedicamentos || "",
+      a.alergiasAlimentares || "",
+      a.clinicaProxima || "",
+      a.foto ? "Sim" : "Não",
+      a.obs || "",
+    ].map(String),
+  );
+  return headerBody(cols, lines);
+}
+
+/** Aceitações do regulamento interno (página pública / PDF assinado). */
+export type RegulamentoAckRow = {
+  alunoNome: string;
+  encarregadoNome: string;
+  turma?: string;
+  lang?: string;
+  signedAt: string;
+};
+
+export const REGULAMENTO_ACK_KEY = "ecc-regulamento-acks";
+
+export function loadRegulamentoAcks(): RegulamentoAckRow[] {
+  try {
+    const raw = localStorage.getItem(REGULAMENTO_ACK_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as RegulamentoAckRow[];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveRegulamentoAck(row: RegulamentoAckRow): void {
+  try {
+    const prev = loadRegulamentoAcks();
+    prev.unshift(row);
+    localStorage.setItem(REGULAMENTO_ACK_KEY, JSON.stringify(prev.slice(0, 500)));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function regulamentoAcksToCsv(rows: RegulamentoAckRow[]): string {
+  const cols = [
+    "Data/hora",
+    "Nome do aluno",
+    "Nome do encarregado",
+    "Turma",
+    "Idioma",
+    "Data (só dia)",
+  ];
+  const lines = rows.map((r) => {
+    const dt = r.signedAt ? new Date(r.signedAt) : null;
+    const dataHora =
+      dt && !Number.isNaN(dt.getTime())
+        ? dt.toLocaleString("pt-PT", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : r.signedAt || "";
+    const soDia =
+      dt && !Number.isNaN(dt.getTime())
+        ? dt.toLocaleDateString("pt-PT")
+        : "";
+    return [
+      dataHora,
+      r.alunoNome || "",
+      r.encarregadoNome || "",
+      r.turma || "",
+      r.lang === "fr" ? "Français" : "Português",
+      soDia,
+    ];
+  });
   return headerBody(cols, lines);
 }
 
