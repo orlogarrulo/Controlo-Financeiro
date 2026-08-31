@@ -15,7 +15,7 @@ import {
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import type { Aluno, Lancamento, ReciboSalario, MovimentoBai } from "@/data/types";
 import { formatDate, formatKz } from "@/lib/format";
-import { loadFinanceCloud, saveFinanceCloud, sliceFromStore } from "@/lib/finance-cloud";
+import { declaracaoMatriculaHtml, openPrintHtml } from "@/lib/declaracao-matricula";
 
 export const Route = createFileRoute("/arquivo")({ component: ArquivoPage });
 
@@ -36,118 +36,6 @@ const SERIES: { id: SerieId; label: string; hint: string }[] = [
   { id: "declaracoes", label: "Declarações de matrícula", hint: "Comprovativo de frequência do aluno" },
 ];
 
-/** Mapeamento turma → texto oficial da declaração. */
-function descricaoClasse(turma: string): { fr: string; pt: string } {
-  const t = (turma || "").trim();
-  const key = t.toLowerCase().normalize("NFD").replace(/\u0300-\u036f/g, "");
-  const map: Record<string, { fr: string; pt: string }> = {
-    ps: { fr: "Petite Section - Maternelle", pt: "Iniciação - Ensino Pré-escolar" },
-    ms: { fr: "Moyenne Section - Maternelle", pt: "Jardim - Ensino Pré-escolar" },
-    gs: { fr: "Grande Section - Maternelle", pt: "Pré-escolar" },
-    cp: { fr: "CP - École Élémentaire", pt: "1.ª Classe - Ensino Primário" },
-    ce1: { fr: "CE1 - École Élémentaire", pt: "2.ª Classe - Ensino Primário" },
-    ce2: { fr: "CE2 - École Élémentaire", pt: "3.ª Classe - Ensino Primário" },
-    cm1: { fr: "CM1 - École Élémentaire", pt: "5.ª Classe - Ensino Primário" },
-    cm2: { fr: "CM2 - École Élémentaire", pt: "6.ª Classe - Ensino Primário" },
-    "6e": { fr: "Sixième - Collège", pt: "7.ª Classe - Ensino Secundário" },
-    "5e": { fr: "Cinquième - Collège", pt: "8.ª Classe - Ensino Secundário" },
-    "4e": { fr: "Quatrième - Collège", pt: "9.ª Classe - Ensino Secundário" },
-    "3e": { fr: "Troisième - Collège", pt: "10.ª Classe - Ensino Secundário" },
-  };
-  for (const [k, v] of Object.entries(map)) {
-    if (key === k || key.startsWith(k) || key.includes(k)) return v;
-  }
-  // fallback: use turma as-is
-  return { fr: t || "—", pt: t || "—" };
-}
-
-function dataExtenso(d = new Date()): string {
-  const meses = [
-    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
-  ];
-  return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
-}
-
-function declaracaoMatriculaHtml(
-  escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string },
-  a: Aluno,
-  extras: { biEmitido?: string; biLocal?: string },
-): string {
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
-  const classe = descricaoClasse(a.turma);
-  const pai = (a.pai || "").trim() || "—";
-  const mae = (a.mae || "").trim() || "—";
-  const bi = (a.bi || "").trim() || "—";
-  const biEmitido = (extras.biEmitido || "").trim();
-  const biLocal = (extras.biLocal || "Arquivo de Identificação de Luanda").trim();
-  const biPart = biEmitido
-    ? `portador(a) do Bilhete de Identidade n.º ${bi} emitido em ${biEmitido} pelo ${biLocal}`
-    : `portador(a) do Bilhete de Identidade n.º ${bi}${bi !== "—" ? `, registado junto do ${biLocal}` : ""}`;
-  const ano = escola.ano || "2026/2027";
-
-  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
-<style>
-  @page { size: A4; margin: 18mm 16mm; }
-  body { font-family: Georgia, 'Times New Roman', serif; font-size: 13px; line-height: 1.55; color: #0f172a; text-align: justify; }
-  .head { display:flex; gap:14px; align-items:center; border-bottom:2px solid #009543; padding-bottom:12px; margin-bottom:28px; }
-  .head img { width:72px; height:72px; object-fit:contain; }
-  .head .name { font-size:15px; font-weight:700; color:#0b3d2c; }
-  .head .sub { font-size:11px; color:#64748b; margin-top:2px; }
-  h1 { text-align:center; font-size:16px; letter-spacing:0.06em; margin: 8px 0 28px; text-transform:uppercase; }
-  p { margin: 0 0 14px; }
-  .local { margin-top: 36px; text-align: left; }
-  .sign { margin-top: 48px; text-align: center; }
-  .sign .line { margin: 36px auto 8px; width: 280px; border-top: 1px solid #334155; }
-  .muted { color:#64748b; font-size:11px; }
-  .doc-foot { margin-top:40px; text-align:right; font-size:9px; color:#94a3b8; }
-</style></head><body>
-<div class="head">
-  <img src="${logo}" alt="Logo"/>
-  <div>
-    <div class="name">${escola.nome}</div>
-    <div class="sub">${escola.subtitulo || "Annexe Nova Vida · Luanda"} · Ano lectivo ${ano}</div>
-  </div>
-</div>
-<h1>Declaração de matrícula</h1>
-<p>Declaramos, para os devidos efeitos e a pedido do(a) interessado(a), que <strong>${a.nome}</strong>, filho(a) de ${pai} e de ${mae}, ${biPart}, encontra-se regularmente matriculado(a) e a frequentar a classe <em>${classe.fr}</em> <strong>(${classe.pt})</strong> nesta instituição de ensino, sob o número de processo <strong>${a.id}</strong> durante o ano letivo de ${ano}.</p>
-<p>Por ser verdade e nos ser solicitado, mandamos passar a presente declaração que vai devidamente assinada e autenticada com o carimbo em uso nesta escola.</p>
-<p class="local">Luanda, aos ${dataExtenso()}.</p>
-<div class="sign">
-  <p><strong>A Diretora Pedagógica,</strong></p>
-  <div class="line"></div>
-  <p><strong>Srª Pierrette MABOUANA</strong></p>
-</div>
-<p class="doc-foot">Documento gerado pelo Departamento de Finanças · ${dataExtenso()}</p>
-</body></html>`;
-}
-
-function openPrintHtml(html: string) {
-  const clean = html.includes("<title>")
-    ? html.replace(/<title>[^<]*<\/title>/i, "<title></title>")
-    : html;
-  const blob = new Blob([clean], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;";
-  iframe.src = url;
-  document.body.appendChild(iframe);
-  iframe.onload = () => {
-    setTimeout(() => {
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch {
-        toast.error("Impressão bloqueada pelo browser.");
-      }
-      setTimeout(() => {
-        iframe.remove();
-        URL.revokeObjectURL(url);
-      }, 2500);
-    }, 300);
-  };
-}
-
 function ArquivoPage() {
   const escola = getSeed().escola;
   const alunosExtra = useFinance((s) => s.alunosExtra);
@@ -156,14 +44,14 @@ function ArquivoPage() {
   const extras = useFinance((s) => s.extras || []);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
   const recibosSalario = useFinance((s) => s.recibosSalario || []);
-  const faturasPropina = useFinance((s) => (s as { faturasPropina?: { numero?: string; alunoId?: string; mes?: string; valor?: number }[] }).faturasPropina || []);
+  const faturasPropina = useFinance((s) => s.faturasPropina || []);
 
   const alunos = useMemo(
     () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
     [alunosExtra, alunosOverrides, alunosDeletedIds],
   );
 
-  const [serie, setSerie] = useState<SerieId>("despesas");
+  const [serie, setSerie] = useState<SerieId>("declaracoes");
   const [q, setQ] = useState("");
   const [declOpen, setDeclOpen] = useState(false);
   const [alunoId, setAlunoId] = useState("");
@@ -189,7 +77,11 @@ function ArquivoPage() {
     }
     if (serie === "cartao") {
       return (movimentosBaiExtra as MovimentoBai[])
-        .filter((m) => String(m.id || "").startsWith("APP-") || String(m.banco || "").endsWith("-APP"))
+        .filter(
+          (m) =>
+            String(m.id || "").startsWith("APP-") ||
+            String(m.banco || "").endsWith("-APP"),
+        )
         .map((m) => ({
           id: m.id,
           ref: m.id,
@@ -201,23 +93,21 @@ function ArquivoPage() {
         .filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
     }
     if (serie === "propinas") {
-      return (faturasPropina || [])
-        .map((f, i) => ({
-          id: f.numero || `PROP-${i}`,
-          ref: f.numero || "—",
-          data: "",
-          titulo: `Fatura propina · ${f.mes || ""}`,
-          detalhe: f.alunoId || "",
-          valor: f.valor || 0,
-        }))
-        .filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
+      return (faturasPropina || []).map((f: { numero?: string; alunoId?: string; mes?: string; valor?: number }, i: number) => ({
+        id: f.numero || `PROP-${i}`,
+        ref: f.numero || "—",
+        data: "",
+        titulo: `Fatura propina · ${f.mes || ""}`,
+        detalhe: f.alunoId || "",
+        valor: f.valor || 0,
+      })).filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
     }
     if (serie === "recibos_honorarios") {
       return (recibosSalario as ReciboSalario[])
         .map((r) => ({
           id: r.id,
           ref: r.id,
-          data: r.dataPag || r.criadoEm?.slice(0, 10) || "",
+          data: r.dataPag || (r.criadoEm || "").slice(0, 10) || "",
           titulo: r.nome,
           detalhe: `${r.funcao || ""} · ${r.mes} · ${r.pago ? "Pago" : "Por pagar"}`,
           valor: r.liquido,
@@ -240,7 +130,6 @@ function ArquivoPage() {
         valor: list.reduce((s, r) => s + (r.liquido || 0), 0),
       }));
     }
-    // declaracoes
     return alunos
       .map((a) => ({
         id: a.id,
@@ -259,17 +148,16 @@ function ArquivoPage() {
       toast.error("Seleccione o aluno.");
       return;
     }
-    const html = declaracaoMatriculaHtml(escola, a, { biEmitido, biLocal });
-    setPreviewHtml(html);
+    setPreviewHtml(declaracaoMatriculaHtml(escola, a, { biEmitido, biLocal }));
   }
 
   async function sincronizarAgora() {
     setSyncing(true);
     try {
-      // 1) Enviar local
-      const slice = sliceFromStore(useFinance.getState());
-      await saveFinanceCloud({ data: slice });
-      // 2) Receber remoto e fundir recibos (pago vence)
+      const { loadFinanceCloud, saveFinanceCloud, sliceFromStore } = await import(
+        "@/lib/finance-cloud"
+      );
+      await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
       const remote = await loadFinanceCloud();
       const remoteRecibos = (remote.payload.recibosSalario || []) as ReciboSalario[];
       const localRecibos = useFinance.getState().recibosSalario || [];
@@ -283,20 +171,27 @@ function ArquivoPage() {
       const localBai = useFinance.getState().movimentosBaiExtra || [];
       const baiMap = new Map<string, MovimentoBai>();
       for (const m of [...remoteBai, ...localBai]) {
-        if (m?.id) baiMap.set(m.id, m);
+        if (m?.id) baiMap.set(String(m.id), m);
       }
       useFinance.setState({
         recibosSalario: Array.from(byId.values()),
         movimentosBaiExtra: Array.from(baiMap.values()) as never[],
       });
-      // reconciliar flags
-      useFinance.getState().reconcileSalariosBai?.();
+      useFinance.getState().reconcileSalariosBai();
+      useFinance.getState().ensureSalariosBaiFromRecibos();
       localStorage.setItem("ecc-financeiro-cloud-ts", String(Date.now()));
       await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
-      toast.success("Sincronização concluída — dados alinhados entre dispositivos.");
+      toast.success("Sincronização concluída.");
     } catch (e) {
       console.warn(e);
-      toast.error("Não foi possível sincronizar. Verifique a ligação ou use o mesmo browser/perfil.");
+      // Offline: still restore local BAI from paid recibos
+      try {
+        useFinance.getState().reconcileSalariosBai();
+        useFinance.getState().ensureSalariosBaiFromRecibos();
+        toast.message("Modo offline: recibos alinhados com o extrato local.");
+      } catch {
+        toast.error("Não foi possível sincronizar.");
+      }
     } finally {
       setSyncing(false);
     }
@@ -307,10 +202,15 @@ function ArquivoPage() {
       <PageHeader
         kicker="Arquivo"
         title="Arquivo de faturas e documentos"
-        description="Consulte por série a numeração interna da app e emita a declaração de matrícula. Use «Sincronizar» para alinhar todos os computadores."
+        description="Organize por série a numeração interna. Emita a declaração de matrícula. Sincronize os computadores."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" disabled={syncing} onClick={() => void sincronizarAgora()}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={syncing}
+              onClick={() => void sincronizarAgora()}
+            >
               <RefreshCw className={`mr-1.5 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               Sincronizar agora
             </Button>
@@ -444,9 +344,6 @@ function ArquivoPage() {
                 <Input value={biLocal} onChange={(e) => setBiLocal(e.target.value)} />
               </div>
             </div>
-            <p className="text-[11px] text-[var(--color-muted)]">
-              Nome dos pais, BI e turma vêm do cadastro do aluno em Matrículas. Complete a data de emissão do BI se constar do documento.
-            </p>
             <div className="flex justify-end gap-2 border-t pt-3">
               <Button type="button" variant="secondary" onClick={() => setDeclOpen(false)}>
                 Cancelar
@@ -474,12 +371,7 @@ function ArquivoPage() {
             <Button type="button" variant="secondary" onClick={() => setPreviewHtml(null)}>
               Fechar
             </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                if (previewHtml) openPrintHtml(previewHtml);
-              }}
-            >
+            <Button type="button" onClick={() => previewHtml && openPrintHtml(previewHtml)}>
               Imprimir / PDF
             </Button>
           </div>

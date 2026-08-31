@@ -1109,6 +1109,7 @@ function Salarios() {
   const addRecibosSalario = useFinance((s) => s.addRecibosSalario);
   const setReciboSalarioPago = useFinance((s) => s.setReciboSalarioPago);
   const reconcileSalariosBai = useFinance((s) => s.reconcileSalariosBai);
+  const ensureSalariosBaiFromRecibos = useFinance((s) => s.ensureSalariosBaiFromRecibos);
   const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
   const rows = salariosAll(salariosExtra, salariosOverrides, salariosDeletedIds);
 
@@ -1139,10 +1140,11 @@ function Salarios() {
   useEffect(() => {
     try {
       reconcileSalariosBai();
+      ensureSalariosBaiFromRecibos();
     } catch {
       /* ignore */
     }
-  }, [reconcileSalariosBai]);
+  }, [reconcileSalariosBai, ensureSalariosBaiFromRecibos]);
 
   useEffect(() => {
     if (search.edit) {

@@ -97,6 +97,7 @@ type ExtraState = {
   /** IDs de movimentos BAI apagados (seed ou extra) — exclusão estável sem congelar o extrato. */
   movimentosBaiDeletedIds: string[];
   recibosSalario: ReciboSalario[];
+  faturasPropina: { numero: string; alunoId?: string; mes?: string; valor?: number }[];
   /** Sobrescritas de salários do seed (por id). */
   salariosOverrides: Record<string, Partial<Salario>>;
 };
@@ -134,6 +135,8 @@ type Store = ExtraState & {
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
   /** Alinha botões pago com movimentos BAI já existentes (multi-PC / cloud). */
   reconcileSalariosBai: () => boolean;
+  /** Recria no BAI os débitos em falta para recibos já marcados como pagos. */
+  ensureSalariosBaiFromRecibos: () => number;
   removeReciboSalario: (id: string) => void;
   /** Cria movimentos BAI em falta a partir de despesas (cartão/transferência) já registadas. */
   syncBaiFromExtras: () => number;
@@ -236,6 +239,7 @@ export const useFinance = create<Store>()(
       alunosDeletedIds: [],
       movimentosBaiDeletedIds: [],
       recibosSalario: [],
+      faturasPropina: [],
       salariosOverrides: {},
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
@@ -726,6 +730,35 @@ export const useFinance = create<Store>()(
           get().pushAudit("reconcile_recibos_bai", "pago alinhado com extrato BAI");
         }
         return changed;
+      },
+      ensureSalariosBaiFromRecibos: () => {
+        const recibos = get().recibosSalario || [];
+        let extra = [...(get().movimentosBaiExtra || [])];
+        const existing = new Set(extra.map((m) => m.id));
+        let added = 0;
+        for (const r of recibos) {
+          if (!r.pago || !(r.liquido > 0)) continue;
+          const movId = `APP-SAL-${r.id}`;
+          if (existing.has(movId)) continue;
+          extra.push({
+            id: movId,
+            linha: 0,
+            data: r.dataPag || r.criadoEm?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+            banco: "SALARIO-APP",
+            descricao: `Honorários / salário · ${r.nome} · ${r.mes}`,
+            entrada: 0,
+            saida: Number(r.liquido) || 0,
+            saldo: 0,
+            observacoes: `Recibo ${r.id} · pago → debita BAI`,
+          });
+          existing.add(movId);
+          added += 1;
+        }
+        if (added > 0) {
+          set({ movimentosBaiExtra: sortAndRecalcBai(extra) });
+          get().pushAudit("bai_ensure_salarios", `${added} movimento(s) restaurado(s)`);
+        }
+        return added;
       },
       
 

@@ -1,6 +1,6 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
-import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt } from "lucide-react";
+import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
+import { declaracaoMatriculaHtml, openPrintHtml } from "@/lib/declaracao-matricula";
 import {
   htmlFragmentToA4Pdf,
   htmlFragmentsToMultiPageA4Pdf,
@@ -816,6 +817,11 @@ function Alunos() {
     modo: "fatura" | "recibo";
   } | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [declOpen, setDeclOpen] = useState(false);
+  const [declAlunoId, setDeclAlunoId] = useState("");
+  const [declBiEmitido, setDeclBiEmitido] = useState("");
+  const [declBiLocal, setDeclBiLocal] = useState("Arquivo de Identificação de Luanda");
+  const [declPreview, setDeclPreview] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportIds, setExportIds] = useState<Set<string>>(new Set());
   const [exportBusy, setExportBusy] = useState(false);
@@ -1829,22 +1835,19 @@ function Alunos() {
                 <UserPlus className="mr-1 size-4" /> Nova matrícula
               </Button>
             ) : null}
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              onClick={() => setDeclOpen(true)}
+            >
+              <ScrollText className="mr-1 size-4" /> Declaração de matrícula
+            </Button>
             <PrintActions
               targetRef={printRef}
               filename="matriculas.pdf"
               shareTitle="Matrículas · École Consulaire"
               shareText="Lista de matrículas · Departamento de Finanças."
             />
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              onClick={() => {
-                setExportIds(new Set(filteredByClass.map((a) => a.id)));
-                setExportOpen(true);
-              }}
-            >
-              <FileText className="mr-1 size-4" /> Ver / Exportar
-            </Button>
             <Button
               className="shrink-0"
               variant="secondary"
@@ -2015,6 +2018,98 @@ function Alunos() {
         </DialogContent>
       </Dialog>
 
+
+      
+      {/* Declaração de matrícula */}
+      <Dialog open={declOpen} onOpenChange={setDeclOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Declaração de matrícula</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Aluno</Label>
+              <select
+                className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                value={declAlunoId}
+                onChange={(e) => setDeclAlunoId(e.target.value)}
+              >
+                <option value="">— seleccionar aluno —</option>
+                {alunos
+                  .slice()
+                  .sort((a, b) => a.nome.localeCompare(b.nome, "pt"))
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nome} · {a.id} · {a.turma}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>BI emitido em (opcional)</Label>
+                <Input
+                  placeholder="02/02/2022"
+                  value={declBiEmitido}
+                  onChange={(e) => setDeclBiEmitido(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Arquivo de identificação</Label>
+                <Input value={declBiLocal} onChange={(e) => setDeclBiLocal(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Dados do cadastro (pais, BI, turma, processo). Complete a data de emissão do BI se necessário.
+            </p>
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <Button type="button" variant="secondary" onClick={() => setDeclOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  const a = alunos.find((x) => x.id === declAlunoId);
+                  if (!a) {
+                    toast.error("Seleccione o aluno.");
+                    return;
+                  }
+                  setDeclPreview(
+                    declaracaoMatriculaHtml(escola, a, {
+                      biEmitido: declBiEmitido,
+                      biLocal: declBiLocal,
+                    }),
+                  );
+                }}
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                Pré-visualizar / Imprimir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!declPreview} onOpenChange={(o) => !o && setDeclPreview(null)}>
+        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-3">
+          <DialogHeader>
+            <DialogTitle>Declaração de matrícula</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto rounded border border-[var(--color-line)] bg-white">
+            {declPreview ? (
+              <iframe title="Declaração" srcDoc={declPreview} className="h-[60vh] w-full bg-white" />
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-2 border-t pt-3">
+            <Button type="button" variant="secondary" onClick={() => setDeclPreview(null)}>
+              Fechar
+            </Button>
+            <Button type="button" onClick={() => declPreview && openPrintHtml(declPreview)}>
+              Imprimir / PDF
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Exportar lista PDF — seleccionar alunos */}
       <Dialog open={exportOpen} onOpenChange={(o) => !o && setExportOpen(false)}>
