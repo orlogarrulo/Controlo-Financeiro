@@ -136,8 +136,26 @@ export type Aluno = {
   obs: string;
   propina: number;
   statusPag: "pago" | "registado" | "pendente";
-  /** Método de pagamento da inscrição / liquidação. */
+  /** Método de pagamento (resumo; se misto: "Misto: …"). */
   metodoPagamento?: string;
+  /**
+   * Métodos por rubrica — permite inscrição em dinheiro e seguro em cartão, etc.
+   * Só cartão/transferência geram entrada no extrato BAI.
+   */
+  metodosPagamento?: {
+    inscricao?: string;
+    seguro?: string;
+    manuais?: string;
+    cadernos?: string;
+    /** ATL / extras */
+    atl?: string;
+    uniforme?: string;
+    mensalidade?: string;
+    transporte?: string;
+    alimentacao?: string;
+    curso?: string;
+    restante?: string;
+  };
   /**
    * Aluno transferido da filial Campus Cidade.
    * No ano 2026-2027 mantém propina da outra escola (50.000 Kz);

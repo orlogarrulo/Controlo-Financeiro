@@ -491,22 +491,69 @@ export const useFinance = create<Store>()(
         const row = { ...aluno, criadoPor: by, createdAt: new Date().toISOString() };
         set({ alunosExtra: [...get().alunosExtra, row] });
         get().pushAudit("criar_aluno", `${row.id} · ${row.nome}`);
-        // Pagamento de matrícula por cartão/transferência → entrada no Banco BAI
-        const met = (row.metodoPagamento || "").toLowerCase();
-        const viaBai =
-          /cart[aã]o|multicaixa|transfer|bai|tpa/i.test(met) ||
-          met.includes("banco");
-        const valor = Number(row.liquido) || 0;
-        if (viaBai && valor > 0) {
-          const ok = pushBaiMovimento(get, set, {
-            id: `APP-MAT-${row.id}`,
-            data: row.dataPag || new Date().toISOString().slice(0, 10),
-            entrada: valor,
-            banco: /transfer/i.test(met) ? "TRANSF-APP" : "CARTAO-APP",
-            descricao: `Matrícula ${row.nome} (${row.id})`,
-            observacoes: `Método: ${row.metodoPagamento || "—"} · recibo ${row.recibo || ""}`,
-          });
-          if (ok) get().pushAudit("bai_entrada_matricula", `${row.id} · +${valor}`);
+        // Entradas BAI por rubrica (só cartão / transferência — dinheiro não debita extrato)
+        const viaBai = (met: string) => {
+          const m = (met || "").toLowerCase();
+          // Depósito em dinheiro na conta da escola = entrada no extrato BAI
+          if (/dep[oó]sito/i.test(m)) return true;
+          if (/cart[aã]o|multicaixa|transfer|tpa/i.test(m)) return true;
+          // "Dinheiro (em mão)" não entra no BAI
+          if (/em m[aã]o|caixa/i.test(m)) return false;
+          if (m.includes("dinheiro") && !/dep[oó]sito|conta|bai|banco/i.test(m)) return false;
+          return /bai|banco|conta/i.test(m);
+        };
+        const bancoDe = (met: string) => {
+          const m = met || "";
+          if (/dep[oó]sito/i.test(m)) return "DEPOSITO-APP";
+          if (/transfer/i.test(m)) return "TRANSF-APP";
+          return "CARTAO-APP";
+        };
+        const dataPag = row.dataPag || new Date().toISOString().slice(0, 10);
+        const mp = row.metodosPagamento || {};
+        const defMet = row.metodoPagamento || "Dinheiro";
+        const m = (k: keyof NonNullable<typeof mp>, fallback = defMet) =>
+          (mp as Record<string, string | undefined>)[k] || fallback;
+        const parcelas: { key: string; label: string; valor: number; met: string }[] = [
+          { key: "INS", label: "Inscrição", valor: Number(row.inscricao) || 0, met: m("inscricao") },
+          { key: "SEG", label: "Seguro", valor: Number(row.seguro) || 0, met: m("seguro") },
+          { key: "MAN", label: "Manuais", valor: Number(row.manuais) || 0, met: m("manuais") },
+          { key: "CAD", label: "Cadernos", valor: Number(row.cadernos) || 0, met: m("cadernos") },
+          { key: "ATL", label: "ATL", valor: Number(row.extras) || 0, met: m("atl") },
+          { key: "UNI", label: "Uniforme", valor: Number(row.uniforme) || 0, met: m("uniforme") },
+          { key: "MES", label: "Mensalidade/propina", valor: Number(row.mensalidade1) || 0, met: m("mensalidade") },
+          { key: "TRP", label: "Transporte", valor: Number(row.transporte) || 0, met: m("transporte") },
+          { key: "ALI", label: "Alimentação", valor: Number(row.alimentacao) || 0, met: m("alimentacao") },
+          { key: "CUR", label: "Curso", valor: Number(row.curso) || 0, met: m("curso") },
+        ];
+        // Se não há split e método único via BAI, um só movimento (compatibilidade)
+        const mets = new Set(parcelas.filter((p) => p.valor > 0).map((p) => p.met));
+        if (mets.size <= 1 && viaBai([...mets][0] || row.metodoPagamento || "")) {
+          const valor = Number(row.liquido) || 0;
+          const met = [...mets][0] || row.metodoPagamento || "";
+          if (valor > 0) {
+            const ok = pushBaiMovimento(get, set, {
+              id: `APP-MAT-${row.id}`,
+              data: dataPag,
+              entrada: valor,
+              banco: bancoDe(met),
+              descricao: `Matrícula ${row.nome} (${row.id})`,
+              observacoes: `Método: ${met} · recibo ${row.recibo || ""}`,
+            });
+            if (ok) get().pushAudit("bai_entrada_matricula", `${row.id} · +${valor}`);
+          }
+        } else {
+          for (const p of parcelas) {
+            if (!(p.valor > 0) || !viaBai(p.met)) continue;
+            const ok = pushBaiMovimento(get, set, {
+              id: `APP-MAT-${row.id}-${p.key}`,
+              data: dataPag,
+              entrada: p.valor,
+              banco: bancoDe(p.met),
+              descricao: `Matrícula ${p.label} · ${row.nome} (${row.id})`,
+              observacoes: `Método: ${p.met} · recibo ${row.recibo || ""}`,
+            });
+            if (ok) get().pushAudit("bai_entrada_matricula", `${row.id}-${p.key} · +${p.valor}`);
+          }
         }
       },
       updateAluno: (id, patch) => {

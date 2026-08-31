@@ -70,7 +70,8 @@ const CAMPUS_CIDADE_NOTA =
   "Transferido do Campus Cidade · inscrição/seguro tarifário normal · propina 100.000 Kz (1 aluno) ou 75.000 Kz (2+ irmãos do mesmo agregado) · 2026-2027";
 
 const METODOS_PAGAMENTO = [
-  "Dinheiro",
+  "Dinheiro (em mão)",
+  "Depósito em dinheiro (conta BAI)",
   "Cartão Multicaixa",
   "Transferência bancária",
 ] as const;
@@ -180,6 +181,17 @@ type FormState = {
   familia: string;
   obs: string;
   metodoPagamento: string;
+  /** Métodos por rubrica. */
+  metodoInscricao: string;
+  metodoSeguro: string;
+  metodoManuais: string;
+  metodoCadernos: string;
+  metodoAtl: string;
+  metodoUniforme: string;
+  metodoMensalidade: string;
+  metodoTransporte: string;
+  metodoAlimentacao: string;
+  metodoCurso: string;
   pin: string;
 };
 
@@ -212,6 +224,16 @@ function emptyForm(): FormState {
     familia: "",
     obs: "",
     metodoPagamento: "Dinheiro",
+    metodoInscricao: "Dinheiro",
+    metodoSeguro: "Dinheiro",
+    metodoManuais: "Dinheiro",
+    metodoCadernos: "Dinheiro",
+    metodoAtl: "Dinheiro",
+    metodoUniforme: "Dinheiro",
+    metodoMensalidade: "Dinheiro",
+    metodoTransporte: "Dinheiro",
+    metodoAlimentacao: "Dinheiro",
+    metodoCurso: "Dinheiro",
     pin: "",
   };
 }
@@ -396,19 +418,56 @@ function MatriculaForm({
           onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
         />
       </div>
-      <div className="space-y-1.5">
-        <Label>Método de pagamento</Label>
-        <select
-          className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-          data-focus="metodoPagamento" value={form.metodoPagamento}
-          onChange={(e) => setForm({ ...form, metodoPagamento: e.target.value })}
-        >
-          {METODOS_PAGAMENTO.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
+      <div className="space-y-2 sm:col-span-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)]/50 p-3">
+        <Label className="text-sm font-semibold">Métodos de pagamento (por rubrica)</Label>
+        <p className="text-[11px] text-[var(--color-muted)]">
+          Escolha o método em cada linha (ex.: inscrição em dinheiro, seguro e manuais em cartão).
+          Só <strong>Cartão</strong>, <strong>Transferência</strong> e <strong>Depósito em dinheiro (conta BAI)</strong> geram entrada no extrato Banco BAI. «Dinheiro (em mão)» não entra no extrato.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {([
+            ["metodoInscricao", "Inscrição"],
+            ["metodoSeguro", "Seguro escolar"],
+            ["metodoManuais", "Manuais"],
+            ["metodoCadernos", "Cadernos"],
+            ["metodoAtl", "ATL"],
+            ["metodoUniforme", "Uniforme"],
+            ["metodoMensalidade", "Mensalidade / propina"],
+            ["metodoTransporte", "Transporte"],
+            ["metodoAlimentacao", "Alimentação"],
+            ["metodoCurso", "Curso intensivo"],
+          ] as const).map(([key, label]) => (
+            <div key={key} className="space-y-1">
+              <Label className="text-xs">{label}</Label>
+              <select
+                className="flex h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-sm"
+                value={form[key]}
+                onChange={(e) => {
+                  const next = { ...form, [key]: e.target.value };
+                  const vals = [
+                    next.metodoInscricao,
+                    next.metodoSeguro,
+                    next.metodoManuais,
+                    next.metodoCadernos,
+                    next.metodoAtl,
+                    next.metodoUniforme,
+                    next.metodoMensalidade,
+                    next.metodoTransporte,
+                    next.metodoAlimentacao,
+                    next.metodoCurso,
+                  ];
+                  const uniq = [...new Set(vals)];
+                  next.metodoPagamento = uniq.length === 1 ? uniq[0] : "Misto";
+                  setForm(next);
+                }}
+              >
+                {METODOS_PAGAMENTO.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
           ))}
-        </select>
+        </div>
       </div>
       <div className="space-y-1.5">
         <Label>Telefone</Label>
@@ -897,6 +956,16 @@ function Alunos() {
       familia: a.familia || "",
       obs: a.obs || "",
       metodoPagamento: a.metodoPagamento || "Dinheiro",
+      metodoInscricao: a.metodosPagamento?.inscricao || a.metodoPagamento || "Dinheiro",
+      metodoSeguro: a.metodosPagamento?.seguro || a.metodoPagamento || "Dinheiro",
+      metodoManuais: a.metodosPagamento?.manuais || a.metodoPagamento || "Dinheiro",
+      metodoCadernos: a.metodosPagamento?.cadernos || a.metodoPagamento || "Dinheiro",
+      metodoAtl: a.metodosPagamento?.atl || a.metodoPagamento || "Dinheiro",
+      metodoUniforme: a.metodosPagamento?.uniforme || a.metodoPagamento || "Dinheiro",
+      metodoMensalidade: a.metodosPagamento?.mensalidade || a.metodoPagamento || "Dinheiro",
+      metodoTransporte: a.metodosPagamento?.transporte || a.metodoPagamento || "Dinheiro",
+      metodoAlimentacao: a.metodosPagamento?.alimentacao || a.metodoPagamento || "Dinheiro",
+      metodoCurso: a.metodosPagamento?.curso || a.metodoPagamento || "Dinheiro",
       pin: "",
     });
   }
@@ -918,6 +987,31 @@ function Alunos() {
     }, 250);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search.edit]);
+
+
+  function metodosFromForm(form: FormState): {
+    metodoPagamento: string;
+    metodosPagamento: NonNullable<Aluno["metodosPagamento"]>;
+  } {
+    const metodosPagamento = {
+      inscricao: form.metodoInscricao || "Dinheiro",
+      seguro: form.metodoSeguro || "Dinheiro",
+      manuais: form.metodoManuais || "Dinheiro",
+      cadernos: form.metodoCadernos || "Dinheiro",
+      atl: form.metodoAtl || "Dinheiro",
+      uniforme: form.metodoUniforme || "Dinheiro",
+      mensalidade: form.metodoMensalidade || "Dinheiro",
+      transporte: form.metodoTransporte || "Dinheiro",
+      alimentacao: form.metodoAlimentacao || "Dinheiro",
+      curso: form.metodoCurso || "Dinheiro",
+    };
+    const unique = [...new Set(Object.values(metodosPagamento))];
+    const metodoPagamento =
+      unique.length === 1
+        ? unique[0]
+        : `Misto (${unique.join(" + ")})`;
+    return { metodoPagamento, metodosPagamento };
+  }
 
   function saveNew() {
     if (!canEdit) return;
@@ -965,7 +1059,7 @@ function Alunos() {
       obs: buildObs(form),
       propina: num(form.propina),
       statusPag: t.liquido > 0 ? "pago" : "registado",
-      metodoPagamento: form.metodoPagamento || "Dinheiro",
+      ...metodosFromForm(form),
       transferidoCampusCidade: form.transferidoCampusCidade,
     };
     addAluno(aluno);
@@ -1011,7 +1105,7 @@ function Alunos() {
         dataPag: form.dataPag.trim(),
         bruto: t.bruto,
         liquido: t.liquido,
-        metodoPagamento: form.metodoPagamento || "Dinheiro",
+        ...metodosFromForm(form),
         transferidoCampusCidade: form.transferidoCampusCidade,
       });
       toast.success(`Aluno ${editing.id} actualizado`);

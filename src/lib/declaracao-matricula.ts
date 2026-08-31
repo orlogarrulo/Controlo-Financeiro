@@ -40,12 +40,27 @@ export function declaracaoMatriculaHtml(
   const classe = descricaoClasse(a.turma);
   const pai = (a.pai || "").trim() || "—";
   const mae = (a.mae || "").trim() || "—";
-  const bi = (a.bi || "").trim() || "—";
+  const biRaw = (a.bi || "").trim();
+  const moradaRaw = (a.morada || "").trim();
+  // Se o BI no cadastro tiver texto de morada (erro de preenchimento), não usar como nº de BI
+  const biPareceMorada =
+    !biRaw ||
+    /rua|bairro|casa|travessa|munic[ií]pio|luanda|kilamba|urbaniza|resid/i.test(biRaw) ||
+    biRaw.length > 32;
+  const bi = biPareceMorada ? "—" : biRaw;
+  const morada =
+    moradaRaw ||
+    (biPareceMorada && biRaw ? biRaw : "") ||
+    "—";
   const biEmitido = (extras.biEmitido || "").trim();
   const biLocal = (extras.biLocal || "Arquivo de Identificação de Luanda").trim();
-  const biPart = biEmitido
-    ? `portador(a) do Bilhete de Identidade n.º ${bi} emitido em ${biEmitido} pelo ${biLocal}`
-    : `portador(a) do Bilhete de Identidade n.º ${bi}${bi !== "—" ? `, registado junto do ${biLocal}` : ""}`;
+  let biPart = `portador(a) do Bilhete de Identidade n.º ${bi}`;
+  if (biEmitido) {
+    biPart += ` emitido em ${biEmitido} pelo ${biLocal}`;
+  } else if (bi !== "—") {
+    biPart += `, emitido pelo ${biLocal}`;
+  }
+  biPart += `, residente na ${morada}`;
   const ano = escola.ano || "2026/2027";
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
