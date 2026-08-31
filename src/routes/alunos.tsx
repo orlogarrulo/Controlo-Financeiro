@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
-import { declaracaoMatriculaHtml, openPrintHtml } from "@/lib/declaracao-matricula";
+import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
 import {
   htmlFragmentToA4Pdf,
   htmlFragmentsToMultiPageA4Pdf,
