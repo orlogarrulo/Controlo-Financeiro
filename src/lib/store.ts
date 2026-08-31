@@ -137,6 +137,10 @@ type Store = ExtraState & {
   reconcileSalariosBai: () => boolean;
   /** Recria no BAI os débitos em falta para recibos já marcados como pagos. */
   ensureSalariosBaiFromRecibos: () => number;
+  /** Remove todos os débitos SALARIO-APP / APP-SAL-* do extrato BAI. */
+  limparDebitosSalarioBai: () => number;
+  /** Recria recibos do mês como pagos a partir da lista de funcionários. */
+  restaurarRecibosPagos: (staff: { id: string; nome: string; funcao?: string; salario: number; diasUteis?: number; diasTrab?: number; outrosDesc?: number; iban?: string }[], mes: string, mesKey: string, dataPag?: string) => number;
   removeReciboSalario: (id: string) => void;
   /** Cria movimentos BAI em falta a partir de despesas (cartão/transferência) já registadas. */
   syncBaiFromExtras: () => number;
@@ -759,6 +763,60 @@ export const useFinance = create<Store>()(
           get().pushAudit("bai_ensure_salarios", `${added} movimento(s) restaurado(s)`);
         }
         return added;
+      },
+      limparDebitosSalarioBai: () => {
+        const before = get().movimentosBaiExtra || [];
+        const next = before.filter((m) => {
+          const id = String(m.id || "");
+          const banco = String(m.banco || "").toUpperCase();
+          if (id.startsWith("APP-SAL-")) return false;
+          if (banco === "SALARIO-APP") return false;
+          return true;
+        });
+        const removed = before.length - next.length;
+        if (removed > 0) {
+          set({ movimentosBaiExtra: sortAndRecalcBai(next) });
+          get().pushAudit("bai_limpar_salarios", `${removed} débito(s) removido(s)`);
+        }
+        return removed;
+      },
+      restaurarRecibosPagos: (staff, mes, mesKey, dataPag) => {
+        const data = dataPag || new Date().toISOString().slice(0, 10);
+        const existing = get().recibosSalario || [];
+        // remover recibos do mesmo mês (evitar duplicados)
+        const kept = existing.filter((r) => r.mesKey !== mesKey);
+        const created: ReciboSalario[] = staff.map((f, i) => {
+          const diasU = f.diasUteis ?? 22;
+          const diasT = f.diasTrab ?? 22;
+          const outros = f.outrosDesc ?? 0;
+          const falta = Math.max(0, diasU - diasT);
+          const descDias = diasU > 0 ? (f.salario / diasU) * falta : 0;
+          const liquido = Math.max(0, f.salario - descDias - outros);
+          return {
+            id: `RH-${mesKey}-${String(i + 1).padStart(3, "0")}`,
+            funcionarioId: f.id,
+            nome: f.nome,
+            funcao: f.funcao || "",
+            mes,
+            mesKey,
+            diasUteis: diasU,
+            diasTrab: diasT,
+            salarioBruto: f.salario,
+            descontoDias: descDias,
+            outrosDesc: outros,
+            liquido,
+            dataPag: data,
+            pago: true,
+            iban: f.iban,
+            criadoEm: new Date().toISOString(),
+          };
+        });
+        set({ recibosSalario: [...kept, ...created] });
+        get().pushAudit("recibos_restaurar_pagos", `${created.length} · ${mes}`);
+        // extrato limpo + recriar débitos dos pagos
+        get().limparDebitosSalarioBai();
+        get().ensureSalariosBaiFromRecibos();
+        return created.length;
       },
       
 

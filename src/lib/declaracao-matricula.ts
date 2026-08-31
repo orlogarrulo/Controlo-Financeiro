@@ -50,18 +50,18 @@ export function declaracaoMatriculaHtml(
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4; margin: 18mm 16mm; }
-  body { font-family: Georgia, 'Times New Roman', serif; font-size: 13px; line-height: 1.55; color: #0f172a; text-align: justify; }
-  .head { display:flex; gap:14px; align-items:center; border-bottom:2px solid #009543; padding-bottom:12px; margin-bottom:28px; }
-  .head img { width:72px; height:72px; object-fit:contain; }
-  .head .name { font-size:15px; font-weight:700; color:#0b3d2c; }
-  .head .sub { font-size:11px; color:#64748b; margin-top:2px; }
-  h1 { text-align:center; font-size:16px; letter-spacing:0.06em; margin: 8px 0 28px; text-transform:uppercase; }
-  p { margin: 0 0 14px; }
-  .local { margin-top: 36px; text-align: left; }
-  .sign { margin-top: 48px; text-align: center; }
-  .sign .line { margin: 36px auto 8px; width: 280px; border-top: 1px solid #334155; }
-  .doc-foot { margin-top:40px; text-align:right; font-size:9px; color:#94a3b8; }
+  @page { size: A4; margin: 14mm 16mm; }
+  body { font-family: Georgia, 'Times New Roman', serif; font-size: 13px; line-height: 1.4; color: #0f172a; text-align: justify; }
+  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:36px; }
+  .head img { width:56px; height:56px; object-fit:contain; }
+  .head .name { font-size:14px; font-weight:700; color:#0b3d2c; }
+  .head .sub { font-size:10px; color:#64748b; margin-top:1px; }
+  h1 { text-align:center; font-size:15px; letter-spacing:0.05em; margin: 0 0 18px; text-transform:uppercase; }
+  p { margin: 0 0 6px; }
+  .local { margin-top: 12px; text-align: left; }
+  .sign { margin-top: 16px; text-align: center; }
+  .sign .line { margin: 14px auto 6px; width: 260px; border-top: 1px solid #334155; }
+  .doc-foot { margin-top:14px; text-align:right; font-size:9px; color:#94a3b8; }
 </style></head><body>
 <div class="head">
   <img src="${logo}" alt="Logo"/>

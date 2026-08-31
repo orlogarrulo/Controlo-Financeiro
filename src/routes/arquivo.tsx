@@ -1,21 +1,13 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { FileText, Printer, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { alunosAll, getSeed, useFinance } from "@/lib/store";
-import type { Aluno, Lancamento, ReciboSalario, MovimentoBai } from "@/data/types";
+import { alunosAll, useFinance } from "@/lib/store";
+import type { Lancamento, ReciboSalario, MovimentoBai } from "@/data/types";
 import { formatDate, formatKz } from "@/lib/format";
-import { declaracaoMatriculaHtml, openPrintHtml } from "@/lib/declaracao-matricula";
 
 export const Route = createFileRoute("/arquivo")({ component: ArquivoPage });
 
@@ -37,7 +29,6 @@ const SERIES: { id: SerieId; label: string; hint: string }[] = [
 ];
 
 function ArquivoPage() {
-  const escola = getSeed().escola;
   const alunosExtra = useFinance((s) => s.alunosExtra);
   const alunosOverrides = useFinance((s) => s.alunosOverrides);
   const alunosDeletedIds = useFinance((s) => s.alunosDeletedIds || []);
@@ -53,12 +44,7 @@ function ArquivoPage() {
 
   const [serie, setSerie] = useState<SerieId>("declaracoes");
   const [q, setQ] = useState("");
-  const [declOpen, setDeclOpen] = useState(false);
-  const [alunoId, setAlunoId] = useState("");
-  const [biEmitido, setBiEmitido] = useState("");
-  const [biLocal, setBiLocal] = useState("Arquivo de Identificação de Luanda");
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+            const [syncing, setSyncing] = useState(false);
 
   const rows = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -142,15 +128,6 @@ function ArquivoPage() {
       .filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
   }, [serie, q, extras, movimentosBaiExtra, faturasPropina, recibosSalario, alunos]);
 
-  function gerarDeclaracao() {
-    const a = alunos.find((x) => x.id === alunoId);
-    if (!a) {
-      toast.error("Seleccione o aluno.");
-      return;
-    }
-    setPreviewHtml(declaracaoMatriculaHtml(escola, a, { biEmitido, biLocal }));
-  }
-
   async function sincronizarAgora() {
     setSyncing(true);
     try {
@@ -214,16 +191,6 @@ function ArquivoPage() {
               <RefreshCw className={`mr-1.5 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               Sincronizar agora
             </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setSerie("declaracoes");
-                setDeclOpen(true);
-              }}
-            >
-              <FileText className="mr-1.5 h-4 w-4" />
-              Declaração de matrícula
-            </Button>
           </div>
         }
       />
@@ -262,13 +229,12 @@ function ArquivoPage() {
               <th className="px-3 py-2 font-medium">Data</th>
               <th className="px-3 py-2 font-medium">Descrição</th>
               <th className="px-3 py-2 font-medium text-right">Valor</th>
-              <th className="px-3 py-2 font-medium" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-[var(--color-muted)]">
+                <td colSpan={4} className="px-3 py-8 text-center text-[var(--color-muted)]">
                   Sem documentos nesta série.
                 </td>
               </tr>
@@ -284,99 +250,12 @@ function ArquivoPage() {
                   <td className="px-3 py-2 text-right tabular-nums text-xs">
                     {r.valor ? formatKz(r.valor) : "—"}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {serie === "declaracoes" ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setAlunoId(r.id);
-                          setDeclOpen(true);
-                        }}
-                      >
-                        Gerar
-                      </Button>
-                    ) : null}
-                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
-
-      <Dialog open={declOpen} onOpenChange={setDeclOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Declaração de matrícula</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label>Aluno</Label>
-              <select
-                className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
-                value={alunoId}
-                onChange={(e) => setAlunoId(e.target.value)}
-              >
-                <option value="">— seleccionar aluno —</option>
-                {alunos
-                  .slice()
-                  .sort((a, b) => a.nome.localeCompare(b.nome, "pt"))
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.nome} · {a.id} · {a.turma}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>BI emitido em (opcional)</Label>
-                <Input
-                  placeholder="02/02/2022"
-                  value={biEmitido}
-                  onChange={(e) => setBiEmitido(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Arquivo de identificação</Label>
-                <Input value={biLocal} onChange={(e) => setBiLocal(e.target.value)} />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 border-t pt-3">
-              <Button type="button" variant="secondary" onClick={() => setDeclOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="button" onClick={gerarDeclaracao}>
-                <Printer className="mr-1.5 h-4 w-4" />
-                Pré-visualizar / Imprimir
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!previewHtml} onOpenChange={(o) => !o && setPreviewHtml(null)}>
-        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-3">
-          <DialogHeader>
-            <DialogTitle>Declaração de matrícula</DialogTitle>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-auto rounded border border-[var(--color-line)] bg-white">
-            {previewHtml ? (
-              <iframe title="Declaração" srcDoc={previewHtml} className="h-[60vh] w-full bg-white" />
-            ) : null}
-          </div>
-          <div className="flex justify-end gap-2 border-t pt-3">
-            <Button type="button" variant="secondary" onClick={() => setPreviewHtml(null)}>
-              Fechar
-            </Button>
-            <Button type="button" onClick={() => previewHtml && openPrintHtml(previewHtml)}>
-              Imprimir / PDF
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

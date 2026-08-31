@@ -1110,6 +1110,8 @@ function Salarios() {
   const setReciboSalarioPago = useFinance((s) => s.setReciboSalarioPago);
   const reconcileSalariosBai = useFinance((s) => s.reconcileSalariosBai);
   const ensureSalariosBaiFromRecibos = useFinance((s) => s.ensureSalariosBaiFromRecibos);
+  const limparDebitosSalarioBai = useFinance((s) => s.limparDebitosSalarioBai);
+  const restaurarRecibosPagos = useFinance((s) => s.restaurarRecibosPagos);
   const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
   const rows = salariosAll(salariosExtra, salariosOverrides, salariosDeletedIds);
 
@@ -1283,6 +1285,64 @@ function Salarios() {
     });
     setDiasMap(dm);
     setGenOpen(true);
+  }
+
+
+  function restaurarQuatroPagosAgosto() {
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1 pode restaurar recibos.");
+      return;
+    }
+    // Preferir os 4 prestadores já conhecidos (honorários Agosto); senão toda a lista
+    const nomesAlvo = [
+      "massamba",
+      "pilartes",
+      "kativa",
+      "capolo",
+    ];
+    let staff = rows.filter((r) =>
+      nomesAlvo.some((n) => (r.nome || "").toLowerCase().includes(n)),
+    );
+    if (staff.length < 4) {
+      // completar com restantes da lista (excl. limpeza se já temos 4)
+      const ids = new Set(staff.map((s) => s.id));
+      for (const r of rows) {
+        if (ids.has(r.id)) continue;
+        if ((r.funcao || "").toLowerCase().includes("limpez") && staff.length >= 4) continue;
+        staff.push(r);
+        ids.add(r.id);
+        if (staff.length >= 4) break;
+      }
+    }
+    if (!staff.length) {
+      toast.error("Não há funcionários na lista para restaurar.");
+      return;
+    }
+    // Limitar a 4 se encontrados os nomes
+    if (staff.length > 4 && staff.filter((r) => nomesAlvo.some((n) => (r.nome || "").toLowerCase().includes(n))).length >= 4) {
+      staff = staff.filter((r) => nomesAlvo.some((n) => (r.nome || "").toLowerCase().includes(n))).slice(0, 4);
+    } else {
+      staff = staff.slice(0, Math.max(4, staff.length));
+    }
+    const mes = "Agosto de 2026";
+    const mesKey = "2026-08";
+    const n = restaurarRecibosPagos(
+      staff.map((f) => ({
+        id: f.id,
+        nome: f.nome,
+        funcao: f.funcao,
+        salario: f.salario,
+        diasUteis: f.diasUteis || 22,
+        diasTrab: f.diasTrab || 22,
+        outrosDesc: f.outrosDesc || 0,
+        iban: f.iban,
+      })),
+      mes,
+      mesKey,
+      "2026-08-30",
+    );
+    setFilterRec("pagos");
+    toast.success(`${n} recibo(s) restaurados como pagos. Extrato BAI actualizado.`);
   }
 
   function gerarRecibos() {
@@ -1563,6 +1623,17 @@ function Salarios() {
             >
               Imprimir listagem
             </Button>
+            {canEdit ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                title="Remove débitos SALARIO-APP do BAI e recria os recibos de Agosto como pagos (Massamba, José, Kativa, Capolo)"
+                onClick={restaurarQuatroPagosAgosto}
+              >
+                Restaurar pagos (Agosto)
+              </Button>
+            ) : null}
           </div>
         </div>
         <div ref={listPrintRef} className="overflow-x-auto rounded-[var(--radius)] border border-[var(--color-line)]">
