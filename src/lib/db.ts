@@ -7,8 +7,26 @@ export type DbSource = "neon" | "pglite";
 // "unset" — otherwise production would silently run on the PGLite fallback.
 const rawDatabaseUrl =
   typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+
+/** Neon + node-pg: `channel_binding=require` frequentemente falha; SSL é obrigatório. */
+function normalizeDatabaseUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.delete("channel_binding");
+    if (!u.searchParams.has("sslmode")) u.searchParams.set("sslmode", "require");
+    return u.toString();
+  } catch {
+    return url
+      .replace(/([?&])channel_binding=[^&]*/g, "$1")
+      .replace(/[?&]$/, "")
+      .replace(/\?&/, "?");
+  }
+}
+
 const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+  rawDatabaseUrl && rawDatabaseUrl.trim()
+    ? normalizeDatabaseUrl(rawDatabaseUrl.trim())
+    : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
@@ -93,7 +111,14 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: databaseUrl.includes("sslmode=require")
+        ? { rejectUnauthorized: false }
+        : undefined,
+      max: 5,
+      connectionTimeoutMillis: 15000,
+    });
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];

@@ -159,7 +159,19 @@ function ArquivoPage() {
       toast.success("Sincronização concluída.");
     } catch (e) {
       console.warn(e);
-      toast.error("Não foi possível sincronizar.");
+      const msg =
+        e instanceof Error && e.message
+          ? e.message.slice(0, 180)
+          : "Não foi possível sincronizar.";
+      toast.error(
+        msg.includes("relation") || msg.includes("does not exist")
+          ? "Tabela finance_cloud em falta — faça Redeploy (db:migrate) com DATABASE_URL."
+          : msg.includes("password") || msg.includes("authentication")
+            ? "Falha de autenticação Neon — confira DATABASE_URL e a password."
+            : msg.includes("ECONNREFUSED") || msg.includes("timeout")
+              ? "Sem ligação ao Neon — confira rede e a connection string."
+              : `Não foi possível sincronizar: ${msg}`,
+      );
     } finally {
       setSyncing(false);
     }

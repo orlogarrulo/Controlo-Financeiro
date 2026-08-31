@@ -138,28 +138,75 @@ function mergeById(local: unknown[], remote: unknown[]): never[] {
 
 function applyPayload(p: FinanceCloudPayload) {
   const local = useFinance.getState();
+  // Fundir por id: nuvem + local (telemóvel e PC passam a ver os mesmos registos)
+  const remoteAlunos = (p.alunosExtra as never[]) || [];
+  const localAlunos = local.alunosExtra || [];
+  const alunosMerged = mergeById(localAlunos, remoteAlunos);
+  const deletedAlunos = new Set([
+    ...((p.alunosDeletedIds as string[]) || []),
+    ...(local.alunosDeletedIds || []),
+  ]);
+  const extrasMerged = mergeById(
+    (local.extras as never[]) || [],
+    (p.extras as never[]) || [],
+  );
+  const mensMerged = mergeById(
+    (local.mensalidades as never[]) || [],
+    (p.mensalidades as never[]) || [],
+  );
+  const salExtraMerged = mergeById(
+    (local.salariosExtra as never[]) || [],
+    (p.salariosExtra as never[]) || [],
+  );
   useFinance.setState({
-    extras: (p.extras as never[]) || [],
-    alunosExtra: [], // cadastro vem do seed; extras da nuvem antigos causavam duplicados
-    alunosOverrides: { ...(local.alunosOverrides || {}), ...((p.alunosOverrides as never) || {}) } as never,
-    alunosDeletedIds: (p.alunosDeletedIds as string[]) || [],
-    mensalidades: (p.mensalidades as never[]) || [],
-    fundoExtra: (p.fundoExtra as never[]) || [],
-    fundoAtmExtra: (p.fundoAtmExtra as never[]) || [],
-    // Fundir movimentos app (não perder salários pagos de outro PC)
+    extras: extrasMerged as never[],
+    // CRÍTICO: não esvaziar alunosExtra — senão matrículas novas nunca chegam ao telemóvel
+    alunosExtra: alunosMerged.filter((a) => {
+      const id = (a as { id?: string }).id;
+      return id && !deletedAlunos.has(id);
+    }) as never[],
+    alunosOverrides: {
+      ...(local.alunosOverrides || {}),
+      ...((p.alunosOverrides as never) || {}),
+    } as never,
+    alunosDeletedIds: Array.from(deletedAlunos),
+    mensalidades: mensMerged as never[],
+    fundoExtra: mergeById(
+      (local.fundoExtra as never[]) || [],
+      (p.fundoExtra as never[]) || [],
+    ) as never[],
+    fundoAtmExtra: mergeById(
+      (local.fundoAtmExtra as never[]) || [],
+      (p.fundoAtmExtra as never[]) || [],
+    ) as never[],
     movimentosBaiExtra: sanitizeBaiExtra(
       mergeById(local.movimentosBaiExtra || [], (p.movimentosBaiExtra as never[]) || []),
     ) as never[],
-    movimentosBaiDeletedIds: (p.movimentosBaiDeletedIds as string[]) || [],
-    baiOverride: false,
-    fotos: p.fotos || {},
+    movimentosBaiDeletedIds: Array.from(
+      new Set([
+        ...((p.movimentosBaiDeletedIds as string[]) || []),
+        ...(local.movimentosBaiDeletedIds || []),
+      ]),
+    ),
+    baiOverride: Boolean(p.baiOverride) || Boolean(local.baiOverride),
+    fotos: { ...(local.fotos || {}), ...(p.fotos || {}) },
     operators: p.operators?.length ? p.operators : local.operators,
-    auditLog: (p.auditLog as never[]) || [],
-    sessionLog: (p.sessionLog as never[]) || [],
-    salariosExtra: (p.salariosExtra as never[]) || [],
-    salariosOverrides: (p.salariosOverrides as never) || {},
-    salariosDeletedIds: (p.salariosDeletedIds as string[]) || [],
-    // Recibos: se um PC marcou pago, o outro herda pago
+    auditLog: mergeById(
+      (local.auditLog as never[]) || [],
+      (p.auditLog as never[]) || [],
+    ) as never[],
+    sessionLog: (p.sessionLog as never[]) || local.sessionLog || [],
+    salariosExtra: salExtraMerged as never[],
+    salariosOverrides: {
+      ...(local.salariosOverrides || {}),
+      ...((p.salariosOverrides as never) || {}),
+    } as never,
+    salariosDeletedIds: Array.from(
+      new Set([
+        ...((p.salariosDeletedIds as string[]) || []),
+        ...(local.salariosDeletedIds || []),
+      ]),
+    ),
     recibosSalario: mergeRecibosPreferPago(local.recibosSalario || [], p.recibosSalario || []),
     faturasPropina: mergeById(local.faturasPropina || [], (p.faturasPropina as never[]) || []) as never[],
   });

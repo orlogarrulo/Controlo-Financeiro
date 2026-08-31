@@ -56,11 +56,25 @@ function emptyPayload(): FinanceCloudPayload {
   };
 }
 
+
+async function ensureFinanceCloudTable(sql: {
+  query: (text: string, params?: unknown[]) => Promise<unknown[]>;
+}) {
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS finance_cloud (
+      id TEXT PRIMARY KEY DEFAULT 'escola',
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
 export const loadFinanceCloud = createServerFn({ method: "GET" }).handler(
   async (): Promise<FinanceCloudSnapshot> => {
     const { getSql, dbSource } = await import("@/lib/db");
     const sql = await getSql();
     try {
+      await ensureFinanceCloudTable(sql);
       const rows = await sql.query<{
         payload: FinanceCloudPayload | string;
         updated_at: string | Date;
@@ -102,6 +116,7 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
     const data = ((ctx as { data?: FinanceCloudPayload }).data ?? emptyPayload()) as FinanceCloudPayload;
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
+    await ensureFinanceCloudTable(sql);
     const updatedAt = new Date().toISOString();
     const payload: FinanceCloudPayload = {
       ...emptyPayload(),
