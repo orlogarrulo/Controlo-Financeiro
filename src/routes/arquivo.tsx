@@ -135,27 +135,53 @@ function ArquivoPage() {
       const { loadFinanceCloud, saveFinanceCloud, sliceFromStore } = await import(
         "@/lib/finance-cloud"
       );
-      await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
-      const remote = await loadFinanceCloud();
-      const remoteBai = (remote.payload.movimentosBaiExtra || []) as MovimentoBai[];
-      const localBai = useFinance.getState().movimentosBaiExtra || [];
-      const baiMap = new Map<string, MovimentoBai>();
-      for (const m of [...remoteBai, ...localBai]) {
-        if (m?.id) baiMap.set(String(m.id), m);
+      const run = async () => {
+        // 1) Enviar estado local (sem fotos pesadas)
+        await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
+        // 2) Receber nuvem e fundir BAI + faturas
+        const remote = await loadFinanceCloud();
+        const remoteBai = (remote.payload.movimentosBaiExtra || []) as MovimentoBai[];
+        const localBai = useFinance.getState().movimentosBaiExtra || [];
+        const baiMap = new Map<string, MovimentoBai>();
+        for (const m of [...remoteBai, ...localBai]) {
+          if (m?.id) baiMap.set(String(m.id), m);
+        }
+        const remoteFat = (remote.payload.faturasPropina || []) as { numero?: string }[];
+        const localFat = useFinance.getState().faturasPropina || [];
+        const fatMap = new Map<string, (typeof localFat)[0]>();
+        for (const f of [...remoteFat, ...localFat] as { numero?: string }[]) {
+          const k = String(f?.numero || "");
+          if (k) fatMap.set(k, f as (typeof localFat)[0]);
+        }
+        // Fundir também alunos / extras se vierem da nuvem
+        const st = useFinance.getState();
+        const remoteAlunos = (remote.payload.alunosExtra || []) as { id?: string }[];
+        const localAlunos = (st.alunosExtra || []) as { id?: string }[];
+        const alunoMap = new Map<string, (typeof localAlunos)[0]>();
+        for (const a of [...remoteAlunos, ...localAlunos]) {
+          if (a?.id) alunoMap.set(String(a.id), a as (typeof localAlunos)[0]);
+        }
+        useFinance.setState({
+          movimentosBaiExtra: Array.from(baiMap.values()) as never[],
+          faturasPropina: Array.from(fatMap.values()) as never[],
+          alunosExtra: Array.from(alunoMap.values()) as never[],
+        });
+        localStorage.setItem("ecc-financeiro-cloud-ts", String(Date.now()));
+        // 3) Um único save final
+        await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
+      };
+      try {
+        await run();
+      } catch (first) {
+        // Telemóvel: 1ª tentativa falha por cold start / rede — repetir 1x
+        const m = first instanceof Error ? first.message : String(first);
+        if (/fetch|network|Failed|timeout|503|504/i.test(m)) {
+          await new Promise((r) => setTimeout(r, 1200));
+          await run();
+        } else {
+          throw first;
+        }
       }
-      const remoteFat = (remote.payload.faturasPropina || []) as { numero?: string }[];
-      const localFat = useFinance.getState().faturasPropina || [];
-      const fatMap = new Map<string, (typeof localFat)[0]>();
-      for (const f of [...remoteFat, ...localFat] as { numero?: string }[]) {
-        const k = String(f?.numero || "");
-        if (k) fatMap.set(k, f as (typeof localFat)[0]);
-      }
-      useFinance.setState({
-        movimentosBaiExtra: Array.from(baiMap.values()) as never[],
-        faturasPropina: Array.from(fatMap.values()) as never[],
-      });
-      localStorage.setItem("ecc-financeiro-cloud-ts", String(Date.now()));
-      await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
       toast.success("Sincronização concluída.");
     } catch (e) {
       console.warn(e);
@@ -163,14 +189,17 @@ function ArquivoPage() {
         e instanceof Error && e.message
           ? e.message.slice(0, 180)
           : "Não foi possível sincronizar.";
+      const low = msg.toLowerCase();
       toast.error(
-        msg.includes("relation") || msg.includes("does not exist")
-          ? "Tabela finance_cloud em falta — faça Redeploy (db:migrate) com DATABASE_URL."
-          : msg.includes("password") || msg.includes("authentication")
-            ? "Falha de autenticação Neon — confira DATABASE_URL e a password."
-            : msg.includes("ECONNREFUSED") || msg.includes("timeout")
-              ? "Sem ligação ao Neon — confira rede e a connection string."
-              : `Não foi possível sincronizar: ${msg}`,
+        low.includes("failed to fetch") || low.includes("network") || low.includes("fetch")
+          ? "Falha de rede no telemóvel. Use Wi‑Fi, abra https://controlo-financeiro-tau.vercel.app e tente de novo. No PC sincronize primeiro."
+          : msg.includes("relation") || msg.includes("does not exist")
+            ? "Tabela finance_cloud em falta — faça Redeploy com DATABASE_URL."
+            : msg.includes("password") || msg.includes("authentication")
+              ? "Falha de autenticação Neon — confira DATABASE_URL."
+              : msg.includes("ECONNREFUSED") || msg.includes("timeout")
+                ? "Sem ligação ao Neon — confira rede e a connection string."
+                : `Não foi possível sincronizar: ${msg}`,
       );
     } finally {
       setSyncing(false);

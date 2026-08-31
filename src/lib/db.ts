@@ -201,6 +201,18 @@ async function createSql(): Promise<Sql> {
         "or a server route loader, never from client code.",
     );
   }
+  // Na Vercel o PGLite não funciona (filesystem /var/task). Exige Neon.
+  const onVercel =
+    process.env.VERCEL === "1" ||
+    !!process.env.VERCEL_ENV ||
+    !!process.env.VERCEL_URL;
+  if (dbSource !== "neon" && onVercel) {
+    throw new Error(
+      "DATABASE_URL em falta neste deployment. Na Vercel: Settings → Environment Variables → " +
+        "DATABASE_URL (URI Neon) em Production → Save → Deployments → Redeploy. " +
+        "Abra controlo-financeiro-tau.vercel.app (não o URL de preview).",
+    );
+  }
   return dbSource === "neon" ? createNeonSql() : createPgliteSql();
 }
 

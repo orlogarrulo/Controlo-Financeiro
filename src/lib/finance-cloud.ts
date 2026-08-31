@@ -176,7 +176,8 @@ export function sliceFromStore(s: {
     movimentosBaiExtra: s.movimentosBaiExtra,
     movimentosBaiDeletedIds: s.movimentosBaiDeletedIds || [],
     baiOverride: s.baiOverride,
-    fotos: s.fotos,
+    // Fotos base64 pesam demasiado no telemóvel (Failed to fetch). Sync financeiro sem imagens.
+    fotos: {},
     operators: s.operators,
     auditLog: s.auditLog.slice(-200),
     sessionLog: s.sessionLog.slice(-100),

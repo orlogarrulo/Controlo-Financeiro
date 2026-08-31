@@ -1309,7 +1309,7 @@ function Alunos() {
       </div>
     </div>
 
-    <!-- Prazos (sem tabela) -->
+    ${isRecibo ? "" : `<!-- Prazos: só na FATURA (cobrança), não no recibo -->
     <div style="background:linear-gradient(180deg,#fffbeb 0%,#fff 100%);border:1px solid #fcd34d;border-radius:10px;padding:14px 16px;">
       <p style="margin:0 0 12px;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#b45309;">Délais <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Prazos</span></p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -1334,7 +1334,7 @@ function Alunos() {
           <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Sem pagamento · aluno suspenso</p>
         </div>
       </div>
-    </div>
+    </div>`}
 
     <!-- Pagamento -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -2296,8 +2296,8 @@ function Alunos() {
           </DialogHeader>
           <p className="text-xs text-[var(--color-muted)]">
             {invoicePreview?.modo === "recibo"
-              ? "Comprovativo de pagamento. Marque os itens pagos, ajuste valores se necessário e gere o PDF para os pais."
-              : "Fatura de cobrança. Marque os itens, ajuste valores se necessário e gere o PDF."}
+              ? "RECIBO — comprovativo de pagamento já efectuado. Sem tabela de prazos/multas (isso só na fatura). Não é necessário gerar PDF A4."
+              : "FATURA — documento de cobrança com prazos e multas. Gere o PDF para envio / arquivo."}
           </p>
           {invoicePreview ? (
             <div className="space-y-3">
@@ -2531,19 +2531,23 @@ function Alunos() {
             <Button type="button" variant="secondary" disabled={invoiceBusy} onClick={() => setInvoicePreview(null)}>
               Fechar
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={invoiceBusy}
-              onClick={() => void confirmarFaturaPdf(true)}
-            >
-              <Mail className="mr-1 size-4" />
-              PDF + e-mail
-            </Button>
-            <Button type="button" disabled={invoiceBusy} onClick={() => void confirmarFaturaPdf(false)}>
-              <Printer className="mr-1 size-4" />
-              {invoiceBusy ? "A gerar…" : "Gerar PDF"}
-            </Button>
+            {invoicePreview?.modo === "recibo" ? null : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={invoiceBusy}
+                  onClick={() => void confirmarFaturaPdf(true)}
+                >
+                  <Mail className="mr-1 size-4" />
+                  PDF + e-mail
+                </Button>
+                <Button type="button" disabled={invoiceBusy} onClick={() => void confirmarFaturaPdf(false)}>
+                  <Printer className="mr-1 size-4" />
+                  {invoiceBusy ? "A gerar…" : "Gerar PDF"}
+                </Button>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
