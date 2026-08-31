@@ -52,11 +52,11 @@ export function declaracaoMatriculaHtml(
 <style>
   @page { size: A4; margin: 14mm 16mm; }
   body { font-family: Georgia, 'Times New Roman', serif; font-size: 13px; line-height: 1.4; color: #0f172a; text-align: justify; }
-  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:36px; }
+  .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:14px; margin-bottom:0; }
   .head img { width:56px; height:56px; object-fit:contain; }
   .head .name { font-size:14px; font-weight:700; color:#0b3d2c; }
   .head .sub { font-size:10px; color:#64748b; margin-top:1px; }
-  h1 { text-align:center; font-size:15px; letter-spacing:0.05em; margin: 0 0 18px; text-transform:uppercase; }
+  h1 { text-align:center; font-size:15px; letter-spacing:0.05em; margin: 0 0 28px; text-transform:uppercase; }
   p { margin: 0 0 6px; }
   .local { margin-top: 12px; text-align: left; }
   .sign { margin-top: 16px; text-align: center; }
@@ -70,6 +70,7 @@ export function declaracaoMatriculaHtml(
     <div class="sub">${escola.subtitulo || "Annexe Nova Vida · Luanda"} · Ano lectivo ${ano}</div>
   </div>
 </div>
+<div style="height:120px;"></div>
 <h1>Declaração de matrícula</h1>
 <p>Declaramos, para os devidos efeitos e a pedido do(a) interessado(a), que <strong>${a.nome}</strong>, filho(a) de ${pai} e de ${mae}, ${biPart}, encontra-se regularmente matriculado(a) e a frequentar a classe <em>${classe.fr}</em> <strong>(${classe.pt})</strong> nesta instituição de ensino, sob o número de processo <strong>${a.id}</strong> durante o ano letivo de ${ano}.</p>
 <p>Por ser verdade e nos ser solicitado, mandamos passar a presente declaração que vai devidamente assinada e autenticada com o carimbo em uso nesta escola.</p>

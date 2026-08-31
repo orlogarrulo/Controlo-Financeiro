@@ -141,7 +141,7 @@ function applyPayload(p: FinanceCloudPayload) {
   useFinance.setState({
     extras: (p.extras as never[]) || [],
     alunosExtra: [], // cadastro vem do seed; extras da nuvem antigos causavam duplicados
-    alunosOverrides: (p.alunosOverrides as never) || {},
+    alunosOverrides: { ...(local.alunosOverrides || {}), ...((p.alunosOverrides as never) || {}) } as never,
     alunosDeletedIds: (p.alunosDeletedIds as string[]) || [],
     mensalidades: (p.mensalidades as never[]) || [],
     fundoExtra: (p.fundoExtra as never[]) || [],
@@ -161,6 +161,7 @@ function applyPayload(p: FinanceCloudPayload) {
     salariosDeletedIds: (p.salariosDeletedIds as string[]) || [],
     // Recibos: se um PC marcou pago, o outro herda pago
     recibosSalario: mergeRecibosPreferPago(local.recibosSalario || [], p.recibosSalario || []),
+    faturasPropina: mergeById(local.faturasPropina || [], (p.faturasPropina as never[]) || []) as never[],
   });
   // Alinha botões com extrato após aplicar nuvem
   try {

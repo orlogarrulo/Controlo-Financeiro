@@ -23,6 +23,7 @@ export type FinanceCloudPayload = {
   salariosOverrides: Record<string, unknown>;
   salariosDeletedIds?: string[];
   recibosSalario?: unknown[];
+  faturasPropina?: unknown[];
   clientUpdatedAt?: string;
 };
 
@@ -147,6 +148,7 @@ export function sliceFromStore(s: {
   salariosOverrides: Record<string, unknown>;
   salariosDeletedIds?: string[];
   recibosSalario?: unknown[];
+  faturasPropina?: unknown[];
 }): FinanceCloudPayload {
   return {
     extras: s.extras,
@@ -167,5 +169,6 @@ export function sliceFromStore(s: {
     salariosOverrides: s.salariosOverrides,
     salariosDeletedIds: s.salariosDeletedIds || [],
     recibosSalario: s.recibosSalario || [],
+    faturasPropina: s.faturasPropina || [],
   };
 }

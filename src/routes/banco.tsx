@@ -40,7 +40,6 @@ function Banco() {
   });
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
   const saidas = movs.reduce((s, m) => s + m.saida, 0);
-  const faturas = getSeed().faturasCartao;
   const addBaiManual = useFinance((s) => s.addBaiMovimentoManual);
   const addCaptura = useFinance((s) => s.addCaptura);
   const cats = getSeed().categorias.filter((c) => c.tipo === "despesa");
@@ -191,37 +190,11 @@ function Banco() {
         <Kpi label="Saldo actual (cartão/extrato)" value={last?.saldo ?? 0} tone="forest" />
         <Kpi label="Entradas" value={entradas} />
         <Kpi label="Saídas" value={saidas} />
-        <Kpi label="Faturas TPA" value={String(faturas.length)} />
       </div>
 
-      <h2 className="font-display mb-2 text-xl">Arquivo de faturas TPA</h2>
-      <div className="mb-6 overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
-            <tr>
-              <th className="px-3 py-2 text-left">Doc</th>
-              <th className="px-3 py-2 text-left">Data</th>
-              <th className="px-3 py-2 text-left">Detalhe</th>
-              <th className="px-3 py-2 text-left">Fornecedor</th>
-              <th className="px-3 py-2 text-right">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {faturas.map((c) => (
-              <tr key={c.id} className="border-t border-[var(--color-line)]">
-                <td className="px-3 py-2 font-mono text-xs">{c.id}</td>
-                <td className="px-3 py-2">{formatDate(c.data)}</td>
-                <td className="px-3 py-2">{c.descricao}</td>
-                <td className="px-3 py-2 text-xs">
-                  {c.fornecedor || "—"}
-                  {c.fatura ? <span className="block text-[var(--color-muted)]">{c.fatura}</span> : null}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatKz(c.valor)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="mb-4 text-sm text-[var(--color-muted)]">
+        As <strong>faturas TPA</strong> (cartão) e os IDs internos estão no separador <strong>Arquivo</strong> — sem duplicar aqui.
+      </p>
 
       <h2 className="font-display mb-2 text-xl">Extrato</h2>
       <div className="no-print mb-3 flex flex-wrap items-center gap-2">

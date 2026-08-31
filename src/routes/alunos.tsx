@@ -1045,7 +1045,18 @@ function Alunos() {
   function resolverValorPropina(a: Aluno, mesLetivo: string): { valor: number; pagoMes: number; propinaRef: number } {
     const row = (mensalidades || []).find((m) => m.id === a.id);
     const pagoMes = row ? Number(row.pagamentos?.[mesLetivo] || 0) : 0;
-    const propinaRef = Number(row?.propina || a.propina || 0);
+    // Se propina no registo estiver a 0 (dados sincronizados incompletos), usar tarifa da classe
+    let propinaRef = Number(row?.propina || a.propina || 0);
+    if (!(propinaRef > 0)) {
+      try {
+        propinaRef = propinaPorCiclo(a);
+      } catch {
+        propinaRef = 0;
+      }
+    }
+    if (!(propinaRef > 0) && a.transferidoCampusCidade) {
+      propinaRef = Number(a.propina) || 100000;
+    }
     const valor = pagoMes > 0 ? pagoMes : propinaRef;
     return { valor, pagoMes, propinaRef };
   }

@@ -5,128 +5,129 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { alunosAll, useFinance } from "@/lib/store";
-import type { Lancamento, ReciboSalario, MovimentoBai } from "@/data/types";
+import { getSeed, useFinance } from "@/lib/store";
+import type { Lancamento, MovimentoBai } from "@/data/types";
 import { formatDate, formatKz } from "@/lib/format";
 
 export const Route = createFileRoute("/arquivo")({ component: ArquivoPage });
 
-type SerieId =
-  | "despesas"
-  | "cartao"
-  | "propinas"
-  | "recibos_honorarios"
-  | "autorizacoes"
-  | "declaracoes";
+type SerieId = "tpa" | "despesas" | "propinas" | "cartao";
 
 const SERIES: { id: SerieId; label: string; hint: string }[] = [
-  { id: "despesas", label: "Lista de despesas", hint: "Docs internos / faturas de lançamentos" },
-  { id: "cartao", label: "Cartão / movimentos BAI app", hint: "Saídas geradas na app (salários, propinas…)" },
-  { id: "propinas", label: "Faturas de propina", hint: "Série PROP-AAAA-MM-NNN" },
-  { id: "recibos_honorarios", label: "Recibos de honorários", hint: "Série RH-AAAA-MM-NNN" },
-  { id: "autorizacoes", label: "Autorizações de pagamento", hint: "Pedidos aos sócios (salários)" },
-  { id: "declaracoes", label: "Declarações de matrícula", hint: "Comprovativo de frequência do aluno" },
+  {
+    id: "tpa",
+    label: "Faturas TPA (cartão)",
+    hint: "Arquivo das faturas TPA/Multicaixa — ID CX-… para anotar no papel (antes no Banco BAI)",
+  },
+  {
+    id: "despesas",
+    label: "Faturas / despesas",
+    hint: "ID interno (doc) para anotar na fatura física · fornecedor e valor",
+  },
+  {
+    id: "propinas",
+    label: "Faturas de propina",
+    hint: "Numeração PROP-AAAA-MM-NNN gerada pela app",
+  },
+  {
+    id: "cartao",
+    label: "Movimentos app (BAI)",
+    hint: "IDs APP-… registados automaticamente (propinas, salários…)",
+  },
 ];
 
 function ArquivoPage() {
-  const alunosExtra = useFinance((s) => s.alunosExtra);
-  const alunosOverrides = useFinance((s) => s.alunosOverrides);
-  const alunosDeletedIds = useFinance((s) => s.alunosDeletedIds || []);
   const extras = useFinance((s) => s.extras || []);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
-  const recibosSalario = useFinance((s) => s.recibosSalario || []);
   const faturasPropina = useFinance((s) => s.faturasPropina || []);
+  const seedLanc = getSeed().lancamentosSocio || [];
+  const faturasTpa = getSeed().faturasCartao || [];
 
-  const alunos = useMemo(
-    () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
-    [alunosExtra, alunosOverrides, alunosDeletedIds],
-  );
-
-  const [serie, setSerie] = useState<SerieId>("declaracoes");
+  const [serie, setSerie] = useState<SerieId>("tpa");
   const [q, setQ] = useState("");
-            const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const rows = useMemo(() => {
     const qq = q.trim().toLowerCase();
+    if (serie === "tpa") {
+      return faturasTpa
+        .map((c) => ({
+          id: c.id,
+          ref: c.id,
+          faturaForn: c.fatura || "—",
+          fornecedor: c.fornecedor || "—",
+          data: c.data,
+          titulo: c.descricao,
+          detalhe: `${c.banco || ""} · mov. linha ${c.linhaMov ?? "—"} · ${c.observacoes || ""}`.trim(),
+          valor: c.valor,
+        }))
+        .filter(
+          (r) =>
+            !qq ||
+            `${r.ref} ${r.faturaForn} ${r.fornecedor} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq),
+        )
+        .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    }
     if (serie === "despesas") {
-      return (extras as Lancamento[])
-        .filter((e) => e.tipo === "despesa")
+      const fromExtra = (extras as Lancamento[]).filter((e) => e.tipo === "despesa");
+      const fromSeed = (seedLanc as Lancamento[]).filter(
+        (e) => e.tipo === "despesa" && !fromExtra.some((x) => x.id === e.id),
+      );
+      return [...fromExtra, ...fromSeed]
         .map((e) => ({
           id: e.id,
           ref: e.docInterno || e.fatura || e.id,
+          faturaForn: e.fatura || "—",
+          fornecedor: e.fornecedor || "—",
           data: e.data,
           titulo: e.descricao || e.categoria,
-          detalhe: `${e.fornecedor || "—"} · ${e.origem || ""}`,
+          detalhe: `${e.origem || ""} · doc ${e.docInterno || e.id}`.trim(),
           valor: e.valor,
         }))
-        .filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
-    }
-    if (serie === "cartao") {
-      return (movimentosBaiExtra as MovimentoBai[])
         .filter(
-          (m) =>
-            String(m.id || "").startsWith("APP-") ||
-            String(m.banco || "").endsWith("-APP"),
+          (r) =>
+            !qq ||
+            `${r.ref} ${r.faturaForn} ${r.fornecedor} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq),
         )
-        .map((m) => ({
-          id: m.id,
-          ref: m.id,
-          data: m.data,
-          titulo: m.descricao,
-          detalhe: `${m.banco} · ${m.observacoes || ""}`,
-          valor: m.saida || m.entrada,
-        }))
-        .filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
+        .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
     }
     if (serie === "propinas") {
-      return (faturasPropina || []).map((f: { numero?: string; alunoId?: string; mes?: string; valor?: number }, i: number) => ({
-        id: f.numero || `PROP-${i}`,
-        ref: f.numero || "—",
-        data: "",
-        titulo: `Fatura propina · ${f.mes || ""}`,
-        detalhe: f.alunoId || "",
-        valor: f.valor || 0,
-      })).filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
-    }
-    if (serie === "recibos_honorarios") {
-      return (recibosSalario as ReciboSalario[])
-        .map((r) => ({
-          id: r.id,
-          ref: r.id,
-          data: r.dataPag || (r.criadoEm || "").slice(0, 10) || "",
-          titulo: r.nome,
-          detalhe: `${r.funcao || ""} · ${r.mes} · ${r.pago ? "Pago" : "Por pagar"}`,
-          valor: r.liquido,
+      return (faturasPropina || [])
+        .map((f: { numero?: string; alunoId?: string; alunoNome?: string; mes?: string; mesRef?: string; valor?: number }, i: number) => ({
+          id: f.numero || `PROP-${i}`,
+          ref: f.numero || "—",
+          faturaForn: f.numero || "—",
+          fornecedor: "Encarregado / família",
+          data: "",
+          titulo: f.alunoNome || f.alunoId || "Aluno",
+          detalhe: `Propina · ${f.mes || f.mesRef || ""} · aluno ${f.alunoId || "—"}`,
+          valor: f.valor || 0,
         }))
-        .filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
+        .filter(
+          (r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq),
+        );
     }
-    if (serie === "autorizacoes") {
-      const byMes = new Map<string, ReciboSalario[]>();
-      for (const r of recibosSalario as ReciboSalario[]) {
-        const k = r.mesKey || r.mes;
-        if (!byMes.has(k)) byMes.set(k, []);
-        byMes.get(k)!.push(r);
-      }
-      return Array.from(byMes.entries()).map(([k, list]) => ({
-        id: k,
-        ref: `AUT-${k}`,
-        data: list[0]?.dataPag || "",
-        titulo: `Autorização · ${list[0]?.mes || k}`,
-        detalhe: `${list.length} prestador(es)`,
-        valor: list.reduce((s, r) => s + (r.liquido || 0), 0),
-      }));
-    }
-    return alunos
-      .map((a) => ({
-        id: a.id,
-        ref: a.id,
-        data: a.dataPag || "",
-        titulo: a.nome,
-        detalhe: `${a.turma} · BI ${a.bi || "—"}`,
-        valor: 0,
+    // cartao / movimentos app
+    return (movimentosBaiExtra as MovimentoBai[])
+      .filter(
+        (m) =>
+          String(m.id || "").startsWith("APP-") ||
+          String(m.banco || "").endsWith("-APP"),
+      )
+      .map((m) => ({
+        id: m.id,
+        ref: m.id,
+        faturaForn: m.id,
+        fornecedor: m.banco || "—",
+        data: m.data,
+        titulo: m.descricao,
+        detalhe: m.observacoes || "",
+        valor: m.saida || m.entrada,
       }))
-      .filter((r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq));
-  }, [serie, q, extras, movimentosBaiExtra, faturasPropina, recibosSalario, alunos]);
+      .filter(
+        (r) => !qq || `${r.ref} ${r.titulo} ${r.detalhe}`.toLowerCase().includes(qq),
+      );
+  }, [serie, q, extras, movimentosBaiExtra, faturasPropina, seedLanc, faturasTpa]);
 
   async function sincronizarAgora() {
     setSyncing(true);
@@ -136,39 +137,29 @@ function ArquivoPage() {
       );
       await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
       const remote = await loadFinanceCloud();
-      const remoteRecibos = (remote.payload.recibosSalario || []) as ReciboSalario[];
-      const localRecibos = useFinance.getState().recibosSalario || [];
-      const byId = new Map<string, ReciboSalario>();
-      for (const r of [...remoteRecibos, ...localRecibos]) {
-        const prev = byId.get(r.id);
-        if (!prev) byId.set(r.id, r);
-        else byId.set(r.id, { ...prev, ...r, pago: Boolean(prev.pago || r.pago) });
-      }
       const remoteBai = (remote.payload.movimentosBaiExtra || []) as MovimentoBai[];
       const localBai = useFinance.getState().movimentosBaiExtra || [];
       const baiMap = new Map<string, MovimentoBai>();
       for (const m of [...remoteBai, ...localBai]) {
         if (m?.id) baiMap.set(String(m.id), m);
       }
+      const remoteFat = (remote.payload.faturasPropina || []) as { numero?: string }[];
+      const localFat = useFinance.getState().faturasPropina || [];
+      const fatMap = new Map<string, (typeof localFat)[0]>();
+      for (const f of [...remoteFat, ...localFat] as { numero?: string }[]) {
+        const k = String(f?.numero || "");
+        if (k) fatMap.set(k, f as (typeof localFat)[0]);
+      }
       useFinance.setState({
-        recibosSalario: Array.from(byId.values()),
         movimentosBaiExtra: Array.from(baiMap.values()) as never[],
+        faturasPropina: Array.from(fatMap.values()) as never[],
       });
-      useFinance.getState().reconcileSalariosBai();
-      useFinance.getState().ensureSalariosBaiFromRecibos();
       localStorage.setItem("ecc-financeiro-cloud-ts", String(Date.now()));
       await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
       toast.success("Sincronização concluída.");
     } catch (e) {
       console.warn(e);
-      // Offline: still restore local BAI from paid recibos
-      try {
-        useFinance.getState().reconcileSalariosBai();
-        useFinance.getState().ensureSalariosBaiFromRecibos();
-        toast.message("Modo offline: recibos alinhados com o extrato local.");
-      } catch {
-        toast.error("Não foi possível sincronizar.");
-      }
+      toast.error("Não foi possível sincronizar.");
     } finally {
       setSyncing(false);
     }
@@ -178,20 +169,18 @@ function ArquivoPage() {
     <div>
       <PageHeader
         kicker="Arquivo"
-        title="Arquivo de faturas e documentos"
-        description="Organize por série a numeração interna. Emita a declaração de matrícula. Sincronize os computadores."
+        title="Arquivo de faturas"
+        description="Faturas TPA, despesas e propinas com ID interno para anotar no papel. O extrato BAI fica só no separador Banco BAI (sem duplicar o arquivo TPA)."
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={syncing}
-              onClick={() => void sincronizarAgora()}
-            >
-              <RefreshCw className={`mr-1.5 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-              Sincronizar agora
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={syncing}
+            onClick={() => void sincronizarAgora()}
+          >
+            <RefreshCw className={`mr-1.5 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            Sincronizar agora
+          </Button>
         }
       />
 
@@ -215,17 +204,19 @@ function ArquivoPage() {
 
       <div className="mb-3 max-w-sm">
         <Input
-          placeholder="Pesquisar por nome, referência, nº…"
+          placeholder="Pesquisar ID interno, fornecedor, descrição…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
-              <th className="px-3 py-2 font-medium">Referência</th>
+              <th className="px-3 py-2 font-medium">ID interno</th>
+              <th className="px-3 py-2 font-medium">N.º fatura forn.</th>
+              <th className="px-3 py-2 font-medium">Fornecedor</th>
               <th className="px-3 py-2 font-medium">Data</th>
               <th className="px-3 py-2 font-medium">Descrição</th>
               <th className="px-3 py-2 font-medium text-right">Valor</th>
@@ -234,14 +225,18 @@ function ArquivoPage() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-8 text-center text-[var(--color-muted)]">
-                  Sem documentos nesta série.
+                <td colSpan={6} className="px-3 py-8 text-center text-[var(--color-muted)]">
+                  Sem faturas nesta série.
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id} className="border-t border-[var(--color-line)]">
-                  <td className="px-3 py-2 font-mono text-xs">{r.ref}</td>
+                  <td className="px-3 py-2 font-mono text-xs font-semibold text-[var(--color-forest)]">
+                    {r.ref}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">{r.faturaForn}</td>
+                  <td className="px-3 py-2 text-sm">{r.fornecedor}</td>
                   <td className="px-3 py-2 text-xs">{r.data ? formatDate(r.data) : "—"}</td>
                   <td className="px-3 py-2">
                     <p className="font-medium">{r.titulo}</p>

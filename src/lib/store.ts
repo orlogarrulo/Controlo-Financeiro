@@ -769,14 +769,17 @@ export const useFinance = create<Store>()(
         const next = before.filter((m) => {
           const id = String(m.id || "");
           const banco = String(m.banco || "").toUpperCase();
+          const desc = `${m.descricao || ""} ${m.observacoes || ""}`;
           if (id.startsWith("APP-SAL-")) return false;
-          if (banco === "SALARIO-APP") return false;
+          if (banco === "SALARIO-APP" || banco.includes("SALARIO")) return false;
+          if (/Honorários\s*\/\s*salário|Recibo\s+RH-/i.test(desc)) return false;
           return true;
         });
         const removed = before.length - next.length;
+        // Sempre recalcular saldo da cadeia extra
+        set({ movimentosBaiExtra: sortAndRecalcBai(next) });
         if (removed > 0) {
-          set({ movimentosBaiExtra: sortAndRecalcBai(next) });
-          get().pushAudit("bai_limpar_salarios", `${removed} débito(s) removido(s)`);
+          get().pushAudit("bai_limpar_salarios", `${removed} débito(s) salário removido(s) · saldo recalculado`);
         }
         return removed;
       },
