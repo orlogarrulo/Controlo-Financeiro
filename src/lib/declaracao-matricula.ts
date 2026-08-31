@@ -70,7 +70,7 @@ export function declaracaoMatriculaHtml(
     <div class="sub">${escola.subtitulo || "Annexe Nova Vida · Luanda"} · Ano lectivo ${ano}</div>
   </div>
 </div>
-<div style="height:360px;"></div>
+<div style="height:240px;"></div>
 <h1>Declaração de matrícula</h1>
 <p>Declaramos, para os devidos efeitos e a pedido do(a) interessado(a), que <strong>${a.nome}</strong>, filho(a) de ${pai} e de ${mae}, ${biPart}, encontra-se regularmente matriculado(a) e a frequentar a classe <em>${classe.fr}</em> <strong>(${classe.pt})</strong> nesta instituição de ensino, sob o número de processo <strong>${a.id}</strong> durante o ano letivo de ${ano}.</p>
 <p>Por ser verdade e nos ser solicitado, mandamos passar a presente declaração que vai devidamente assinada e autenticada com o carimbo em uso nesta escola.</p>
