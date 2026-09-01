@@ -723,17 +723,11 @@ async function htmlToPdfBlob(
   }
 }
 
-/**
- * Entrega documento oficial — **mesmo PDF** no PC e no telemóvel
- * (html2canvas + jsPDF), para layout idêntico.
- * — Telemóvel: partilha nativa (WhatsApp, e-mail, …)
- * — PC: abre o PDF no browser (imprimir / guardar)
- * — openPrint: true → também abre o diálogo de impressão HTML (opcional)
- */
 export type PdfDelivery = "shared" | "opened" | "downloaded";
 
 /**
- * Fluxo oficial unificado: um único ficheiro PDF em todos os dispositivos.
+ * PC = impressão HTML nativa (qualidade de referência).
+ * Telemóvel = PDF gerado do mesmo HTML + partilha.
  */
 export async function deliverOfficialHtml(
   html: string,
@@ -741,7 +735,6 @@ export async function deliverOfficialHtml(
     filename: string;
     landscape?: boolean;
     forceSinglePage?: boolean;
-    /** Se true, no PC abre também a impressão HTML (além do PDF). Default: false. */
     openPrint?: boolean;
     shareTitle?: string;
     shareText?: string;
@@ -752,17 +745,19 @@ export async function deliverOfficialHtml(
     : opts.filename.replace(/\.(html|htm)$/i, "") + ".pdf";
   const mobile = isMobileDevice();
 
-  // Mesmo motor visual no PC e no telemóvel
+  // PC: qualidade de referência = impressão HTML do browser
+  if (!mobile && opts.openPrint !== false) {
+    openPrintHtml(html, { autoPrint: true });
+    return { blob: new Blob([html], { type: "text/html;charset=utf-8" }), filename };
+  }
+
+  // Telemóvel: PDF do mesmo HTML + partilha
   const pdf = await htmlToPdfBlob(html, {
     filename,
     landscape: opts.landscape,
     forceSinglePage: opts.forceSinglePage,
   });
   const blob = pdf.blob;
-
-  if (!mobile && opts.openPrint === true) {
-    openPrintHtml(html, { autoPrint: true });
-  }
 
   let delivery: PdfDelivery | undefined;
   try {
@@ -782,9 +777,7 @@ export async function deliverOfficialHtml(
   return { blob, filename, delivery };
 }
 
-/**
- * Vários HTML (ex.: faturas) → impressão (PC) ou PDF partilhável (telemóvel).
- */
+
 export async function htmlFragmentsToMultiPageA4Pdf(
   fragments: string[],
   opts?: { filename?: string; title?: string },

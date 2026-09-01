@@ -1310,8 +1310,8 @@ function Alunos() {
     const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
     const semFoto = fr ? "Sans photo" : "Sem foto";
     const fotoBlock = a.foto
-      ? `<img src="${a.foto}" alt="" style="width:88px;height:105px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:4px;" />`
-      : `<div style="width:88px;height:105px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
+      ? `<img src="${a.foto}" alt="" style="width:90px;height:110px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:3px;" />`
+      : `<div style="width:90px;height:110px;border:1.5px dashed #94a3b8;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
 
     const L = fr
       ? {
@@ -1405,13 +1405,14 @@ function Alunos() {
     font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .sheet { padding: 0; }
-  .head { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1f5c4a; padding-bottom: 8px; margin-bottom: 8px; }
-  .head-logo { width: 78px; height: 78px; object-fit: contain; flex-shrink: 0; }
-  .head-mid { flex: 1; min-width: 0; }
-  .head-foto { flex-shrink: 0; }
+  .head { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 10px; }
+  .head-logo { width: 70px; height: 70px; object-fit: contain; flex-shrink: 0; display: block; }
+  .head-mid { flex: 1; min-width: 0; padding-top: 4px; }
+  .head-foto { flex-shrink: 0; width: 90px; text-align: right; }
+  .head-foto img, .head-foto > div { display: block; margin-left: auto; }
   .kicker { margin: 0; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #1f5c4a; font-weight: 700; }
-  .title { margin: 2px 0 0; font-size: 15px; font-weight: 700; }
-  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
+  .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
+  .meta { margin: 3px 0 0; font-size: 10px; color: #555; line-height: 1.3; }
   h2 { font-size: 10.5px; margin: 8px 0 4px; color: #1f5c4a; text-transform: uppercase; letter-spacing: 0.04em; }
   table { width: 100%; border-collapse: collapse; }
   .aviso { margin-top: 8px; padding: 6px 8px; border: 1px solid #d4a017; background: #fffbeb; font-size: 8.5px; line-height: 1.35; color: #422006; }
@@ -1424,7 +1425,7 @@ function Alunos() {
 </style></head><body>
 <div class="sheet">
   <div class="head">
-    <img class="head-logo" src="${logoSrc}" width="78" height="78" alt="" />
+    <img class="head-logo" src="${logoSrc}" width="70" height="70" alt="" />
     <div class="head-mid">
       <p class="kicker">${escolaNome}</p>
       <p class="title">${L.title}</p>
