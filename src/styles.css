@@ -506,3 +506,13 @@ html.pdf-export [data-pdf-root="1"] {
     font-size: 15px;
   }
 }
+
+
+@media print {
+  /* Listas longas de recibos: não cortar por max-height do ecrã */
+  .max-h-\[min\(70vh\,720px\)\],
+  .max-h-\[70vh\] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}

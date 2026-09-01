@@ -14,6 +14,64 @@ import { getSeed, salariosAll, useFinance } from "@/lib/store";
 import { deliverOfficialHtml, isMobileDevice } from "@/lib/pdf-export";
 import type { ReciboSalario, Salario } from "@/data/types";
 
+
+function listaRecibosCompletaHtml(
+  escola: { nome?: string; nomeCurto?: string; ano?: string },
+  list: ReciboSalario[],
+  filterRec: string,
+  filterMes: string,
+): string {
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const titulo =
+    filterRec === "pagos"
+      ? "Lista de recibos PAGOS"
+      : filterRec === "por_pagar"
+        ? "Lista de recibos por pagar"
+        : "Lista de recibos de honorários";
+  const sub =
+    filterMes && filterMes !== "todos"
+      ? `Mês ref.: ${list[0]?.mes || filterMes}`
+      : "Todos os meses";
+  const total = list.reduce((s, r) => s + (Number(r.liquido) || 0), 0);
+  const rows = list
+    .map(
+      (r, i) => `<tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${i + 1}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.mes || r.mesKey || "—"}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.nome}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">${r.funcao || "—"}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right;">${Number(r.liquido || 0).toLocaleString("pt-PT")} Kz</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:center;">${r.diasTrab}/${r.diasUteis}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-weight:600;">${r.pago ? "Pago" : "Por pagar"}</td>
+    </tr>`,
+    )
+    .join("");
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  body { font-family: system-ui, sans-serif; font-size: 12px; color: #0f172a; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b; padding: 6px 8px; border-bottom: 2px solid #009543; }
+</style></head><body>
+<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;border-bottom:2px solid #009543;padding-bottom:10px;">
+  <img src="${logo}" alt="" style="width:56px;height:56px;object-fit:contain;"/>
+  <div>
+    <div style="font-weight:700;color:#0b3d2c;">${escola.nome || escola.nomeCurto || "École Consulaire"}</div>
+    <div style="font-size:14px;font-weight:600;margin-top:2px;">${titulo}</div>
+    <div style="font-size:11px;color:#64748b;">${sub} · ${list.length} registo(s) · Total ${total.toLocaleString("pt-PT")} Kz · ${escola.ano || ""}</div>
+  </div>
+</div>
+<table>
+  <thead><tr>
+    <th>#</th><th>Mês</th><th>Nome</th><th>Função</th><th style="text-align:right">Líquido</th><th style="text-align:center">Dias</th><th>Estado</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<p style="margin-top:20px;font-size:9px;color:#94a3b8;text-align:right;">Documento gerado pelo Departamento de Finanças · lista completa (${list.length})</p>
+</body></html>`;
+}
+
+
 export const Route = createFileRoute("/salarios")({
   component: Salarios,
   validateSearch: (s: Record<string, unknown>) => ({
@@ -1185,31 +1243,14 @@ function Salarios() {
   }
 
   useEffect(() => {
-    // Correcção urgente: limpar SALARIO-APP órfãos e garantir 4 recibos pagos Agosto
     try {
-      const key = "ecc-fix-salarios-ago-2026-v2";
-      if (typeof window !== "undefined" && window.sessionStorage.getItem(key) === "1") {
-        reconcileSalariosBai();
-        ensureSalariosBaiFromRecibos();
-        return;
-      }
-      restaurarQuatroPagosAgosto();
-      try {
-        window.sessionStorage.setItem(key, "1");
-      } catch {
-        /* ignore */
-      }
+      reconcileSalariosBai();
+      ensureSalariosBaiFromRecibos();
     } catch {
-      try {
-        limparDebitosSalarioBai();
-        reconcileSalariosBai();
-        ensureSalariosBaiFromRecibos();
-      } catch {
-        /* ignore */
-      }
+      /* ignore */
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reconcileSalariosBai, ensureSalariosBaiFromRecibos]);
+
 
   useEffect(() => {
     if (search.edit) {
@@ -1355,51 +1396,101 @@ function Salarios() {
   }
 
 
-  function restaurarQuatroPagosAgosto() {
-    // Fallback fixo dos 4 honorários de Agosto (valores do extrato)
-    const FALLBACK = [
-      { id: "F-CAPOLO", nome: "Alberto Afonso Capolo", funcao: "Prestador", salario: 90000 },
-      { id: "F-KATIVA", nome: "Francisco Kativa", funcao: "Prestador", salario: 90000 },
-      { id: "F-JONES", nome: "José Borges Pilartes Jones", funcao: "Prestador", salario: 90000 },
-      { id: "F-MASSAMBA", nome: "Massamba João Lucique", funcao: "Prestador", salario: 120000 },
-    ];
-    const nomesAlvo = ["massamba", "pilartes", "kativa", "capolo"];
-    let staff = rows
-      .filter((r) => nomesAlvo.some((n) => (r.nome || "").toLowerCase().includes(n)))
-      .map((f) => ({
-        id: f.id,
-        nome: f.nome,
-        funcao: f.funcao,
-        salario: f.salario,
-        diasUteis: f.diasUteis || 22,
-        diasTrab: f.diasTrab || 22,
-        outrosDesc: f.outrosDesc || 0,
-        iban: f.iban,
-      }));
-    // Completar com fallback se faltar alguém na lista de funcionários
-    for (const fb of FALLBACK) {
-      if (staff.length >= 4) break;
-      if (!staff.some((s) => s.nome.toLowerCase().includes(fb.nome.split(" ").slice(-1)[0].toLowerCase()) || s.nome.toLowerCase().includes(fb.nome.split(" ")[0].toLowerCase()))) {
-        staff.push({ ...fb, diasUteis: 22, diasTrab: 22, outrosDesc: 0 });
+  /** Força os 7 honorários de Agosto 2026 como pagos + alinha débitos no Banco BAI. */
+  function forcarSetePagosAgosto() {
+    const MES = "Agosto de 2026";
+    const MES_KEY = "2026-08";
+    const DATA = "2026-08-30";
+    // 7 confirmados pelo utilizador (valores de referência)
+    const SETE = [
+      { id: "F-MASSAMBA", nome: "Massamba João Lucique", keys: ["massamba"], salario: 120000 },
+      { id: "F-JONES", nome: "José Borges Pilartes Jones", keys: ["pilartes", "jones"], salario: 90000 },
+      { id: "F-KATIVA", nome: "Francisco Kativa", keys: ["kativa"], salario: 90000 },
+      { id: "F-CAPOLO", nome: "Alberto Afonso Capolo", keys: ["capolo"], salario: 90000 },
+      { id: "F-ANDREZA", nome: "Andreza Verónica de Sousa Santos", keys: ["andreza"], salario: 50000 },
+      { id: "F-EUNICE", nome: "Eunice Quiteque", keys: ["eunice", "quiteque"], salario: 50000 },
+      { id: "F-MARIA", nome: "Maria Sebastião Alfredo", keys: ["maria sebasti", "sebastião alfredo", "sebastiao alfredo"], salario: 90000 },
+    ] as const;
+
+    const staff: {
+      id: string;
+      nome: string;
+      funcao?: string;
+      salario: number;
+      diasUteis?: number;
+      diasTrab?: number;
+      outrosDesc?: number;
+      iban?: string;
+    }[] = [];
+
+    for (const alvo of SETE) {
+      const found = rows.find((r) => {
+        const n = (r.nome || "").toLowerCase();
+        return alvo.keys.some((k) => n.includes(k));
+      });
+      if (found) {
+        staff.push({
+          id: found.id,
+          nome: found.nome,
+          funcao: found.funcao,
+          salario: found.salario > 0 ? found.salario : alvo.salario,
+          diasUteis: found.diasUteis || 22,
+          diasTrab: found.diasTrab || 22,
+          outrosDesc: found.outrosDesc || 0,
+          iban: found.iban,
+        });
+      } else {
+        staff.push({
+          id: alvo.id,
+          nome: alvo.nome,
+          funcao: "Prestador",
+          salario: alvo.salario,
+          diasUteis: 22,
+          diasTrab: 22,
+          outrosDesc: 0,
+        });
       }
     }
-    if (staff.length > 4) staff = staff.slice(0, 4);
-    if (!staff.length) {
-      toast.error("Não foi possível identificar os 4 funcionários.");
-      return;
+
+    // 1) Garantir recibos de Agosto (cria só os que faltam)
+    const nCriados = restaurarRecibosPagos(staff, MES, MES_KEY, DATA);
+
+    // 2) Marcar TODOS os recibos de Agosto 2026 como pagos (incl. outros já existentes)
+    const ago = (recibosSalario || []).filter((r) => r.mesKey === MES_KEY);
+    let marcados = 0;
+    for (const r of ago) {
+      if (!r.pago) {
+        setReciboSalarioPago(r.id, true, r.dataPag || DATA);
+        marcados += 1;
+      }
     }
-    // 1) Remover débitos salário do extrato e recalcular saldo
+    // Também marcar os que acabámos de criar (ids novos)
+    for (const r of useFinance.getState().recibosSalario || []) {
+      if (r.mesKey === MES_KEY && !r.pago) {
+        setReciboSalarioPago(r.id, true, DATA);
+        marcados += 1;
+      }
+    }
+
+    // 3) BAI: limpar débitos salário e recriar a partir dos recibos pagos (sem duplicar)
     const removed = limparDebitosSalarioBai();
-    // 2) Recibos Agosto como pagos
-    const n = restaurarRecibosPagos(
-      staff,
-      "Agosto de 2026",
-      "2026-08",
-      "2026-08-30",
-    );
+    const added = ensureSalariosBaiFromRecibos();
+    reconcileSalariosBai();
+
     setFilterRec("pagos");
+    setFilterMes(MES_KEY);
+    setUiPrefs({
+      salariosMesKey: MES_KEY,
+      salariosMesLabel: MES,
+      salariosFilterMes: MES_KEY,
+    });
+
+    const totalPagosAgo = (useFinance.getState().recibosSalario || []).filter(
+      (r) => r.mesKey === MES_KEY && r.pago,
+    ).length;
+
     toast.success(
-      `${n} recibo(s) pagos · ${removed} linha(s) removida(s) do BAI · saldo recalculado.`,
+      `Agosto 2026: ${totalPagosAgo} pago(s) · ${nCriados} recibo(s) criado(s) · BAI: −${removed} +${added} movimentos.`,
     );
   }
 
@@ -1452,12 +1543,28 @@ function Salarios() {
     );
   }
 
+  const mesesDisponiveis = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of recibosSalario || []) {
+      const k = r.mesKey || "";
+      if (k) map.set(k, r.mes || k);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [recibosSalario]);
+
   const recibosFiltrados = useMemo(() => {
-    let list = [...recibosSalario].sort((a, b) => b.mesKey.localeCompare(a.mesKey) || a.nome.localeCompare(b.nome));
+    let list = [...(recibosSalario || [])].sort(
+      (a, b) => b.mesKey.localeCompare(a.mesKey) || a.nome.localeCompare(b.nome, "pt"),
+    );
+    if (filterMes && filterMes !== "todos") {
+      list = list.filter((r) => r.mesKey === filterMes);
+    }
     if (filterRec === "pagos") list = list.filter((r) => r.pago);
     if (filterRec === "por_pagar") list = list.filter((r) => !r.pago);
     return list;
-  }, [recibosSalario, filterRec]);
+  }, [recibosSalario, filterRec, filterMes]);
+
+  const totalPagos = (recibosSalario || []).filter((r) => r.pago).length;
 
   const totalFolha = rows.reduce((s, r) => s + (r.salario || 0), 0);
 
@@ -1633,11 +1740,48 @@ function Salarios() {
       {/* Recibos gerados */}
       <div className="mt-8">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">Recibos de honorários</h2>
+          <div>
+            <h2 className="text-base font-semibold">Recibos de honorários</h2>
+            <p className="text-xs text-[var(--color-muted)]">
+              A mostrar <strong>{recibosFiltrados.length}</strong>
+              {filterRec === "pagos" ? " pagos" : ""}
+              {" · "}
+              {totalPagos} pago(s) no total
+              {filterMes && filterMes !== "todos" ? ` · filtro mês ${filterMes}` : ""}
+              {" · "}
+              role a lista no ecrã · <strong>Imprimir listagem</strong> exporta os {recibosFiltrados.length} registos completos
+            </p>
+          </div>
           <div className="flex flex-wrap gap-2">
             {(["todos", "por_pagar", "pagos"] as const).map((f) => (
               <Button key={f} type="button" size="sm" variant={filterRec === f ? "default" : "secondary"} onClick={() => setFilterRec(f)}>
-                {f === "todos" ? "Todos" : f === "pagos" ? "Pagos" : "Por pagar"}
+                {f === "todos" ? "Todos" : f === "pagos" ? `Pagos (${(recibosSalario || []).filter((r) => r.pago).length})` : "Por pagar"}
+              </Button>
+            ))}
+            <span className="mx-0.5 text-[var(--color-muted)]">|</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={filterMes === "todos" ? "default" : "secondary"}
+              onClick={() => {
+                setFilterMes("todos");
+                setUiPrefs({ salariosFilterMes: "todos" });
+              }}
+            >
+              Todos os meses
+            </Button>
+            {mesesDisponiveis.map(([k, label]) => (
+              <Button
+                key={k}
+                type="button"
+                size="sm"
+                variant={filterMes === k ? "default" : "secondary"}
+                onClick={() => {
+                  setFilterMes(k);
+                  setUiPrefs({ salariosFilterMes: k });
+                }}
+              >
+                {label}
               </Button>
             ))}
             <Button
@@ -1663,21 +1807,15 @@ function Salarios() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                const list = recibosFiltrados.map((r) => ({
-                  nome: r.nome,
-                  funcao: r.funcao,
-                  salario: r.liquido,
-                  diasTrab: r.diasTrab,
-                  diasUteis: r.diasUteis,
-                  mes: r.mes,
-                }));
+                // Lista completa do filtro actual (todos os que cabem na tabela com scroll)
+                const list = recibosFiltrados;
                 if (!list.length) {
-                  toast.error("Lista vazia.");
+                  toast.error("Lista vazia. Ajuste o filtro (Pagos / mês).");
                   return;
                 }
                 openPrintHtml(
-                  listaFuncionariosHtml(escola, list, "Lista de recibos de honorários"),
-                  "Lista recibos",
+                  listaRecibosCompletaHtml(escola, list, filterRec, filterMes),
+                  "Lista recibos completa",
                 );
               }}
             >
@@ -1688,17 +1826,20 @@ function Salarios() {
                 type="button"
                 size="sm"
                 variant="secondary"
-                title="Remove débitos SALARIO-APP do BAI e recria os recibos de Agosto como pagos (Massamba, José, Kativa, Capolo)"
-                onClick={restaurarQuatroPagosAgosto}
+                title="Garante os 7 de Agosto 2026 como pagos e alinha o extrato Banco BAI (sem duplicar)"
+                onClick={forcarSetePagosAgosto}
               >
-                Restaurar pagos (Agosto)
+                Forçar 7 pagos (Agosto)
               </Button>
             ) : null}
           </div>
         </div>
-        <div ref={listPrintRef} className="overflow-x-auto rounded-[var(--radius)] border border-[var(--color-line)]">
+        <div
+          ref={listPrintRef}
+          className="max-h-[min(70vh,720px)] overflow-auto rounded-[var(--radius)] border border-[var(--color-line)] print:max-h-none print:overflow-visible"
+        >
           <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-[var(--color-surface-2)] text-xs uppercase text-[var(--color-muted)]">
+            <thead className="sticky top-0 z-10 bg-[var(--color-surface-2)] text-xs uppercase text-[var(--color-muted)] shadow-sm">
               <tr>
                 <th className="px-3 py-2">Mês</th>
                 <th className="px-3 py-2">Nome</th>

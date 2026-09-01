@@ -889,9 +889,14 @@ export const useFinance = create<Store>()(
       restaurarRecibosPagos: (staff, mes, mesKey, dataPag) => {
         const data = dataPag || new Date().toISOString().slice(0, 10);
         const existing = get().recibosSalario || [];
-        // remover recibos do mesmo mês (evitar duplicados)
-        const kept = existing.filter((r) => r.mesKey !== mesKey);
-        const created: ReciboSalario[] = staff.map((f, i) => {
+        // NÃO apagar recibos de outros funcionários do mesmo mês — só preencher em falta
+        const byFunc = new Set(
+          existing.filter((r) => r.mesKey === mesKey).map((r) => r.funcionarioId),
+        );
+        const toAdd = staff.filter((f) => !byFunc.has(f.id));
+        const kept = existing;
+        const baseNum = existing.filter((r) => r.mesKey === mesKey).length;
+        const created: ReciboSalario[] = toAdd.map((f, i) => {
           const diasU = f.diasUteis ?? 22;
           const diasT = f.diasTrab ?? 22;
           const outros = f.outrosDesc ?? 0;
@@ -899,7 +904,7 @@ export const useFinance = create<Store>()(
           const descDias = diasU > 0 ? (f.salario / diasU) * falta : 0;
           const liquido = Math.max(0, f.salario - descDias - outros);
           return {
-            id: `RH-${mesKey}-${String(i + 1).padStart(3, "0")}`,
+            id: `RH-${mesKey}-${String(baseNum + i + 1).padStart(3, "0")}`,
             funcionarioId: f.id,
             nome: f.nome,
             funcao: f.funcao || "",
@@ -917,7 +922,7 @@ export const useFinance = create<Store>()(
             criadoEm: new Date().toISOString(),
           };
         });
-        set({ recibosSalario: [...kept, ...created] });
+        set({ recibosSalario: [...kept, ...created] }); // kept = todos os existentes
         get().pushAudit("recibos_restaurar_pagos", `${created.length} · ${mes}`);
         // extrato limpo + recriar débitos dos pagos
         get().limparDebitosSalarioBai();
