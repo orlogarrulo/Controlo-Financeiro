@@ -123,7 +123,6 @@ function parseLinhas(text: string): Omit<InboxMovimento, "id" | "criadoEm" | "st
 }
 
 function InboxPage() {
-  const canEdit = isCollaborator1();
   const inboxItems = useFinance((s) => s.inboxItems || []);
   const addInboxItems = useFinance((s) => s.addInboxItems);
   const updateInboxItem = useFinance((s) => s.updateInboxItem);
@@ -131,6 +130,8 @@ function InboxPage() {
   const clearInboxReconciliados = useFinance((s) => s.clearInboxReconciliados);
   const processarInbox = useFinance((s) => s.processarInbox);
   const activeOperator = useFinance((s) => s.activeOperator);
+  const operators = useFinance((s) => s.operators || []);
+  const canEdit = isCollaborator1(activeOperator || "", operators);
 
   const [paste, setPaste] = useState("");
   const [data, setData] = useState(todayIso());
