@@ -557,13 +557,13 @@ function addCoverPage(
 }
 
 
-/** Margem única em todos os PDFs oficiais (mm). */
-const PDF_MARGIN_MM = 8;
+/** Margem única em todos os PDFs oficiais (mm). 12 mm evita corte nas laterais. */
+const PDF_MARGIN_MM = 12;
 
 /**
  * Desenha o canvas no PDF A4 com regras FIXAS:
- * - margem 8 mm em todos os lados
- * - largura do conteúdo = largura da página − 16 mm
+ * - margem 12 mm em todos os lados
+ * - largura do conteúdo = largura da página − 24 mm
  * - multipágina por fatias se necessário
  * - forceSinglePage: reduz escala para caber numa folha (faturas)
  */

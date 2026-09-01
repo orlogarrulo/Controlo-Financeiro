@@ -1566,11 +1566,11 @@ function Alunos() {
 
     const html = `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { size: A4 portrait; margin: 14mm 16mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
     font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .sheet { padding: 0; }
+  .sheet { padding: 0 4mm; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden; }
   .head { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 10px; }
   .head-logo { width: 70px; height: 70px; object-fit: contain; flex-shrink: 0; display: block; }
   .head-mid { flex: 1; min-width: 0; padding-top: 4px; }
@@ -1824,7 +1824,7 @@ function Alunos() {
     // Cores da bandeira da República do Congo: verde · amarelo · vermelho
     // Tipografia padronizada com Salários / Banco (Georgia / Times New Roman)
     return `
-<div style="font-family:Georgia,'Times New Roman',Times,serif;color:#0f172a;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;">
+<div style="font-family:Georgia,'Times New Roman',Times,serif;color:#0f172a;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;padding:0 8px;">
   <!-- Cabeçalho: só logo + cores Congo + lema -->
   <div style="background:#ffffff;padding:0;overflow:hidden;border-bottom:1px solid #e2e8f0;">
     <div style="height:6px;display:flex;">
@@ -1832,7 +1832,7 @@ function Alunos() {
       <div style="flex:1;background:#fbde4a;"></div>
       <div style="flex:1;background:#dc241f;"></div>
     </div>
-    <div style="padding:18px 24px;display:flex;align-items:center;justify-content:center;gap:18px;">
+    <div style="padding:18px 28px;display:flex;align-items:center;justify-content:center;gap:18px;">
       <img src="${logoSrc}" width="144" height="144" alt="Logo" style="width:144px;height:144px;object-fit:contain;border-radius:12px;padding:4px;" crossorigin="anonymous" />
       <p style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#009543;">Apprendre · Grandir · Réussir</p>
     </div>
@@ -1843,7 +1843,7 @@ function Alunos() {
     </div>
   </div>
 
-  <div style="flex:1;padding:22px 24px 10px;display:flex;flex-direction:column;gap:14px;">
+  <div style="flex:1;padding:22px 28px 12px;display:flex;flex-direction:column;gap:14px;">
     <!-- Título + ref -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #009543;padding-bottom:12px;">
       <div>
