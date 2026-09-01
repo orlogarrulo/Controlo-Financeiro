@@ -52,6 +52,27 @@ function addMonthsIso(iso: string, months: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+
+const MESES_PT = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+/** Últimos 14 meses (inclui mês actual) para recibos de honorários. */
+function opcoesMesReferencia(): { key: string; label: string }[] {
+  const out: { key: string; label: string }[] = [];
+  const d = new Date();
+  d.setDate(1);
+  for (let i = 0; i < 14; i++) {
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+    out.push({ key, label: `${MESES_PT[m]} de ${y}` });
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
+}
+
 function emptyForm(): FormState {
   const start = todayIso();
   return {
@@ -1108,6 +1129,7 @@ function Salarios() {
   const updateSalario = useFinance((s) => s.updateSalario);
   const recibosSalario = useFinance((s) => s.recibosSalario || []);
   const addRecibosSalario = useFinance((s) => s.addRecibosSalario);
+  const updateReciboSalario = useFinance((s) => s.updateReciboSalario);
   const setReciboSalarioPago = useFinance((s) => s.setReciboSalarioPago);
   const reconcileSalariosBai = useFinance((s) => s.reconcileSalariosBai);
   const ensureSalariosBaiFromRecibos = useFinance((s) => s.ensureSalariosBaiFromRecibos);
@@ -1123,6 +1145,11 @@ function Salarios() {
   const [genOpen, setGenOpen] = useState(false);
   const [genMes, setGenMes] = useState("");
   const [genMesKey, setGenMesKey] = useState("");
+  const [genDataPag, setGenDataPag] = useState(todayIso());
+  const [editRecibo, setEditRecibo] = useState<ReciboSalario | null>(null);
+  const [editMesKey, setEditMesKey] = useState("");
+  const [editMesLabel, setEditMesLabel] = useState("");
+  const [editDataPag, setEditDataPag] = useState("");
   const [genDiasUteis, setGenDiasUteis] = useState("22");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
@@ -1291,11 +1318,15 @@ function Salarios() {
       toast.error("Apenas o Colaborador 1.");
       return;
     }
-    const now = new Date();
-    const mesLabel = now.toLocaleDateString("pt-PT", { month: "long", year: "numeric" });
-    const mesKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    setGenMes(mesLabel.charAt(0).toUpperCase() + mesLabel.slice(1));
+    // Por defeito: mês civil anterior (ex.: em Setembro → Agosto)
+    const ref = new Date();
+    ref.setDate(1);
+    ref.setMonth(ref.getMonth() - 1);
+    const mesKey = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
+    const mesLabel = `${MESES_PT[ref.getMonth()]} de ${ref.getFullYear()}`;
+    setGenMes(mesLabel);
     setGenMesKey(mesKey);
+    setGenDataPag(todayIso());
     setGenDiasUteis("22");
     setSelected(new Set(rows.map((r) => r.id)));
     const dm: Record<string, string> = {};
@@ -1381,7 +1412,7 @@ function Salarios() {
         descontoDias,
         outrosDesc: f.outrosDesc || 0,
         liquido,
-        dataPag: todayIso(),
+        dataPag: genDataPag || todayIso(),
         pago: false,
         iban: f.iban,
         criadoEm: new Date().toISOString(),
@@ -1394,7 +1425,9 @@ function Salarios() {
     }));
     addRecibosSalario(numbered);
     setGenOpen(false);
-    toast.success(`${numbered.length} recibo(s) + autorização gerados para ${genMes}`);
+    toast.success(
+      `${numbered.length} recibo(s) + autorização gerados para ${genMes} (ref. ${genMesKey})`,
+    );
     // Um único documento: recibos (um por funcionário) + autorização no fim
     verDocumento(
       `Recibos e autorização — ${genMes}`,
@@ -1693,7 +1726,23 @@ function Salarios() {
                               type="button"
                               size="sm"
                               variant="secondary"
-                              onClick={() => setReciboSalarioPago(r.id, !r.pago, todayIso())}
+                              title="Alterar mês de referência (ex.: Agosto)"
+                              onClick={() => {
+                                setEditRecibo(r);
+                                setEditMesKey(r.mesKey || "");
+                                setEditMesLabel(r.mes || "");
+                                setEditDataPag(r.dataPag || todayIso());
+                              }}
+                            >
+                              Mês
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() =>
+                                setReciboSalarioPago(r.id, !r.pago, r.dataPag || todayIso())
+                              }
                             >
                               {r.pago ? "Marcar por pagar" : "Marcar pago"}
                             </Button>
@@ -1877,6 +1926,75 @@ function Salarios() {
         </DialogContent>
       </Dialog>
 
+      {/* Editar mês de referência de um recibo já gerado */}
+      <Dialog
+        open={!!editRecibo}
+        onOpenChange={(o) => {
+          if (!o) setEditRecibo(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mês de referência do recibo</DialogTitle>
+          </DialogHeader>
+          {editRecibo ? (
+            <div className="grid gap-3">
+              <p className="text-sm text-[var(--color-muted)]">
+                <strong>{editRecibo.nome}</strong> — altere se o pagamento for de outro mês
+                (ex.: registou em Setembro, honorários de Agosto).
+              </p>
+              <div className="space-y-1">
+                <Label>Mês de referência</Label>
+                <select
+                  className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                  value={editMesKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    const opt = opcoesMesReferencia().find((o) => o.key === key);
+                    setEditMesKey(key);
+                    if (opt) setEditMesLabel(opt.label);
+                  }}
+                >
+                  {opcoesMesReferencia().map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label>Data do pagamento</Label>
+                <Input
+                  type="date"
+                  value={editDataPag}
+                  onChange={(e) => setEditDataPag(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2 border-t pt-3">
+                <Button type="button" variant="secondary" onClick={() => setEditRecibo(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (!editRecibo) return;
+                    updateReciboSalario(editRecibo.id, {
+                      mes: editMesLabel,
+                      mesKey: editMesKey,
+                      dataPag: editDataPag || editRecibo.dataPag,
+                    });
+                    toast.success(`Referência: ${editMesLabel}`);
+                    setEditRecibo(null);
+                  }}
+                >
+                  Guardar
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       {/* Gerar recibos */}
       <Dialog open={genOpen} onOpenChange={setGenOpen}>
         <DialogContent className="max-w-lg">
@@ -1885,13 +2003,36 @@ function Salarios() {
           </DialogHeader>
           <div className="grid max-h-[70vh] gap-3 overflow-y-auto">
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label>Mês (texto)</Label>
-                <Input value={genMes} onChange={(e) => setGenMes(e.target.value)} />
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Mês de referência dos honorários</Label>
+                <select
+                  className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                  value={genMesKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    const opt = opcoesMesReferencia().find((o) => o.key === key);
+                    setGenMesKey(key);
+                    if (opt) setGenMes(opt.label);
+                  }}
+                >
+                  {opcoesMesReferencia().map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-[var(--color-muted)]">
+                  Ex.: em Setembro pode escolher <strong>Agosto de 2026</strong> se o pagamento
+                  for referente a agosto. O recibo e o BAI usam este mês.
+                </p>
               </div>
               <div className="space-y-1">
-                <Label>Chave mês (AAAA-MM)</Label>
-                <Input value={genMesKey} onChange={(e) => setGenMesKey(e.target.value)} placeholder="2026-08" />
+                <Label>Data do pagamento</Label>
+                <Input
+                  type="date"
+                  value={genDataPag}
+                  onChange={(e) => setGenDataPag(e.target.value)}
+                />
               </div>
               <div className="space-y-1">
                 <Label>Dias úteis do mês</Label>
@@ -1899,7 +2040,7 @@ function Salarios() {
               </div>
             </div>
             <p className="text-xs text-[var(--color-muted)]">
-              Seleccione os funcionários e, se necessário, ajuste os dias trabalhados (proporcional). No dia 30 pode gerar a folha do mês.
+              Seleccione os funcionários e, se necessário, ajuste os dias trabalhados (proporcional).
             </p>
             <div className="flex gap-2">
               <Button type="button" size="sm" variant="secondary" onClick={() => setSelected(new Set(rows.map((r) => r.id)))}>

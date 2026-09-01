@@ -132,6 +132,10 @@ type Store = ExtraState & {
   removeAluno: (id: string) => void;
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
+  updateReciboSalario: (
+    id: string,
+    patch: Partial<Pick<ReciboSalario, "mes" | "mesKey" | "dataPag" | "diasTrab" | "diasUteis" | "liquido">>,
+  ) => void;
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
   /** Alinha botões pago com movimentos BAI já existentes (multi-PC / cloud). */
   reconcileSalariosBai: () => boolean;
@@ -700,6 +704,44 @@ export const useFinance = create<Store>()(
           movimentosBaiExtra: (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
         });
         get().pushAudit("recibo_salario_apagar", `${id} · ${prev.nome} · ${prev.mes}`);
+      },
+      /** Alterar mês de referência / data de pagamento do recibo (ex.: Agosto pago em Setembro). */
+      updateReciboSalario: (
+        id: string,
+        patch: Partial<Pick<ReciboSalario, "mes" | "mesKey" | "dataPag" | "diasTrab" | "diasUteis" | "liquido">>,
+      ) => {
+        requireEdit(get);
+        const prev = (get().recibosSalario || []).find((r) => r.id === id);
+        if (!prev) return;
+        set({
+          recibosSalario: (get().recibosSalario || []).map((r) =>
+            r.id === id ? { ...r, ...patch } : r,
+          ),
+        });
+        // Se já estava pago no BAI, actualizar descrição / data do movimento
+        const movId = `APP-SAL-${id}`;
+        const movs = get().movimentosBaiExtra || [];
+        if (movs.some((m) => m.id === movId)) {
+          const mes = patch.mes ?? prev.mes;
+          const data = patch.dataPag ?? prev.dataPag;
+          set({
+            movimentosBaiExtra: sortAndRecalcBai(
+              movs.map((m) =>
+                m.id === movId
+                  ? {
+                      ...m,
+                      data: data || m.data,
+                      descricao: `Honorários / salário · ${prev.nome} · ${mes}`,
+                    }
+                  : m,
+              ),
+            ),
+          });
+        }
+        get().pushAudit(
+          "recibo_salario_editar",
+          `${id} · ${Object.keys(patch).join(", ")} · ${patch.mes || prev.mes}`,
+        );
       },
       setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => {
         requireEdit(get);
