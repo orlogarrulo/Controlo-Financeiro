@@ -228,7 +228,6 @@ function stripInboxAnexos(items: unknown[]): unknown[] {
     };
   });
 }
-}
 
 /** ——— Tomadas de conhecimento do regulamento (servidor / nuvem) ——— */
 
