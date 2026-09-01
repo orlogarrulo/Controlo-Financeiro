@@ -1128,6 +1128,8 @@ function Salarios() {
   const addSalario = useFinance((s) => s.addSalario);
   const updateSalario = useFinance((s) => s.updateSalario);
   const recibosSalario = useFinance((s) => s.recibosSalario || []);
+  const uiPrefs = useFinance((s) => s.uiPrefs || {});
+  const setUiPrefs = useFinance((s) => s.setUiPrefs);
   const addRecibosSalario = useFinance((s) => s.addRecibosSalario);
   const updateReciboSalario = useFinance((s) => s.updateReciboSalario);
   const setReciboSalarioPago = useFinance((s) => s.setReciboSalarioPago);
@@ -1145,6 +1147,20 @@ function Salarios() {
   const [genOpen, setGenOpen] = useState(false);
   const [genMes, setGenMes] = useState("");
   const [genMesKey, setGenMesKey] = useState("");
+
+  // Preferência de mês partilhada na nuvem (PC ↔ telemóvel)
+  useEffect(() => {
+    const key = uiPrefs.salariosMesKey || "";
+    const label = uiPrefs.salariosMesLabel || "";
+    if (key && key !== genMesKey) {
+      setGenMesKey(key);
+      if (label) setGenMes(label);
+    }
+    if (uiPrefs.salariosFilterMes && uiPrefs.salariosFilterMes !== filterMes) {
+      setFilterMes(uiPrefs.salariosFilterMes);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiPrefs.salariosMesKey, uiPrefs.salariosMesLabel, uiPrefs.salariosFilterMes]);
   const [genDataPag, setGenDataPag] = useState(todayIso());
   const [editRecibo, setEditRecibo] = useState<ReciboSalario | null>(null);
   const [editMesKey, setEditMesKey] = useState("");
@@ -1154,6 +1170,7 @@ function Salarios() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
+  const [filterMes, setFilterMes] = useState<string>("todos");
   const [previewHtml, setPreviewHtml] = useState<{ title: string; html: string } | null>(null);
   const [avisoFimMesOn, setAvisoFimMesOn] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -2013,6 +2030,14 @@ function Salarios() {
                     const opt = opcoesMesReferencia().find((o) => o.key === key);
                     setGenMesKey(key);
                     if (opt) setGenMes(opt.label);
+                    setUiPrefs({
+                      salariosMesKey: key,
+                      salariosMesLabel: opt?.label || key,
+                    });
+                    try {
+                      window.localStorage.setItem("ecc-salarios-mes-key", key);
+                      if (opt) window.localStorage.setItem("ecc-salarios-mes-label", opt.label);
+                    } catch { /* ignore */ }
                   }}
                 >
                   {opcoesMesReferencia().map((o) => (

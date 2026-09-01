@@ -24,6 +24,11 @@ export type FinanceCloudPayload = {
   salariosDeletedIds?: string[];
   recibosSalario?: unknown[];
   faturasPropina?: unknown[];
+  uiPrefs?: {
+    salariosMesKey?: string;
+    salariosMesLabel?: string;
+    salariosFilterMes?: string;
+  };
   clientUpdatedAt?: string;
 };
 
@@ -164,6 +169,11 @@ export function sliceFromStore(s: {
   salariosDeletedIds?: string[];
   recibosSalario?: unknown[];
   faturasPropina?: unknown[];
+  uiPrefs?: {
+    salariosMesKey?: string;
+    salariosMesLabel?: string;
+    salariosFilterMes?: string;
+  };
 }): FinanceCloudPayload {
   return {
     extras: s.extras,
@@ -186,6 +196,7 @@ export function sliceFromStore(s: {
     salariosDeletedIds: s.salariosDeletedIds || [],
     recibosSalario: s.recibosSalario || [],
     faturasPropina: s.faturasPropina || [],
+    uiPrefs: s.uiPrefs || {},
   };
 }
 

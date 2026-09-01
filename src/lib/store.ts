@@ -100,6 +100,15 @@ type ExtraState = {
   faturasPropina: { numero: string; alunoId?: string; mes?: string; valor?: number }[];
   /** Sobrescritas de salários do seed (por id). */
   salariosOverrides: Record<string, Partial<Salario>>;
+  /**
+   * Preferências de UI partilhadas na nuvem (ex.: mês de referência dos recibos de honorários).
+   * Permite o mesmo mês em PC e telemóvel após sincronizar.
+   */
+  uiPrefs: {
+    salariosMesKey?: string;
+    salariosMesLabel?: string;
+    salariosFilterMes?: string;
+  };
 };
 
 type Store = ExtraState & {
@@ -143,6 +152,7 @@ type Store = ExtraState & {
   ensureSalariosBaiFromRecibos: () => number;
   /** Remove todos os débitos SALARIO-APP / APP-SAL-* do extrato BAI. */
   limparDebitosSalarioBai: () => number;
+  setUiPrefs: (patch: Partial<{ salariosMesKey?: string; salariosMesLabel?: string; salariosFilterMes?: string }>) => void;
   /** Recria recibos do mês como pagos a partir da lista de funcionários. */
   restaurarRecibosPagos: (staff: { id: string; nome: string; funcao?: string; salario: number; diasUteis?: number; diasTrab?: number; outrosDesc?: number; iban?: string }[], mes: string, mesKey: string, dataPag?: string) => number;
   removeReciboSalario: (id: string) => void;
@@ -249,6 +259,10 @@ export const useFinance = create<Store>()(
       recibosSalario: [],
       faturasPropina: [],
       salariosOverrides: {},
+      uiPrefs: {},
+      setUiPrefs: (patch) => {
+        set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
+      },
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
         requireEdit(get);
@@ -1274,6 +1288,7 @@ export const useFinance = create<Store>()(
         recibosSalario: s.recibosSalario || [],
         salariosOverrides: s.salariosOverrides,
         faturasPropina: s.faturasPropina,
+        uiPrefs: s.uiPrefs || {},
       }),
     },
   ),

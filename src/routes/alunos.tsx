@@ -1476,8 +1476,8 @@ function Alunos() {
     const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
     const semFoto = fr ? "Sans photo" : "Sem foto";
     const fotoBlock = a.foto
-      ? `<img src="${a.foto}" alt="" style="width:90px;height:110px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:3px;" />`
-      : `<div style="width:90px;height:110px;border:1.5px dashed #94a3b8;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
+      ? `<img src="${a.foto}" alt="" style="width:120px;height:150px;object-fit:contain;object-position:center top;border:1.5px solid #1a4d3e;border-radius:4px;background:#fff;" />`
+      : `<div style="width:120px;height:150px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
 
     const L = fr
       ? {
@@ -1574,7 +1574,7 @@ function Alunos() {
   .head { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 10px; }
   .head-logo { width: 70px; height: 70px; object-fit: contain; flex-shrink: 0; display: block; }
   .head-mid { flex: 1; min-width: 0; padding-top: 4px; }
-  .head-foto { flex-shrink: 0; width: 90px; text-align: right; }
+  .head-foto { flex-shrink: 0; width: 120px; min-height: 150px; text-align: right; overflow: visible; }
   .head-foto img, .head-foto > div { display: block; margin-left: auto; }
   .kicker { margin: 0; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #1f5c4a; font-weight: 700; }
   .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
@@ -1721,9 +1721,42 @@ function Alunos() {
 
   type LinhaFat = { key: string; label: string; value: number; on: boolean };
 
-  function linhasMatriculaBase(a: Aluno, mesesProp = 1): LinhaFat[] {
-    const propinaMes = Number(a.propina) || 0;
+  function alunoTemCampanha(a: Aluno): boolean {
+    if ((a.descPct || 0) >= 40) return true;
+    const obs = (a.obs || "").toLowerCase();
+    return /campanha|−40%|-40%|promo/.test(obs);
+  }
+
+  function alunoTemIrmaosDesc(a: Aluno): boolean {
+    if (a.transferidoCampusCidade) return false;
+    const obs = (a.obs || "").toLowerCase();
+    if (/2\+|irmãos|irmaos|agregado/.test(obs)) return true;
+    // −40% + −10% ≈ 46% de desconto combinado
+    if ((a.descPct || 0) >= 45) return true;
+    return false;
+  }
+
+  function linhasMatriculaBase(
+    a: Aluno,
+    mesesProp = 1,
+    opts?: { campanha?: boolean; irmaos?: boolean },
+  ): LinhaFat[] {
+    let propinaMes = Number(a.propina) || 0;
+    if (!(propinaMes > 0)) {
+      try {
+        propinaMes = propinaPorCiclo(a);
+      } catch {
+        propinaMes = 0;
+      }
+    }
     const meses = Math.min(9, Math.max(0, mesesProp));
+    const campanha = opts?.campanha ?? alunoTemCampanha(a);
+    const irmaos = opts?.irmaos ?? alunoTemIrmaosDesc(a);
+    const pc = calcPropinaComCampanha(propinaMes, meses, campanha, irmaos);
+    const propLabel =
+      meses > 1
+        ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
+        : `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`;
     return [
       { key: "inscricao", label: "Inscrição", value: Number(a.inscricao) || 0, on: (Number(a.inscricao) || 0) > 0 },
       { key: "seguro", label: "Seguro escolar", value: Number(a.seguro) || 0, on: (Number(a.seguro) || 0) > 0 },
@@ -1736,9 +1769,9 @@ function Alunos() {
       { key: "curso", label: "Curso intensivo", value: Number(a.curso) || 0, on: (Number(a.curso) || 0) > 0 },
       {
         key: "propinas",
-        label: meses > 1 ? `Propinas (${meses} meses)` : "Propina (1 mês)",
-        value: propinaMes * (meses || 0),
-        on: propinaMes > 0 && meses > 0,
+        label: propLabel,
+        value: pc.liquidoPropina > 0 ? pc.liquidoPropina : propinaMes * (meses || 0),
+        on: (pc.liquidoPropina > 0 || propinaMes > 0) && meses > 0,
       },
     ];
   }
@@ -2103,6 +2136,8 @@ function Alunos() {
       html,
       linhas,
       mesesProp,
+      campanha: alunoTemCampanha(a),
+      irmaos: alunoTemIrmaosDesc(a),
       modo: "fatura",
     });
   }
@@ -2153,21 +2188,21 @@ function Alunos() {
     mesesProp?: number;
     mesLetivo?: string;
     mesRef?: string;
+    campanha?: boolean;
+    irmaos?: boolean;
   }) {
     if (!invoicePreview) return;
     const a = invoicePreview.aluno;
     let mesesProp = patch.mesesProp ?? invoicePreview.mesesProp;
     let linhas = patch.linhas ?? invoicePreview.linhas;
-    if (patch.mesesProp != null) {
-      const propinaMes = Number(a.propina) || propinaPorCiclo(a);
+    const campanha = patch.campanha ?? invoicePreview.campanha ?? alunoTemCampanha(a);
+    const irmaos = patch.irmaos ?? invoicePreview.irmaos ?? alunoTemIrmaosDesc(a);
+    if (patch.mesesProp != null || patch.campanha != null || patch.irmaos != null) {
+      const base = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
+      const prop = base.find((l) => l.key === "propinas");
       linhas = linhas.map((l) =>
-        l.key === "propinas"
-          ? {
-              ...l,
-              label: mesesProp > 1 ? `Propinas (${mesesProp} meses)` : "Propina (1 mês)",
-              value: propinaMes * mesesProp,
-              on: propinaMes > 0 && mesesProp > 0 ? l.on || true : false,
-            }
+        l.key === "propinas" && prop
+          ? { ...prop, on: prop.on ? (l.on !== false) : false }
           : l,
       );
     }
@@ -2189,6 +2224,8 @@ function Alunos() {
       ...invoicePreview,
       linhas,
       mesesProp,
+      campanha,
+      irmaos,
       valor: total,
       mesLetivo,
       mesRef,
@@ -3179,6 +3216,36 @@ function Alunos() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="mb-2 space-y-1.5 rounded border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-2">
+                    <label className="flex items-start gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={Boolean(invoicePreview.campanha)}
+                        onChange={(e) => refrescarFatura({ campanha: e.target.checked })}
+                      />
+                      <span>
+                        <strong>Campanha promocional (−40% propinas)</strong>
+                        <span className="block text-[10px] text-[var(--color-muted)]">
+                          Inscrição e seguro sem desconto. Até 10 de setembro.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={Boolean(invoicePreview.irmaos)}
+                        onChange={(e) => refrescarFatura({ irmaos: e.target.checked })}
+                      />
+                      <span>
+                        <strong>2+ irmãos no agregado (−10% adicional)</strong>
+                        <span className="block text-[10px] text-[var(--color-muted)]">
+                          Aplica-se só às propinas desta liquidação.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                   <ul className="space-y-1.5">
                     {invoicePreview.linhas.map((l) => (

@@ -243,6 +243,10 @@ function applyPayload(p: FinanceCloudPayload) {
     ),
     recibosSalario: mergeRecibosPreferPago(local.recibosSalario || [], p.recibosSalario || []),
     faturasPropina: mergeById(local.faturasPropina || [], (p.faturasPropina as never[]) || []) as never[],
+    uiPrefs: {
+      ...(local.uiPrefs || {}),
+      ...((p.uiPrefs as Record<string, string>) || {}),
+    },
   });
   // Alinha botões com extrato após aplicar nuvem
   try {
