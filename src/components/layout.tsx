@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, Camera, Landmark, LayoutDashboard, Menu, Receipt, Users, Wallet, FileSpreadsheet, Banknote, Cloud, X, UserRound, ListChecks, LogOut, Moon, Sun, ClipboardCheck, Archive } from "lucide-react";
+import { BookOpen, Camera, Landmark, LayoutDashboard, Menu, Receipt, Users, Wallet, FileSpreadsheet, Banknote, Cloud, X, UserRound, ListChecks, LogOut, Moon, Sun, ClipboardCheck, Archive, Inbox } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getSeed, useFinance } from "@/lib/store";
@@ -21,6 +21,7 @@ const NAV = [
   { to: "/fundo", label: "Fundo", icon: Wallet },
   { to: "/salarios", label: "Salários", icon: Banknote },
   { to: "/arquivo", label: "Arquivo", icon: Archive },
+  { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/google", label: "Google Sheets", icon: Cloud },
   { to: "/auditoria", label: "Auditoria", icon: ClipboardCheck, adminOnly: true },
   { to: "/pendencias", label: "Pendências", icon: ListChecks, adminOnly: true },

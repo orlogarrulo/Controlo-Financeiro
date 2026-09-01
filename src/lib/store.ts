@@ -109,6 +109,8 @@ type ExtraState = {
     salariosMesLabel?: string;
     salariosFilterMes?: string;
   };
+  /** Caixa de entrada de reconciliação (atrasados). */
+  inboxItems: import("@/data/types").InboxMovimento[];
 };
 
 type Store = ExtraState & {
@@ -153,6 +155,11 @@ type Store = ExtraState & {
   /** Remove todos os débitos SALARIO-APP / APP-SAL-* do extrato BAI. */
   limparDebitosSalarioBai: () => number;
   setUiPrefs: (patch: Partial<{ salariosMesKey?: string; salariosMesLabel?: string; salariosFilterMes?: string }>) => void;
+  addInboxItems: (rows: import("@/data/types").InboxMovimento[]) => void;
+  updateInboxItem: (id: string, patch: Partial<import("@/data/types").InboxMovimento>) => void;
+  removeInboxItem: (id: string) => void;
+  clearInboxReconciliados: () => void;
+  processarInbox: () => { ordenados: number; duplicados: number; ligados: number };
   /** Recria recibos do mês como pagos a partir da lista de funcionários. */
   restaurarRecibosPagos: (staff: { id: string; nome: string; funcao?: string; salario: number; diasUteis?: number; diasTrab?: number; outrosDesc?: number; iban?: string }[], mes: string, mesKey: string, dataPag?: string) => number;
   removeReciboSalario: (id: string) => void;
@@ -260,8 +267,164 @@ export const useFinance = create<Store>()(
       faturasPropina: [],
       salariosOverrides: {},
       uiPrefs: {},
+      inboxItems: [],
       setUiPrefs: (patch) => {
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
+      },
+      addInboxItems: (rows) => {
+        requireEdit(get);
+        const existing = get().inboxItems || [];
+        const ids = new Set(existing.map((r) => r.id));
+        const merged = [...existing];
+        for (const r of rows) {
+          if (ids.has(r.id)) {
+            const i = merged.findIndex((x) => x.id === r.id);
+            if (i >= 0) merged[i] = { ...merged[i], ...r };
+          } else {
+            merged.push(r);
+            ids.add(r.id);
+          }
+        }
+        set({ inboxItems: merged });
+        get().pushAudit("inbox_add", `${rows.length} item(ns)`);
+      },
+      updateInboxItem: (id, patch) => {
+        requireEdit(get);
+        set({
+          inboxItems: (get().inboxItems || []).map((r) =>
+            r.id === id ? { ...r, ...patch } : r,
+          ),
+        });
+      },
+      removeInboxItem: (id) => {
+        requireEdit(get);
+        set({ inboxItems: (get().inboxItems || []).filter((r) => r.id !== id) });
+      },
+      clearInboxReconciliados: () => {
+        requireEdit(get);
+        set({
+          inboxItems: (get().inboxItems || []).filter(
+            (r) => r.status !== "reconciliado" && r.status !== "duplicado" && r.status !== "ignorado",
+          ),
+        });
+      },
+      processarInbox: () => {
+        requireEdit(get);
+        let items = [...(get().inboxItems || [])];
+        // 1) Ordenar cronologicamente
+        items.sort((a, b) => (a.data || "").localeCompare(b.data || "") || a.id.localeCompare(b.id));
+        const ordenados = items.length;
+
+        // 2) Duplicados: mesma data + valor ±1 Kz + texto parecido
+        const norm = (s: string) =>
+          (s || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9à-ú\s]/gi, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        let duplicados = 0;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].status === "duplicado" || items[i].status === "ignorado") continue;
+          const vi = Math.abs(Number(items[i].valor) || Number(items[i].saida) || Number(items[i].entrada) || 0);
+          for (let j = i + 1; j < items.length; j++) {
+            if (items[j].status === "duplicado") continue;
+            const vj = Math.abs(Number(items[j].valor) || Number(items[j].saida) || Number(items[j].entrada) || 0);
+            const sameDay = items[i].data === items[j].data;
+            const sameVal = Math.abs(vi - vj) < 1;
+            const ti = norm(items[i].descricao);
+            const tj = norm(items[j].descricao);
+            const textClose =
+              ti && tj && (ti === tj || ti.includes(tj) || tj.includes(ti));
+            if (sameDay && sameVal && textClose) {
+              items[j] = {
+                ...items[j],
+                status: "duplicado",
+                observacoes: `Duplicado de ${items[i].id}`,
+              };
+              duplicados += 1;
+            }
+          }
+        }
+
+        // 3) Ligar a salários / propinas / despesas
+        const recibos = get().recibosSalario || [];
+        const extras = get().extras || [];
+        const mens = get().mensalidades || [];
+        let ligados = 0;
+
+        const suggestTipo = (desc: string, valor: number): import("@/data/types").InboxTipo => {
+          const d = (desc || "").toLowerCase();
+          if (/sal[aá]rio|honor[aá]rio|rh-20|app-sal/i.test(d)) return "salario";
+          if (/propina|mensalidade|prop-|frais|scolarit/i.test(d)) return "propina";
+          if (/tpa|multicaixa|cart[aã]o/i.test(d)) return "tpa";
+          if (/transf|transfer/i.test(d)) return "transferencia";
+          if (/dep[oó]sito|deposito/i.test(d)) return "deposito";
+          if (/despesa|fornec|compra|factura|fatura/i.test(d)) return "despesa";
+          if (valor < 0 || /pagamento|pagamento/i.test(d)) return "despesa";
+          return "desconhecido";
+        };
+
+        items = items.map((it) => {
+          if (it.status === "duplicado" || it.status === "ignorado") return it;
+          const valor = Math.abs(Number(it.valor) || Number(it.saida) || Number(it.entrada) || 0);
+          let tipo = it.tipo && it.tipo !== "desconhecido" ? it.tipo : suggestTipo(it.descricao, valor);
+          let linkId = it.linkId;
+          let linkLabel = it.linkLabel;
+          let status = it.status === "reconciliado" ? it.status : ("classificado" as const);
+
+          if (tipo === "salario" || /sal|honor|rh-/i.test(it.descricao)) {
+            const match = recibos.find(
+              (r) =>
+                r.pago &&
+                Math.abs((r.liquido || 0) - valor) < 1 &&
+                (!it.data || !r.dataPag || r.dataPag.slice(0, 7) === it.data.slice(0, 7) || r.mesKey === it.data.slice(0, 7)),
+            );
+            if (match) {
+              linkId = match.id;
+              linkLabel = `Recibo ${match.id} · ${match.nome}`;
+              status = "reconciliado";
+              tipo = "salario";
+              ligados += 1;
+            }
+          }
+          if (!linkId && (tipo === "despesa" || tipo === "desconhecido")) {
+            const match = extras.find(
+              (e: { id?: string; valor?: number; data?: string; descricao?: string; docInterno?: string }) =>
+                Math.abs((Number(e.valor) || 0) - valor) < 1 &&
+                (!it.data || !e.data || e.data === it.data),
+            ) as { id?: string; docInterno?: string; descricao?: string } | undefined;
+            if (match?.id) {
+              linkId = match.id;
+              linkLabel = `Despesa ${match.docInterno || match.id}`;
+              status = "reconciliado";
+              tipo = "despesa";
+              ligados += 1;
+            }
+          }
+          if (!linkId && tipo === "propina") {
+            // marca como classificado propina — ligação fina fica no separador Propinas
+            status = status === "reconciliado" ? status : "classificado";
+          }
+
+          if (it.tipo === "desconhecido" || !it.tipo) {
+            tipo = tipo;
+          }
+
+          return {
+            ...it,
+            tipo,
+            status: status === "por_classificar" && tipo !== "desconhecido" ? "classificado" : status,
+            linkId,
+            linkLabel,
+          };
+        });
+
+        set({ inboxItems: items });
+        get().pushAudit(
+          "inbox_processar",
+          `${ordenados} ordenados · ${duplicados} duplicados · ${ligados} ligados`,
+        );
+        return { ordenados, duplicados, ligados };
       },
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
@@ -1294,6 +1457,7 @@ export const useFinance = create<Store>()(
         salariosOverrides: s.salariosOverrides,
         faturasPropina: s.faturasPropina,
         uiPrefs: s.uiPrefs || {},
+        inboxItems: s.inboxItems || [],
       }),
     },
   ),

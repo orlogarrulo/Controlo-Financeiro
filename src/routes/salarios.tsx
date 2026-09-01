@@ -822,10 +822,10 @@ function openPrintHtml(html: string, _title?: string) {
 
 
 
-/** Estilos de impressão: 2 recibos por A4 (metade superior + metade inferior). */
+/** Estilos de impressão: 2 recibos por A4 (sem bordas a saltar para a página seguinte). */
 function cssImpressaoRecibos(): string {
   return `
-@page { size: A4 portrait; margin: 10mm; }
+@page { size: A4 portrait; margin: 12mm; }
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
@@ -838,8 +838,12 @@ html, body {
 }
 .folha {
   width: 100%;
+  min-height: 0;
   page-break-after: always;
   break-after: page;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  overflow: hidden;
 }
 .folha:last-child { page-break-after: auto; break-after: auto; }
 .folha::after {
@@ -847,15 +851,23 @@ html, body {
   display: table;
   clear: both;
 }
+/* Um recibo por metade da página útil (~A4 - margens)/2 — sem height fixo que empurre bordas */
 .recibo {
   width: 100%;
-  height: 128mm;
-  max-height: 128mm;
-  padding: 3mm 2mm 2mm;
+  max-height: 120mm;
+  padding: 2mm 2mm 4mm;
   overflow: hidden;
+  page-break-inside: avoid;
+  break-inside: avoid;
   border-bottom: 1px dashed #94a3b8;
 }
 .folha .recibo:last-child { border-bottom: none; }
+.folha.single .recibo {
+  max-height: none;
+  height: auto;
+  border-bottom: none;
+  padding-bottom: 8mm;
+}
 .recibo .rh {
   display: flex;
   gap: 8px;
@@ -972,7 +984,7 @@ function wrapReciboPage(
 ) {
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>${cssImpressaoRecibos()}</style></head><body>
-<div class="folha">${reciboHonorarioHtml(escola, r)}</div>
+<div class="folha single">${reciboHonorarioHtml(escola, r)}</div>
 </body></html>`;
 }
 

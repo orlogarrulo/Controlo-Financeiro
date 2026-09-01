@@ -29,6 +29,7 @@ export type FinanceCloudPayload = {
     salariosMesLabel?: string;
     salariosFilterMes?: string;
   };
+  inboxItems?: unknown[];
   clientUpdatedAt?: string;
 };
 
@@ -174,6 +175,7 @@ export function sliceFromStore(s: {
     salariosMesLabel?: string;
     salariosFilterMes?: string;
   };
+  inboxItems?: unknown[];
 }): FinanceCloudPayload {
   return {
     extras: s.extras,
@@ -197,7 +199,35 @@ export function sliceFromStore(s: {
     recibosSalario: s.recibosSalario || [],
     faturasPropina: s.faturasPropina || [],
     uiPrefs: s.uiPrefs || {},
+    // Anexos: só enviam base64 se anexoSync e tamanho < ~100 KB (evita falha no telemóvel)
+    inboxItems: stripInboxAnexos(s.inboxItems || []),
   };
+}
+
+const INBOX_ANEXO_MAX_SYNC = 100_000; // ~100 KB de string data-URL
+
+function stripInboxAnexos(items: unknown[]): unknown[] {
+  return (items || []).map((raw) => {
+    const it = raw as {
+      anexoDataUrl?: string;
+      anexoSync?: boolean;
+      anexoNome?: string;
+      anexoMime?: string;
+      observacoes?: string;
+      [k: string]: unknown;
+    };
+    const url = it.anexoDataUrl || "";
+    if (!url) return raw;
+    if (it.anexoSync && url.length <= INBOX_ANEXO_MAX_SYNC) return raw;
+    const { anexoDataUrl: _drop, ...rest } = it;
+    return {
+      ...rest,
+      anexoNome: it.anexoNome,
+      anexoMime: it.anexoMime,
+      anexoSync: false,
+    };
+  });
+}
 }
 
 /** ——— Tomadas de conhecimento do regulamento (servidor / nuvem) ——— */

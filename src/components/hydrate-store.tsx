@@ -247,6 +247,10 @@ function applyPayload(p: FinanceCloudPayload) {
       ...(local.uiPrefs || {}),
       ...((p.uiPrefs as Record<string, string>) || {}),
     },
+    inboxItems: mergeById(
+      (local.inboxItems as never[]) || [],
+      (p.inboxItems as never[]) || [],
+    ) as never[],
   });
   // Alinha botões com extrato após aplicar nuvem
   try {

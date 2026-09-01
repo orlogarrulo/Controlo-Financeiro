@@ -315,3 +315,40 @@ export const MESES_LABEL: Record<string, string> = {
   mai: "Mai",
   jun: "Jun",
 };
+
+
+/** Item da caixa de entrada de reconciliação (atrasados / import manual). */
+export type InboxTipo =
+  | "desconhecido"
+  | "salario"
+  | "propina"
+  | "despesa"
+  | "tpa"
+  | "transferencia"
+  | "deposito";
+
+export type InboxStatus = "por_classificar" | "classificado" | "reconciliado" | "duplicado" | "ignorado";
+
+export type InboxMovimento = {
+  id: string;
+  data: string;
+  descricao: string;
+  valor: number;
+  /** positivo = entrada; negativo ou saida separada */
+  saida?: number;
+  entrada?: number;
+  tipo: InboxTipo;
+  status: InboxStatus;
+  /** Ligação sugerida/confirmada (recibo RH-, PROP-, despesa id, APP-SAL-…) */
+  linkId?: string;
+  linkLabel?: string;
+  observacoes?: string;
+  criadoEm: string;
+  /** Nome do ficheiro anexado */
+  anexoNome?: string;
+  anexoMime?: string;
+  /** Data-URL comprimido (JPEG/PNG/PDF base64). Pode ser omitido na nuvem se for grande. */
+  anexoDataUrl?: string;
+  /** Se true, tenta incluir o anexo no sync (só se o tamanho for razoável). */
+  anexoSync?: boolean;
+};
