@@ -118,6 +118,8 @@ type Store = ExtraState & {
   addAluno: (aluno: Aluno) => void;
   updateAluno: (id: string, patch: Partial<Aluno>) => void;
   setMensalidade: (id: string, mes: string, valor: number) => void;
+  /** Garante que todos os alunos activos têm linha em Propinas (backfill). */
+  syncPropinasFromMatriculas: () => number;
   confirmPropinaBai: (id: string, mes: string) => { ok: boolean; message: string };
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
@@ -672,6 +674,42 @@ export const useFinance = create<Store>()(
         const row = { ...aluno, criadoPor: by, createdAt: new Date().toISOString() };
         set({ alunosExtra: [...get().alunosExtra, row] });
         get().pushAudit("criar_aluno", `${row.id} · ${row.nome}`);
+
+        // Sincronizar com Propinas: criar linha de mensalidade se ainda não existir
+        const jaTemPropina = (get().mensalidades || []).some((m) => m.id === row.id);
+        if (!jaTemPropina) {
+          const propMes = Number(row.propina) || 0;
+          const nMeses = Math.min(
+            Math.max(0, Number(row.mesesPropina) || 0),
+            MESES_LETIVOS.length,
+          );
+          const pagamentos: Record<string, number> = {};
+          const pagamentosEm: Record<string, string> = {};
+          // Meses já liquidados no acto da matrícula → marcados em Propinas (sem novo BAI)
+          if (nMeses > 0 && propMes > 0) {
+            for (let i = 0; i < nMeses; i++) {
+              const mesKey = MESES_LETIVOS[i];
+              pagamentos[mesKey] = propMes;
+              if (row.dataPag) pagamentosEm[mesKey] = row.dataPag;
+            }
+          }
+          set({
+            mensalidades: [
+              ...(get().mensalidades || []),
+              {
+                id: row.id,
+                nome: row.nome,
+                turma: row.turma || "",
+                propina: propMes,
+                pagamentos,
+                pagamentosEm,
+                obs: row.obs || "",
+              } as import("@/data/types").Mensalidade,
+            ],
+          });
+          get().pushAudit("propina_sync_matricula", `${row.id} · ${row.nome}`);
+        }
+
         // Entradas BAI por rubrica (só cartão / transferência — dinheiro não debita extrato)
         const viaBai = (met: string) => {
           const m = (met || "").toLowerCase();
@@ -764,10 +802,30 @@ export const useFinance = create<Store>()(
           });
         }
         get().pushAudit("editar_aluno", `${id} · ${Object.keys(patch).join(", ")}`);
-        // Manter Propinas alinhada com a matrícula
-        if (patch.propina != null || patch.nome != null || patch.turma != null) {
+        // Manter Propinas alinhada com a matrícula (criar linha se faltar)
+        const mens = get().mensalidades || [];
+        const tem = mens.some((m) => m.id === id);
+        if (!tem) {
+          const src =
+            get().alunosExtra.find((a) => a.id === id) ||
+            (getSeed().alunos || []).find((a) => a.id === id);
+          const merged = { ...(src || {}), ...(get().alunosOverrides[id] || {}), ...patch } as Aluno;
           set({
-            mensalidades: get().mensalidades.map((m) =>
+            mensalidades: [
+              ...mens,
+              {
+                id,
+                nome: String(merged.nome || id),
+                turma: String(merged.turma || ""),
+                propina: Number(merged.propina) || 0,
+                pagamentos: {},
+                obs: String(merged.obs || ""),
+              },
+            ],
+          });
+        } else if (patch.propina != null || patch.nome != null || patch.turma != null) {
+          set({
+            mensalidades: mens.map((m) =>
               m.id === id
                 ? {
                     ...m,
@@ -789,6 +847,32 @@ export const useFinance = create<Store>()(
           ),
         });
         get().pushAudit("propina", `${id} · ${mes} · ${nextVal}`);
+      },
+      /** Cria em Propinas as linhas em falta para alunos já matriculados. */
+      syncPropinasFromMatriculas: () => {
+        const alunos = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        );
+        const existing = new Set((get().mensalidades || []).map((m) => m.id));
+        const missing: Mensalidade[] = [];
+        for (const a of alunos) {
+          if (existing.has(a.id)) continue;
+          missing.push({
+            id: a.id,
+            nome: a.nome,
+            turma: a.turma || "",
+            propina: Number(a.propina) || 0,
+            pagamentos: {},
+            obs: a.obs || "",
+          });
+        }
+        if (missing.length) {
+          set({ mensalidades: [...(get().mensalidades || []), ...missing] });
+          get().pushAudit("propina_backfill", `${missing.length} aluno(s)`);
+        }
+        return missing.length;
       },
       /** Confirma o valor da propina no mês e regista entrada no Banco BAI (id estável por aluno+mês). */
       confirmPropinaBai: (id, mes) => {

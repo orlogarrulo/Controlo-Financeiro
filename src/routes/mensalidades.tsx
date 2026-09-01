@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Save } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -47,12 +47,25 @@ function Mensalidades() {
   const alunosDeletedIds = useFinance((s) => s.alunosDeletedIds || []);
   const setMensalidade = useFinance((s) => s.setMensalidade);
   const confirmPropinaBai = useFinance((s) => s.confirmPropinaBai);
+  const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const canEdit = isCollaborator1(activeOperator, operators);
 
   const [q, setQ] = useState("");
+
+  // Backfill: alunos em Matrículas que ainda não tinham linha em Propinas
+  useEffect(() => {
+    try {
+      const n = syncPropinasFromMatriculas();
+      if (n > 0) {
+        toast.message(`${n} aluno(s) de Matrículas sincronizado(s) com Propinas.`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [syncPropinasFromMatriculas]);
 
   const familiaById = useMemo(() => {
     const map = new Map<string, string>();

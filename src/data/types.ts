@@ -199,6 +199,8 @@ export type Mensalidade = {
   turma: string;
   propina: number;
   pagamentos: Record<string, number>;
+  /** Data ISO em que cada mês foi registado/confirmado (YYYY-MM-DD). */
+  pagamentosEm?: Record<string, string>;
   obs: string;
 };
 
