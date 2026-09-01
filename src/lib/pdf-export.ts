@@ -163,8 +163,8 @@ const STAGE_CSS = `
   }
   [data-pdf-stage] header.print-only img,
   [data-pdf-stage] [data-pdf-logo-header] img {
-    width: 56px !important;
-    height: 56px !important;
+    width: 72px !important;
+    height: 72px !important;
     object-fit: contain !important;
     flex-shrink: 0 !important;
   }
@@ -347,7 +347,7 @@ function makeStage(landscape = false): HTMLElement {
     "left:0",
     "top:0",
     `width:${w}px`,
-    "min-height:400px",
+    "min-height:200px",
     "background:#ffffff",
     "color:#0f172a",
     "z-index:-9999",
@@ -356,9 +356,11 @@ function makeStage(landscape = false): HTMLElement {
     "pointer-events:none",
     "overflow:visible",
     "box-sizing:border-box",
-    "padding:20px",
-    "font-size:12px",
-    "line-height:1.4",
+    /* Sem padding extra — margens ficam no PDF (mm); evita 2.ª folha fantasma */
+    "padding:0",
+    "margin:0",
+    "font-size:11px",
+    "line-height:1.35",
     "font-family:Georgia,'Times New Roman',Times,serif",
   ].join(";");
   const style = document.createElement("style");
@@ -377,7 +379,7 @@ function ensureLogoHeader(root: HTMLElement, title?: string): void {
   header.setAttribute("data-pdf-logo-header", "1");
   const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   header.innerHTML = `
-    <img src="${logoSrc}" alt="" width="64" height="64" crossorigin="anonymous" />
+    <img src="${logoSrc}" alt="" width="72" height="72" crossorigin="anonymous" />
     <div>
       <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#1f5c4a;font-weight:600;">École Consulaire</p>
       <p class="pdf-title" style="margin:2px 0 0;font-size:17px;font-weight:600;">${title || "Controlo Financeiro"}</p>
@@ -597,11 +599,18 @@ function addCanvasToPdf(
     pages++;
   };
 
-  if (opts.forceSinglePage || fullH <= contentH * 1.02) {
+  /* Se cabe quase tudo (até +12%), reduz escala em vez de 2.ª página quase vazia */
+  if (!opts.forceSinglePage && fullH > contentH && fullH <= contentH * 1.12) {
+    scale = contentH / canvas.height;
+    drawW = canvas.width * scale;
+    fullH = contentH;
+  }
+
+  if (opts.forceSinglePage || fullH <= contentH * 1.01) {
     ensurePage();
     const h = Math.min(fullH, contentH);
     const x = margin + (contentW - drawW) / 2;
-    pdf.addImage(canvas.toDataURL("image/jpeg", 0.93), "JPEG", x, margin, drawW, h);
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", x, margin, drawW, h);
     return pages;
   }
 
@@ -747,7 +756,7 @@ export async function deliverOfficialHtml(
     openPrintHtml(html, { autoPrint: true });
   }
 
-  // Sempre gerar PDF real no telemóvel (partilha); no PC só se não abriu impressão
+  // Telemóvel: PDF real + partilha. PC: impressão HTML (e PDF em memória se pedido).
   let blob: Blob;
   try {
     const pdf = await htmlToPdfBlob(html, {
@@ -756,12 +765,17 @@ export async function deliverOfficialHtml(
       forceSinglePage: opts.forceSinglePage,
     });
     blob = pdf.blob;
-  } catch {
+  } catch (err) {
+    if (mobile) {
+      throw err instanceof Error
+        ? err
+        : new Error("Falha ao gerar PDF no telemóvel. Tente de novo.");
+    }
     blob = new Blob([html], { type: "text/html;charset=utf-8" });
   }
 
   let delivery: PdfDelivery | undefined;
-  if (mobile && blob.type === "application/pdf") {
+  if (mobile) {
     try {
       delivery = await shareOrDownloadPdf(blob, filename, {
         title: opts.shareTitle,
@@ -1000,48 +1014,62 @@ export async function shareOrDownloadPdf(
   filename: string,
   meta?: { title?: string; text?: string },
 ): Promise<PdfDelivery> {
+  const safeName = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+  // PDF real (nunca HTML disfarçado)
+  const pdfBlob =
+    blob.type === "application/pdf"
+      ? blob
+      : new Blob([blob], { type: "application/pdf" });
+
   // ——— Ambiente desktop: abrir PDF primeiro ———
   if (!isMobileDevice()) {
-    return openPdfInNewTab(blob, filename);
+    return openPdfInNewTab(pdfBlob, safeName);
   }
 
-  // ——— Telemóvel: partilha nativa ———
-  const file = new File([blob], filename, { type: "application/pdf" });
+  // ——— Telemóvel: partilha nativa (WhatsApp, Gmail, …) ———
+  const file = new File([pdfBlob], safeName, {
+    type: "application/pdf",
+    lastModified: Date.now(),
+  });
   const nav = navigator as Navigator & {
     canShare?: (data: ShareData) => boolean;
     share?: (data: ShareData) => Promise<void>;
   };
 
-  const payload: ShareData = {
-    files: [file],
-    title: meta?.title || filename,
-    text: meta?.text || "Documento da École Consulaire",
-  };
-
   if (typeof nav.share === "function") {
+    // 1) Preferir partilha com ficheiro
     try {
-      const okFiles =
+      const withFiles: ShareData = {
+        files: [file],
+        title: meta?.title || safeName,
+        text: meta?.text || "Documento · École Consulaire",
+      };
+      const can =
         typeof nav.canShare !== "function" ||
         nav.canShare({ files: [file] }) ||
-        nav.canShare(payload);
-      if (okFiles) {
-        await nav.share(payload);
+        nav.canShare(withFiles);
+      if (can !== false) {
+        await nav.share(withFiles);
         return "shared";
       }
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") throw e;
     }
+    // 2) Alguns browsers rejeitam canShare mas aceitam share directo
     try {
-      await nav.share(payload);
+      await nav.share({
+        files: [file],
+        title: meta?.title || safeName,
+      });
       return "shared";
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") throw e;
     }
   }
 
-  // Fallback telemóvel: abrir / descarregar
-  const opened = openPdfInNewTab(blob, filename);
-  return opened;
+  // Fallback: descarregar (Android/iOS guardam e permitem partilhar depois)
+  downloadBlob(pdfBlob, safeName);
+  return "downloaded";
 }
 
 export async function exportElementPdf(
@@ -1128,7 +1156,7 @@ export function buildOfficialListHtml(opts: {
     display: flex; align-items: center; gap: 14px;
     border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 12px;
   }
-  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .head img { width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; }
   .kicker {
     margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
     color: #1f5c4a; font-weight: 700;
@@ -1169,7 +1197,7 @@ export function buildOfficialListHtml(opts: {
 </head><body>
 <div class="sheet">
   <div class="head">
-    <img src="${logoSrc}" width="52" height="52" alt="" />
+    <img src="${logoSrc}" width="72" height="72" alt="" />
     <div>
       <p class="kicker">${escola}</p>
       <p class="title">${title}</p>
@@ -1434,7 +1462,7 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
     border-bottom: 2.5px solid #1f5c4a;
     padding-bottom: 10px; margin-bottom: 12px;
   }
-  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .head img { width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; }
   .kicker {
     margin: 0; font-size: 10px; letter-spacing: 0.14em;
     text-transform: uppercase; color: #1f5c4a; font-weight: 700;
@@ -1501,7 +1529,7 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
 </head><body>
 <div class="sheet">
   <div class="head">
-    <img src="${logoSrc}" width="52" height="52" alt="" />
+    <img src="${logoSrc}" width="72" height="72" alt="" />
     <div>
       <p class="kicker">${escola}</p>
       <p class="title">${title}</p>

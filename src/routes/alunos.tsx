@@ -1310,8 +1310,8 @@ function Alunos() {
     const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
     const semFoto = fr ? "Sans photo" : "Sem foto";
     const fotoBlock = a.foto
-      ? `<img src="${a.foto}" alt="" style="width:100px;height:120px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:4px;" />`
-      : `<div style="width:100px;height:120px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
+      ? `<img src="${a.foto}" alt="" style="width:88px;height:105px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:4px;" />`
+      : `<div style="width:88px;height:105px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
 
     const L = fr
       ? {
@@ -1396,33 +1396,34 @@ function Alunos() {
         };
 
     const row = (label: string, value: string) =>
-      `<tr><td style="padding:6px 8px;border:1px solid #c5d0ca;width:38%;background:#f4f7f5;font-weight:600;font-size:11px;">${label}</td><td style="padding:6px 8px;border:1px solid #c5d0ca;font-size:12px;">${value}</td></tr>`;
+      `<tr><td style="padding:4px 6px;border:1px solid #c5d0ca;width:36%;background:#f4f7f5;font-weight:600;font-size:10px;">${label}</td><td style="padding:4px 6px;border:1px solid #c5d0ca;font-size:11px;">${value}</td></tr>`;
 
     const html = `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 portrait; margin: 10mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
-    font-family: Georgia, "Times New Roman", Times, serif;
+    font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .sheet { padding: 0 2mm; }
-  .head { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 14px; }
-  .head-logo { width: 64px; height: 64px; object-fit: contain; flex-shrink: 0; }
+  .sheet { padding: 0; }
+  .head { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1f5c4a; padding-bottom: 8px; margin-bottom: 8px; }
+  .head-logo { width: 78px; height: 78px; object-fit: contain; flex-shrink: 0; }
   .head-mid { flex: 1; min-width: 0; }
   .head-foto { flex-shrink: 0; }
-  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #1f5c4a; font-weight: 700; }
-  .title { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
-  .meta { margin: 4px 0 0; font-size: 11px; color: #555; }
-  h2 { font-size: 12px; margin: 16px 0 8px; color: #1f5c4a; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kicker { margin: 0; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #1f5c4a; font-weight: 700; }
+  .title { margin: 2px 0 0; font-size: 15px; font-weight: 700; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
+  h2 { font-size: 10.5px; margin: 8px 0 4px; color: #1f5c4a; text-transform: uppercase; letter-spacing: 0.04em; }
   table { width: 100%; border-collapse: collapse; }
-  .aviso { margin-top: 14px; padding: 10px 12px; border: 1px solid #d4a017; background: #fffbeb; font-size: 10px; line-height: 1.5; color: #422006; }
-  .assinaturas { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .sig { border-top: 1px solid #333; padding-top: 6px; font-size: 11px; }
+  .aviso { margin-top: 8px; padding: 6px 8px; border: 1px solid #d4a017; background: #fffbeb; font-size: 8.5px; line-height: 1.35; color: #422006; }
+  .declaro { margin: 8px 0 4px; font-size: 10.5px; line-height: 1.4; }
+  .assinaturas { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .sig { border-top: 1px solid #333; padding-top: 4px; font-size: 10px; }
   .sig strong { display: block; margin-bottom: 2px; }
-  .foot { margin-top: 18px; font-size: 9px; color: #64748b; text-align: right; }
+  .foot { margin-top: 8px; font-size: 8px; color: #64748b; text-align: right; }
 </style></head><body>
 <div class="sheet">
   <div class="head">
-    <img class="head-logo" src="${logoSrc}" width="64" height="64" alt="" />
+    <img class="head-logo" src="${logoSrc}" width="78" height="78" alt="" />
     <div class="head-mid">
       <p class="kicker">${escolaNome}</p>
       <p class="title">${L.title}</p>
@@ -1470,9 +1471,7 @@ function Alunos() {
     ${L.avisoBody}
   </div>
 
-  <p style="margin:18px 0 8px;font-size:12px;line-height:1.5;">
-    ${L.declaro}
-  </p>
+  <p class="declaro">${L.declaro}</p>
 
   <div class="assinaturas">
     <div class="sig">
@@ -1494,6 +1493,7 @@ function Alunos() {
       setCadastroBusy(true);
       const r = await deliverOfficialHtml(html, {
         filename: `cadastro-${lang}-${a.id}-${(a.nome || "aluno").replace(/\s+/g, "-").slice(0, 40)}.pdf`,
+        forceSinglePage: true,
         shareTitle: fr ? `Fiche ${a.nome}` : `Cadastro ${a.nome}`,
         shareText: fr
           ? `Fiche individuelle à signer · ${a.nome} (${a.id})`

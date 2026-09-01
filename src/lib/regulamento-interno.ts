@@ -40,7 +40,7 @@ const STYLES = `
   .sheet { max-width: 190mm; margin: 0 auto; }
   .head { display: flex; gap: 12px; align-items: center;
     border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 12px; }
-  .head img { width: 52px; height: 52px; object-fit: contain; }
+  .head img { width: 72px; height: 72px; object-fit: contain; }
   .kicker { margin: 0; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
     color: #1f5c4a; font-weight: 700; }
   .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
@@ -74,7 +74,7 @@ function headBlock(
   const nome = esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda");
   return `
   <div class="head">
-    <img src="${logo}" width="52" height="52" alt="" />
+    <img src="${logo}" width="72" height="72" alt="" />
     <div>
       <p class="kicker">${nome}</p>
       <p class="title">${esc(title)}</p>
