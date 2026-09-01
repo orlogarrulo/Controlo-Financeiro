@@ -1040,6 +1040,9 @@ function Alunos() {
   const [regOpen, setRegOpen] = useState(false);
   const [regLang, setRegLang] = useState<"pt" | "fr">("pt");
   const [regBusy, setRegBusy] = useState(false);
+  const [cadastroAluno, setCadastroAluno] = useState<Aluno | null>(null);
+  const [cadastroLang, setCadastroLang] = useState<"pt" | "fr">("pt");
+  const [cadastroBusy, setCadastroBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportIds, setExportIds] = useState<Set<string>>(new Set());
   const [exportBusy, setExportBusy] = useState(false);
@@ -1294,24 +1297,108 @@ function Alunos() {
     }
   }
 
-  /** Cadastro individual para assinatura de veracidade pelos pais / encarregado. */
-  async function imprimirCadastroIndividual(a: Aluno) {
+  /** Cadastro individual — idioma FR ou PT antes de gerar PDF. */
+  async function imprimirCadastroIndividual(a: Aluno, lang: "pt" | "fr" = "pt") {
+    const fr = lang === "fr";
     const escolaNome = escola.nome || "École Consulaire";
-    const emitido = new Date().toLocaleDateString("pt-PT", {
+    const emitido = new Date().toLocaleDateString(fr ? "fr-FR" : "pt-PT", {
       day: "2-digit",
       month: "long",
       year: "numeric",
     });
     const fmt = (v?: string) => (v && String(v).trim() ? String(v).trim() : "—");
     const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+    const semFoto = fr ? "Sans photo" : "Sem foto";
     const fotoBlock = a.foto
-      ? `<img src="${a.foto}" alt="Foto do aluno" style="width:100px;height:120px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:4px;" />`
-      : `<div style="width:100px;height:120px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;padding:4px;">Sem foto</div>`;
+      ? `<img src="${a.foto}" alt="" style="width:100px;height:120px;object-fit:cover;border:1.5px solid #1a4d3e;border-radius:4px;" />`
+      : `<div style="width:100px;height:120px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
+
+    const L = fr
+      ? {
+          title: "Fiche individuelle de l’élève",
+          meta: "Fiche pour confirmation et signature d’exactitude par le parent / responsable légal",
+          idLine: (id: string, recibo: string, em: string) =>
+            `ID ${id} · Reçu ${recibo} · Émis le ${em}`,
+          s1: "1. Identification",
+          nome: "Nom complet",
+          nasc: "Date de naissance",
+          classe: "Classe / section",
+          grupo: "Groupe / cycle",
+          familia: "Famille / nom de famille",
+          bi: "Pièce d’identité (BI)",
+          s2: "2. Responsables et contacts",
+          pai: "Père",
+          mae: "Mère",
+          enc: "Responsable légal",
+          tel: "Téléphone",
+          email: "E-mail",
+          morada: "Adresse",
+          s3: "3. Santé et urgence",
+          sangue: "Groupe sanguin",
+          alergMed: "Allergies médicamenteuses",
+          alergAlim: "Allergies alimentaires",
+          clinica: "Clinique / hôpital le plus proche",
+          s4: "4. Observations",
+          obs: "Observations",
+          avisoTitle:
+            "Protection des données personnelles — Loi n° 22/11 du 17 juin (Loi sur la protection des données personnelles — Angola).",
+          avisoBody:
+            "L’école respecte et protège l’enregistrement des données personnelles de l’élève et des responsables, conformément à la Constitution de la République d’Angola et à ladite loi, sous le contrôle de l’Agence de Protection des Données (APD). Les données (y compris l’image et les informations de santé) sont destinées exclusivement à la gestion scolaire et à la sécurité de l’élève. Le titulaire peut exercer les droits d’information, d’accès, de rectification, d’opposition et d’effacement prévus par la loi.",
+          declaro:
+            "Je déclare, en qualité de père / mère / responsable légal, que les informations figurant sur cette fiche sont <strong>exactes et complètes</strong>, et j’autorise le traitement des données personnelles à des fins scolaires et d’urgence, conformément à la Loi n° 22/11.",
+          sigEnc: "Le responsable légal / parent",
+          sigEsc: "L’école (réception de la fiche)",
+          nomeLbl: "Nom",
+          dataLbl: "Date",
+          assLbl: "Signature",
+          carimbo: "Signature / cachet",
+          foot: "Département des Finances / Secrétariat · Document confidentiel",
+        }
+      : {
+          title: "Cadastro individual do aluno",
+          meta: "Ficha para confirmação e assinatura de veracidade pelos pais / encarregado de educação",
+          idLine: (id: string, recibo: string, em: string) =>
+            `ID ${id} · Recibo ${recibo} · Emitido em ${em}`,
+          s1: "1. Identificação",
+          nome: "Nome completo",
+          nasc: "Data de nascimento",
+          classe: "Classe / turma",
+          grupo: "Grupo / ciclo",
+          familia: "Família / apelido",
+          bi: "BI",
+          s2: "2. Encarregados e contactos",
+          pai: "Pai",
+          mae: "Mãe",
+          enc: "Encarregado de educação",
+          tel: "Telefone",
+          email: "E-mail",
+          morada: "Morada",
+          s3: "3. Saúde e emergência",
+          sangue: "Grupo sanguíneo",
+          alergMed: "Alergias a medicamentos",
+          alergAlim: "Alergias alimentares",
+          clinica: "Clínica / hospital mais próximo",
+          s4: "4. Observações",
+          obs: "Observações",
+          avisoTitle:
+            "Protecção de dados pessoais — Lei n.º 22/11, de 17 de Junho (Lei da Protecção de Dados Pessoais — Angola).",
+          avisoBody:
+            "A escola respeita e protege o registo dos dados pessoais do aluno e dos encarregados de educação, em conformidade com a Constituição da República de Angola e com a referida lei, sob fiscalização da Agência de Protecção de Dados (APD). Os dados (incluindo imagem e informações de saúde) destinam-se exclusivamente à gestão escolar e à segurança do aluno. O titular pode exercer os direitos de informação, acesso, rectificação, oposição e apagamento nos termos legais.",
+          declaro:
+            "Declaro, na qualidade de pai / mãe / encarregado de educação, que as informações constantes deste cadastro são <strong>verdadeiras e completas</strong>, e autorizo o tratamento dos dados pessoais para fins escolares e de emergência, nos termos da Lei n.º 22/11.",
+          sigEnc: "O(A) encarregado(a) de educação",
+          sigEsc: "A escola (recepção do cadastro)",
+          nomeLbl: "Nome",
+          dataLbl: "Data",
+          assLbl: "Assinatura",
+          carimbo: "Assinatura / carimbo",
+          foot: "Departamento de Finanças / Secretaria · Documento confidencial",
+        };
 
     const row = (label: string, value: string) =>
       `<tr><td style="padding:6px 8px;border:1px solid #c5d0ca;width:38%;background:#f4f7f5;font-weight:600;font-size:11px;">${label}</td><td style="padding:6px 8px;border:1px solid #c5d0ca;font-size:12px;">${value}</td></tr>`;
 
-    const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+    const html = `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4 portrait; margin: 12mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
@@ -1338,88 +1425,93 @@ function Alunos() {
     <img class="head-logo" src="${logoSrc}" width="64" height="64" alt="" />
     <div class="head-mid">
       <p class="kicker">${escolaNome}</p>
-      <p class="title">Cadastro individual do aluno</p>
-      <p class="meta">Ficha para confirmação e assinatura de veracidade pelos pais / encarregado de educação</p>
-      <p class="meta">ID ${a.id} · Recibo ${fmt(a.recibo)} · Emitido em ${emitido}</p>
+      <p class="title">${L.title}</p>
+      <p class="meta">${L.meta}</p>
+      <p class="meta">${L.idLine(a.id, fmt(a.recibo), emitido)}</p>
     </div>
     <div class="head-foto">${fotoBlock}</div>
   </div>
 
-  <h2>1. Identificação</h2>
+  <h2>${L.s1}</h2>
   <table>
-    ${row("Nome completo", fmt(a.nome))}
-    ${row("Data de nascimento", a.dataNascimento ? formatDate(a.dataNascimento) : "—")}
-    ${row("Classe / turma", fmt(a.turma))}
-    ${row("Grupo / ciclo", fmt(a.grupo))}
-    ${row("Família / apelido", fmt(a.familia))}
-    ${row("BI", fmt(a.bi))}
+    ${row(L.nome, fmt(a.nome))}
+    ${row(L.nasc, a.dataNascimento ? formatDate(a.dataNascimento) : "—")}
+    ${row(L.classe, fmt(a.turma))}
+    ${row(L.grupo, fmt(a.grupo))}
+    ${row(L.familia, fmt(a.familia))}
+    ${row(L.bi, fmt(a.bi))}
   </table>
 
-  <h2>2. Encarregados e contactos</h2>
+  <h2>${L.s2}</h2>
   <table>
-    ${row("Pai", fmt(a.pai))}
-    ${row("Mãe", fmt(a.mae))}
-    ${row("Encarregado de educação", fmt(a.encarregado))}
-    ${row("Telefone", fmt(a.telefone))}
-    ${row("E-mail", fmt(a.email))}
-    ${row("Morada", fmt(a.morada))}
+    ${row(L.pai, fmt(a.pai))}
+    ${row(L.mae, fmt(a.mae))}
+    ${row(L.enc, fmt(a.encarregado))}
+    ${row(L.tel, fmt(a.telefone))}
+    ${row(L.email, fmt(a.email))}
+    ${row(L.morada, fmt(a.morada))}
   </table>
 
-  <h2>3. Saúde e emergência</h2>
+  <h2>${L.s3}</h2>
   <table>
-    ${row("Grupo sanguíneo", fmt(a.grupoSanguineo))}
-    ${row("Alergias a medicamentos", fmt(a.alergiasMedicamentos))}
-    ${row("Alergias alimentares", fmt(a.alergiasAlimentares))}
-    ${row("Clínica / hospital mais próximo", fmt(a.clinicaProxima))}
+    ${row(L.sangue, fmt(a.grupoSanguineo))}
+    ${row(L.alergMed, fmt(a.alergiasMedicamentos))}
+    ${row(L.alergAlim, fmt(a.alergiasAlimentares))}
+    ${row(L.clinica, fmt(a.clinicaProxima))}
   </table>
 
-  <h2>4. Observações</h2>
+  <h2>${L.s4}</h2>
   <table>
-    ${row("Observações", fmt(a.obs))}
+    ${row(L.obs, fmt(a.obs))}
   </table>
 
   <div class="aviso">
-    <strong>Protecção de dados pessoais — Lei n.º 22/11, de 17 de Junho (Lei da Protecção de Dados Pessoais — Angola).</strong>
-    A escola respeita e protege o registo dos dados pessoais do aluno e dos encarregados de educação,
-    em conformidade com a Constituição da República de Angola e com a referida lei, sob fiscalização da
-    Agência de Protecção de Dados (APD). Os dados (incluindo imagem e informações de saúde) destinam-se
-    exclusivamente à gestão escolar e à segurança do aluno. O titular pode exercer os direitos de informação,
-    acesso, rectificação, oposição e apagamento nos termos legais.
+    <strong>${L.avisoTitle}</strong>
+    ${L.avisoBody}
   </div>
 
   <p style="margin:18px 0 8px;font-size:12px;line-height:1.5;">
-    Declaro, na qualidade de pai / mãe / encarregado de educação, que as informações constantes deste cadastro
-    são <strong>verdadeiras e completas</strong>, e autorizo o tratamento dos dados pessoais para fins escolares
-    e de emergência, nos termos da Lei n.º 22/11.
+    ${L.declaro}
   </p>
 
   <div class="assinaturas">
     <div class="sig">
-      <strong>O(A) encarregado(a) de educação</strong>
-      Nome: _________________________________<br/>
-      Data: ____ / ____ / ________ &nbsp;&nbsp; Assinatura: _________________
+      <strong>${L.sigEnc}</strong>
+      ${L.nomeLbl}: _________________________________<br/>
+      ${L.dataLbl}: ____ / ____ / ________ &nbsp;&nbsp; ${L.assLbl}: _________________
     </div>
     <div class="sig">
-      <strong>A escola (recepção do cadastro)</strong>
-      Nome: _________________________________<br/>
-      Data: ____ / ____ / ________ &nbsp;&nbsp; Assinatura / carimbo: _________
+      <strong>${L.sigEsc}</strong>
+      ${L.nomeLbl}: _________________________________<br/>
+      ${L.dataLbl}: ____ / ____ / ________ &nbsp;&nbsp; ${L.carimbo}: _________
     </div>
   </div>
-  <p class="foot">Departamento de Finanças / Secretaria · ${escolaNome} · Documento confidencial</p>
+  <p class="foot">${L.foot} · ${escolaNome}</p>
 </div>
 </body></html>`;
 
     try {
+      setCadastroBusy(true);
       const r = await deliverOfficialHtml(html, {
-        filename: `cadastro-${a.id}-${(a.nome || "aluno").replace(/\s+/g, "-").slice(0, 40)}.pdf`,
-        shareTitle: `Cadastro ${a.nome}`,
-        shareText: `Cadastro individual para assinatura · ${a.nome} (${a.id})`,
+        filename: `cadastro-${lang}-${a.id}-${(a.nome || "aluno").replace(/\s+/g, "-").slice(0, 40)}.pdf`,
+        shareTitle: fr ? `Fiche ${a.nome}` : `Cadastro ${a.nome}`,
+        shareText: fr
+          ? `Fiche individuelle à signer · ${a.nome} (${a.id})`
+          : `Cadastro individual para assinatura · ${a.nome} (${a.id})`,
       });
       if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
-      else if (isMobileDevice()) toast.success("PDF do cadastro pronto");
-      else toast.success("Cadastro aberto — imprima para assinatura dos pais");
+      else if (isMobileDevice()) toast.success(fr ? "PDF prêt" : "PDF do cadastro pronto");
+      else
+        toast.success(
+          fr
+            ? "Document ouvert — imprimez pour signature"
+            : "Cadastro aberto — imprima para assinatura dos pais",
+        );
+      setCadastroAluno(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao gerar cadastro");
+    } finally {
+      setCadastroBusy(false);
     }
   }
 
@@ -2422,8 +2514,11 @@ function Alunos() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      title="Imprimir cadastro individual para assinatura dos pais"
-                      onClick={() => void imprimirCadastroIndividual(a)}
+                      title="Cadastro individual — escolher FR ou PT e gerar PDF"
+                      onClick={() => {
+                        setCadastroLang("pt");
+                        setCadastroAluno(a);
+                      }}
                     >
                       <ScrollText className="size-3.5" />
                       <span className="ml-1 hidden xl:inline">Cadastro</span>
@@ -2571,6 +2666,66 @@ function Alunos() {
               PDF
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cadastro individual — escolher idioma */}
+      <Dialog
+        open={!!cadastroAluno}
+        onOpenChange={(o) => {
+          if (!o) setCadastroAluno(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cadastro individual</DialogTitle>
+          </DialogHeader>
+          {cadastroAluno ? (
+            <>
+              <p className="text-sm text-[var(--color-muted)]">
+                <strong>{cadastroAluno.nome}</strong>
+                {cadastroAluno.turma ? ` · ${cadastroAluno.turma}` : ""} · ID{" "}
+                {cadastroAluno.id}
+              </p>
+              <p className="text-sm">Escolha o idioma do documento antes de gerar o PDF:</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={cadastroLang === "pt" ? "default" : "secondary"}
+                  onClick={() => setCadastroLang("pt")}
+                >
+                  Português
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={cadastroLang === "fr" ? "default" : "secondary"}
+                  onClick={() => setCadastroLang("fr")}
+                >
+                  Français
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  type="button"
+                  disabled={cadastroBusy}
+                  onClick={() =>
+                    void imprimirCadastroIndividual(cadastroAluno, cadastroLang)
+                  }
+                >
+                  {cadastroBusy ? "A gerar…" : "PDF"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setCadastroAluno(null)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
 
