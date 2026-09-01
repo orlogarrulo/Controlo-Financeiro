@@ -1415,8 +1415,9 @@ function Alunos() {
   h2 { font-size: 10.5px; margin: 8px 0 4px; color: #1f5c4a; text-transform: uppercase; letter-spacing: 0.04em; }
   table { width: 100%; border-collapse: collapse; }
   .aviso { margin-top: 8px; padding: 6px 8px; border: 1px solid #d4a017; background: #fffbeb; font-size: 8.5px; line-height: 1.35; color: #422006; }
-  .declaro { margin: 8px 0 4px; font-size: 10.5px; line-height: 1.4; }
-  .assinaturas { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .declaro { margin: 10px 0 0; font-size: 10.5px; line-height: 1.4; }
+  /* Espaço ~2× entre a declaração e as linhas de assinatura */
+  .assinaturas { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .sig { border-top: 1px solid #333; padding-top: 4px; font-size: 10px; }
   .sig strong { display: block; margin-bottom: 2px; }
   .foot { margin-top: 8px; font-size: 8px; color: #64748b; text-align: right; }

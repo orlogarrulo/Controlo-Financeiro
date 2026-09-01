@@ -724,17 +724,16 @@ async function htmlToPdfBlob(
 }
 
 /**
- * Entrega documento oficial:
- * — PC: impressão HTML exacta (Guardar como PDF no diálogo)
- * — Telemóvel: gera ficheiro PDF real e abre partilha (WhatsApp, e-mail, …)
+ * Entrega documento oficial — **mesmo PDF** no PC e no telemóvel
+ * (html2canvas + jsPDF), para layout idêntico.
+ * — Telemóvel: partilha nativa (WhatsApp, e-mail, …)
+ * — PC: abre o PDF no browser (imprimir / guardar)
+ * — openPrint: true → também abre o diálogo de impressão HTML (opcional)
  */
 export type PdfDelivery = "shared" | "opened" | "downloaded";
 
 /**
- * Fluxo oficial unificado:
- * — PC: abre impressão HTML (Guardar como PDF)
- * — Telemóvel: gera PDF e abre partilha (WhatsApp, Gmail, …)
- * Usar em todos os botões «PDF» da app.
+ * Fluxo oficial unificado: um único ficheiro PDF em todos os dispositivos.
  */
 export async function deliverOfficialHtml(
   html: string,
@@ -742,6 +741,7 @@ export async function deliverOfficialHtml(
     filename: string;
     landscape?: boolean;
     forceSinglePage?: boolean;
+    /** Se true, no PC abre também a impressão HTML (além do PDF). Default: false. */
     openPrint?: boolean;
     shareTitle?: string;
     shareText?: string;
@@ -752,42 +752,30 @@ export async function deliverOfficialHtml(
     : opts.filename.replace(/\.(html|htm)$/i, "") + ".pdf";
   const mobile = isMobileDevice();
 
-  if (!mobile && opts.openPrint !== false) {
+  // Mesmo motor visual no PC e no telemóvel
+  const pdf = await htmlToPdfBlob(html, {
+    filename,
+    landscape: opts.landscape,
+    forceSinglePage: opts.forceSinglePage,
+  });
+  const blob = pdf.blob;
+
+  if (!mobile && opts.openPrint === true) {
     openPrintHtml(html, { autoPrint: true });
   }
 
-  // Telemóvel: PDF real + partilha. PC: impressão HTML (e PDF em memória se pedido).
-  let blob: Blob;
-  try {
-    const pdf = await htmlToPdfBlob(html, {
-      filename,
-      landscape: opts.landscape,
-      forceSinglePage: opts.forceSinglePage,
-    });
-    blob = pdf.blob;
-  } catch (err) {
-    if (mobile) {
-      throw err instanceof Error
-        ? err
-        : new Error("Falha ao gerar PDF no telemóvel. Tente de novo.");
-    }
-    blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  }
-
   let delivery: PdfDelivery | undefined;
-  if (mobile) {
-    try {
-      delivery = await shareOrDownloadPdf(blob, filename, {
-        title: opts.shareTitle,
-        text: opts.shareText,
-      });
-    } catch (e) {
-      if (e instanceof Error && e.name === "AbortError") {
-        delivery = "downloaded";
-      } else {
-        downloadBlob(blob, filename);
-        delivery = "downloaded";
-      }
+  try {
+    delivery = await shareOrDownloadPdf(blob, filename, {
+      title: opts.shareTitle,
+      text: opts.shareText,
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      delivery = "downloaded";
+    } else {
+      downloadBlob(blob, filename);
+      delivery = "downloaded";
     }
   }
 
