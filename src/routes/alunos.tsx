@@ -28,6 +28,11 @@ import {
 } from "@/lib/pdf-export";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
+import {
+  compressStudentPhoto,
+  formatPhotoSize,
+  ALUNO_FOTO_MAX_SYNC,
+} from "@/lib/image";
 
 const EMPTY_FATURAS: FaturaPropina[] = [];
 
@@ -500,7 +505,7 @@ function MatriculaForm({
 }: {
   form: FormState;
   setForm: Dispatch<SetStateAction<FormState>>;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onCancel: () => void;
 }) {
   const totais = calcTotais(form);
@@ -667,38 +672,26 @@ function MatriculaForm({
                     toast.error("Foto demasiado grande (máx. ±2,5 MB). Comprima ou tire outra.");
                     return;
                   }
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    const dataUrl = String(reader.result || "");
-                    // Reduzir para caber no store / telemóvel
-                    const img = new Image();
-                    img.onload = () => {
-                      const max = 480;
-                      let w = img.width;
-                      let h = img.height;
-                      if (w > max || h > max) {
-                        const r = Math.min(max / w, max / h);
-                        w = Math.round(w * r);
-                        h = Math.round(h * r);
-                      }
-                      const canvas = document.createElement("canvas");
-                      canvas.width = w;
-                      canvas.height = h;
-                      const ctx = canvas.getContext("2d");
-                      if (ctx) {
-                        ctx.drawImage(img, 0, 0, w, h);
-                        setForm((prev) => ({
-                          ...prev,
-                          foto: canvas.toDataURL("image/jpeg", 0.72),
-                        }));
+                  const inputEl = e.target;
+                  void (async () => {
+                    try {
+                      const { dataUrl, bytesApprox } = await compressStudentPhoto(file);
+                      setForm((prev) => ({ ...prev, foto: dataUrl }));
+                      if (dataUrl.length > ALUNO_FOTO_MAX_SYNC) {
+                        toast.warning(
+                          `Foto ainda grande (${formatPhotoSize(bytesApprox)}). Pode ficar só neste dispositivo se a nuvem rejeitar o tamanho.`,
+                        );
                       } else {
-                        setForm((prev) => ({ ...prev, foto: dataUrl }));
+                        toast.success(
+                          `Foto pronta (${formatPhotoSize(bytesApprox)}) — será sincronizada com a nuvem ao gravar.`,
+                        );
                       }
-                    };
-                    img.onerror = () => setForm((prev) => ({ ...prev, foto: dataUrl }));
-                    img.src = dataUrl;
-                  };
-                  reader.readAsDataURL(file);
+                    } catch {
+                      toast.error("Não foi possível processar a foto. Tente outra imagem.");
+                    } finally {
+                      inputEl.value = "";
+                    }
+                  })();
                 }}
               />
               {form.foto ? (
@@ -711,7 +704,7 @@ function MatriculaForm({
                 </button>
               ) : (
                 <p className="text-[11px] text-[var(--color-muted)]">
-                  Carregue ou tire uma foto (telemóvel). Usada no cadastro impresso.
+                  Carregue ou tire uma foto (telemóvel). É comprimida automaticamente para sincronizar entre PCs.
                 </p>
               )}
             </div>
@@ -1346,7 +1339,21 @@ function Alunos() {
     return { metodoPagamento, metodosPagamento };
   }
 
-  function saveNew() {
+  /** Garante foto leve o suficiente para a nuvem (re-comprime se necessário). */
+  async function ensureFotoForSync(foto: string | undefined): Promise<string | undefined> {
+    if (!foto) return undefined;
+    if (foto.length <= ALUNO_FOTO_MAX_SYNC) return foto;
+    try {
+      const { dataUrl, bytesApprox } = await compressStudentPhoto(foto);
+      toast.message(`Foto re-comprimida (${formatPhotoSize(bytesApprox)}) para sincronizar na nuvem.`);
+      return dataUrl;
+    } catch {
+      toast.warning("Não foi possível reduzir a foto; pode ficar só neste dispositivo.");
+      return foto;
+    }
+  }
+
+  async function saveNew() {
     if (!canEdit) return;
     if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
       toast.error("Código incorrecto.");
@@ -1360,6 +1367,7 @@ function Alunos() {
     const id = nextAlunoId(form.turma, alunos);
     const recibo = nextRecibo(alunos);
     const encarregado = form.pai.trim() || form.mae.trim() || "";
+    const foto = await ensureFotoForSync(form.foto || undefined);
     const aluno: Aluno = {
       id,
       nome: form.nome.trim(),
@@ -1393,7 +1401,7 @@ function Alunos() {
       propina: num(form.propina),
       statusPag: t.liquido > 0 ? "pago" : "registado",
       dataNascimento: form.dataNascimento.trim() || undefined,
-      foto: form.foto || undefined,
+      foto,
       alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
       alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
       clinicaProxima: form.clinicaProxima.trim() || undefined,
@@ -1407,7 +1415,7 @@ function Alunos() {
     setForm(emptyForm());
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editing || !canEdit) return;
     if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
       toast.error("Código incorrecto.");
@@ -1415,6 +1423,7 @@ function Alunos() {
     }
     const t = calcTotais(form);
     const encarregado = form.pai.trim() || form.mae.trim() || editing.encarregado;
+    const foto = await ensureFotoForSync(form.foto || undefined);
     try {
       updateAluno(editing.id, {
         nome: form.nome.trim() || editing.nome,
@@ -1430,7 +1439,7 @@ function Alunos() {
         familia: form.familia.trim(),
         obs: buildObs(form),
         dataNascimento: form.dataNascimento.trim() || undefined,
-        foto: form.foto || undefined,
+        foto,
         alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
         alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
         clinicaProxima: form.clinicaProxima.trim() || undefined,

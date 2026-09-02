@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   loadFinanceCloud,
   saveFinanceCloud,
-  sliceFromStore,
+  sliceFromStoreDetailed,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
 import { useFinance } from "@/lib/store";
@@ -260,10 +260,22 @@ function applyPayload(p: FinanceCloudPayload) {
   }
 }
 
+/** Evita spam de toasts se a nuvem falhar várias vezes seguidas. */
+let lastCloudErrorToast = 0;
+let lastFotosOmitidasToast = 0;
+
 async function pushCloud() {
   try {
-    const slice = sliceFromStore(useFinance.getState());
-    const res = await saveFinanceCloud({ data: slice });
+    const { payload, fotosOmitidas } = sliceFromStoreDetailed(useFinance.getState());
+    if (fotosOmitidas > 0 && Date.now() - lastFotosOmitidasToast > 20_000) {
+      lastFotosOmitidasToast = Date.now();
+      toast.warning(
+        fotosOmitidas === 1
+          ? "1 foto de aluno ficou só neste dispositivo (demasiado grande para a nuvem). Regrave a foto para comprimir."
+          : `${fotosOmitidas} fotos de alunos ficaram só neste dispositivo (demasiado grandes para a nuvem). Regrave-as para comprimir.`,
+      );
+    }
+    const res = await saveFinanceCloud({ data: payload });
     if (res?.updatedAt) {
       localStorage.setItem(LOCAL_TS_KEY, String(Date.parse(res.updatedAt) || Date.now()));
     } else {
@@ -271,6 +283,21 @@ async function pushCloud() {
     }
   } catch (e) {
     console.warn("[cloud] save", e);
-    // Offline: localStorage continua a guardar; sincroniza quando houver rede
+    const msg = e instanceof Error ? e.message : String(e || "");
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    if (Date.now() - lastCloudErrorToast > 15_000) {
+      lastCloudErrorToast = Date.now();
+      if (offline) {
+        toast.message("Sem rede — dados guardados só neste dispositivo. Sincronizam quando houver internet.");
+      } else if (/fetch|network|Failed to fetch|413|payload|body|too large|JSON/i.test(msg)) {
+        toast.error(
+          "Falha ao gravar na nuvem (dados ou foto demasiado grandes, ou rede). Os dados ficam neste PC; tente de novo ou regrave fotos mais leves.",
+        );
+      } else {
+        toast.error(
+          "Não foi possível sincronizar com a nuvem. Os dados continuam guardados neste dispositivo.",
+        );
+      }
+    }
   }
 }

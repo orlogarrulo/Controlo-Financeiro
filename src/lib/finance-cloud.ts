@@ -149,7 +149,16 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
     }
   });
 
-/** Extrai o slice persistido do store Zustand. */
+/** Limite da data-URL da foto do aluno no payload da nuvem (alinhado com image.ts). */
+export const ALUNO_FOTO_MAX_SYNC_CLOUD = 55_000;
+
+export type SliceCloudResult = {
+  payload: FinanceCloudPayload;
+  /** Quantas fotos de aluno foram omitidas por serem demasiado grandes. */
+  fotosOmitidas: number;
+};
+
+/** Extrai o slice persistido do store Zustand (seguro para a nuvem). */
 export function sliceFromStore(s: {
   extras: unknown[];
   alunosExtra: unknown[];
@@ -177,34 +186,112 @@ export function sliceFromStore(s: {
   };
   inboxItems?: unknown[];
 }): FinanceCloudPayload {
+  return sliceFromStoreDetailed(s).payload;
+}
+
+/** Como sliceFromStore, mas reporta quantas fotos de aluno foram omitidas. */
+export function sliceFromStoreDetailed(s: {
+  extras: unknown[];
+  alunosExtra: unknown[];
+  alunosOverrides: Record<string, unknown>;
+  alunosDeletedIds?: string[];
+  mensalidades: unknown[];
+  fundoExtra: unknown[];
+  fundoAtmExtra?: unknown[];
+  movimentosBaiExtra: unknown[];
+  movimentosBaiDeletedIds?: string[];
+  baiOverride: boolean;
+  fotos: Record<string, string>;
+  operators: string[];
+  auditLog: unknown[];
+  sessionLog: unknown[];
+  salariosExtra: unknown[];
+  salariosOverrides: Record<string, unknown>;
+  salariosDeletedIds?: string[];
+  recibosSalario?: unknown[];
+  faturasPropina?: unknown[];
+  uiPrefs?: {
+    salariosMesKey?: string;
+    salariosMesLabel?: string;
+    salariosFilterMes?: string;
+  };
+  inboxItems?: unknown[];
+}): SliceCloudResult {
+  const { list: alunosExtraSafe, omitted: o1 } = stripLargeFotosFromAlunos(
+    s.alunosExtra || [],
+  );
+  const { map: overridesSafe, omitted: o2 } = stripLargeFotosFromOverrides(
+    s.alunosOverrides || {},
+  );
   return {
-    extras: s.extras,
-    alunosExtra: s.alunosExtra,
-    alunosOverrides: s.alunosOverrides,
-    alunosDeletedIds: s.alunosDeletedIds || [],
-    mensalidades: s.mensalidades,
-    fundoExtra: s.fundoExtra,
-    fundoAtmExtra: s.fundoAtmExtra || [],
-    movimentosBaiExtra: s.movimentosBaiExtra,
-    movimentosBaiDeletedIds: s.movimentosBaiDeletedIds || [],
-    baiOverride: s.baiOverride,
-    // Fotos base64 pesam demasiado no telemóvel (Failed to fetch). Sync financeiro sem imagens.
-    fotos: {},
-    operators: s.operators,
-    auditLog: s.auditLog.slice(-200),
-    sessionLog: s.sessionLog.slice(-100),
-    salariosExtra: s.salariosExtra,
-    salariosOverrides: s.salariosOverrides,
-    salariosDeletedIds: s.salariosDeletedIds || [],
-    recibosSalario: s.recibosSalario || [],
-    faturasPropina: s.faturasPropina || [],
-    uiPrefs: s.uiPrefs || {},
-    // Anexos: só enviam base64 se anexoSync e tamanho < ~100 KB (evita falha no telemóvel)
-    inboxItems: stripInboxAnexos(s.inboxItems || []),
+    fotosOmitidas: o1 + o2,
+    payload: {
+      extras: s.extras,
+      alunosExtra: alunosExtraSafe,
+      alunosOverrides: overridesSafe,
+      alunosDeletedIds: s.alunosDeletedIds || [],
+      mensalidades: s.mensalidades,
+      fundoExtra: s.fundoExtra,
+      fundoAtmExtra: s.fundoAtmExtra || [],
+      movimentosBaiExtra: s.movimentosBaiExtra,
+      movimentosBaiDeletedIds: s.movimentosBaiDeletedIds || [],
+      baiOverride: s.baiOverride,
+      // Mapa de fotos de lançamentos: não vai à nuvem (peso excessivo).
+      fotos: {},
+      operators: s.operators,
+      auditLog: s.auditLog.slice(-200),
+      sessionLog: s.sessionLog.slice(-100),
+      salariosExtra: s.salariosExtra,
+      salariosOverrides: s.salariosOverrides,
+      salariosDeletedIds: s.salariosDeletedIds || [],
+      recibosSalario: s.recibosSalario || [],
+      faturasPropina: s.faturasPropina || [],
+      uiPrefs: s.uiPrefs || {},
+      // Anexos: só enviam base64 se anexoSync e tamanho < ~100 KB
+      inboxItems: stripInboxAnexos(s.inboxItems || []),
+    },
   };
 }
 
 const INBOX_ANEXO_MAX_SYNC = 100_000; // ~100 KB de string data-URL
+
+function stripLargeFotosFromAlunos(list: unknown[]): {
+  list: unknown[];
+  omitted: number;
+} {
+  let omitted = 0;
+  const out = (list || []).map((raw) => {
+    const a = raw as { foto?: string; [k: string]: unknown };
+    const foto = a?.foto;
+    if (typeof foto === "string" && foto.length > ALUNO_FOTO_MAX_SYNC_CLOUD) {
+      omitted += 1;
+      const { foto: _drop, ...rest } = a;
+      return rest;
+    }
+    return raw;
+  });
+  return { list: out, omitted };
+}
+
+function stripLargeFotosFromOverrides(map: Record<string, unknown>): {
+  map: Record<string, unknown>;
+  omitted: number;
+} {
+  let omitted = 0;
+  const out: Record<string, unknown> = {};
+  for (const [id, val] of Object.entries(map || {})) {
+    const a = val as { foto?: string; [k: string]: unknown };
+    const foto = a?.foto;
+    if (typeof foto === "string" && foto.length > ALUNO_FOTO_MAX_SYNC_CLOUD) {
+      omitted += 1;
+      const { foto: _drop, ...rest } = a;
+      out[id] = rest;
+    } else {
+      out[id] = val;
+    }
+  }
+  return { map: out, omitted };
+}
 
 function stripInboxAnexos(items: unknown[]): unknown[] {
   return (items || []).map((raw) => {
