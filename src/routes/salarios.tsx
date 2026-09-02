@@ -130,6 +130,64 @@ function opcoesMesReferencia(): { key: string; label: string }[] {
   return out;
 }
 
+/**
+ * Mês de competência dos honorários (não é o mês civil “cego”).
+ * Janela de pagamento: dia 28 do mês de competência → dia 10 do mês seguinte.
+ * Ex.: Agosto paga-se 28/08–10/09; em 2 de setembro o ecrã continua em Agosto.
+ * A partir do dia 11, avança para o mês civil actual.
+ */
+function mesCompetenciaPagamento(ref: Date = new Date()): {
+  key: string;
+  label: string;
+  year: number;
+  monthIndex: number; // 0–11
+} {
+  const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  let y = d.getFullYear();
+  let m = d.getMonth();
+  if (d.getDate() <= 10) {
+    m -= 1;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    }
+  }
+  return {
+    key: `${y}-${String(m + 1).padStart(2, "0")}`,
+    label: `${MESES_PT[m]} de ${y}`,
+    year: y,
+    monthIndex: m,
+  };
+}
+
+/** Janela de pagamento (28 → 10) para um mesKey YYYY-MM. */
+function janelaPagamentoMes(mesKey: string): { ini: string; fim: string; texto: string } {
+  const [ys, ms] = mesKey.split("-");
+  const y = Number(ys);
+  const m = Number(ms) - 1; // 0-based
+  if (!y || m < 0 || m > 11) {
+    return { ini: "—", fim: "—", texto: "—" };
+  }
+  const iniD = new Date(y, m, 28);
+  const fimD = new Date(y, m + 1, 10);
+  const fmt = (dt: Date) =>
+    `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+  const ini = fmt(iniD);
+  const fim = fmt(fimD);
+  return { ini, fim, texto: `${ini} – ${fim}` };
+}
+
+function shiftMesKey(mesKey: string, delta: number): { key: string; label: string } {
+  const [ys, ms] = mesKey.split("-");
+  const d = new Date(Number(ys), Number(ms) - 1 + delta, 1);
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  return {
+    key: `${y}-${String(m + 1).padStart(2, "0")}`,
+    label: `${MESES_PT[m]} de ${y}`,
+  };
+}
+
 function emptyForm(): FormState {
   const start = todayIso();
   return {
@@ -1272,6 +1330,7 @@ function Salarios() {
   const [listPickerOpen, setListPickerOpen] = useState(false);
   const [listSelectedIds, setListSelectedIds] = useState<Set<string>>(() => new Set());
 
+  const competenciaDefault = mesCompetenciaPagamento();
   // Preferência de mês partilhada na nuvem (PC ↔ telemóvel)
   useEffect(() => {
     const key = uiPrefs.salariosMesKey || "";
@@ -1281,7 +1340,12 @@ function Salarios() {
       if (label) setGenMes(label);
     }
     if (uiPrefs.salariosFilterMes && uiPrefs.salariosFilterMes !== filterMes) {
-      setFilterMes(uiPrefs.salariosFilterMes);
+      // «todos» deixou de ser o defeito — usa mês de competência (janela 28→10)
+      const fm =
+        uiPrefs.salariosFilterMes === "todos"
+          ? mesCompetenciaPagamento().key
+          : uiPrefs.salariosFilterMes;
+      setFilterMes(fm);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiPrefs.salariosMesKey, uiPrefs.salariosMesLabel, uiPrefs.salariosFilterMes]);
@@ -1294,7 +1358,11 @@ function Salarios() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
-  const [filterMes, setFilterMes] = useState<string>("todos");
+  /** Por defeito: mês de competência (janela 28→10), não «todos» nem o mês civil cego. */
+  const [filterMes, setFilterMes] = useState<string>(
+    () => competenciaDefault.key,
+  );
+  const [showFerramentas, setShowFerramentas] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<{ title: string; html: string } | null>(null);
   const [avisoFimMesOn, setAvisoFimMesOn] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -1442,12 +1510,12 @@ function Salarios() {
       toast.error("Apenas o Colaborador 1.");
       return;
     }
-    // Por defeito: mês civil anterior (ex.: em Setembro → Agosto)
-    const ref = new Date();
-    ref.setDate(1);
-    ref.setMonth(ref.getMonth() - 1);
-    const mesKey = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
-    const mesLabel = `${MESES_PT[ref.getMonth()]} de ${ref.getFullYear()}`;
+    // Mês de competência (janela 28→10) ou o mês filtrado no ecrã
+    const comp = mesCompetenciaPagamento();
+    const mesKey =
+      filterMes && filterMes !== "todos" ? filterMes : comp.key;
+    const fromOpts = opcoesMesReferencia().find((o) => o.key === mesKey);
+    const mesLabel = fromOpts?.label || comp.label;
     setGenMes(mesLabel);
     setGenMesKey(mesKey);
     setGenDataPag(todayIso());
@@ -1458,6 +1526,11 @@ function Salarios() {
       dm[r.id] = String(r.diasTrab || 22);
     });
     setDiasMap(dm);
+    setUiPrefs({
+      salariosMesKey: mesKey,
+      salariosMesLabel: mesLabel,
+      salariosFilterMes: mesKey,
+    });
     setGenOpen(true);
   }
 
@@ -1598,6 +1671,12 @@ function Salarios() {
       id: `RH-${genMesKey}-${String(i + 1).padStart(3, "0")}`,
     }));
     addRecibosSalario(numbered);
+    setFilterMes(genMesKey);
+    setUiPrefs({
+      salariosMesKey: genMesKey,
+      salariosMesLabel: genMes,
+      salariosFilterMes: genMesKey,
+    });
     setGenOpen(false);
     toast.success(
       `${numbered.length} recibo(s) + autorização gerados para ${genMes} (ref. ${genMesKey})`,
@@ -1634,22 +1713,60 @@ function Salarios() {
 
   const totalFolha = rows.reduce((s, r) => s + (r.salario || 0), 0);
 
+  const mesActivoKey =
+    filterMes && filterMes !== "todos" ? filterMes : competenciaDefault.key;
+  const mesActivoLabel =
+    mesesDisponiveis.find(([k]) => k === mesActivoKey)?.[1] ||
+    opcoesMesReferencia().find((o) => o.key === mesActivoKey)?.label ||
+    competenciaDefault.label;
+  const janelaActiva = janelaPagamentoMes(mesActivoKey);
+  const recibosDoMes = useMemo(
+    () => (recibosSalario || []).filter((r) => r.mesKey === mesActivoKey),
+    [recibosSalario, mesActivoKey],
+  );
+  const totalLiquidoMes = recibosDoMes.reduce((s, r) => s + (r.liquido || 0), 0);
+  const pagosMes = recibosDoMes.filter((r) => r.pago).length;
+  const porPagarMes = recibosDoMes.filter((r) => !r.pago).length;
+
+  function irMesPagamento(delta: number) {
+    const next = shiftMesKey(mesActivoKey, delta);
+    setFilterMes(next.key);
+    setUiPrefs({
+      salariosFilterMes: next.key,
+      salariosMesKey: next.key,
+      salariosMesLabel: next.label,
+    });
+  }
+
+  function escolherMesPagamento(key: string) {
+    const label =
+      opcoesMesReferencia().find((o) => o.key === key)?.label ||
+      mesesDisponiveis.find(([k]) => k === key)?.[1] ||
+      key;
+    setFilterMes(key);
+    setUiPrefs({
+      salariosFilterMes: key,
+      salariosMesKey: key,
+      salariosMesLabel: label,
+    });
+  }
+
   return (
     <div>
       <PageHeader
         kicker="Recursos humanos"
         title="Salários e contratos"
-        description="Cadastro, contrato (9 meses), recibos mensais, autorização dos sócios e débito no Banco BAI ao marcar pago. Aviso automático nos dias 28–30."
+        description={`Cadastro e contratos · Pagamento na janela 28→10 (ex. Agosto: ${janelaPagamentoMes("2026-08").texto}). Mês de competência sincronizado na nuvem.`}
         actions={
           <div className="no-print flex flex-row flex-wrap items-center gap-2">
             {canEdit ? (
               <>
-                <Button className="shrink-0" type="button" variant="secondary" onClick={openGerarRecibos}>
-                  Gerar recibos do mês
-                </Button>
                 <Button className="shrink-0" type="button" onClick={openNew}>
                   <UserPlus className="mr-1 size-4" />
                   Novo funcionário
+                </Button>
+                <Button className="shrink-0" type="button" variant="secondary" onClick={openGerarRecibos}>
+                  Gerar recibos
                 </Button>
               </>
             ) : null}
@@ -1657,45 +1774,14 @@ function Salarios() {
               type="button"
               variant="secondary"
               className="shrink-0"
-              title="Impressão oficial: Nome, função, honorário e IBAN de todos os funcionários"
-              onClick={() => {
-                const now = new Date();
-                const mesAtual = now.toLocaleDateString("pt-PT", {
-                  month: "long",
-                  year: "numeric",
-                });
-                const mesLabel = mesAtual.charAt(0).toUpperCase() + mesAtual.slice(1);
-                const list = rows.map((r) => ({
-                  nome: r.nome,
-                  funcao: r.funcao,
-                  salario: r.salario,
-                  iban: r.iban || "",
-                  mes: mesLabel,
-                }));
-                const html = listaFuncionariosHtml(
-                  escola,
-                  list,
-                  `Funcionários · ${mesLabel}`,
-                  { mode: "simples", mostrarTotal: true },
-                );
-                // Pré-visualização + impressão HTML oficial (não é screenshot do ecrã)
-                verDocumento(`Imprimir — ${mesLabel}`, html);
-              }}
-            >
-              <Printer className="mr-1 size-4" />
-              Imprimir
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="shrink-0"
-              title="Escolher funcionários, ver total do mês e pré-visualizar antes de imprimir"
+              title="Lista completa: Nome, função, honorário e IBAN (documento oficial A4)"
               onClick={() => {
                 setListSelectedIds(new Set(rows.map((r) => r.id)));
                 setListPickerOpen(true);
               }}
             >
-              Imprimir lista
+              <Printer className="mr-1 size-4" />
+              Lista + IBAN
             </Button>
           </div>
         }
@@ -1704,21 +1790,30 @@ function Salarios() {
 
       {avisoFimMesOn && (() => {
         const day = new Date().getDate();
-        if (day < 28 || day > 30) return null;
-        const porPagar = recibosSalario.filter((r) => !r.pago).length;
+        // Janela de pagamento: 28–fim do mês e 1–10 do mês seguinte
+        const naJanela = day >= 28 || day <= 10;
+        if (!naJanela) return null;
+        const comp = mesCompetenciaPagamento();
+        const porPagar = (recibosSalario || []).filter(
+          (r) => r.mesKey === comp.key && !r.pago,
+        ).length;
         return (
           <div className="no-print mb-4 flex gap-3 rounded-[var(--radius)] border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             <div className="min-w-0 flex-1">
-              <strong>Aviso de fim de mês (dia {day})</strong>
+              <strong>Janela de pagamento · {comp.label}</strong>
               {" — "}
+              {janelaPagamentoMes(comp.key).texto}
+              {" · "}
               {porPagar > 0
-                ? `Existem ${porPagar} recibo(s) de honorários por pagar. Gere a autorização dos sócios e marque como pago (debita o Banco BAI).`
-                : "Está entre os dias 28 e 30: confirme se já gerou os recibos de honorários deste mês."}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={openGerarRecibos}>
-                  Gerar recibos do mês
-                </Button>
-              </div>
+                ? `${porPagar} recibo(s) por pagar. Confirme no extrato BAI antes de marcar pago.`
+                : "Confirme se os recibos deste mês já estão gerados e alinhados com o BAI."}
+              {canEdit ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button type="button" size="sm" onClick={openGerarRecibos}>
+                    Gerar recibos
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <button
               type="button"
@@ -1726,7 +1821,7 @@ function Salarios() {
               title="Fechar aviso"
               aria-label="Fechar aviso"
               onClick={() => {
-                const key = `aviso-salarios-${new Date().getFullYear()}-${new Date().getMonth()}`;
+                const key = `aviso-salarios-${comp.key}`;
                 try {
                   window.sessionStorage.setItem(key, "1");
                 } catch {
@@ -1742,7 +1837,10 @@ function Salarios() {
       })()}
 
       <p className="mb-3 text-sm text-[var(--color-muted)]">
-        {rows.length} funcionário(s) · Folha de referência {formatKz(totalFolha)} · {recibosSalario.filter((r) => !r.pago).length} recibo(s) por pagar
+        {rows.length} funcionário(s) · Folha de referência {formatKz(totalFolha)}
+        {porPagarMes > 0
+          ? ` · ${porPagarMes} por pagar em ${mesActivoLabel}`
+          : ` · ${mesActivoLabel}: ${pagosMes} pago(s)`}
       </p>
 
       <div ref={printRef} className="overflow-x-auto rounded-[var(--radius)] border border-[var(--color-line)]">
@@ -1817,103 +1915,125 @@ function Salarios() {
         </table>
       </div>
 
-      {/* Recibos gerados */}
-      <div className="mt-8">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-base font-semibold">Recibos de honorários</h2>
+      {/* Pagamento do mês (competência 28→10) — preferências na nuvem */}
+      <div className="mt-8 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold">Pagamento · {mesActivoLabel}</h2>
             <p className="text-xs text-[var(--color-muted)]">
-              A mostrar <strong>{recibosFiltrados.length}</strong>
-              {filterRec === "pagos" ? " pagos" : ""}
+              Janela de pagamento: <strong>{janelaActiva.texto}</strong>
               {" · "}
-              {totalPagos} pago(s) no total
-              {filterMes && filterMes !== "todos" ? ` · filtro mês ${filterMes}` : ""}
+              {recibosDoMes.length} recibo(s) · {pagosMes} pago(s) · {porPagarMes} por pagar
               {" · "}
-              role a lista no ecrã · <strong>Imprimir listagem</strong> exporta os {recibosFiltrados.length} registos completos
+              Total líquido: <strong className="tabular-nums">{formatKz(totalLiquidoMes)}</strong>
+            </p>
+            <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+              Os já marcados como pagos mantêm-se; confirme sempre no extrato Banco BAI. O mês activo
+              grava-se na nuvem (PC e telemóvel).
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {(["todos", "por_pagar", "pagos"] as const).map((f) => (
-              <Button key={f} type="button" size="sm" variant={filterRec === f ? "default" : "secondary"} onClick={() => setFilterRec(f)}>
-                {f === "todos" ? "Todos" : f === "pagos" ? `Pagos (${(recibosSalario || []).filter((r) => r.pago).length})` : "Por pagar"}
-              </Button>
-            ))}
-            <span className="mx-0.5 text-[var(--color-muted)]">|</span>
-            <Button
-              type="button"
-              size="sm"
-              variant={filterMes === "todos" ? "default" : "secondary"}
-              onClick={() => {
-                setFilterMes("todos");
-                setUiPrefs({ salariosFilterMes: "todos" });
-              }}
-            >
-              Todos os meses
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={() => irMesPagamento(-1)}>
+              ◀ Mês ant.
             </Button>
-            {mesesDisponiveis.map(([k, label]) => (
-              <Button
-                key={k}
-                type="button"
-                size="sm"
-                variant={filterMes === k ? "default" : "secondary"}
-                onClick={() => {
-                  setFilterMes(k);
-                  setUiPrefs({ salariosFilterMes: k });
-                }}
-              >
-                {label}
-              </Button>
-            ))}
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                const list = recibosFiltrados.length ? recibosFiltrados : recibosSalario;
-                if (!list.length) {
-                  toast.error("Não há recibos. Use «Gerar recibos do mês» primeiro.");
-                  return;
-                }
-                verDocumento(
-                  "Recibos e autorização de pagamento",
-                  pacoteRecibosComAutorizacaoHtml(escola, list),
-                );
-              }}
+            <select
+              className="h-9 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-sm"
+              value={mesActivoKey}
+              onChange={(e) => escolherMesPagamento(e.target.value)}
             >
-              PDF
+              {opcoesMesReferencia().map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <Button type="button" size="sm" variant="secondary" onClick={() => irMesPagamento(1)}>
+              Mês seg. ▶
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                // Lista completa do filtro actual (todos os que cabem na tabela com scroll)
-                const list = recibosFiltrados;
-                if (!list.length) {
-                  toast.error("Lista vazia. Ajuste o filtro (Pagos / mês).");
-                  return;
-                }
-                openPrintHtml(
-                  listaRecibosCompletaHtml(escola, list, filterRec, filterMes),
-                  "Lista recibos completa",
-                );
-              }}
-            >
-              Imprimir listagem
-            </Button>
-            {canEdit ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                title="Garante os 7 de Agosto 2026 como pagos e alinha o extrato Banco BAI (sem duplicar)"
-                onClick={forcarSetePagosAgosto}
-              >
-                Forçar 7 pagos (Agosto)
-              </Button>
-            ) : null}
           </div>
         </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {(["todos", "por_pagar", "pagos"] as const).map((f) => (
+            <Button
+              key={f}
+              type="button"
+              size="sm"
+              variant={filterRec === f ? "default" : "secondary"}
+              onClick={() => setFilterRec(f)}
+            >
+              {f === "todos"
+                ? `Todos (${recibosDoMes.length})`
+                : f === "pagos"
+                  ? `Pagos (${pagosMes})`
+                  : `Por pagar (${porPagarMes})`}
+            </Button>
+          ))}
+          <span className="mx-0.5 text-[var(--color-muted)]">|</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              const list = recibosFiltrados;
+              if (!list.length) {
+                toast.error("Não há recibos neste filtro. Gere recibos do mês ou mude o filtro.");
+                return;
+              }
+              verDocumento(
+                `Recibos · ${mesActivoLabel}`,
+                pacoteRecibosComAutorizacaoHtml(escola, list),
+              );
+            }}
+          >
+            Imprimir recibos
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              const list = recibosFiltrados;
+              if (!list.length) {
+                toast.error("Lista vazia.");
+                return;
+              }
+              openPrintHtml(
+                listaRecibosCompletaHtml(escola, list, filterRec, mesActivoKey),
+                "Lista recibos",
+              );
+            }}
+          >
+            Listagem
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowFerramentas((v) => !v)}
+          >
+            {showFerramentas ? "Ocultar ferramentas" : "Ferramentas"}
+          </Button>
+        </div>
+
+        {showFerramentas && canEdit ? (
+          <div className="mb-3 rounded border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-950">
+            <p className="mb-2">
+              Ferramentas avançadas (não alteram automaticamente o extrato sem confirmação). Total
+              histórico de pagos na app: {totalPagos}.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              title="Garante os 7 de Agosto 2026 como pagos e alinha o extrato Banco BAI (sem duplicar)"
+              onClick={forcarSetePagosAgosto}
+            >
+              Forçar 7 pagos (Agosto 2026) + BAI
+            </Button>
+          </div>
+        ) : null}
+
         <div
           ref={listPrintRef}
           className="max-h-[min(70vh,720px)] overflow-auto rounded-[var(--radius)] border border-[var(--color-line)] print:max-h-none print:overflow-visible"
@@ -1921,7 +2041,6 @@ function Salarios() {
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="sticky top-0 z-10 bg-[var(--color-surface-2)] text-xs uppercase text-[var(--color-muted)] shadow-sm">
               <tr>
-                <th className="px-3 py-2">Mês</th>
                 <th className="px-3 py-2">Nome</th>
                 <th className="px-3 py-2 text-right">Líquido</th>
                 <th className="px-3 py-2">Dias</th>
@@ -1932,20 +2051,27 @@ function Salarios() {
             <tbody>
               {recibosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-[var(--color-muted)]">
-                    Ainda não há recibos. Use «Gerar recibos do mês».
+                  <td colSpan={5} className="px-3 py-6 text-center text-[var(--color-muted)]">
+                    Ainda não há recibos para {mesActivoLabel}. Use «Gerar recibos».
                   </td>
                 </tr>
               ) : (
                 recibosFiltrados.map((r) => (
                   <tr key={r.id} className="border-t border-[var(--color-line)]">
-                    <td className="px-3 py-2">{r.mes}</td>
-                    <td className="px-3 py-2">{r.nome}</td>
+                    <td className="px-3 py-2 font-medium">{r.nome}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatKz(r.liquido)}</td>
                     <td className="px-3 py-2">
                       {r.diasTrab}/{r.diasUteis}
                     </td>
-                    <td className="px-3 py-2">{r.pago ? "Pago" : "Por pagar"}</td>
+                    <td className="px-3 py-2">
+                      {r.pago ? (
+                        <span className="text-emerald-800" title="Mantém-se alinhado com o extrato BAI quando reconciliado">
+                          Pago (BAI)
+                        </span>
+                      ) : (
+                        <span className="text-amber-800">Por pagar</span>
+                      )}
+                    </td>
                     <td className="no-print px-3 py-2">
                       <div className="flex flex-wrap gap-1">
                         <Button
@@ -1956,24 +2082,10 @@ function Salarios() {
                             verDocumento(`Recibo — ${r.nome}`, wrapReciboPage(escola, r))
                           }
                         >
-                          Ver recibo
+                          Ver
                         </Button>
                         {canEdit ? (
                           <>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              title="Alterar mês de referência (ex.: Agosto)"
-                              onClick={() => {
-                                setEditRecibo(r);
-                                setEditMesKey(r.mesKey || "");
-                                setEditMesLabel(r.mes || "");
-                                setEditDataPag(r.dataPag || todayIso());
-                              }}
-                            >
-                              Mês
-                            </Button>
                             <Button
                               type="button"
                               size="sm"
@@ -1982,7 +2094,7 @@ function Salarios() {
                                 setReciboSalarioPago(r.id, !r.pago, r.dataPag || todayIso())
                               }
                             >
-                              {r.pago ? "Marcar por pagar" : "Marcar pago"}
+                              {r.pago ? "Por pagar" : "Marcar pago"}
                             </Button>
                             <Button
                               type="button"
@@ -1998,11 +2110,10 @@ function Salarios() {
                                   return;
                                 }
                                 removeReciboSalario(r.id);
-                                toast.success("Recibo apagado. Pode gerar outro em «Gerar recibos do mês».");
+                                toast.success("Recibo apagado. Pode gerar outro em «Gerar recibos».");
                               }}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                              <span className="ml-1 hidden sm:inline">Apagar</span>
                             </Button>
                           </>
                         ) : null}
@@ -2126,7 +2237,7 @@ function Salarios() {
       <Dialog open={listPickerOpen} onOpenChange={(o) => !o && setListPickerOpen(false)}>
         <DialogContent className="flex max-h-[90vh] max-w-lg flex-col gap-3">
           <DialogHeader>
-            <DialogTitle>Imprimir lista — escolher funcionários</DialogTitle>
+            <DialogTitle>Lista + IBAN — escolher funcionários</DialogTitle>
           </DialogHeader>
           {(() => {
             const now = new Date();
