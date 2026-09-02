@@ -4,6 +4,8 @@ import {
   loadFinanceCloud,
   saveFinanceCloud,
   sliceFromStoreDetailed,
+  loadAlunoFotos,
+  saveAlunoFoto,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
 import { useFinance } from "@/lib/store";
@@ -32,7 +34,10 @@ export function HydrateStore() {
 
     async function pullAndMerge(reason: string) {
       try {
-        const remote = await loadFinanceCloud();
+        const [remote, remoteFotos] = await Promise.all([
+          loadFinanceCloud(),
+          loadAlunoFotos().catch(() => ({} as Record<string, string>)),
+        ]);
         if (cancelled) return;
         const remoteTs = Date.parse(remote.updatedAt) || 0;
         const hasRemote =
@@ -47,25 +52,30 @@ export function HydrateStore() {
             Object.keys(remote.payload.alunosOverrides || {}).length ||
             Object.keys(remote.payload.salariosOverrides || {}).length);
 
+        applyingRemote.current = true;
         if (hasRemote) {
-          applyingRemote.current = true;
           // Sempre funde (merge por id) — não sobrescreve o lado local
           applyPayload(remote.payload);
           localStorage.setItem(LOCAL_TS_KEY, String(Math.max(remoteTs, Date.now())));
-          applyingRemote.current = false;
-          lastPull.current = Date.now();
-          if (reason === "boot") {
-            toast.message(
-              remote.source === "neon"
-                ? "Dados sincronizados da nuvem — pode continuar neste dispositivo"
-                : "Dados sincronizados (servidor de pré-visualização)",
-            );
-          }
         }
-        // Após fundir, envia o estado unificado para a nuvem
+        // Fotos na tabela dedicada — aplicar sempre (mesmo sem outros dados remotos)
+        if (remoteFotos && Object.keys(remoteFotos).length > 0) {
+          applyAlunoFotos(remoteFotos);
+        }
+        applyingRemote.current = false;
+        lastPull.current = Date.now();
+        if (reason === "boot" && (hasRemote || Object.keys(remoteFotos || {}).length > 0)) {
+          toast.message(
+            remote.source === "neon"
+              ? "Dados sincronizados da nuvem — pode continuar neste dispositivo"
+              : "Dados sincronizados (servidor de pré-visualização)",
+          );
+        }
+        // Após fundir, envia o estado unificado para a nuvem (+ fotos locais em falta)
         if (hasLocalData() || hasRemote) {
           await pushCloud();
         }
+        await pushLocalAlunoFotos(remoteFotos || {});
       } catch (e) {
         console.warn("[cloud] load", e);
         if (reason === "boot") {
@@ -199,10 +209,10 @@ function applyPayload(p: FinanceCloudPayload) {
       const id = (a as { id?: string }).id;
       return id && !deletedAlunos.has(id);
     }) as never[],
-    alunosOverrides: {
-      ...(local.alunosOverrides || {}),
-      ...((p.alunosOverrides as never) || {}),
-    } as never,
+    alunosOverrides: mergeAlunoOverrides(
+      local.alunosOverrides || {},
+      (p.alunosOverrides as Record<string, Record<string, unknown>>) || {},
+    ) as never,
     alunosDeletedIds: Array.from(deletedAlunos),
     mensalidades: mensMerged as never[],
     fundoExtra: mergeById(
@@ -262,19 +272,10 @@ function applyPayload(p: FinanceCloudPayload) {
 
 /** Evita spam de toasts se a nuvem falhar várias vezes seguidas. */
 let lastCloudErrorToast = 0;
-let lastFotosOmitidasToast = 0;
 
 async function pushCloud() {
   try {
-    const { payload, fotosOmitidas } = sliceFromStoreDetailed(useFinance.getState());
-    if (fotosOmitidas > 0 && Date.now() - lastFotosOmitidasToast > 20_000) {
-      lastFotosOmitidasToast = Date.now();
-      toast.warning(
-        fotosOmitidas === 1
-          ? "1 foto de aluno ficou só neste dispositivo (demasiado grande para a nuvem). Regrave a foto para comprimir."
-          : `${fotosOmitidas} fotos de alunos ficaram só neste dispositivo (demasiado grandes para a nuvem). Regrave-as para comprimir.`,
-      );
-    }
+    const { payload } = sliceFromStoreDetailed(useFinance.getState());
     const res = await saveFinanceCloud({ data: payload });
     if (res?.updatedAt) {
       localStorage.setItem(LOCAL_TS_KEY, String(Date.parse(res.updatedAt) || Date.now()));
@@ -291,7 +292,7 @@ async function pushCloud() {
         toast.message("Sem rede — dados guardados só neste dispositivo. Sincronizam quando houver internet.");
       } else if (/fetch|network|Failed to fetch|413|payload|body|too large|JSON/i.test(msg)) {
         toast.error(
-          "Falha ao gravar na nuvem (dados ou foto demasiado grandes, ou rede). Os dados ficam neste PC; tente de novo ou regrave fotos mais leves.",
+          "Falha ao gravar na nuvem (dados demasiado grandes ou rede). Os dados ficam neste PC; tente de novo.",
         );
       } else {
         toast.error(
@@ -299,5 +300,97 @@ async function pushCloud() {
         );
       }
     }
+  }
+}
+
+/** Funde overrides preservando a foto se um dos lados a tiver. */
+function mergeAlunoOverrides(
+  local: Record<string, Record<string, unknown> | Partial<Record<string, unknown>>>,
+  remote: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const ids = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
+  const out: Record<string, unknown> = {};
+  for (const id of ids) {
+    const L = (local?.[id] || {}) as Record<string, unknown>;
+    const R = (remote?.[id] || {}) as Record<string, unknown>;
+    const foto =
+      (typeof R.foto === "string" && R.foto) ||
+      (typeof L.foto === "string" && L.foto) ||
+      undefined;
+    const merged = { ...L, ...R };
+    if (foto) merged.foto = foto;
+    else delete merged.foto;
+    out[id] = merged;
+  }
+  return out;
+}
+
+/** Aplica fotos da tabela `aluno_fotos` aos overrides / extras locais. */
+function applyAlunoFotos(fotos: Record<string, string>) {
+  const state = useFinance.getState();
+  const overrides = { ...(state.alunosOverrides || {}) } as Record<
+    string,
+    Record<string, unknown>
+  >;
+  let extras = [...(state.alunosExtra || [])];
+  let changed = false;
+
+  for (const [id, dataUrl] of Object.entries(fotos)) {
+    if (!id || !dataUrl) continue;
+    const extraIdx = extras.findIndex((a) => a.id === id);
+    if (extraIdx >= 0) {
+      if (extras[extraIdx].foto !== dataUrl) {
+        extras = extras.map((a, i) => (i === extraIdx ? { ...a, foto: dataUrl } : a));
+        changed = true;
+      }
+    } else {
+      const prev = overrides[id] || {};
+      if (prev.foto !== dataUrl) {
+        overrides[id] = { ...prev, foto: dataUrl };
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    useFinance.setState({
+      alunosOverrides: overrides as never,
+      alunosExtra: extras as never,
+    });
+  }
+}
+
+/**
+ * Envia para a tabela dedicada as fotos que existem localmente
+ * e ainda não estão (ou diferem) na nuvem.
+ */
+async function pushLocalAlunoFotos(remoteFotos: Record<string, string>) {
+  try {
+    const state = useFinance.getState();
+    const localMap: Record<string, string> = {};
+
+    for (const a of state.alunosExtra || []) {
+      if (a?.id && typeof a.foto === "string" && a.foto.startsWith("data:image")) {
+        localMap[a.id] = a.foto;
+      }
+    }
+    for (const [id, ov] of Object.entries(state.alunosOverrides || {})) {
+      const foto = (ov as { foto?: string })?.foto;
+      if (typeof foto === "string" && foto.startsWith("data:image")) {
+        localMap[id] = foto;
+      }
+    }
+
+    const tasks: Promise<unknown>[] = [];
+    for (const [id, dataUrl] of Object.entries(localMap)) {
+      if (remoteFotos[id] === dataUrl) continue;
+      tasks.push(
+        saveAlunoFoto({ data: { id, dataUrl } }).catch((e) => {
+          console.warn("[aluno-fotos] save", id, e);
+        }),
+      );
+    }
+    if (tasks.length) await Promise.all(tasks);
+  } catch (e) {
+    console.warn("[aluno-fotos] pushLocal", e);
   }
 }

@@ -149,12 +149,15 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
     }
   });
 
-/** Limite da data-URL da foto do aluno no payload da nuvem (alinhado com image.ts). */
+/**
+ * Fotos de aluno NÃO vão no JSON finance_cloud — usam a tabela `aluno_fotos`.
+ * (base64 no JSON rebentava o payload e falhava entre PCs.)
+ */
 export const ALUNO_FOTO_MAX_SYNC_CLOUD = 55_000;
 
 export type SliceCloudResult = {
   payload: FinanceCloudPayload;
-  /** Quantas fotos de aluno foram omitidas por serem demasiado grandes. */
+  /** Quantas fotos de aluno foram retiradas do JSON (vão pela tabela dedicada). */
   fotosOmitidas: number;
 };
 
@@ -255,6 +258,7 @@ export function sliceFromStoreDetailed(s: {
 
 const INBOX_ANEXO_MAX_SYNC = 100_000; // ~100 KB de string data-URL
 
+/** Remove campo `foto` dos alunos no JSON da nuvem (vai para tabela aluno_fotos). */
 function stripLargeFotosFromAlunos(list: unknown[]): {
   list: unknown[];
   omitted: number;
@@ -262,8 +266,7 @@ function stripLargeFotosFromAlunos(list: unknown[]): {
   let omitted = 0;
   const out = (list || []).map((raw) => {
     const a = raw as { foto?: string; [k: string]: unknown };
-    const foto = a?.foto;
-    if (typeof foto === "string" && foto.length > ALUNO_FOTO_MAX_SYNC_CLOUD) {
+    if (typeof a?.foto === "string" && a.foto.length > 0) {
       omitted += 1;
       const { foto: _drop, ...rest } = a;
       return rest;
@@ -281,8 +284,7 @@ function stripLargeFotosFromOverrides(map: Record<string, unknown>): {
   const out: Record<string, unknown> = {};
   for (const [id, val] of Object.entries(map || {})) {
     const a = val as { foto?: string; [k: string]: unknown };
-    const foto = a?.foto;
-    if (typeof foto === "string" && foto.length > ALUNO_FOTO_MAX_SYNC_CLOUD) {
+    if (typeof a?.foto === "string" && a.foto.length > 0) {
       omitted += 1;
       const { foto: _drop, ...rest } = a;
       out[id] = rest;
@@ -292,6 +294,83 @@ function stripLargeFotosFromOverrides(map: Record<string, unknown>): {
   }
   return { map: out, omitted };
 }
+
+async function ensureAlunoFotosTable(sql: {
+  query: (text: string, params?: unknown[]) => Promise<unknown[]>;
+}) {
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS aluno_fotos (
+      id TEXT PRIMARY KEY,
+      data_url TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+/** Grava/atualiza a foto de um aluno na tabela dedicada (multi-dispositivo). */
+export const saveAlunoFoto = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<{ ok: boolean }> => {
+    const data = (ctx as { data?: { id?: string; dataUrl?: string } }).data || {};
+    const id = String(data.id || "").trim();
+    const dataUrl = String(data.dataUrl || "");
+    if (!id || !dataUrl.startsWith("data:image")) {
+      throw new Error("Foto inválida.");
+    }
+    // Limite de segurança ~200 KB de string
+    if (dataUrl.length > 200_000) {
+      throw new Error("Foto demasiado grande para a nuvem. Regrave com compressão.");
+    }
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    await ensureAlunoFotosTable(sql);
+    const updatedAt = new Date().toISOString();
+    await sql.query(
+      `INSERT INTO aluno_fotos (id, data_url, updated_at)
+       VALUES ($1, $2, $3::timestamptz)
+       ON CONFLICT (id) DO UPDATE SET
+         data_url = EXCLUDED.data_url,
+         updated_at = EXCLUDED.updated_at`,
+      [id, dataUrl, updatedAt],
+    );
+    return { ok: true };
+  },
+);
+
+/** Remove a foto de um aluno da nuvem. */
+export const deleteAlunoFoto = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<{ ok: boolean }> => {
+    const data = (ctx as { data?: { id?: string } }).data || {};
+    const id = String(data.id || "").trim();
+    if (!id) return { ok: true };
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    await ensureAlunoFotosTable(sql);
+    await sql.query(`DELETE FROM aluno_fotos WHERE id = $1`, [id]);
+    return { ok: true };
+  },
+);
+
+/** Carrega todas as fotos de alunos da nuvem (mapa id → data URL). */
+export const loadAlunoFotos = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Record<string, string>> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    try {
+      await ensureAlunoFotosTable(sql);
+      const rows = await sql.query<{ id: string; data_url: string }>(
+        `SELECT id, data_url FROM aluno_fotos`,
+      );
+      const map: Record<string, string> = {};
+      for (const r of rows) {
+        if (r?.id && r?.data_url) map[r.id] = r.data_url;
+      }
+      return map;
+    } catch (e) {
+      console.error("[aluno-fotos] load failed", e);
+      return {};
+    }
+  },
+);
 
 function stripInboxAnexos(items: unknown[]): unknown[] {
   return (items || []).map((raw) => {

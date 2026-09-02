@@ -33,6 +33,7 @@ import {
   formatPhotoSize,
   ALUNO_FOTO_MAX_SYNC,
 } from "@/lib/image";
+import { saveAlunoFoto, deleteAlunoFoto } from "@/lib/finance-cloud";
 
 const EMPTY_FATURAS: FaturaPropina[] = [];
 
@@ -1353,6 +1354,22 @@ function Alunos() {
     }
   }
 
+  /** Grava ou remove a foto na tabela dedicada da nuvem (visível noutros PCs). */
+  async function syncFotoToCloud(id: string, foto: string | undefined) {
+    try {
+      if (foto && foto.startsWith("data:image")) {
+        await saveAlunoFoto({ data: { id, dataUrl: foto } });
+      } else {
+        await deleteAlunoFoto({ data: { id } });
+      }
+    } catch (e) {
+      console.warn("[aluno-foto] sync", e);
+      toast.warning(
+        "A foto ficou neste dispositivo, mas pode não ter chegado à nuvem. Verifique a rede e volte a gravar.",
+      );
+    }
+  }
+
   async function saveNew() {
     if (!canEdit) return;
     if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
@@ -1410,6 +1427,7 @@ function Alunos() {
       transferidoCampusCidade: form.transferidoCampusCidade,
     };
     addAluno(aluno);
+    await syncFotoToCloud(id, foto);
     toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
     setCreating(false);
     setForm(emptyForm());
@@ -1463,6 +1481,7 @@ function Alunos() {
         ...metodosFromForm(form),
         transferidoCampusCidade: form.transferidoCampusCidade,
       });
+      await syncFotoToCloud(editing.id, foto);
       toast.success(`Aluno ${editing.id} actualizado`);
       setEditing(null);
       clearDeepLink();
