@@ -81,12 +81,30 @@ const NOME_ESCOLA_FATURA =
 const CAMPUS_CIDADE_NOTA =
   "Transferido do Campus Cidade · inscrição/seguro tarifário normal · propina 100.000 Kz (1 aluno) ou 75.000 Kz (2+ irmãos do mesmo agregado) · 2026-2027";
 
+const METODO_NAO_ESCOLHIDO = "";
+const METODO_PLACEHOLDER = "— escolher —";
+
 const METODOS_PAGAMENTO = [
   "Dinheiro (em mão)",
   "Depósito em dinheiro (conta BAI)",
   "Cartão Multicaixa",
   "Transferência bancária",
 ] as const;
+
+/** True se o valor do select é um método real (não o placeholder). */
+function isMetodoEscolhido(v: string | undefined | null): boolean {
+  return Boolean(v && String(v).trim() && v !== METODO_PLACEHOLDER);
+}
+
+/** Normaliza método guardado → valor do select (vazio = — escolher —). */
+function normalizeMetodoStored(v: string | undefined | null): string {
+  if (!v || v === METODO_PLACEHOLDER) return METODO_NAO_ESCOLHIDO;
+  if (v === "Dinheiro") return "Dinheiro (em mão)";
+  if ((METODOS_PAGAMENTO as readonly string[]).includes(v)) return v;
+  // "Misto (...)" não é opção de uma rubrica
+  if (v.startsWith("Misto")) return METODO_NAO_ESCOLHIDO;
+  return METODO_NAO_ESCOLHIDO;
+}
 
 type EscolaContacto = {
   morada: string;
@@ -253,17 +271,17 @@ function emptyForm(): FormState {
     alergiasAlimentares: "",
     clinicaProxima: "",
     grupoSanguineo: "",
-    metodoPagamento: "Dinheiro",
-    metodoInscricao: "Dinheiro",
-    metodoSeguro: "Dinheiro",
-    metodoManuais: "Dinheiro",
-    metodoCadernos: "Dinheiro",
-    metodoAtl: "Dinheiro",
-    metodoUniforme: "Dinheiro",
-    metodoMensalidade: "Dinheiro",
-    metodoTransporte: "Dinheiro",
-    metodoAlimentacao: "Dinheiro",
-    metodoCurso: "Dinheiro",
+    metodoPagamento: METODO_NAO_ESCOLHIDO,
+    metodoInscricao: METODO_NAO_ESCOLHIDO,
+    metodoSeguro: METODO_NAO_ESCOLHIDO,
+    metodoManuais: METODO_NAO_ESCOLHIDO,
+    metodoCadernos: METODO_NAO_ESCOLHIDO,
+    metodoAtl: METODO_NAO_ESCOLHIDO,
+    metodoUniforme: METODO_NAO_ESCOLHIDO,
+    metodoMensalidade: METODO_NAO_ESCOLHIDO,
+    metodoTransporte: METODO_NAO_ESCOLHIDO,
+    metodoAlimentacao: METODO_NAO_ESCOLHIDO,
+    metodoCurso: METODO_NAO_ESCOLHIDO,
     pin: "",
   };
 }
@@ -573,7 +591,7 @@ function MatriculaForm({
               <Label className="text-xs">{label}</Label>
               <select
                 className="flex h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-sm"
-                value={form[key]}
+                value={form[key] || METODO_NAO_ESCOLHIDO}
                 onChange={(e) => {
                   const next = { ...form, [key]: e.target.value };
                   const vals = [
@@ -587,12 +605,18 @@ function MatriculaForm({
                     next.metodoTransporte,
                     next.metodoAlimentacao,
                     next.metodoCurso,
-                  ];
+                  ].filter(isMetodoEscolhido);
                   const uniq = [...new Set(vals)];
-                  next.metodoPagamento = uniq.length === 1 ? uniq[0] : "Misto";
+                  next.metodoPagamento =
+                    uniq.length === 0
+                      ? METODO_NAO_ESCOLHIDO
+                      : uniq.length === 1
+                        ? uniq[0]
+                        : "Misto";
                   setForm(next);
                 }}
               >
+                <option value={METODO_NAO_ESCOLHIDO}>{METODO_PLACEHOLDER}</option>
                 {METODOS_PAGAMENTO.map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}
@@ -1282,17 +1306,17 @@ function Alunos() {
       alergiasAlimentares: a.alergiasAlimentares || "",
       clinicaProxima: a.clinicaProxima || "",
       grupoSanguineo: a.grupoSanguineo || "",
-      metodoPagamento: a.metodoPagamento || "Dinheiro",
-      metodoInscricao: a.metodosPagamento?.inscricao || a.metodoPagamento || "Dinheiro",
-      metodoSeguro: a.metodosPagamento?.seguro || a.metodoPagamento || "Dinheiro",
-      metodoManuais: a.metodosPagamento?.manuais || a.metodoPagamento || "Dinheiro",
-      metodoCadernos: a.metodosPagamento?.cadernos || a.metodoPagamento || "Dinheiro",
-      metodoAtl: a.metodosPagamento?.atl || a.metodoPagamento || "Dinheiro",
-      metodoUniforme: a.metodosPagamento?.uniforme || a.metodoPagamento || "Dinheiro",
-      metodoMensalidade: a.metodosPagamento?.mensalidade || a.metodoPagamento || "Dinheiro",
-      metodoTransporte: a.metodosPagamento?.transporte || a.metodoPagamento || "Dinheiro",
-      metodoAlimentacao: a.metodosPagamento?.alimentacao || a.metodoPagamento || "Dinheiro",
-      metodoCurso: a.metodosPagamento?.curso || a.metodoPagamento || "Dinheiro",
+      metodoPagamento: normalizeMetodoStored(a.metodoPagamento),
+      metodoInscricao: normalizeMetodoStored(a.metodosPagamento?.inscricao || a.metodoPagamento),
+      metodoSeguro: normalizeMetodoStored(a.metodosPagamento?.seguro || a.metodoPagamento),
+      metodoManuais: normalizeMetodoStored(a.metodosPagamento?.manuais || a.metodoPagamento),
+      metodoCadernos: normalizeMetodoStored(a.metodosPagamento?.cadernos || a.metodoPagamento),
+      metodoAtl: normalizeMetodoStored(a.metodosPagamento?.atl || a.metodoPagamento),
+      metodoUniforme: normalizeMetodoStored(a.metodosPagamento?.uniforme || a.metodoPagamento),
+      metodoMensalidade: normalizeMetodoStored(a.metodosPagamento?.mensalidade || a.metodoPagamento),
+      metodoTransporte: normalizeMetodoStored(a.metodosPagamento?.transporte || a.metodoPagamento),
+      metodoAlimentacao: normalizeMetodoStored(a.metodosPagamento?.alimentacao || a.metodoPagamento),
+      metodoCurso: normalizeMetodoStored(a.metodosPagamento?.curso || a.metodoPagamento),
       pin: "",
     });
   }
@@ -1320,24 +1344,52 @@ function Alunos() {
     metodoPagamento: string;
     metodosPagamento: NonNullable<Aluno["metodosPagamento"]>;
   } {
+    const pick = (v: string) => (isMetodoEscolhido(v) ? v : "");
     const metodosPagamento = {
-      inscricao: form.metodoInscricao || "Dinheiro",
-      seguro: form.metodoSeguro || "Dinheiro",
-      manuais: form.metodoManuais || "Dinheiro",
-      cadernos: form.metodoCadernos || "Dinheiro",
-      atl: form.metodoAtl || "Dinheiro",
-      uniforme: form.metodoUniforme || "Dinheiro",
-      mensalidade: form.metodoMensalidade || "Dinheiro",
-      transporte: form.metodoTransporte || "Dinheiro",
-      alimentacao: form.metodoAlimentacao || "Dinheiro",
-      curso: form.metodoCurso || "Dinheiro",
+      inscricao: pick(form.metodoInscricao),
+      seguro: pick(form.metodoSeguro),
+      manuais: pick(form.metodoManuais),
+      cadernos: pick(form.metodoCadernos),
+      atl: pick(form.metodoAtl),
+      uniforme: pick(form.metodoUniforme),
+      mensalidade: pick(form.metodoMensalidade),
+      transporte: pick(form.metodoTransporte),
+      alimentacao: pick(form.metodoAlimentacao),
+      curso: pick(form.metodoCurso),
     };
-    const unique = [...new Set(Object.values(metodosPagamento))];
+    const unique = [...new Set(Object.values(metodosPagamento).filter(Boolean))];
     const metodoPagamento =
-      unique.length === 1
-        ? unique[0]
-        : `Misto (${unique.join(" + ")})`;
+      unique.length === 0
+        ? ""
+        : unique.length === 1
+          ? unique[0]
+          : `Misto (${unique.join(" + ")})`;
     return { metodoPagamento, metodosPagamento };
+  }
+
+  /**
+   * Para rubricas com valor > 0, o método de pagamento tem de estar escolhido.
+   * Evita gravar vários métodos “por defeito” sem o utilizador ter escolhido.
+   */
+  function validarMetodosObrigatorios(form: FormState): string | null {
+    const t = calcTotais(form);
+    const checks: [number, string, string][] = [
+      [t.inscricao, form.metodoInscricao, "Inscrição"],
+      [t.seguro, form.metodoSeguro, "Seguro escolar"],
+      [t.manuais, form.metodoManuais, "Manuais"],
+      [t.cadernos, form.metodoCadernos, "Cadernos"],
+      [t.extras, form.metodoAtl, "ATL"],
+      [t.uniforme, form.metodoUniforme, "Uniforme"],
+      [t.mensalidade1, form.metodoMensalidade, "Mensalidade / propina"],
+      [t.transporte, form.metodoTransporte, "Transporte"],
+      [t.alimentacao, form.metodoAlimentacao, "Alimentação"],
+      [t.curso, form.metodoCurso, "Curso intensivo"],
+    ];
+    const emFalta = checks
+      .filter(([valor, metodo]) => valor > 0 && !isMetodoEscolhido(metodo))
+      .map(([, , label]) => label);
+    if (emFalta.length === 0) return null;
+    return `Escolha o método de pagamento para: ${emFalta.join(", ")}.`;
   }
 
   /** Garante foto leve o suficiente para a nuvem (re-comprime se necessário). */
@@ -1378,6 +1430,11 @@ function Alunos() {
     }
     if (!form.nome.trim()) {
       toast.error("Indique o nome do aluno.");
+      return;
+    }
+    const faltaMetodo = validarMetodosObrigatorios(form);
+    if (faltaMetodo) {
+      toast.error(faltaMetodo);
       return;
     }
     const t = calcTotais(form);
@@ -1437,6 +1494,11 @@ function Alunos() {
     if (!editing || !canEdit) return;
     if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
       toast.error("Código incorrecto.");
+      return;
+    }
+    const faltaMetodo = validarMetodosObrigatorios(form);
+    if (faltaMetodo) {
+      toast.error(faltaMetodo);
       return;
     }
     const t = calcTotais(form);
