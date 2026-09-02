@@ -3,7 +3,6 @@ import { FileText, Pencil, Plus, Printer, Trash2, UserPlus } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
-import { PrintActions } from "@/components/print-actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -676,45 +675,97 @@ function reciboHonorarioHtml(
 </article>`;
 }
 
+type ListaFuncionarioRow = {
+  nome: string;
+  funcao: string;
+  salario: number;
+  iban?: string;
+  diasTrab?: number;
+  diasUteis?: number;
+  mes?: string;
+};
+
+/**
+ * Documento oficial de lista de funcionários (A4 HTML — mesma qualidade para
+ * «Imprimir» e «Imprimir lista», nunca screenshot do ecrã).
+ * @param mode "completo" = nome, função, honorário, IBAN + total do mês
+ *             "simples"  = só nome, função, honorário, IBAN (todos)
+ */
 function listaFuncionariosHtml(
   escola: { nome: string; subtitulo?: string; ano?: string },
-  rows: { nome: string; funcao: string; salario: number; diasTrab: number; diasUteis: number; mes: string }[],
+  rows: ListaFuncionarioRow[],
   titulo = "Lista de funcionários e honorários",
+  opts?: { mode?: "completo" | "simples"; mostrarTotal?: boolean },
 ) {
+  const mode = opts?.mode || "completo";
+  const mostrarTotal = opts?.mostrarTotal !== false;
   const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const total = rows.reduce((s, r) => s + (Number(r.salario) || 0), 0);
   const body = rows
     .map(
-      (r) =>
+      (r, i) =>
         `<tr>
-          <td>${r.nome}</td>
-          <td>${r.funcao || "—"}</td>
+          <td class="n">${i + 1}</td>
+          <td>${escapeHtml(r.nome)}</td>
+          <td>${escapeHtml(r.funcao || "—")}</td>
           <td class="num">${formatKz(r.salario)}</td>
-          <td class="num">${r.diasTrab}/${r.diasUteis}</td>
-          <td>${r.mes || "—"}</td>
+          <td class="iban">${escapeHtml(r.iban || "—")}</td>
         </tr>`,
     )
     .join("");
+  const totalBlock =
+    mostrarTotal
+      ? `<div class="total">
+  <span>Total de salários a pagar${rows[0]?.mes ? ` · ${escapeHtml(rows[0].mes)}` : ""}</span>
+  <strong>${formatKz(total)}</strong>
+</div>
+<p class="muted">${rows.length} funcionário(s) · Documento gerado pelo Departamento de Finanças.</p>`
+      : `<p class="muted">${rows.length} funcionário(s) · Documento gerado pelo Departamento de Finanças.</p>`;
+
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
   @page { size: A4; margin: 14mm; }
-  body { font-family: system-ui, sans-serif; font-size: 12px; color: #0f172a; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 12px; color: #0f172a; margin: 0; }
   .head { display:flex; gap:12px; align-items:center; border-bottom:2px solid #009543; padding-bottom:10px; margin-bottom:14px; }
   .head img { width:56px; height:56px; object-fit:contain; }
-  h1 { font-size: 15px; margin: 0 0 12px; }
+  h1 { font-size: 15px; margin: 0 0 4px; color: #0f172a; }
+  .sub { color:#64748b; font-size:11px; margin: 0 0 14px; }
   table { width:100%; border-collapse:collapse; }
-  th { text-align:left; font-size:10px; text-transform:uppercase; color:#64748b; border-bottom:2px solid #cbd5e1; padding:8px 6px; }
-  td { padding:8px 6px; border-bottom:1px solid #e2e8f0; }
-  .num { text-align:right; font-variant-numeric:tabular-nums; }
-  .muted { color:#64748b; font-size:11px; }
+  th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.03em; color:#64748b; border-bottom:2px solid #cbd5e1; padding:8px 6px; }
+  td { padding:8px 6px; border-bottom:1px solid #e2e8f0; vertical-align: top; }
+  td.n { width: 2.2em; color: #94a3b8; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .iban { font-family: ui-monospace, monospace; font-size: 10.5px; word-break: break-all; }
+  .total { margin-top: 16px; padding: 12px 14px; background: #f0fdf4; border: 1.5px solid #009543; border-radius: 6px; display:flex; justify-content:space-between; align-items:center; gap:12px; font-size: 13px; }
+  .total strong { font-size: 16px; color: #009543; font-variant-numeric: tabular-nums; }
+  .muted { color:#64748b; font-size:11px; margin-top: 12px; }
 </style></head><body>
-<div class="head"><img src="${logo}" alt="Logo"/><div><strong>${escola.nome}</strong><br/><span class="muted">${escola.subtitulo || ""} · ${escola.ano || ""}</span></div></div>
-<h1>${titulo}</h1>
+<div class="head"><img src="${logo}" alt="Logo"/><div><strong>${escapeHtml(escola.nome)}</strong><br/><span class="muted">${escapeHtml(escola.subtitulo || "")} · ${escapeHtml(escola.ano || "")}</span></div></div>
+<h1>${escapeHtml(titulo)}</h1>
+<p class="sub">${mode === "simples" ? "Nome, função, honorário e IBAN" : "Lista de pagamento de honorários"}</p>
 <table>
-  <thead><tr><th>Funcionário</th><th>Função</th><th class="num">Salário</th><th class="num">Dias trab.</th><th>Mês</th></tr></thead>
-  <tbody>${body}</tbody>
+  <thead>
+    <tr>
+      <th class="n">N.º</th>
+      <th>Nome</th>
+      <th>Função</th>
+      <th class="num">Honorário</th>
+      <th>IBAN</th>
+    </tr>
+  </thead>
+  <tbody>${body || `<tr><td colspan="5" class="muted">Sem funcionários seleccionados.</td></tr>`}</tbody>
 </table>
-<p class="muted">Documento gerado pelo Departamento de Finanças.</p>
+${totalBlock}
 </body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function pacoteRecibosComAutorizacaoHtml(
@@ -1217,6 +1268,9 @@ function Salarios() {
   const [genOpen, setGenOpen] = useState(false);
   const [genMes, setGenMes] = useState("");
   const [genMesKey, setGenMesKey] = useState("");
+  /** Diálogo «Imprimir lista»: escolher quem entra na listagem + total do mês. */
+  const [listPickerOpen, setListPickerOpen] = useState(false);
+  const [listSelectedIds, setListSelectedIds] = useState<Set<string>>(() => new Set());
 
   // Preferência de mês partilhada na nuvem (PC ↔ telemóvel)
   useEffect(() => {
@@ -1599,32 +1653,46 @@ function Salarios() {
                 </Button>
               </>
             ) : null}
-            <PrintActions
-              targetRef={printRef}
-              filename="salarios.pdf"
-              shareTitle="Salários · École Consulaire"
-              shareText="Lista de funcionários · Departamento de Finanças."
-            />
             <Button
               type="button"
               variant="secondary"
-              className="hidden shrink-0 sm:inline-flex"
+              className="shrink-0"
+              title="Impressão oficial: Nome, função, honorário e IBAN de todos os funcionários"
               onClick={() => {
                 const now = new Date();
-                const mesAtual = now.toLocaleDateString("pt-PT", { month: "long", year: "numeric" });
+                const mesAtual = now.toLocaleDateString("pt-PT", {
+                  month: "long",
+                  year: "numeric",
+                });
                 const mesLabel = mesAtual.charAt(0).toUpperCase() + mesAtual.slice(1);
                 const list = rows.map((r) => ({
                   nome: r.nome,
                   funcao: r.funcao,
                   salario: r.salario,
-                  diasTrab: r.diasTrab,
-                  diasUteis: r.diasUteis,
+                  iban: r.iban || "",
                   mes: mesLabel,
                 }));
-                verDocumento(
-                  `Lista funcionários — ${mesLabel}`,
-                  listaFuncionariosHtml(escola, list, `Lista de funcionários · ${mesLabel}`),
+                const html = listaFuncionariosHtml(
+                  escola,
+                  list,
+                  `Funcionários · ${mesLabel}`,
+                  { mode: "simples", mostrarTotal: true },
                 );
+                // Pré-visualização + impressão HTML oficial (não é screenshot do ecrã)
+                verDocumento(`Imprimir — ${mesLabel}`, html);
+              }}
+            >
+              <Printer className="mr-1 size-4" />
+              Imprimir
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="shrink-0"
+              title="Escolher funcionários, ver total do mês e pré-visualizar antes de imprimir"
+              onClick={() => {
+                setListSelectedIds(new Set(rows.map((r) => r.id)));
+                setListPickerOpen(true);
               }}
             >
               Imprimir lista
@@ -2054,7 +2122,157 @@ function Salarios() {
         </DialogContent>
       </Dialog>
 
-      {/* Pré-visualização contrato / autorização / recibo */}
+      {/* Escolher funcionários para «Imprimir lista» */}
+      <Dialog open={listPickerOpen} onOpenChange={(o) => !o && setListPickerOpen(false)}>
+        <DialogContent className="flex max-h-[90vh] max-w-lg flex-col gap-3">
+          <DialogHeader>
+            <DialogTitle>Imprimir lista — escolher funcionários</DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const now = new Date();
+            const mesAtual = now.toLocaleDateString("pt-PT", {
+              month: "long",
+              year: "numeric",
+            });
+            const mesLabel = mesAtual.charAt(0).toUpperCase() + mesAtual.slice(1);
+            const selected = rows.filter((r) => listSelectedIds.has(r.id));
+            const totalSel = selected.reduce((s, r) => s + (r.salario || 0), 0);
+            const allIds = rows.map((r) => r.id);
+            const allOn = allIds.length > 0 && allIds.every((id) => listSelectedIds.has(id));
+            return (
+              <>
+                <p className="text-sm text-[var(--color-muted)]">
+                  Marque quem deve aparecer na listagem de <strong>{mesLabel}</strong>. O total
+                  actualiza automaticamente.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setListSelectedIds(new Set(allIds))}
+                  >
+                    Seleccionar todos
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setListSelectedIds(new Set())}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+                <div className="min-h-0 max-h-[42vh] flex-1 space-y-1 overflow-y-auto rounded border border-[var(--color-line)] p-2">
+                  {rows.length === 0 ? (
+                    <p className="p-2 text-sm text-[var(--color-muted)]">Sem funcionários.</p>
+                  ) : (
+                    rows.map((r) => {
+                      const on = listSelectedIds.has(r.id);
+                      return (
+                        <label
+                          key={r.id}
+                          className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 hover:bg-[var(--color-surface-2)]"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={on}
+                            onChange={() => {
+                              setListSelectedIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(r.id)) next.delete(r.id);
+                                else next.add(r.id);
+                                return next;
+                              });
+                            }}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium leading-tight">{r.nome}</span>
+                            <span className="block text-xs text-[var(--color-muted)]">
+                              {r.funcao || "—"} · {formatKz(r.salario)}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="rounded-[var(--radius-sm)] border border-emerald-600/40 bg-emerald-50 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>
+                      {selected.length} de {rows.length} seleccionado(s)
+                      {allOn ? " (todos)" : ""}
+                    </span>
+                    <strong className="tabular-nums text-emerald-800">
+                      Total: {formatKz(totalSel)}
+                    </strong>
+                  </div>
+                  <p className="mt-0.5 text-xs text-emerald-900/70">
+                    Total de salários a pagar · {mesLabel}
+                  </p>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
+                  <Button type="button" variant="secondary" onClick={() => setListPickerOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={selected.length === 0}
+                    onClick={() => {
+                      const list = selected.map((r) => ({
+                        nome: r.nome,
+                        funcao: r.funcao,
+                        salario: r.salario,
+                        iban: r.iban || "",
+                        mes: mesLabel,
+                      }));
+                      const html = listaFuncionariosHtml(
+                        escola,
+                        list,
+                        `Lista de funcionários · ${mesLabel}`,
+                        { mode: "completo", mostrarTotal: true },
+                      );
+                      setListPickerOpen(false);
+                      verDocumento(`Lista funcionários — ${mesLabel}`, html);
+                    }}
+                  >
+                    Pré-visualizar
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={selected.length === 0}
+                    onClick={() => {
+                      const list = selected.map((r) => ({
+                        nome: r.nome,
+                        funcao: r.funcao,
+                        salario: r.salario,
+                        iban: r.iban || "",
+                        mes: mesLabel,
+                      }));
+                      const html = listaFuncionariosHtml(
+                        escola,
+                        list,
+                        `Lista de funcionários · ${mesLabel}`,
+                        { mode: "completo", mostrarTotal: true },
+                      );
+                      setListPickerOpen(false);
+                      openPrintHtml(html, `Lista funcionários — ${mesLabel}`);
+                      toast.message("No diálogo de impressão: escolha a impressora ou «Guardar como PDF».");
+                    }}
+                  >
+                    <Printer className="mr-1 size-4" />
+                    Imprimir
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Pré-visualização contrato / autorização / recibo / listas */}
       <Dialog open={!!previewHtml} onOpenChange={(o) => !o && setPreviewHtml(null)}>
         <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-3">
           <DialogHeader>
@@ -2074,6 +2292,18 @@ function Salarios() {
           <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
             <Button type="button" variant="secondary" onClick={() => setPreviewHtml(null)}>
               Fechar
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (!previewHtml) return;
+                openPrintHtml(previewHtml.html, previewHtml.title);
+                toast.message("No diálogo de impressão: escolha a impressora ou «Guardar como PDF».");
+              }}
+            >
+              <Printer className="mr-1 size-4" />
+              Imprimir
             </Button>
             <Button
               type="button"
