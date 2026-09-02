@@ -1306,17 +1306,25 @@ function Alunos() {
       alergiasAlimentares: a.alergiasAlimentares || "",
       clinicaProxima: a.clinicaProxima || "",
       grupoSanguineo: a.grupoSanguineo || "",
-      metodoPagamento: normalizeMetodoStored(a.metodoPagamento),
-      metodoInscricao: normalizeMetodoStored(a.metodosPagamento?.inscricao || a.metodoPagamento),
-      metodoSeguro: normalizeMetodoStored(a.metodosPagamento?.seguro || a.metodoPagamento),
-      metodoManuais: normalizeMetodoStored(a.metodosPagamento?.manuais || a.metodoPagamento),
-      metodoCadernos: normalizeMetodoStored(a.metodosPagamento?.cadernos || a.metodoPagamento),
-      metodoAtl: normalizeMetodoStored(a.metodosPagamento?.atl || a.metodoPagamento),
-      metodoUniforme: normalizeMetodoStored(a.metodosPagamento?.uniforme || a.metodoPagamento),
-      metodoMensalidade: normalizeMetodoStored(a.metodosPagamento?.mensalidade || a.metodoPagamento),
-      metodoTransporte: normalizeMetodoStored(a.metodosPagamento?.transporte || a.metodoPagamento),
-      metodoAlimentacao: normalizeMetodoStored(a.metodosPagamento?.alimentacao || a.metodoPagamento),
-      metodoCurso: normalizeMetodoStored(a.metodosPagamento?.curso || a.metodoPagamento),
+      // Só preenche o que foi gravado por rubrica. Não usa metodoPagamento genérico
+      // (antes forçava todas as caixas a «Dinheiro» e parecia que nada mudava).
+      metodoPagamento: normalizeMetodoStored(
+        a.metodosPagamento
+          ? undefined
+          : a.metodoPagamento?.startsWith("Misto")
+            ? undefined
+            : a.metodoPagamento,
+      ),
+      metodoInscricao: normalizeMetodoStored(a.metodosPagamento?.inscricao),
+      metodoSeguro: normalizeMetodoStored(a.metodosPagamento?.seguro),
+      metodoManuais: normalizeMetodoStored(a.metodosPagamento?.manuais),
+      metodoCadernos: normalizeMetodoStored(a.metodosPagamento?.cadernos),
+      metodoAtl: normalizeMetodoStored(a.metodosPagamento?.atl),
+      metodoUniforme: normalizeMetodoStored(a.metodosPagamento?.uniforme),
+      metodoMensalidade: normalizeMetodoStored(a.metodosPagamento?.mensalidade),
+      metodoTransporte: normalizeMetodoStored(a.metodosPagamento?.transporte),
+      metodoAlimentacao: normalizeMetodoStored(a.metodosPagamento?.alimentacao),
+      metodoCurso: normalizeMetodoStored(a.metodosPagamento?.curso),
       pin: "",
     });
   }
