@@ -85,7 +85,7 @@ function validate(fields: {
   return null;
 }
 
-function AgendamentoPage() {
+export function AgendamentoPage() {
   const [encarregadoNome, setEncarregadoNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [alunoNome, setAlunoNome] = useState("");

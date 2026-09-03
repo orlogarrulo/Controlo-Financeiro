@@ -71,3 +71,25 @@ src/routes/alunos.tsx
 - Seed: 49 saídas + 41 entradas `BAI-MAT-*` → saldo **1 705 718,96 Kz**.
 
 Após deploy: hard refresh (Ctrl+Shift+R). Se ainda vir saldo antigo, DevTools → Application → Local Storage → apagar `ecc-financeiro-v1` e `v2`.
+
+## Rotas curtas públicas isoladas (form sumia / menu ficava)
+
+**Causa:** `src/routeTree.gen.ts` estava desactualizado e **não registava** as rotas:
+- `/agendamento`, `/inquerito-saude` (páginas completas)
+- `/marca`, `/regras`, `/saude` (links curtos que reutilizam as páginas)
+
+Sem entrada no `routeTree`, o TanStack Router não montava o componente do formulário (Outlet vazio → formulário “sumia”), enquanto o layout residual / navegação anterior podia manter o menu visível. O isolamento em `__root.tsx` (`isPublicParentPath`) já existia, mas só actua quando a rota é reconhecida e o `pathname` é o correcto.
+
+**Correcção de raiz:**
+1. Regenerado / completado `src/routeTree.gen.ts` com todas as rotas públicas e curtas.
+2. Reforçado `isPublicParentPath` em `src/routes/__root.tsx` (normalização de path, case-insensitive, sem query/hash).
+3. Em path público: **apenas** `<Outlet />` + Toaster — sem `OperatorGate`, sem `AppShell` (menu).
+
+**URLs públicas (sem menu):**
+| Link curto | Rota completa | Página |
+|------------|---------------|--------|
+| `/marca`   | `/agendamento` | Agendamento pedagógico |
+| `/saude`   | `/inquerito-saude` | Inquérito de saúde |
+| `/regras?lang=pt\|fr` | `/regulamento` | Regulamento interno |
+
+Após deploy: hard refresh. Abrir `/marca`, `/saude` ou `/regras` deve mostrar só o formulário, sem barra lateral.

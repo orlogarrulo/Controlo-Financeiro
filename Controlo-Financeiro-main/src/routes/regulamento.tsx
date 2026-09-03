@@ -2,7 +2,7 @@
  * Página pública (link WhatsApp / e-mail): ler regulamento + tomada de conhecimento
  * simples (check + nomes + data). Sem PDF obrigatório, sem exportação.
  */
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,8 +37,14 @@ function formatDataHoje(lang: RegulamentoLang): string {
   });
 }
 
-function RegulamentoPage() {
-  const { lang: langParam } = Route.useSearch();
+export function RegulamentoPage() {
+  // Funciona em /regulamento e no link curto /regras
+  const langParam = useRouterState({
+    select: (s) => {
+      const v = (s.location.search as { lang?: string })?.lang;
+      return v === "fr" || v === "pt" ? v : "pt";
+    },
+  });
   const [lang, setLang] = useState<RegulamentoLang>(langParam || "pt");
   const [alunoNome, setAlunoNome] = useState("");
   const [encarregadoNome, setEncarregadoNome] = useState("");

@@ -130,7 +130,7 @@ function validate(
   return null;
 }
 
-function InqueritoSaudePage() {
+export function InqueritoSaudePage() {
   const [encarregadoNome, setEncarregadoNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [numAlunos, setNumAlunos] = useState(1);

@@ -24,6 +24,11 @@ import { Route as AuditoriaRouteImport } from './routes/auditoria'
 import { Route as ArquivoRouteImport } from './routes/arquivo'
 import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as RegulamentoRouteImport } from './routes/regulamento'
+import { Route as AgendamentoRouteImport } from './routes/agendamento'
+import { Route as InqueritoSaudeRouteImport } from './routes/inquerito-saude'
+import { Route as MarcaRouteImport } from './routes/marca'
+import { Route as RegrasRouteImport } from './routes/regras'
+import { Route as SaudeRouteImport } from './routes/saude'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -33,6 +38,31 @@ const IndexRoute = IndexRouteImport.update({
 const RegulamentoRoute = RegulamentoRouteImport.update({
   id: '/regulamento',
   path: '/regulamento',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgendamentoRoute = AgendamentoRouteImport.update({
+  id: '/agendamento',
+  path: '/agendamento',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InqueritoSaudeRoute = InqueritoSaudeRouteImport.update({
+  id: '/inquerito-saude',
+  path: '/inquerito-saude',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarcaRoute = MarcaRouteImport.update({
+  id: '/marca',
+  path: '/marca',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegrasRoute = RegrasRouteImport.update({
+  id: '/regras',
+  path: '/regras',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SaudeRoute = SaudeRouteImport.update({
+  id: '/saude',
+  path: '/saude',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AlunosRoute = AlunosRouteImport.update({
@@ -104,6 +134,11 @@ const InboxRoute = InboxRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/regulamento': typeof RegulamentoRoute
+  '/agendamento': typeof AgendamentoRoute
+  '/inquerito-saude': typeof InqueritoSaudeRoute
+  '/marca': typeof MarcaRoute
+  '/regras': typeof RegrasRoute
+  '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
@@ -121,6 +156,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/regulamento': typeof RegulamentoRoute
+  '/agendamento': typeof AgendamentoRoute
+  '/inquerito-saude': typeof InqueritoSaudeRoute
+  '/marca': typeof MarcaRoute
+  '/regras': typeof RegrasRoute
+  '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
@@ -139,6 +179,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/regulamento': typeof RegulamentoRoute
+  '/agendamento': typeof AgendamentoRoute
+  '/inquerito-saude': typeof InqueritoSaudeRoute
+  '/marca': typeof MarcaRoute
+  '/regras': typeof RegrasRoute
+  '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
@@ -158,6 +203,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/regulamento'
+    | '/agendamento'
+    | '/inquerito-saude'
+    | '/marca'
+    | '/regras'
+    | '/saude'
     | '/alunos'
     | '/banco'
     | '/capturar'
@@ -175,6 +225,11 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/regulamento'
+    | '/agendamento'
+    | '/inquerito-saude'
+    | '/marca'
+    | '/regras'
+    | '/saude'
     | '/alunos'
     | '/banco'
     | '/capturar'
@@ -192,6 +247,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/regulamento'
+    | '/agendamento'
+    | '/inquerito-saude'
+    | '/marca'
+    | '/regras'
+    | '/saude'
     | '/alunos'
     | '/banco'
     | '/capturar'
@@ -210,6 +270,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   RegulamentoRoute: typeof RegulamentoRoute
+  AgendamentoRoute: typeof AgendamentoRoute
+  InqueritoSaudeRoute: typeof InqueritoSaudeRoute
+  MarcaRoute: typeof MarcaRoute
+  RegrasRoute: typeof RegrasRoute
+  SaudeRoute: typeof SaudeRoute
   AlunosRoute: typeof AlunosRoute
   BancoRoute: typeof BancoRoute
   CapturarRoute: typeof CapturarRoute
@@ -239,6 +304,41 @@ declare module '@tanstack/react-router' {
       path: '/regulamento'
       fullPath: '/regulamento'
       preLoaderRoute: typeof RegulamentoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agendamento': {
+      id: '/agendamento'
+      path: '/agendamento'
+      fullPath: '/agendamento'
+      preLoaderRoute: typeof AgendamentoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inquerito-saude': {
+      id: '/inquerito-saude'
+      path: '/inquerito-saude'
+      fullPath: '/inquerito-saude'
+      preLoaderRoute: typeof InqueritoSaudeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marca': {
+      id: '/marca'
+      path: '/marca'
+      fullPath: '/marca'
+      preLoaderRoute: typeof MarcaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/regras': {
+      id: '/regras'
+      path: '/regras'
+      fullPath: '/regras'
+      preLoaderRoute: typeof RegrasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/saude': {
+      id: '/saude'
+      path: '/saude'
+      fullPath: '/saude'
+      preLoaderRoute: typeof SaudeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/alunos': {
@@ -338,6 +438,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   RegulamentoRoute: RegulamentoRoute,
+  AgendamentoRoute: AgendamentoRoute,
+  InqueritoSaudeRoute: InqueritoSaudeRoute,
+  MarcaRoute: MarcaRoute,
+  RegrasRoute: RegrasRoute,
+  SaudeRoute: SaudeRoute,
   AlunosRoute: AlunosRoute,
   BancoRoute: BancoRoute,
   CapturarRoute: CapturarRoute,
