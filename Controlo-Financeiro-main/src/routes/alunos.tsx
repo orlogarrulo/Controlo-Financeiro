@@ -26,6 +26,8 @@ import {
   deliverOfficialHtml,
   isMobileDevice,
 } from "@/lib/pdf-export";
+import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
+import { buildInqueritoSaudeWhatsApp, inqueritoSaudePublicUrl } from "@/lib/inquerito-saude-whatsapp";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
 import {
@@ -115,7 +117,7 @@ type EscolaContacto = {
 
 const DEFAULT_CONTACTO: EscolaContacto = {
   morada: "Urbanização Nova Vida, Rua 63, Casa S/N, Município Kilamba Kiaxi, Luanda - Angola",
-  telefones: "+244 922 637 000 / +244 922 637 640",
+  telefones: "+244 922 637 640",
   email: "ecoleconsulaireeducongo1976.nv@gmail.com",
   iban: "AO06.0040.0000.6725.7113.1013.0",
 };
@@ -2676,6 +2678,66 @@ function Alunos() {
               onClick={() => setRegOpen(true)}
             >
               <FileText className="mr-1 size-4" /> Regulamento interno
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Imprimir cartões de estudante (frente + verso) — usa a selecção da lista ou todos filtrados"
+              onClick={() => {
+                const pool = filteredByClass;
+                const selected = exportIds.size > 0
+                  ? pool.filter((a) => exportIds.has(a.id))
+                  : pool;
+                if (selected.length === 0) {
+                  toast.error("Não há alunos para imprimir. Ajuste o filtro ou seleccione na lista.");
+                  return;
+                }
+                const escola = getSeed().escola;
+                const logoUrl =
+                  typeof location !== "undefined"
+                    ? `${location.origin}/logo-escola.jpg`
+                    : "/logo-escola.jpg";
+                const html = cartoesEstudanteHtml(selected, {
+                  anoEscolar: escola.ano || "2025/2026",
+                  escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
+                  telefoneEscola: "922 637 640",
+                  logoUrl,
+                });
+                openPrintHtml(html);
+                toast.success(`Cartões: ${selected.length} aluno(s) — frente e verso`);
+              }}
+            >
+              <Printer className="mr-1 size-4" /> Cartão de estudante
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Copiar mensagem WhatsApp do inquérito de saúde (link do formulário + opções A–I)"
+              onClick={() => {
+                const msg = buildInqueritoSaudeWhatsApp({
+                  escolaNome: getSeed().escola.nome || "École Consulaire du Congo – Nova Vida",
+                  linkFormulario: inqueritoSaudePublicUrl(),
+                });
+                void navigator.clipboard.writeText(msg).then(
+                  () => toast.success("Inquérito copiado — cole na lista de envio do WhatsApp"),
+                  () => toast.error("Não foi possível copiar"),
+                );
+              }}
+            >
+              <Mail className="mr-1 size-4" /> Inquérito saúde WhatsApp
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Copiar só o link do formulário de saúde (Excel/CSV)"
+              onClick={() => {
+                void navigator.clipboard.writeText(inqueritoSaudePublicUrl()).then(
+                  () => toast.success("Link do inquérito copiado"),
+                  () => toast.error("Não foi possível copiar"),
+                );
+              }}
+            >
+              <FileText className="mr-1 size-4" /> Link inquérito
             </Button>
             <PrintActions
               targetRef={printRef}

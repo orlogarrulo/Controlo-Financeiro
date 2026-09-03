@@ -25,7 +25,7 @@ export const Route = createFileRoute("/regulamento")({
 
 const CONTACTO = {
   morada: "Urbanização Nova Vida, Rua 63, Casa S/N, Município Kilamba Kiaxi, Luanda - Angola",
-  telefones: "+244 922 637 000 / +244 922 637 640",
+  telefones: "+244 922 637 640",
   email: "ecoleconsulaireeducongo1976.nv@gmail.com",
 };
 

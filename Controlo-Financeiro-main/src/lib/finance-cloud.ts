@@ -445,15 +445,28 @@ export const submitRegulamentoAck = createServerFn({ method: "POST" }).handler(
         signedAt,
       ],
     );
-    // E-mail privado só no servidor (nunca enviado ao browser).
-    // Defina REGULAMENTO_NOTIFY_EMAIL no ambiente de produção.
-    // Sem serviço SMTP/Resend configurado, apenas regista no log do servidor.
-    const notify = (process.env.REGULAMENTO_NOTIFY_EMAIL || "").trim();
-    if (notify) {
+    // E-mail opcional + WhatsApp (CallMeBot / webhook gratuito).
+    const notifyEmail = (process.env.REGULAMENTO_NOTIFY_EMAIL || "").trim();
+    if (notifyEmail) {
       console.info(
-        `[regulamento] Nova tomada de conhecimento → notificar ${notify}: ` +
+        `[regulamento] E-mail sugerido ${notifyEmail}: ` +
           `${data.encarregadoNome} / ${data.alunoNome} (${data.lang || "pt"}) ${signedAt}`,
       );
+    }
+    try {
+      const { notifyEscola } = await import("@/lib/notify-escola");
+      await notifyEscola({
+        type: "regulamento",
+        text:
+          `📄 Regulamento — tomada de conhecimento\n` +
+          `Encarregado: ${data.encarregadoNome.trim()}\n` +
+          `Aluno: ${data.alunoNome.trim()}\n` +
+          `Turma: ${(data.turma || "—").trim()}\n` +
+          `Ref: ${id}`,
+        data: { id, ...data, signedAt },
+      });
+    } catch (e) {
+      console.warn("[regulamento] notify", e);
     }
     return { ok: true, id };
   },
@@ -490,6 +503,246 @@ export const listRegulamentoAcks = createServerFn({ method: "GET" }).handler(
       }));
     } catch (e) {
       console.error("[regulamento] list failed", e);
+      return [];
+    }
+  },
+);
+
+/* ─── Inquérito de saúde (nuvem) ─── */
+
+export type InqueritoSaudeAlunoCloud = {
+  nome: string;
+  grupoSanguineo: string;
+  alergiasMedicamentos: string;
+  alergiasAlimentares: string;
+  clinicaProxima: string;
+};
+
+export type InqueritoSaudeCloud = {
+  encarregadoNome: string;
+  telefone: string;
+  alunos: InqueritoSaudeAlunoCloud[];
+  submittedAt: string;
+};
+
+async function ensureInqueritoSaudeTable(sql: {
+  query: (text: string, params?: unknown[]) => Promise<unknown[]>;
+}) {
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS inquerito_saude (
+      id TEXT PRIMARY KEY,
+      encarregado_nome TEXT NOT NULL,
+      telefone TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      submitted_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+/** Pais submetem no formulário da app — grava na nuvem da escola. */
+export const submitInqueritoSaude = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<{ ok: boolean; id: string }> => {
+    const data = (ctx as { data?: InqueritoSaudeCloud }).data;
+    if (!data?.encarregadoNome?.trim() || !data?.telefone?.trim()) {
+      throw new Error("Nome do encarregado e telefone são obrigatórios.");
+    }
+    const alunos = (data.alunos || []).filter((a) => a?.nome?.trim());
+    if (alunos.length === 0) {
+      throw new Error("Indique pelo menos um aluno com todos os campos.");
+    }
+    for (const a of alunos) {
+      if (!a.grupoSanguineo?.trim()) {
+        throw new Error(`Grupo sanguíneo em falta para ${a.nome}.`);
+      }
+      if (!a.alergiasMedicamentos?.trim()) {
+        throw new Error(`Alergias a medicamentos em falta para ${a.nome}.`);
+      }
+      if (!a.alergiasAlimentares?.trim()) {
+        throw new Error(`Alergias alimentares em falta para ${a.nome}.`);
+      }
+      if (!a.clinicaProxima?.trim()) {
+        throw new Error(`Clínica / hospital em falta para ${a.nome}.`);
+      }
+    }
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    await ensureInqueritoSaudeTable(sql);
+    const id = `saude-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const submittedAt = data.submittedAt || new Date().toISOString();
+    const clean = {
+      encarregadoNome: data.encarregadoNome.trim().slice(0, 200),
+      telefone: data.telefone.trim().slice(0, 40),
+      alunos: alunos.map((a) => ({
+        nome: a.nome.trim().slice(0, 200),
+        grupoSanguineo: a.grupoSanguineo.trim().slice(0, 40),
+        alergiasMedicamentos: a.alergiasMedicamentos.trim().slice(0, 300),
+        alergiasAlimentares: a.alergiasAlimentares.trim().slice(0, 300),
+        clinicaProxima: a.clinicaProxima.trim().slice(0, 300),
+      })),
+      submittedAt,
+    };
+    await sql.query(
+      `INSERT INTO inquerito_saude (id, encarregado_nome, telefone, payload, submitted_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5::timestamptz)`,
+      [id, clean.encarregadoNome, clean.telefone, JSON.stringify(clean), submittedAt],
+    );
+    const { notifyEscola } = await import("@/lib/notify-escola");
+    const nomes = clean.alunos.map((a) => a.nome).join(", ");
+    await notifyEscola({
+      type: "inquerito-saude",
+      text:
+        `📋 Inquérito de saúde recebido\n` +
+        `Encarregado: ${clean.encarregadoNome}\n` +
+        `Tel: ${clean.telefone}\n` +
+        `Aluno(s): ${nomes}\n` +
+        `Ref: ${id}`,
+      data: { id, ...clean },
+    });
+    return { ok: true, id };
+  },
+);
+
+export const listInqueritoSaude = createServerFn({ method: "GET" }).handler(
+  async (): Promise<InqueritoSaudeCloud[]> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    try {
+      await ensureInqueritoSaudeTable(sql);
+      const rows = await sql.query<{ payload: InqueritoSaudeCloud | string }>(
+        `SELECT payload FROM inquerito_saude ORDER BY submitted_at DESC LIMIT 2000`,
+      );
+      return rows.map((r) => {
+        const p = typeof r.payload === "string" ? JSON.parse(r.payload) : r.payload;
+        return p as InqueritoSaudeCloud;
+      });
+    } catch (e) {
+      console.error("[inquerito-saude] list failed", e);
+      return [];
+    }
+  },
+);
+
+/* ─── Agendamento pedagógico (nuvem) ─── */
+
+export type AgendamentoCloud = {
+  encarregadoNome: string;
+  telefone: string;
+  alunoNome: string;
+  turma: string;
+  dia: "4a" | "5a";
+  hora: string;
+  submittedAt: string;
+};
+
+async function ensureAgendamentoTable(sql: {
+  query: (text: string, params?: unknown[]) => Promise<unknown[]>;
+}) {
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS agendamentos_pedagogico (
+      id TEXT PRIMARY KEY,
+      encarregado_nome TEXT NOT NULL,
+      telefone TEXT NOT NULL,
+      aluno_nome TEXT NOT NULL,
+      turma TEXT,
+      dia TEXT NOT NULL,
+      hora TEXT NOT NULL,
+      submitted_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+export const submitAgendamento = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<{ ok: boolean; id: string }> => {
+    const data = (ctx as { data?: AgendamentoCloud }).data;
+    if (!data?.encarregadoNome?.trim()) throw new Error("Nome do encarregado é obrigatório.");
+    if (!data?.telefone?.trim()) throw new Error("Telefone é obrigatório.");
+    if (!data?.alunoNome?.trim()) throw new Error("Nome do aluno é obrigatório.");
+    if (!data?.dia || !["4a", "5a"].includes(data.dia)) {
+      throw new Error("Escolha o dia (4ª ou 5ª feira).");
+    }
+    if (!data?.hora?.trim()) throw new Error("Escolha a hora do atendimento.");
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    await ensureAgendamentoTable(sql);
+    const id = `ag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const submittedAt = data.submittedAt || new Date().toISOString();
+    await sql.query(
+      `INSERT INTO agendamentos_pedagogico
+        (id, encarregado_nome, telefone, aluno_nome, turma, dia, hora, submitted_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::timestamptz)`,
+      [
+        id,
+        data.encarregadoNome.trim().slice(0, 200),
+        data.telefone.trim().slice(0, 40),
+        data.alunoNome.trim().slice(0, 200),
+        (data.turma || "").trim().slice(0, 80),
+        data.dia,
+        data.hora.trim().slice(0, 10),
+        submittedAt,
+      ],
+    );
+    const { notifyEscola } = await import("@/lib/notify-escola");
+    const diaLabel = data.dia === "4a" ? "4ª feira" : "5ª feira";
+    await notifyEscola({
+      type: "agendamento",
+      text:
+        `📅 Agendamento pedagógico\n` +
+        `Encarregado: ${data.encarregadoNome.trim()}\n` +
+        `Tel: ${data.telefone.trim()}\n` +
+        `Aluno: ${data.alunoNome.trim()}\n` +
+        `${diaLabel} às ${data.hora.trim()}\n` +
+        `Ref: ${id}`,
+      data: {
+        id,
+        encarregadoNome: data.encarregadoNome.trim(),
+        telefone: data.telefone.trim(),
+        alunoNome: data.alunoNome.trim(),
+        turma: (data.turma || "").trim(),
+        dia: data.dia,
+        hora: data.hora.trim(),
+        submittedAt,
+      },
+    });
+    return { ok: true, id };
+  },
+);
+
+export const listAgendamentos = createServerFn({ method: "GET" }).handler(
+  async (): Promise<AgendamentoCloud[]> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    try {
+      await ensureAgendamentoTable(sql);
+      const rows = await sql.query<{
+        encarregado_nome: string;
+        telefone: string;
+        aluno_nome: string;
+        turma: string | null;
+        dia: string;
+        hora: string;
+        submitted_at: string | Date;
+      }>(
+        `SELECT encarregado_nome, telefone, aluno_nome, turma, dia, hora, submitted_at
+         FROM agendamentos_pedagogico
+         ORDER BY submitted_at DESC
+         LIMIT 2000`,
+      );
+      return rows.map((r) => ({
+        encarregadoNome: r.encarregado_nome,
+        telefone: r.telefone,
+        alunoNome: r.aluno_nome,
+        turma: r.turma || "",
+        dia: r.dia === "5a" ? "5a" : "4a",
+        hora: r.hora,
+        submittedAt:
+          typeof r.submitted_at === "string"
+            ? r.submitted_at
+            : new Date(r.submitted_at).toISOString(),
+      }));
+    } catch (e) {
+      console.error("[agendamento] list failed", e);
       return [];
     }
   },

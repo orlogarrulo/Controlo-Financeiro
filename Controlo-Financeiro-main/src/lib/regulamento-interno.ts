@@ -84,7 +84,7 @@ function headBlock(
 }
 
 function contentFr(escola: EscolaMeta): string {
-  const tel = esc(escola.telefones || "+244 922 637 000 / +244 922 637 640");
+  const tel = esc(escola.telefones || "+244 922 637 640");
   const email = esc(escola.email || "ecoleconsulaireeducongo1976.nv@gmail.com");
   const morada = esc(
     escola.morada ||
@@ -92,6 +92,16 @@ function contentFr(escola: EscolaMeta): string {
   );
   return `
   <p>Le présent règlement intérieur s’applique à tous les élèves de l’${esc(escola.nomeCurto || "École Consulaire du Congo")} – Annexe Nova Vida (Luanda), ainsi qu’à leurs parents / responsables légaux. Il vise le bon fonctionnement de l’établissement, le respect mutuel et la sécurité des enfants.</p>
+
+  <h2>0. Organisation pédagogique (République du Congo – Brazzaville)</h2>
+  <p>L’École Consulaire suit le cadre de l’enseignement de la <strong>République du Congo (Brazzaville)</strong>, proche du modèle francophone :</p>
+  <ul>
+    <li><strong>Préscolaire / Maternelle</strong> : petite, moyenne et grande section (préparation à l’entrée en primaire).</li>
+    <li><strong>Primaire (6 ans)</strong> : CP1, CP2, CE1, CE2, CM1, CM2 — sanctionné par le <strong>CEPE</strong> (Certificat d’études primaires élémentaires) / concours d’entrée en 6<sup>e</sup>.</li>
+    <li><strong>Collège (4 ans)</strong> : 6<sup>e</sup>, 5<sup>e</sup>, 4<sup>e</sup>, 3<sup>e</sup> — sanctionné par le <strong>BEPC</strong> (Brevet d’études du premier cycle).</li>
+    <li><strong>Lycée (3 ans)</strong> : Seconde, Première, Terminale — sanctionné par le <strong>Baccalauréat</strong>.</li>
+  </ul>
+  <p>L’enseignement est orienté vers les programmes et calendriers adaptés au contexte consulaire à Luanda, en cohérence avec les références de la République du Congo (Brazzaville). La direction publie chaque année les classes ouvertes et le calendrier scolaire.</p>
 
   <h2>1. Horaires et présence</h2>
   <ul>
@@ -156,9 +166,14 @@ function contentFr(escola: EscolaMeta): string {
   <ul>
     <li>Respect des enseignants, du personnel, des camarades et des locaux.</li>
     <li>Interdiction de violence, harcèlement, insultes, vol ou dégradation du matériel.</li>
-    <li>Téléphones et appareils électroniques : usage interdit en classe sauf autorisation pédagogique.</li>
+    <li><strong>Téléphones portables :</strong> à l’entrée de l’école, le téléphone est déposé auprès de nos services. L’élève le récupère à la fin des cours. L’usage des téléphones pendant le temps de classe est strictement interdit (sauf autorisation pédagogique écrite).</li>
     <li>Les objets de valeur sont déconseillés ; l’école n’est pas responsable des pertes hors faute prouvée.</li>
   </ul>
+
+  <h2>6bis. Accueil des parents / responsables (Département pédagogique)</h2>
+  <div class="box">
+    <p>Le Département pédagogique reçoit les parents et responsables d’éducation <strong>les mercredis et jeudis de 14h00 à 16h00</strong>, <strong>uniquement sur rendez-vous</strong> (créneaux de 30 minutes). Lien de prise de rendez-vous disponible auprès du secrétariat / via le portail de l’école.</p>
+  </div>
 
   <h2>7. Santé et sécurité</h2>
   <ul>
@@ -188,7 +203,7 @@ function contentFr(escola: EscolaMeta): string {
 }
 
 function contentPt(escola: EscolaMeta): string {
-  const tel = esc(escola.telefones || "+244 922 637 000 / +244 922 637 640");
+  const tel = esc(escola.telefones || "+244 922 637 640");
   const email = esc(escola.email || "ecoleconsulaireeducongo1976.nv@gmail.com");
   const morada = esc(
     escola.morada ||
@@ -196,6 +211,16 @@ function contentPt(escola: EscolaMeta): string {
   );
   return `
   <p>O presente regulamento interno aplica-se a todos os alunos da ${esc(escola.nomeCurto || "École Consulaire du Congo")} – Anexo Nova Vida (Luanda), bem como aos respectivos pais / encarregados de educação. Visa o bom funcionamento do estabelecimento, o respeito mútuo e a segurança das crianças.</p>
+
+  <h2>0. Organização pedagógica (República do Congo – Brazzaville)</h2>
+  <p>A École Consulaire segue o quadro de ensino da <strong>República do Congo (Brazzaville)</strong>, próximo do modelo francófono:</p>
+  <ul>
+    <li><strong>Pré-escolar / Maternelle</strong>: pequena, média e grande secção (preparação para o primário).</li>
+    <li><strong>Primário (6 anos)</strong>: CP1, CP2, CE1, CE2, CM1, CM2 — concluído com o <strong>CEPE</strong> (Certificat d’études primaires élémentaires) / concurso de acesso ao 6.º ano.</li>
+    <li><strong>Colégio (4 anos)</strong>: 6.º, 5.º, 4.º, 3.º — concluído com o <strong>BEPC</strong> (Brevet d’études du premier cycle).</li>
+    <li><strong>Liceu (3 anos)</strong>: Seconde, Première, Terminale — concluído com o <strong>Baccalauréat</strong>.</li>
+  </ul>
+  <p>O ensino orienta-se pelos programas e calendários adaptados ao contexto consular em Luanda, em coerência com as referências da República do Congo (Brazzaville). A direcção publica anualmente as classes abertas e o calendário escolar.</p>
 
   <h2>1. Horários e assiduidade</h2>
   <ul>
@@ -260,9 +285,14 @@ function contentPt(escola: EscolaMeta): string {
   <ul>
     <li>Respeito por professores, funcionários, colegas e instalações.</li>
     <li>Proibida violência, assédio, insultos, furto ou danificação de material.</li>
-    <li>Telemóveis e aparelhos electrónicos: uso proibido em sala, salvo autorização pedagógica.</li>
+    <li><strong>Telemóveis:</strong> na entrada da escola o telemóvel é depositado com os nossos serviços; o aluno recolhe-o no final das aulas. O uso dos telemóveis durante o tempo de aulas é proibido (salvo autorização pedagógica escrita).</li>
     <li>Objectos de valor são desaconselhados; a escola não se responsabiliza por perdas sem culpa comprovada.</li>
   </ul>
+
+  <h2>6bis. Atendimento aos encarregados de educação (Departamento pedagógico)</h2>
+  <div class="box">
+    <p>O Departamento pedagógico atende os encarregados de educação <strong>às 4.ª e 5.ª feiras, das 14:00 às 16:00</strong>, <strong>apenas por agendamento</strong> (slots de 30 minutos). O link de marcação está disponível na secretaria / no portal da escola.</p>
+  </div>
 
   <h2>7. Saúde e segurança</h2>
   <ul>
@@ -371,4 +401,10 @@ export function regulamentoInternoHtml(
 export function regulamentoPublicUrl(lang: RegulamentoLang = "pt"): string {
   if (typeof location === "undefined") return `/regulamento?lang=${lang}`;
   return `${location.origin}/regulamento?lang=${lang}`;
+}
+
+/** Link público de agendamento pedagógico (4ª/5ª 14h–16h). */
+export function agendamentoPublicUrl(): string {
+  if (typeof location === "undefined") return "/agendamento";
+  return `${location.origin}/agendamento`;
 }
