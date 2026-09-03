@@ -27,7 +27,7 @@ import {
   isMobileDevice,
 } from "@/lib/pdf-export";
 import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
-import { buildInqueritoSaudeWhatsApp, inqueritoSaudePublicUrl } from "@/lib/inquerito-saude-whatsapp";
+import { buildInqueritoSaudeWhatsApp } from "@/lib/inquerito-saude-whatsapp";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
 import {
@@ -2688,23 +2688,40 @@ function Alunos() {
                 const selected = exportIds.size > 0
                   ? pool.filter((a) => exportIds.has(a.id))
                   : pool;
+                // Só cartões com foto disponível
+                const comFoto = selected.filter(
+                  (a) => typeof a.foto === "string" && a.foto.trim().length > 20,
+                );
                 if (selected.length === 0) {
                   toast.error("Não há alunos para imprimir. Ajuste o filtro ou seleccione na lista.");
                   return;
                 }
+                if (comFoto.length === 0) {
+                  toast.error(
+                    "Nenhum dos alunos seleccionados tem foto. Carregue a foto na ficha antes de imprimir o cartão.",
+                  );
+                  return;
+                }
+                const semFoto = selected.length - comFoto.length;
                 const escola = getSeed().escola;
                 const logoUrl =
                   typeof location !== "undefined"
                     ? `${location.origin}/logo-escola.jpg`
                     : "/logo-escola.jpg";
-                const html = cartoesEstudanteHtml(selected, {
+                const html = cartoesEstudanteHtml(comFoto, {
                   anoEscolar: escola.ano || "2025/2026",
                   escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
                   telefoneEscola: "922 637 640",
                   logoUrl,
                 });
                 openPrintHtml(html);
-                toast.success(`Cartões: ${selected.length} aluno(s) — frente e verso`);
+                if (semFoto > 0) {
+                  toast.success(
+                    `Cartões: ${comFoto.length} com foto. ${semFoto} sem foto foram ignorados.`,
+                  );
+                } else {
+                  toast.success(`Cartões: ${comFoto.length} aluno(s) — frente e verso`);
+                }
               }}
             >
               <Printer className="mr-1 size-4" /> Cartão de estudante
@@ -2712,11 +2729,10 @@ function Alunos() {
             <Button
               className="shrink-0"
               variant="secondary"
-              title="Copiar mensagem WhatsApp do inquérito de saúde (link do formulário + opções A–I)"
+              title="Copiar inquérito estilo WhatsApp (lista de envio — os pais respondem na conversa)"
               onClick={() => {
                 const msg = buildInqueritoSaudeWhatsApp({
                   escolaNome: getSeed().escola.nome || "École Consulaire du Congo – Nova Vida",
-                  linkFormulario: inqueritoSaudePublicUrl(),
                 });
                 void navigator.clipboard.writeText(msg).then(
                   () => toast.success("Inquérito copiado — cole na lista de envio do WhatsApp"),
@@ -2725,19 +2741,6 @@ function Alunos() {
               }}
             >
               <Mail className="mr-1 size-4" /> Inquérito saúde WhatsApp
-            </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="Copiar só o link do formulário de saúde (Excel/CSV)"
-              onClick={() => {
-                void navigator.clipboard.writeText(inqueritoSaudePublicUrl()).then(
-                  () => toast.success("Link do inquérito copiado"),
-                  () => toast.error("Não foi possível copiar"),
-                );
-              }}
-            >
-              <FileText className="mr-1 size-4" /> Link inquérito
             </Button>
             <PrintActions
               targetRef={printRef}

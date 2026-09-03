@@ -34,6 +34,10 @@ import {
   saveFinanceCloud,
   sliceFromStore,
   listRegulamentoAcks,
+  listInqueritoSaude,
+  listAgendamentos,
+  type InqueritoSaudeCloud,
+  type AgendamentoCloud,
 } from "@/lib/finance-cloud";
 import { todayIso, formatKz } from "@/lib/format";
 import type { MovimentoBai } from "@/data/types";
@@ -142,6 +146,93 @@ function GooglePage() {
     }
   }
 
+
+  function inqueritoSaudeToCsv(rows: InqueritoSaudeCloud[]): string {
+    const header =
+      "Encarregado;Telefone;Aluno;Grupo sanguíneo;Alergias medicamentos;Alergias alimentares;Clínica;Criado em";
+    const lines: string[] = [];
+    for (const r of rows) {
+      for (const a of r.alunos || []) {
+        if (!a.nome?.trim()) continue;
+        lines.push(
+          [
+            r.encarregadoNome,
+            r.telefone,
+            a.nome,
+            a.grupoSanguineo,
+            a.alergiasMedicamentos,
+            a.alergiasAlimentares,
+            a.clinicaProxima,
+            r.submittedAt,
+          ]
+            .map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`)
+            .join(";"),
+        );
+      }
+    }
+    return [header, ...lines].join("\n");
+  }
+
+  function agendamentosToCsv(rows: AgendamentoCloud[]): string {
+    const header = "Encarregado;Telefone;Aluno;Turma;Dia;Hora;Criado em";
+    const lines = rows.map((r) =>
+      [
+        r.encarregadoNome,
+        r.telefone,
+        r.alunoNome,
+        r.turma,
+        r.dia === "4a" ? "4ª feira" : "5ª feira",
+        r.hora,
+        r.submittedAt,
+      ]
+        .map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`)
+        .join(";"),
+    );
+    return [header, ...lines].join("\n");
+  }
+
+  async function exportInqueritoSaude() {
+    try {
+      let rows: InqueritoSaudeCloud[] = [];
+      try {
+        rows = await listInqueritoSaude();
+      } catch {
+        /* offline */
+      }
+      if (!rows.length) {
+        try {
+          const raw = localStorage.getItem("ecole_inquerito_saude_v1");
+          if (raw) rows = JSON.parse(raw);
+        } catch { /* */ }
+      }
+      runExport("inquerito", "Inquerito_saude_respostas.csv", () => inqueritoSaudeToCsv(rows));
+      if (!rows.length) toast.message("Sem respostas de inquérito ainda");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao exportar inquérito");
+    }
+  }
+
+  async function exportAgendamentos() {
+    try {
+      let rows: AgendamentoCloud[] = [];
+      try {
+        rows = await listAgendamentos();
+      } catch {
+        /* offline */
+      }
+      if (!rows.length) {
+        try {
+          const raw = localStorage.getItem("ecole_agendamentos_pedagogico_v1");
+          if (raw) rows = JSON.parse(raw);
+        } catch { /* */ }
+      }
+      runExport("agendamento", "Agendamentos_pedagogico.csv", () => agendamentosToCsv(rows));
+      if (!rows.length) toast.message("Sem agendamentos ainda");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao exportar agendamentos");
+    }
+  }
+
   function exportTudo() {
     try {
       exportMaster();
@@ -151,6 +242,8 @@ function GooglePage() {
       exportSalarios();
       exportFundo();
       exportRegulamento();
+      void exportInqueritoSaude();
+      void exportAgendamentos();
       setLastExport("tudo");
       toast.message("Exportação de todos os CSV concluída");
     } catch (e) {
@@ -368,6 +461,20 @@ function GooglePage() {
               onClick={() => exportRegulamento()}
             >
               Regulamento (assinaturas)
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "inquerito" ? "default" : "secondary"}
+              onClick={() => void exportInqueritoSaude()}
+            >
+              Inquérito de saúde
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "agendamento" ? "default" : "secondary"}
+              onClick={() => void exportAgendamentos()}
+            >
+              Agendamentos pedagógicos
             </Button>
             <Button
               type="button"

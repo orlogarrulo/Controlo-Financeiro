@@ -32,32 +32,33 @@ function esc(s: string): string {
 }
 
 const STYLES = `
-  @page { size: A4 portrait; margin: 12mm 14mm; }
+  @page { size: A4 portrait; margin: 18mm 16mm 18mm 16mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
     font-family: Georgia, "Times New Roman", Times, serif;
-    font-size: 11px; line-height: 1.45;
+    font-size: 10.5px; line-height: 1.4;
+    overflow-x: hidden; box-sizing: border-box;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .sheet { max-width: 190mm; margin: 0 auto; }
-  .head { display: flex; gap: 12px; align-items: center;
-    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 12px; }
-  .head img { width: 72px; height: 72px; object-fit: contain; }
+  .sheet { max-width: 100%; width: 100%; margin: 0 auto; padding: 0; box-sizing: border-box; overflow-wrap: break-word; word-wrap: break-word; }
+  .head { display: flex; gap: 10px; align-items: center;
+    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 8px; margin-bottom: 10px; max-width: 100%; }
+  .head img { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; }
   .kicker { margin: 0; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
     color: #1f5c4a; font-weight: 700; }
-  .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
+  .title { margin: 3px 0 0; font-size: 14px; font-weight: 700; }
   .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
   h2 { font-size: 12px; margin: 14px 0 6px; color: #1f5c4a;
     text-transform: uppercase; letter-spacing: 0.04em;
     border-bottom: 1px solid #c5d0ca; padding-bottom: 3px; }
-  p, li { margin: 0 0 5px; text-align: justify; }
+  p, li { margin: 0 0 4px; text-align: justify; overflow-wrap: break-word; }
   ul { margin: 0 0 6px; padding-left: 18px; }
-  table.rules { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
+  table.rules { width: 100%; max-width: 100%; border-collapse: collapse; margin: 6px 0 10px; table-layout: fixed; }
   table.rules th, table.rules td {
-    border: 1px solid #1a4d3e; padding: 5px 7px; vertical-align: top; font-size: 10.5px; }
+    border: 1px solid #1a4d3e; padding: 4px 6px; vertical-align: top; font-size: 10px; word-wrap: break-word; overflow-wrap: break-word; }
   table.rules th { background: #1f5c4a; color: #fff; text-align: left; font-size: 10px; }
   .box { border: 1px solid #c5d0ca; background: #f8faf9; padding: 8px 10px; margin: 8px 0; border-radius: 4px; }
   .aviso { border: 1px solid #d4a017; background: #fffbeb; padding: 8px 10px; margin: 10px 0;
     font-size: 10px; color: #422006; }
-  .sign { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .sign { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 100%; }
   .sig { border-top: 1px solid #333; padding-top: 6px; font-size: 10.5px; }
   .foot { margin-top: 14px; font-size: 9px; color: #64748b; text-align: right; }
   .page-break { page-break-before: always; break-before: page; }
