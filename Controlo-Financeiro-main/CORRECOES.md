@@ -93,3 +93,25 @@ Sem entrada no `routeTree`, o TanStack Router não montava o componente do formu
 | `/regras?lang=pt\|fr` | `/regulamento` | Regulamento interno |
 
 Após deploy: hard refresh. Abrir `/marca`, `/saude` ou `/regras` deve mostrar só o formulário, sem barra lateral.
+
+## Formulários públicos PT/FR · Agendamento sábados · Margens regulamento
+
+### Inquérito de saúde (`/saude`)
+- Selector **FR / PT** no formulário (predefinição FR)
+- Mensagem WhatsApp bilingue (prioridade francês + português)
+
+### Agendamento pedagógico (`/marca`)
+- **Sábados** com datas do calendário (próximos 16 sábados)
+- Slots de **20 minutos**: 09:30 → 12:30
+- Campos: encarregado, telefone, **e-mail**, aluno, turma, data, hora
+- Gravação na nuvem + CSV actualizado após submissão
+- Selector FR / PT
+- Botões **Agendamento** e **Marcar (form)** no separador Matrículas
+
+### Regulamento
+- Texto **justificado**
+- Margens brancas no ecrã (`@media screen`) e `@page` 20mm/18mm no PDF
+- Iframe de pré-visualização sem corte lateral
+
+### WhatsApp
+- `buildInqueritoSaudeWhatsApp` e `buildAgendamentoWhatsApp` — FR + PT no mesmo texto

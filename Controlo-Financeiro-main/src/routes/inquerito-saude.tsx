@@ -1,7 +1,6 @@
 /**
  * Formulário de inquérito de saúde (nuvem da app).
- * Validação completa de campos · gravação na BD · confirmação conceptual no WhatsApp da escola.
- * Export CSV/Excel a partir dos registos na nuvem (e cópia local).
+ * PT / FR · validação · gravação na BD · CSV.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
@@ -33,6 +32,8 @@ const GRUPOS = [
 
 const ESCOLA_WA = "922 637 640";
 const STORAGE_KEY = "ecole_inquerito_saude_v1";
+
+type Lang = "pt" | "fr";
 
 type AlunoSaude = {
   nome: string;
@@ -104,33 +105,8 @@ function downloadCsv(rows: InqueritoSaudeCloud[]) {
   URL.revokeObjectURL(url);
 }
 
-function validate(
-  encarregadoNome: string,
-  telefone: string,
-  alunos: AlunoSaude[],
-): string | null {
-  const missing: string[] = [];
-  if (!encarregadoNome.trim()) missing.push("nome do encarregado");
-  if (!telefone.trim()) missing.push("telefone / WhatsApp");
-  const filled = alunos.filter((a) => a.nome.trim() || a.grupoSanguineo || a.alergiasMedicamentos || a.alergiasAlimentares || a.clinicaProxima);
-  if (filled.length === 0) {
-    missing.push("pelo menos um aluno");
-  }
-  filled.forEach((a, i) => {
-    const n = a.nome.trim() || `Aluno ${i + 1}`;
-    if (!a.nome.trim()) missing.push(`nome (${n})`);
-    if (!a.grupoSanguineo.trim()) missing.push(`grupo sanguíneo (${n})`);
-    if (!a.alergiasMedicamentos.trim()) missing.push(`alergias a medicamentos (${n})`);
-    if (!a.alergiasAlimentares.trim()) missing.push(`alergias alimentares (${n})`);
-    if (!a.clinicaProxima.trim()) missing.push(`clínica / hospital (${n})`);
-  });
-  if (missing.length) {
-    return `Faltam campos a preencher: ${missing.join("; ")}.`;
-  }
-  return null;
-}
-
 export function InqueritoSaudePage() {
+  const [lang, setLang] = useState<Lang>("fr");
   const [encarregadoNome, setEncarregadoNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [numAlunos, setNumAlunos] = useState(1);
@@ -144,9 +120,9 @@ export function InqueritoSaudePage() {
 
   const formUrl = useMemo(() => {
     if (typeof window === "undefined") {
-      return "https://controlo-financeiro-tau.vercel.app/inquerito-saude";
+      return "https://controlo-financeiro-tau.vercel.app/saude";
     }
-    return `${window.location.origin}/inquerito-saude`;
+    return `${window.location.origin}/saude`;
   }, []);
 
   useEffect(() => {
@@ -158,9 +134,13 @@ export function InqueritoSaudePage() {
         }
       })
       .catch(() => {
-        /* offline: mantém local */
+        /* offline */
       });
   }, []);
+
+  function t(pt: string, fr: string) {
+    return lang === "fr" ? fr : pt;
+  }
 
   function setNum(n: number) {
     const v = Math.min(4, Math.max(1, n));
@@ -178,8 +158,54 @@ export function InqueritoSaudePage() {
     );
   }
 
+  function validateLocal(): string | null {
+    const missing: string[] = [];
+    if (!encarregadoNome.trim())
+      missing.push(t("nome do encarregado", "nom du responsable"));
+    if (!telefone.trim())
+      missing.push(t("telefone / WhatsApp", "téléphone / WhatsApp"));
+    const filled = alunos
+      .slice(0, numAlunos)
+      .filter(
+        (a) =>
+          a.nome.trim() ||
+          a.grupoSanguineo ||
+          a.alergiasMedicamentos ||
+          a.alergiasAlimentares ||
+          a.clinicaProxima,
+      );
+    if (filled.length === 0) {
+      missing.push(t("pelo menos um aluno", "au moins un élève"));
+    }
+    filled.forEach((a, i) => {
+      const n = a.nome.trim() || `Aluno ${i + 1}`;
+      if (!a.nome.trim()) missing.push(t(`nome (${n})`, `nom (${n})`));
+      if (!a.grupoSanguineo.trim())
+        missing.push(t(`grupo sanguíneo (${n})`, `groupe sanguin (${n})`));
+      if (!a.alergiasMedicamentos.trim())
+        missing.push(
+          t(`alergias a medicamentos (${n})`, `allergies médicaments (${n})`),
+        );
+      if (!a.alergiasAlimentares.trim())
+        missing.push(
+          t(`alergias alimentares (${n})`, `allergies alimentaires (${n})`),
+        );
+      if (!a.clinicaProxima.trim())
+        missing.push(
+          t(`clínica / hospital (${n})`, `clinique / hôpital (${n})`),
+        );
+    });
+    if (missing.length) {
+      return t(
+        `Faltam campos: ${missing.join("; ")}.`,
+        `Champs manquants : ${missing.join("; ")}.`,
+      );
+    }
+    return null;
+  }
+
   async function confirmar() {
-    const err = validate(encarregadoNome, telefone, alunos.slice(0, numAlunos));
+    const err = validateLocal();
     if (err) {
       toast.error(err);
       return;
@@ -204,22 +230,22 @@ export function InqueritoSaudePage() {
         const res = await submitInqueritoSaude({ data: payload });
         id = res.id;
       } catch (cloudErr) {
-        console.warn("[inquerito-saude] cloud", cloudErr);
-        // Ainda grava localmente se a rede falhar
+        console.warn("[inquerito] cloud", cloudErr);
         toast.message(
-          "Rede instável — registo guardado neste dispositivo. A escola pode contactá-lo.",
+          t(
+            "Gravado localmente — a nuvem pode estar indisponível.",
+            "Enregistré localement — le cloud peut être indisponible.",
+          ),
         );
       }
-      const next = [payload, ...loadLocal()];
-      saveLocal(next);
+      const next = [payload, ...loadLocal()].slice(0, 500);
       setRows(next);
+      saveLocal(next);
       setLastId(id);
       setDone(true);
-      toast.success(
-        `Envio confirmado. Os dados foram gravados na nuvem da escola (exportáveis em Excel/CSV).`,
-      );
+      toast.success(t("Inquérito enviado.", "Questionnaire envoyé."));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao enviar");
+      toast.error(String(e instanceof Error ? e.message : e));
     } finally {
       setBusy(false);
     }
@@ -227,46 +253,73 @@ export function InqueritoSaudePage() {
 
   function copiarLink() {
     void navigator.clipboard.writeText(formUrl).then(
-      () => toast.success("Link copiado"),
-      () => toast.error("Não foi possível copiar"),
+      () => toast.success(t("Link copiado", "Lien copié")),
+      () => toast.error(t("Não foi possível copiar", "Impossible de copier")),
     );
   }
 
+  const grupoLabel = (g: string) => {
+    if (g === "Desconhecido / não informado") {
+      return t("Desconhecido / não informado", "Inconnu / non renseigné");
+    }
+    return g;
+  };
+
   return (
-    <div className="mx-auto max-w-lg px-4 py-6">
-      <div className="mb-4 text-center">
-        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-forest,#1f5c4a)]">
-          École Consulaire · Nova Vida
-        </p>
-        <h1 className="mt-1 text-xl font-bold text-[var(--color-ink,#0f172a)]">
-          Inquérito de saúde
-        </h1>
-        <p className="mt-2 text-sm text-[var(--color-muted,#64748b)]">
-          Preencha todos os campos. Após o envio, a escola recebe a confirmação.
-        </p>
+    <div className="mx-auto min-h-screen max-w-lg bg-[var(--color-bg,#f4f7f5)] px-3 py-6 sm:px-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-forest,#1f5c4a)]">
+            École Consulaire · Nova Vida
+          </p>
+          <h1 className="text-xl font-semibold text-[var(--color-ink,#0f172a)]">
+            {t("Inquérito de saúde", "Questionnaire de santé")}
+          </h1>
+          <p className="mt-1 text-xs text-[var(--color-muted,#64748b)]">
+            {t("1 a 4 alunos por envio", "1 à 4 élèves par envoi")}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-[var(--color-line,#d5ddd8)] bg-white p-0.5 text-xs font-medium">
+          <button
+            type="button"
+            className={`rounded-md px-2.5 py-1 ${lang === "fr" ? "bg-[var(--color-forest,#1f5c4a)] text-white" : "text-[var(--color-muted,#64748b)]"}`}
+            onClick={() => setLang("fr")}
+          >
+            FR
+          </button>
+          <button
+            type="button"
+            className={`rounded-md px-2.5 py-1 ${lang === "pt" ? "bg-[var(--color-forest,#1f5c4a)] text-white" : "text-[var(--color-muted,#64748b)]"}`}
+            onClick={() => setLang("pt")}
+          >
+            PT
+          </button>
+        </div>
       </div>
 
       <div className="mb-4 rounded-xl border border-[var(--color-line,#d5ddd8)] bg-white p-3">
         <Label className="text-xs text-[var(--color-muted,#64748b)]">
-          Link do formulário (app / Google Sheets)
+          {t("Link do formulário", "Lien du formulaire")}
         </Label>
         <div className="mt-1 flex gap-2">
           <Input readOnly value={formUrl} className="font-mono text-xs" />
           <Button type="button" variant="secondary" onClick={copiarLink}>
-            Copiar
+            {t("Copiar", "Copier")}
           </Button>
         </div>
       </div>
 
       {done ? (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-          <p className="font-semibold">Envio com sucesso</p>
-          <p className="mt-2">
-            Os dados foram gravados na folha da escola
-            {lastId ? ` (ref. ${lastId})` : ""}.
+          <p className="font-semibold">
+            {t("Envio com sucesso", "Envoi réussi")}
           </p>
           <p className="mt-2">
-            Pode descarregar o Excel/CSV; a secretaria consulta os registos na app.
+            {t(
+              "Os dados foram gravados na folha da escola",
+              "Les données ont été enregistrées",
+            )}
+            {lastId ? ` (ref. ${lastId})` : ""}.
           </p>
           <p className="mt-2 text-xs opacity-80">
             {encarregadoNome} · {telefone} ·{" "}
@@ -276,9 +329,12 @@ export function InqueritoSaudePage() {
               .map((a) => a.nome)
               .join(", ")}
           </p>
+          <p className="mt-2 text-xs">
+            {t("WhatsApp escola:", "WhatsApp école :")} {ESCOLA_WA}
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" size="sm" onClick={() => downloadCsv(rows)}>
-              Descarregar Excel/CSV
+              {t("Descarregar Excel/CSV", "Télécharger Excel/CSV")}
             </Button>
             <Button
               type="button"
@@ -293,7 +349,7 @@ export function InqueritoSaudePage() {
                 setTelefone("");
               }}
             >
-              Novo inquérito
+              {t("Novo inquérito", "Nouveau questionnaire")}
             </Button>
           </div>
         </div>
@@ -301,16 +357,21 @@ export function InqueritoSaudePage() {
         <div className="rounded-2xl border border-[var(--color-forest,#1f5c4a)] bg-white p-4 shadow-sm">
           <div className="grid gap-3">
             <div className="space-y-1">
-              <Label>Nome do encarregado de educação *</Label>
+              <Label>
+                {t(
+                  "Nome do encarregado de educação *",
+                  "Nom du responsable légal *",
+                )}
+              </Label>
               <Input
                 value={encarregadoNome}
                 onChange={(e) => setEncarregadoNome(e.target.value)}
-                placeholder="Nome completo"
+                placeholder={t("Nome completo", "Nom complet")}
                 autoComplete="name"
               />
             </div>
             <div className="space-y-1">
-              <Label>Telefone / WhatsApp *</Label>
+              <Label>{t("Telefone / WhatsApp *", "Téléphone / WhatsApp *")}</Label>
               <Input
                 value={telefone}
                 onChange={(e) => setTelefone(e.target.value)}
@@ -318,9 +379,8 @@ export function InqueritoSaudePage() {
                 inputMode="tel"
               />
             </div>
-
             <div className="space-y-1">
-              <Label>Número de alunos *</Label>
+              <Label>{t("Número de alunos *", "Nombre d'élèves *")}</Label>
               <select
                 className="flex h-10 w-full rounded-md border border-[var(--color-line,#d5ddd8)] bg-white px-3 text-sm"
                 value={numAlunos}
@@ -328,7 +388,14 @@ export function InqueritoSaudePage() {
               >
                 {[1, 2, 3, 4].map((n) => (
                   <option key={n} value={n}>
-                    {n} aluno{n > 1 ? "s" : ""}
+                    {n}{" "}
+                    {lang === "fr"
+                      ? n > 1
+                        ? "élèves"
+                        : "élève"
+                      : n > 1
+                        ? "alunos"
+                        : "aluno"}
                   </option>
                 ))}
               </select>
@@ -340,19 +407,19 @@ export function InqueritoSaudePage() {
                 className="rounded-xl border border-[var(--color-line,#d5ddd8)] bg-[var(--color-bg,#f4f7f5)] p-3"
               >
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-forest,#1f5c4a)]">
-                  Aluno {i + 1} — todos os campos obrigatórios
+                  {t(`Aluno ${i + 1} — todos os campos obrigatórios`, `Élève ${i + 1} — tous les champs obligatoires`)}
                 </p>
                 <div className="grid gap-2">
                   <div className="space-y-1">
-                    <Label>Nome do aluno *</Label>
+                    <Label>{t("Nome do aluno *", "Nom de l'élève *")}</Label>
                     <Input
                       value={a.nome}
                       onChange={(e) => updateAluno(i, { nome: e.target.value })}
-                      placeholder="Nome completo"
+                      placeholder={t("Nome completo", "Nom complet")}
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Grupo sanguíneo *</Label>
+                    <Label>{t("Grupo sanguíneo *", "Groupe sanguin *")}</Label>
                     <select
                       className="flex h-10 w-full rounded-md border border-[var(--color-line,#d5ddd8)] bg-white px-3 text-sm"
                       value={a.grupoSanguineo}
@@ -360,93 +427,111 @@ export function InqueritoSaudePage() {
                         updateAluno(i, { grupoSanguineo: e.target.value })
                       }
                     >
-                      <option value="">— Seleccione —</option>
+                      <option value="">
+                        {t("— Seleccione —", "— Choisir —")}
+                      </option>
                       {GRUPOS.map((g) => (
                         <option key={g} value={g}>
-                          {g}
+                          {grupoLabel(g)}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <Label>Alergias a medicamentos *</Label>
+                    <Label>
+                      {t("Alergias a medicamentos *", "Allergies aux médicaments *")}
+                    </Label>
                     <Input
                       value={a.alergiasMedicamentos}
                       onChange={(e) =>
-                        updateAluno(i, { alergiasMedicamentos: e.target.value })
+                        updateAluno(i, {
+                          alergiasMedicamentos: e.target.value,
+                        })
                       }
-                      placeholder="Ex.: penicilina — ou Nenhuma"
+                      placeholder={t("Nenhuma / listar", "Aucune / lister")}
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Alergias alimentares *</Label>
+                    <Label>
+                      {t("Alergias alimentares *", "Allergies alimentaires *")}
+                    </Label>
                     <Input
                       value={a.alergiasAlimentares}
                       onChange={(e) =>
-                        updateAluno(i, { alergiasAlimentares: e.target.value })
+                        updateAluno(i, {
+                          alergiasAlimentares: e.target.value,
+                        })
                       }
-                      placeholder="Ex.: amendoim, lactose — ou Nenhuma"
+                      placeholder={t("Nenhuma / listar", "Aucune / lister")}
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Clínica / hospital mais próximo *</Label>
+                    <Label>
+                      {t(
+                        "Clínica / hospital mais próximo *",
+                        "Clinique / hôpital le plus proche *",
+                      )}
+                    </Label>
                     <Input
                       value={a.clinicaProxima}
                       onChange={(e) =>
                         updateAluno(i, { clinicaProxima: e.target.value })
                       }
-                      placeholder="Nome e contacto de emergência"
+                      placeholder={t("Nome e zona", "Nom et zone")}
                     />
                   </div>
                 </div>
               </div>
             ))}
-          </div>
 
-          <div className="mt-4">
             <Button
               type="button"
-              className="w-full"
+              className="mt-2 w-full"
               disabled={busy}
               onClick={() => void confirmar()}
             >
-              {busy ? "A enviar…" : "Enviar"}
+              {busy
+                ? t("A enviar…", "Envoi…")
+                : t("Enviar inquérito", "Envoyer le questionnaire")}
             </Button>
-            <p className="mt-2 text-center text-[11px] text-[var(--color-muted,#64748b)]">
-              Ao enviar, os dados ficam gravados na nuvem da escola (Excel/CSV disponível).
-            </p>
           </div>
         </div>
       )}
 
-      {rows.length > 0 && (
+      {rows.length > 0 ? (
         <div className="mt-6">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">
-              Registos ({rows.length})
-            </h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted,#64748b)]">
+              {t("Últimos registos", "Derniers enregistrements")}
+            </p>
             <Button
               type="button"
               size="sm"
               variant="secondary"
               onClick={() => downloadCsv(rows)}
             >
-              Excel/CSV
+              CSV
             </Button>
           </div>
-          <ul className="max-h-48 space-y-1 overflow-auto rounded-lg border border-[var(--color-line,#d5ddd8)] bg-white p-2 text-xs">
-            {rows.slice(0, 15).map((r, i) => (
+          <ul className="space-y-2 text-sm">
+            {rows.slice(0, 8).map((r, i) => (
               <li
-                key={i}
-                className="border-b border-[var(--color-line,#eee)] py-1 last:border-0"
+                key={`${r.submittedAt}-${i}`}
+                className="rounded-lg border border-[var(--color-line,#d5ddd8)] bg-white px-3 py-2"
               >
-                <strong>{r.encarregadoNome}</strong> · {r.telefone} ·{" "}
-                {(r.alunos || []).map((a) => a.nome).join(", ")}
+                <strong>{r.encarregadoNome}</strong> · {r.telefone}
+                <br />
+                <span className="text-xs text-[var(--color-muted,#64748b)]">
+                  {(r.alunos || [])
+                    .map((a) => a.nome)
+                    .filter(Boolean)
+                    .join(", ")}
+                </span>
               </li>
             ))}
           </ul>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

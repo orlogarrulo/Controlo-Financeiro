@@ -275,7 +275,8 @@ export function RegulamentoPage() {
         <iframe
           title="Regulamento"
           srcDoc={htmlPreview}
-          className="h-[50vh] w-full bg-white sm:h-[60vh]"
+          className="h-[min(70vh,900px)] w-full bg-white"
+          style={{ border: "none" }}
         />
       </div>
     </div>

@@ -1,6 +1,6 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
-import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText } from "lucide-react";
+import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText, Calendar } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -27,7 +27,11 @@ import {
   isMobileDevice,
 } from "@/lib/pdf-export";
 import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
-import { buildInqueritoSaudeWhatsApp } from "@/lib/inquerito-saude-whatsapp";
+import {
+  buildInqueritoSaudeWhatsApp,
+  buildAgendamentoWhatsApp,
+  agendamentoPublicUrl,
+} from "@/lib/inquerito-saude-whatsapp";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
 import {
@@ -2678,6 +2682,34 @@ function Alunos() {
               onClick={() => setRegOpen(true)}
             >
               <FileText className="mr-1 size-4" /> Regulamento interno
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Agendamento pedagógico — sábados 09:30–12:30 (link /marca)"
+              onClick={() => {
+                const url = agendamentoPublicUrl();
+                const msg = buildAgendamentoWhatsApp({
+                  escolaNome: getSeed().escola?.nome,
+                  linkFormulario: url,
+                });
+                void navigator.clipboard.writeText(msg).then(
+                  () => toast.success("Mensagem de agendamento copiada — cole no WhatsApp"),
+                  () => {
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  },
+                );
+              }}
+            >
+              <Calendar className="mr-1 size-4" /> Agendamento
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Abrir formulário público de agendamento"
+              onClick={() => window.open(agendamentoPublicUrl(), "_blank", "noopener,noreferrer")}
+            >
+              <Calendar className="mr-1 size-4" /> Marcar (form)
             </Button>
             <Button
               className="shrink-0"

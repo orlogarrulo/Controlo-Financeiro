@@ -623,14 +623,17 @@ export const listInqueritoSaude = createServerFn({ method: "GET" }).handler(
   },
 );
 
-/* ─── Agendamento pedagógico (nuvem) ─── */
+
+/* ─── Agendamento pedagógico (nuvem) — sábados 09:30–12:30 slots 20 min ─── */
 
 export type AgendamentoCloud = {
   encarregadoNome: string;
   telefone: string;
+  email?: string;
   alunoNome: string;
   turma: string;
-  dia: "4a" | "5a";
+  /** Data ISO do sábado (YYYY-MM-DD) ou legado "4a"/"5a" */
+  dia: string;
   hora: string;
   submittedAt: string;
 };
@@ -651,6 +654,11 @@ async function ensureAgendamentoTable(sql: {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  try {
+    await sql.query(`ALTER TABLE agendamentos_pedagogico ADD COLUMN IF NOT EXISTS email TEXT`);
+  } catch {
+    /* PGLite / versões antigas */
+  }
 }
 
 export const submitAgendamento = createServerFn({ method: "POST" }).handler(
@@ -659,38 +667,39 @@ export const submitAgendamento = createServerFn({ method: "POST" }).handler(
     if (!data?.encarregadoNome?.trim()) throw new Error("Nome do encarregado é obrigatório.");
     if (!data?.telefone?.trim()) throw new Error("Telefone é obrigatório.");
     if (!data?.alunoNome?.trim()) throw new Error("Nome do aluno é obrigatório.");
-    if (!data?.dia || !["4a", "5a"].includes(data.dia)) {
-      throw new Error("Escolha o dia (4ª ou 5ª feira).");
-    }
+    if (!data?.dia?.trim()) throw new Error("Escolha o sábado (data) do atendimento.");
     if (!data?.hora?.trim()) throw new Error("Escolha a hora do atendimento.");
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
     await ensureAgendamentoTable(sql);
     const id = `ag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const submittedAt = data.submittedAt || new Date().toISOString();
+    const email = (data.email || "").trim().slice(0, 120);
     await sql.query(
       `INSERT INTO agendamentos_pedagogico
-        (id, encarregado_nome, telefone, aluno_nome, turma, dia, hora, submitted_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::timestamptz)`,
+        (id, encarregado_nome, telefone, aluno_nome, turma, dia, hora, submitted_at, email)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$9)`,
       [
         id,
         data.encarregadoNome.trim().slice(0, 200),
         data.telefone.trim().slice(0, 40),
         data.alunoNome.trim().slice(0, 200),
         (data.turma || "").trim().slice(0, 80),
-        data.dia,
+        data.dia.trim().slice(0, 32),
         data.hora.trim().slice(0, 10),
         submittedAt,
+        email,
       ],
     );
     const { notifyEscola } = await import("@/lib/notify-escola");
-    const diaLabel = data.dia === "4a" ? "4ª feira" : "5ª feira";
+    const diaLabel = data.dia.trim();
     await notifyEscola({
       type: "agendamento",
       text:
-        `📅 Agendamento pedagógico\n` +
+        `📅 Agendamento pedagógico (sábado)\n` +
         `Encarregado: ${data.encarregadoNome.trim()}\n` +
         `Tel: ${data.telefone.trim()}\n` +
+        (email ? `E-mail: ${email}\n` : "") +
         `Aluno: ${data.alunoNome.trim()}\n` +
         `${diaLabel} às ${data.hora.trim()}\n` +
         `Ref: ${id}`,
@@ -698,9 +707,10 @@ export const submitAgendamento = createServerFn({ method: "POST" }).handler(
         id,
         encarregadoNome: data.encarregadoNome.trim(),
         telefone: data.telefone.trim(),
+        email,
         alunoNome: data.alunoNome.trim(),
         turma: (data.turma || "").trim(),
-        dia: data.dia,
+        dia: data.dia.trim(),
         hora: data.hora.trim(),
         submittedAt,
       },
@@ -718,13 +728,14 @@ export const listAgendamentos = createServerFn({ method: "GET" }).handler(
       const rows = await sql.query<{
         encarregado_nome: string;
         telefone: string;
+        email: string | null;
         aluno_nome: string;
         turma: string | null;
         dia: string;
         hora: string;
         submitted_at: string | Date;
       }>(
-        `SELECT encarregado_nome, telefone, aluno_nome, turma, dia, hora, submitted_at
+        `SELECT encarregado_nome, telefone, email, aluno_nome, turma, dia, hora, submitted_at
          FROM agendamentos_pedagogico
          ORDER BY submitted_at DESC
          LIMIT 2000`,
@@ -732,9 +743,10 @@ export const listAgendamentos = createServerFn({ method: "GET" }).handler(
       return rows.map((r) => ({
         encarregadoNome: r.encarregado_nome,
         telefone: r.telefone,
+        email: r.email || "",
         alunoNome: r.aluno_nome,
         turma: r.turma || "",
-        dia: r.dia === "5a" ? "5a" : "4a",
+        dia: r.dia,
         hora: r.hora,
         submittedAt:
           typeof r.submitted_at === "string"

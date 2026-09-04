@@ -1,5 +1,6 @@
 /**
- * Mensagem estilo inquérito WhatsApp (lista de envio) + link curto público /saude
+ * Mensagens WhatsApp — inquérito de saúde e agendamento.
+ * Prioridade francês + português no mesmo texto.
  */
 
 export function buildInqueritoSaudeWhatsApp(opts?: {
@@ -7,16 +8,44 @@ export function buildInqueritoSaudeWhatsApp(opts?: {
   linkFormulario?: string;
 }): string {
   const escola =
-    opts?.escolaNome || "École Consulaire du Congo (Brazzaville) – Nova Vida";
+    opts?.escolaNome ||
+    "École Consulaire du Congo (Brazzaville) de Luanda";
   const link = opts?.linkFormulario || inqueritoSaudePublicUrl();
 
-  return `📋 *INQUÉRITO DE SAÚDE*
+  return `📋 *QUESTIONNAIRE DE SANTÉ / INQUÉRITO DE SAÚDE*
 ${escola}
 
-Preencha o formulário (1 a 4 alunos):
+*FR* — Veuillez remplir le formulaire (1 à 4 élèves) :
 ${link}
 
-Obrigado.`;
+*PT* — Preencha o formulário (1 a 4 alunos) :
+${link}
+
+Merci. / Obrigado.`;
+}
+
+export function buildAgendamentoWhatsApp(opts?: {
+  escolaNome?: string;
+  linkFormulario?: string;
+}): string {
+  const escola =
+    opts?.escolaNome ||
+    "École Consulaire du Congo (Brazzaville) de Luanda";
+  const link = opts?.linkFormulario || agendamentoPublicUrl();
+
+  return `📅 *RENDEZ-VOUS PÉDAGOGIQUE / AGENDAMENTO PEDAGÓGICO*
+${escola}
+
+Samedis · 09h30–12h30 · créneaux de 20 min
+Sábados · 09:30–12:30 · slots de 20 minutos
+
+*FR* — Prendre rendez-vous :
+${link}
+
+*PT* — Marcar atendimento :
+${link}
+
+Merci. / Obrigado.`;
 }
 
 /** Link curto público — só o formulário, sem menu da app. */
@@ -34,7 +63,7 @@ export function agendamentoPublicUrl(): string {
   return `${location.origin}/marca`;
 }
 
-export function regulamentoPublicUrl(lang: "pt" | "fr" = "pt"): string {
+export function regulamentoPublicUrl(lang: "pt" | "fr" = "fr"): string {
   if (typeof location === "undefined") {
     return `https://controlo-financeiro-tau.vercel.app/regras?lang=${lang}`;
   }
