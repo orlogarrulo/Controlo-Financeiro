@@ -2019,6 +2019,7 @@ function Alunos() {
       meses > 1
         ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
         : `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`;
+    const cartaoVal = Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0;
     return [
       { key: "inscricao", label: "Inscrição", value: Number(a.inscricao) || 0, on: (Number(a.inscricao) || 0) > 0 },
       { key: "seguro", label: "Seguro escolar", value: Number(a.seguro) || 0, on: (Number(a.seguro) || 0) > 0 },
@@ -2029,6 +2030,12 @@ function Alunos() {
       { key: "transporte", label: "Transporte", value: Number(a.transporte) || 0, on: (Number(a.transporte) || 0) > 0 },
       { key: "alimentacao", label: "Alimentação", value: Number(a.alimentacao) || 0, on: (Number(a.alimentacao) || 0) > 0 },
       { key: "curso", label: "Curso intensivo", value: Number(a.curso) || 0, on: (Number(a.curso) || 0) > 0 },
+      {
+        key: "cartaoEstudante",
+        label: "Cartão de estudante",
+        value: cartaoVal,
+        on: cartaoVal > 0,
+      },
       {
         key: "propinas",
         label: propLabel,

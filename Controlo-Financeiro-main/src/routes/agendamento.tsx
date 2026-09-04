@@ -305,9 +305,6 @@ export function AgendamentoPage() {
             {ESCOLA_WA}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => downloadCsv(rows)}>
-              {t("Descarregar Excel/CSV", "Télécharger Excel/CSV")}
-            </Button>
             <Button
               type="button"
               size="sm"
@@ -427,33 +424,8 @@ export function AgendamentoPage() {
         </div>
       )}
 
-      {rows.length > 0 ? (
-        <div className="mt-6">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted,#64748b)]">
-              {t("Últimos registos (nuvem)", "Derniers enregistrements (cloud)")}
-            </p>
-            <Button type="button" size="sm" variant="secondary" onClick={() => downloadCsv(rows)}>
-              CSV
-            </Button>
-          </div>
-          <ul className="space-y-2 text-sm">
-            {rows.slice(0, 12).map((r, i) => (
-              <li
-                key={`${r.submittedAt}-${i}`}
-                className="rounded-lg border border-[var(--color-line,#d5ddd8)] bg-white px-3 py-2"
-              >
-                <strong>{r.alunoNome}</strong> · {r.encarregadoNome}
-                {r.email ? ` · ${r.email}` : ""}
-                <br />
-                <span className="text-xs text-[var(--color-muted,#64748b)]">
-                  {formatDiaLabel(r.dia, lang)} · {r.hora} · {r.telefone}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {/* Lista de últimos registos e CSV removidos do acesso público
+          para proteger dados pessoais de outros encarregados. */}
     </div>
   );
 }

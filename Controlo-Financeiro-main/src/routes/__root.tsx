@@ -79,10 +79,11 @@ export const Route = createRootRoute({
       { name: "robots", content: "noindex, nofollow" },
     ],
     links: [
+      { rel: "icon", type: "image/jpeg", href: "/logo-escola.jpg" },
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
+      { rel: "apple-touch-icon", href: "/logo-escola.jpg" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
         rel: "preconnect",
