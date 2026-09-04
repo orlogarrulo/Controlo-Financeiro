@@ -483,13 +483,15 @@ function calcTotais(f: FormState) {
   const alimentacao = num(f.alimentacao);
   const curso = num(f.curso);
   const cartaoEst = f.incluirCartaoEstudante ? num(f.cartaoEstudante) || CARTAO_ESTUDANTE_PRECO : 0;
-  const mensalidade1 = num(f.mensalidade1);
   const propCalc = calcPropinaComCampanha(
     num(f.propina),
     num(f.mesesPropina),
     f.campanhaPromoSetembro,
     irmaosNivelFromForm(f),
   );
+  // Preferir valor líquido calculado (com −10% / −15% / −40%); senão o campo manual
+  const mensalidade1 =
+    propCalc.brutoPropina > 0 ? propCalc.liquidoPropina : num(f.mensalidade1);
   const brutoSemDesc =
     inscricao +
     seguro +
@@ -533,15 +535,24 @@ function calcTotais(f: FormState) {
   };
 }
 
-/** Recalcula mensalidade1 a partir de propina × meses e campanha. */
+/** Recalcula mensalidade1 a partir de propina × meses, campanha e desconto de irmãos (−10% / −15%). */
 function aplicarPropinaForm(form: FormState, patch: Partial<FormState> = {}): FormState {
   const next = { ...form, ...patch };
-  const meses = num(next.mesesPropina);
+  let meses = num(next.mesesPropina);
   const prop = num(next.propina);
+  // Se há propina e desconto de irmãos/campanha, garantir pelo menos 1 mês para o total reflectir o desconto
+  if (prop > 0 && meses <= 0 && (next.campanhaPromoSetembro || irmaosNivelFromForm(next) > 0)) {
+    meses = 1;
+    next.mesesPropina = "1";
+  }
   if (meses <= 0 || prop <= 0) {
     return { ...next, mensalidade1: meses <= 0 ? "0" : next.mensalidade1 };
   }
-  const { liquidoPropina } = calcPropinaComCampanha(prop, meses, next.campanhaPromoSetembro, irmaosNivelFromForm(next),
+  const { liquidoPropina } = calcPropinaComCampanha(
+    prop,
+    meses,
+    next.campanhaPromoSetembro,
+    irmaosNivelFromForm(next),
   );
   return { ...next, mensalidade1: String(liquidoPropina) };
 }
@@ -829,26 +840,31 @@ function MatriculaForm({
               const on = e.target.checked;
               if (on) {
                 // Pacote 82 mil por defeito: já inclui matrícula + seguro + cartão
-                setForm({
-                  ...form,
-                  transferidoCampusCidade: true,
-                  seguroExterno: false,
-                  agregadoIrmaos: false,
-                  inscricao: String(CAMPUS_CIDADE_INSCRICAO_82),
-                  seguro: "0",
-                  incluirCartaoEstudante: false,
-                  cartaoEstudante: "0",
-                  propina: String(CAMPUS_CIDADE_PROPINA),
-                });
+                // Propina 75.000 + recalcular mensalidade1 com descontos de irmãos/campanha
+                setForm(
+                  aplicarPropinaForm(form, {
+                    transferidoCampusCidade: true,
+                    seguroExterno: false,
+                    inscricao: String(CAMPUS_CIDADE_INSCRICAO_82),
+                    seguro: "0",
+                    incluirCartaoEstudante: false,
+                    cartaoEstudante: "0",
+                    propina: String(CAMPUS_CIDADE_PROPINA),
+                    mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
+                  }),
+                );
               } else {
-                setForm({
-                  ...form,
-                  transferidoCampusCidade: false,
-                  agregadoIrmaos: false,
-                  inscricao: String(DEFAULT_INSCRICAO),
-                  seguro: form.seguroExterno ? "0" : String(DEFAULT_SEGURO_ESCOLA),
-                  propina: "0",
-                });
+                setForm(
+                  aplicarPropinaForm(form, {
+                    transferidoCampusCidade: false,
+                    agregadoIrmaos: false,
+                    irmaosNivel: 0,
+                    inscricao: String(DEFAULT_INSCRICAO),
+                    seguro: form.seguroExterno ? "0" : String(DEFAULT_SEGURO_ESCOLA),
+                    propina: "0",
+                    mensalidade1: "0",
+                  }),
+                );
               }
             }}
           />
@@ -885,14 +901,16 @@ function MatriculaForm({
                       name="inscCampus"
                       checked={num(form.inscricao) === pacote}
                       onChange={() =>
-                        setForm({
-                          ...form,
-                          inscricao: String(pacote),
-                          // Já incluídos no pacote
-                          seguro: "0",
-                          incluirCartaoEstudante: false,
-                          cartaoEstudante: "0",
-                        })
+                        setForm(
+                          aplicarPropinaForm(form, {
+                            inscricao: String(pacote),
+                            // Já incluídos no pacote
+                            seguro: "0",
+                            incluirCartaoEstudante: false,
+                            cartaoEstudante: "0",
+                            propina: String(CAMPUS_CIDADE_PROPINA),
+                          }),
+                        )
                       }
                     />
                     {formatKz(pacote)}
@@ -908,7 +926,9 @@ function MatriculaForm({
               Propina mensal fixa: <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>
             </p>
             <div>
-              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Irmãos no mesmo agregado (desconto na propina)</p>
+              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">
+                Irmãos no mesmo agregado (desconto automático na propina)
+              </p>
               <div className="flex flex-wrap gap-3 text-xs">
                 <label className="flex items-center gap-2">
                   <input
@@ -921,11 +941,12 @@ function MatriculaForm({
                           irmaosNivel: 0,
                           agregadoIrmaos: false,
                           propina: String(CAMPUS_CIDADE_PROPINA),
+                          mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
                         }),
                       )
                     }
                   />
-                  Nenhum
+                  Nenhum · {formatKz(CAMPUS_CIDADE_PROPINA)}/mês
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -938,11 +959,12 @@ function MatriculaForm({
                           irmaosNivel: 2,
                           agregadoIrmaos: true,
                           propina: String(CAMPUS_CIDADE_PROPINA),
+                          mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
                         }),
                       )
                     }
                   />
-                  2 irmãos (−10%)
+                  2 irmãos (−10%) · {formatKz(Math.round(CAMPUS_CIDADE_PROPINA * 0.9))}/mês
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -955,13 +977,29 @@ function MatriculaForm({
                           irmaosNivel: 3,
                           agregadoIrmaos: true,
                           propina: String(CAMPUS_CIDADE_PROPINA),
+                          mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
                         }),
                       )
                     }
                   />
-                  3 ou mais (−15%)
+                  3 ou mais (−15%) · {formatKz(Math.round(CAMPUS_CIDADE_PROPINA * 0.85))}/mês
                 </label>
               </div>
+              {irmaosNivelFromForm(form) > 0 || form.campanhaPromoSetembro ? (
+                <p className="mt-1.5 text-[11px] text-[var(--color-forest)]">
+                  {(() => {
+                    const pc = calcPropinaComCampanha(
+                      CAMPUS_CIDADE_PROPINA,
+                      Math.max(1, num(form.mesesPropina) || 1),
+                      form.campanhaPromoSetembro,
+                      irmaosNivelFromForm(form),
+                    );
+                    return pc.detalhe
+                      ? `Propina líquida nesta liquidação: ${pc.detalhe}`
+                      : null;
+                  })()}
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -1286,7 +1324,19 @@ function MatriculaForm({
           {totais.descPct > 0 ? ` · desconto propinas ${totais.descPct}%` : ""}
           {form.seguroExterno ? " (sem seguro da escola)" : ""}
           {form.transferidoCampusCidade
-            ? ` · propina mensal ref. ${formatKz(form.agregadoIrmaos ? CAMPUS_CIDADE_PROPINA : CAMPUS_CIDADE_PROPINA)} (Campus Cidade)`
+            ? ` · propina mensal ref. ${formatKz(
+                irmaosNivelFromForm(form) === 2
+                  ? Math.round(CAMPUS_CIDADE_PROPINA * 0.9)
+                  : irmaosNivelFromForm(form) === 3
+                    ? Math.round(CAMPUS_CIDADE_PROPINA * 0.85)
+                    : CAMPUS_CIDADE_PROPINA,
+              )}/mês (Campus Cidade${
+                irmaosNivelFromForm(form) === 2
+                  ? " · −10% 2 irmãos"
+                  : irmaosNivelFromForm(form) === 3
+                    ? " · −15% 3+ irmãos"
+                    : ""
+              })`
             : ""}
         </p>
       </div>
