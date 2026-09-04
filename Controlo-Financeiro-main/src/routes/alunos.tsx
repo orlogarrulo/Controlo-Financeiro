@@ -1,6 +1,6 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
-import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText, Calendar } from "lucide-react";
+import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText, Calendar, IdCard } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -72,11 +72,14 @@ const TURMAS = [
 const DEFAULT_INSCRICAO = 150000;
 const DEFAULT_SEGURO_ESCOLA = 30000;
 
-/** Tarifário especial — transferidos do Campus Cidade (só 2026-2027). */
-const CAMPUS_CIDADE_INSCRICAO = 150000;
+/** Tarifário especial — transferidos do Campus Cidade (2026-2027). */
+/** Inscrição: escolher 82.000 ou 127.000 Kz */
+const CAMPUS_CIDADE_INSCRICAO_82 = 82000;
+const CAMPUS_CIDADE_INSCRICAO_127 = 127000;
 const CAMPUS_CIDADE_SEGURO = 30000;
-const CAMPUS_CIDADE_PROPINA_1 = 100000;
-const CAMPUS_CIDADE_PROPINA_IRMAOS = 75000;
+/** Propina mensal transferidos */
+const CAMPUS_CIDADE_PROPINA = 75000;
+const CARTAO_ESTUDANTE_PRECO = 10000;
 const PROPINA_MATERNELLE = 170000;
 const PROPINA_PRIMAIRE = 250000;
 const PROPINA_COLLEGE = 260000;
@@ -84,7 +87,7 @@ const NOME_ESCOLA_FATURA =
   "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida";
 
 const CAMPUS_CIDADE_NOTA =
-  "Transferido do Campus Cidade · inscrição/seguro tarifário normal · propina 100.000 Kz (1 aluno) ou 75.000 Kz (2+ irmãos do mesmo agregado) · 2026-2027";
+  "Transferido do Campus Cidade · inscrição 82.000 ou 127.000 Kz · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027";
 
 const METODO_NAO_ESCOLHIDO = "";
 const METODO_PLACEHOLDER = "— escolher —";
@@ -198,9 +201,11 @@ type FormState = {
   transferidoCampusCidade: boolean;
   /** 2+ irmãos no mesmo agregado (propina 75.000 ou +10% campanha). */
   agregadoIrmaos: boolean;
+  /** 0 nenhum · 2 (−10%) · 3 (−15%) */
+  irmaosNivel: 0 | 2 | 3;
   /**
    * Campanha: inscrição até 10/set → 40% desconto nas propinas desta liquidação.
-   * +10% se 2+ irmãos. Inscrição e seguro sem desconto.
+   * +10% / +15% irmãos. Inscrição e seguro sem desconto.
    */
   campanhaPromoSetembro: boolean;
   manuais: string;
@@ -210,6 +215,8 @@ type FormState = {
   transporte: string;
   alimentacao: string;
   curso: string;
+  cartaoEstudante: string;
+  incluirCartaoEstudante: boolean;
   mensalidade1: string;
   /** 0 = não incluir propina nesta liquidação; 1–9 meses */
   mesesPropina: string;
@@ -238,6 +245,7 @@ type FormState = {
   metodoTransporte: string;
   metodoAlimentacao: string;
   metodoCurso: string;
+  metodoCartaoEstudante: string;
   pin: string;
 };
 
@@ -253,6 +261,9 @@ function emptyForm(): FormState {
     seguroExterno: false,
     transferidoCampusCidade: false,
     agregadoIrmaos: false,
+    irmaosNivel: 0,
+    cartaoEstudante: String(CARTAO_ESTUDANTE_PRECO),
+    incluirCartaoEstudante: false,
     campanhaPromoSetembro: false,
     manuais: "0",
     cadernos: "0",
@@ -287,6 +298,7 @@ function emptyForm(): FormState {
     metodoTransporte: METODO_NAO_ESCOLHIDO,
     metodoAlimentacao: METODO_NAO_ESCOLHIDO,
     metodoCurso: METODO_NAO_ESCOLHIDO,
+    metodoCartaoEstudante: METODO_NAO_ESCOLHIDO,
     pin: "",
   };
 }
@@ -311,19 +323,18 @@ function buildObs(form: FormState): string {
   if (form.transferidoCampusCidade) parts.push(CAMPUS_CIDADE_NOTA);
   if (form.seguroExterno) parts.push("Seguro próprio (externo)");
   if (form.campanhaPromoSetembro) {
-    const pc = calcPropinaComCampanha(
-      num(form.propina),
-      num(form.mesesPropina),
-      true,
-      form.agregadoIrmaos && !form.transferidoCampusCidade,
+    const pc = calcPropinaComCampanha(num(form.propina), num(form.mesesPropina), true, irmaosNivelFromForm(form),
     );
     parts.push(
-      `Campanha promo até 10/set (−40% propinas${
-        form.agregadoIrmaos && !form.transferidoCampusCidade ? " + −10% irmãos" : ""
-      }${pc.detalhe ? ` · ${pc.detalhe}` : ""})`,
+      `Campanha promo até 10/set (−40% propinas${pc.detalhe ? ` · ${pc.detalhe}` : ""})`,
     );
-  } else if (form.agregadoIrmaos && !form.transferidoCampusCidade && num(form.mesesPropina) > 0) {
-    parts.push("Desconto 2+ irmãos (−10% propinas desta liquidação)");
+  } else {
+    const nv = irmaosNivelFromForm(form);
+    if (nv === 2 && num(form.mesesPropina) > 0) {
+      parts.push("Desconto 2 irmãos (−10% propinas desta liquidação)");
+    } else if (nv === 3 && num(form.mesesPropina) > 0) {
+      parts.push("Desconto 3+ irmãos (−15% propinas desta liquidação)");
+    }
   }
   return parts.join(" · ");
 }
@@ -384,11 +395,7 @@ function isMaternelleTurma(turma: string): boolean {
 /** Propina de referência por ciclo (respeita transferidos Campus Cidade). */
 function propinaPorCiclo(a: Aluno, ciclo?: "mat" | "pri" | "col" | "auto"): number {
   if (a.transferidoCampusCidade) {
-    // Mantém tarifário especial dos transferidos
-    if (a.propina === CAMPUS_CIDADE_PROPINA_IRMAOS || (a.obs || "").includes("75.000")) {
-      return CAMPUS_CIDADE_PROPINA_IRMAOS;
-    }
-    return a.propina && a.propina > 0 ? a.propina : CAMPUS_CIDADE_PROPINA_1;
+    return a.propina && a.propina > 0 ? a.propina : CAMPUS_CIDADE_PROPINA;
   }
   const c =
     ciclo && ciclo !== "auto"
@@ -404,12 +411,14 @@ function propinaPorCiclo(a: Aluno, ciclo?: "mat" | "pri" | "col" | "auto"): numb
 }
 
 
-/** Descontos só sobre propinas (inscrição/seguro a 100%). */
+/** Descontos só sobre propinas (inscrição/seguro/cartão a 100%).
+ *  irmaosNivel: 0 = nenhum · 2 = −10% · 3 = −15% (3 ou mais irmãos).
+ */
 function calcPropinaComCampanha(
   propinaMensal: number,
   meses: number,
   campanha: boolean,
-  irmaos: boolean,
+  irmaosNivel: 0 | 2 | 3 = 0,
 ): {
   brutoPropina: number;
   liquidoPropina: number;
@@ -427,9 +436,12 @@ function calcPropinaComCampanha(
     factor *= 0.6; // −40%
     parts.push("−40% campanha (até 10/set)");
   }
-  if (irmaos) {
-    factor *= 0.9; // −10% irmãos
-    parts.push("−10% 2+ irmãos");
+  if (irmaosNivel === 2) {
+    factor *= 0.9; // −10%
+    parts.push("−10% 2 irmãos");
+  } else if (irmaosNivel === 3) {
+    factor *= 0.85; // −15%
+    parts.push("−15% 3+ irmãos");
   }
   const liquidoPropina = Math.round(brutoPropina * factor);
   const descPct =
@@ -446,6 +458,12 @@ function calcPropinaComCampanha(
   };
 }
 
+function irmaosNivelFromForm(f: { agregadoIrmaos?: boolean; irmaosNivel?: 0 | 2 | 3 }): 0 | 2 | 3 {
+  if (f.irmaosNivel === 2 || f.irmaosNivel === 3) return f.irmaosNivel;
+  if (f.irmaosNivel === 0) return 0;
+  return f.agregadoIrmaos ? 2 : 0;
+}
+
 function calcTotais(f: FormState) {
   const inscricao = num(f.inscricao);
   const seguro = f.seguroExterno ? 0 : num(f.seguro);
@@ -456,12 +474,13 @@ function calcTotais(f: FormState) {
   const transporte = num(f.transporte);
   const alimentacao = num(f.alimentacao);
   const curso = num(f.curso);
+  const cartaoEst = f.incluirCartaoEstudante ? num(f.cartaoEstudante) || CARTAO_ESTUDANTE_PRECO : 0;
   const mensalidade1 = num(f.mensalidade1);
   const propCalc = calcPropinaComCampanha(
     num(f.propina),
     num(f.mesesPropina),
     f.campanhaPromoSetembro,
-    f.agregadoIrmaos && !f.transferidoCampusCidade,
+    irmaosNivelFromForm(f),
   );
   const brutoSemDesc =
     inscricao +
@@ -473,6 +492,7 @@ function calcTotais(f: FormState) {
     transporte +
     alimentacao +
     curso +
+    cartaoEst +
     (propCalc.brutoPropina > 0 ? propCalc.brutoPropina : mensalidade1);
   const liquido =
     inscricao +
@@ -484,6 +504,7 @@ function calcTotais(f: FormState) {
     transporte +
     alimentacao +
     curso +
+    cartaoEst +
     mensalidade1;
   return {
     inscricao,
@@ -495,6 +516,7 @@ function calcTotais(f: FormState) {
     transporte,
     alimentacao,
     curso,
+    cartaoEstudante: cartaoEst,
     mensalidade1,
     bruto: brutoSemDesc,
     liquido,
@@ -511,11 +533,7 @@ function aplicarPropinaForm(form: FormState, patch: Partial<FormState> = {}): Fo
   if (meses <= 0 || prop <= 0) {
     return { ...next, mensalidade1: meses <= 0 ? "0" : next.mensalidade1 };
   }
-  const { liquidoPropina } = calcPropinaComCampanha(
-    prop,
-    meses,
-    next.campanhaPromoSetembro,
-    next.agregadoIrmaos && !next.transferidoCampusCidade,
+  const { liquidoPropina } = calcPropinaComCampanha(prop, meses, next.campanhaPromoSetembro, irmaosNivelFromForm(next),
   );
   return { ...next, mensalidade1: String(liquidoPropina) };
 }
@@ -591,6 +609,7 @@ function MatriculaForm({
             ["metodoTransporte", "Transporte"],
             ["metodoAlimentacao", "Alimentação"],
             ["metodoCurso", "Curso intensivo"],
+            ["metodoCartaoEstudante", "Cartão de estudante"],
           ] as const).map(([key, label]) => (
             <div key={key} className="space-y-1">
               <Label className="text-xs">{label}</Label>
@@ -610,6 +629,7 @@ function MatriculaForm({
                     next.metodoTransporte,
                     next.metodoAlimentacao,
                     next.metodoCurso,
+                    next.metodoCartaoEstudante,
                   ].filter(isMetodoEscolhido);
                   const uniq = [...new Set(vals)];
                   next.metodoPagamento =
@@ -805,9 +825,9 @@ function MatriculaForm({
                   transferidoCampusCidade: true,
                   seguroExterno: false,
                   agregadoIrmaos: false,
-                  inscricao: String(CAMPUS_CIDADE_INSCRICAO),
+                  inscricao: String(CAMPUS_CIDADE_INSCRICAO_82),
                   seguro: String(CAMPUS_CIDADE_SEGURO),
-                  propina: String(CAMPUS_CIDADE_PROPINA_1),
+                  propina: String(CAMPUS_CIDADE_PROPINA),
                 });
               } else {
                 setForm({
@@ -824,46 +844,102 @@ function MatriculaForm({
           <span>
             <strong>Transferido do Campus Cidade</strong>
             <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-              Inscrição e seguro iguais aos restantes alunos ({formatKz(CAMPUS_CIDADE_INSCRICAO)} +{" "}
-              {formatKz(CAMPUS_CIDADE_SEGURO)}). Propina mensal:{" "}
-              <strong>{formatKz(CAMPUS_CIDADE_PROPINA_1)}</strong> (1 aluno) ou{" "}
-              <strong>{formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}</strong> (2 ou mais irmãos do mesmo
-              agregado). Pode editar os valores nos campos abaixo.
+              Inscrição: <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_82)}</strong> ou{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_127)}</strong> · Seguro{" "}
+              {formatKz(CAMPUS_CIDADE_SEGURO)} · Propina mensal{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>. Desconto irmãos nas propinas:
+              −10% (2) ou −15% (3+).
             </span>
           </span>
         </label>
         {form.transferidoCampusCidade ? (
-          <div className="mt-3 flex flex-wrap gap-4 border-t border-[var(--color-line)] pt-3 text-xs">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="agregadoCampus"
-                checked={!form.agregadoIrmaos}
-                onChange={() =>
-                  setForm({
-                    ...form,
-                    agregadoIrmaos: false,
-                    propina: String(CAMPUS_CIDADE_PROPINA_1),
-                  })
-                }
-              />
-              1 aluno no agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_1)}
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="agregadoCampus"
-                checked={form.agregadoIrmaos}
-                onChange={() =>
-                  setForm({
-                    ...form,
-                    agregadoIrmaos: true,
-                    propina: String(CAMPUS_CIDADE_PROPINA_IRMAOS),
-                  })
-                }
-              />
-              2+ irmãos no mesmo agregado → propina {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
-            </label>
+          <div className="mt-3 space-y-3 border-t border-[var(--color-line)] pt-3 text-sm">
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Montante de inscrição</p>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-3 py-2">
+                  <input
+                    type="radio"
+                    name="inscCampus"
+                    checked={num(form.inscricao) === CAMPUS_CIDADE_INSCRICAO_82}
+                    onChange={() =>
+                      setForm({ ...form, inscricao: String(CAMPUS_CIDADE_INSCRICAO_82) })
+                    }
+                  />
+                  {formatKz(CAMPUS_CIDADE_INSCRICAO_82)}
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-3 py-2">
+                  <input
+                    type="radio"
+                    name="inscCampus"
+                    checked={num(form.inscricao) === CAMPUS_CIDADE_INSCRICAO_127}
+                    onChange={() =>
+                      setForm({ ...form, inscricao: String(CAMPUS_CIDADE_INSCRICAO_127) })
+                    }
+                  />
+                  {formatKz(CAMPUS_CIDADE_INSCRICAO_127)}
+                </label>
+              </div>
+            </div>
+            <p className="text-xs text-[var(--color-muted)]">
+              Propina mensal fixa: <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>
+            </p>
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Irmãos no mesmo agregado (desconto na propina)</p>
+              <div className="flex flex-wrap gap-3 text-xs">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="irmaosCampus"
+                    checked={irmaosNivelFromForm(form) === 0}
+                    onChange={() =>
+                      setForm(
+                        aplicarPropinaForm(form, {
+                          irmaosNivel: 0,
+                          agregadoIrmaos: false,
+                          propina: String(CAMPUS_CIDADE_PROPINA),
+                        }),
+                      )
+                    }
+                  />
+                  Nenhum
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="irmaosCampus"
+                    checked={irmaosNivelFromForm(form) === 2}
+                    onChange={() =>
+                      setForm(
+                        aplicarPropinaForm(form, {
+                          irmaosNivel: 2,
+                          agregadoIrmaos: true,
+                          propina: String(CAMPUS_CIDADE_PROPINA),
+                        }),
+                      )
+                    }
+                  />
+                  2 irmãos (−10%)
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="irmaosCampus"
+                    checked={irmaosNivelFromForm(form) === 3}
+                    onChange={() =>
+                      setForm(
+                        aplicarPropinaForm(form, {
+                          irmaosNivel: 3,
+                          agregadoIrmaos: true,
+                          propina: String(CAMPUS_CIDADE_PROPINA),
+                        }),
+                      )
+                    }
+                  />
+                  3 ou mais (−15%)
+                </label>
+              </div>
+            </div>
           </div>
         ) : null}
       </div>
@@ -955,6 +1031,39 @@ function MatriculaForm({
               <input
                 type="checkbox"
                 className="mt-1 size-4 shrink-0"
+                checked={form.incluirCartaoEstudante}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    incluirCartaoEstudante: e.target.checked,
+                    cartaoEstudante: e.target.checked
+                      ? form.cartaoEstudante || String(CARTAO_ESTUDANTE_PRECO)
+                      : form.cartaoEstudante,
+                  })
+                }
+              />
+              <span>
+                <strong>Cartão de estudante</strong>
+                <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
+                  {formatKz(CARTAO_ESTUDANTE_PRECO)} — pode incluir já na inscrição ou acrescentar depois na edição.
+                </span>
+              </span>
+            </label>
+            {form.incluirCartaoEstudante ? (
+              <Input
+                className="mt-2"
+                value={form.cartaoEstudante}
+                onChange={(e) => setForm({ ...form, cartaoEstudante: e.target.value })}
+                inputMode="decimal"
+                placeholder={String(CARTAO_ESTUDANTE_PRECO)}
+              />
+            ) : null}
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 shrink-0"
                 checked={form.campanhaPromoSetembro}
                 onChange={(e) => {
                   const on = e.target.checked;
@@ -976,20 +1085,45 @@ function MatriculaForm({
                 </span>
               </span>
             </label>
-            {form.campanhaPromoSetembro && !form.transferidoCampusCidade ? (
-              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4"
-                  checked={form.agregadoIrmaos}
-                  onChange={(e) =>
-                    setForm(
-                      aplicarPropinaForm(form, { agregadoIrmaos: e.target.checked }),
-                    )
-                  }
-                />
-                2 ou mais irmãos no mesmo agregado (−10% adicional nas propinas)
-              </label>
+            {!form.transferidoCampusCidade ? (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-[var(--color-muted)]">Irmãos no mesmo agregado (desconto na propina)</p>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="irmaosGeral"
+                      checked={irmaosNivelFromForm(form) === 0}
+                      onChange={() =>
+                        setForm(aplicarPropinaForm(form, { irmaosNivel: 0, agregadoIrmaos: false }))
+                      }
+                    />
+                    Nenhum
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="irmaosGeral"
+                      checked={irmaosNivelFromForm(form) === 2}
+                      onChange={() =>
+                        setForm(aplicarPropinaForm(form, { irmaosNivel: 2, agregadoIrmaos: true }))
+                      }
+                    />
+                    2 irmãos (−10%)
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="irmaosGeral"
+                      checked={irmaosNivelFromForm(form) === 3}
+                      onChange={() =>
+                        setForm(aplicarPropinaForm(form, { irmaosNivel: 3, agregadoIrmaos: true }))
+                      }
+                    />
+                    3+ irmãos (−15%)
+                  </label>
+                </div>
+              </div>
             ) : null}
           </div>
           <div className="space-y-1.5">
@@ -1003,11 +1137,7 @@ function MatriculaForm({
             >
               <option value="0">0 — não incluir propina nesta liquidação</option>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
-                const preview = calcPropinaComCampanha(
-                  num(form.propina),
-                  n,
-                  form.campanhaPromoSetembro,
-                  form.agregadoIrmaos && !form.transferidoCampusCidade,
+                const preview = calcPropinaComCampanha(num(form.propina), n, form.campanhaPromoSetembro, irmaosNivelFromForm(form),
                 );
                 return (
                   <option key={n} value={String(n)}>
@@ -1047,8 +1177,8 @@ function MatriculaForm({
                   String(PROPINA_MATERNELLE),
                   String(PROPINA_PRIMAIRE),
                   String(PROPINA_COLLEGE),
-                  String(CAMPUS_CIDADE_PROPINA_1),
-                  String(CAMPUS_CIDADE_PROPINA_IRMAOS),
+                  String(CAMPUS_CIDADE_PROPINA),
+                  String(CAMPUS_CIDADE_PROPINA),
                   "0",
                 ].includes(form.propina)
                   ? form.propina
@@ -1061,13 +1191,13 @@ function MatriculaForm({
                   return;
                 }
                 const isTrans =
-                  v === String(CAMPUS_CIDADE_PROPINA_1) || v === String(CAMPUS_CIDADE_PROPINA_IRMAOS);
+                  v === String(CAMPUS_CIDADE_PROPINA) || v === String(CAMPUS_CIDADE_PROPINA);
                 setForm(
                   aplicarPropinaForm(form, {
                     propina: v,
                     transferidoCampusCidade: isTrans ? true : form.transferidoCampusCidade,
                     agregadoIrmaos: isTrans
-                      ? v === String(CAMPUS_CIDADE_PROPINA_IRMAOS)
+                      ? v === String(CAMPUS_CIDADE_PROPINA)
                       : form.agregadoIrmaos,
                   }),
                 );
@@ -1077,11 +1207,11 @@ function MatriculaForm({
               <option value={String(PROPINA_MATERNELLE)}>Maternelle — {formatKz(PROPINA_MATERNELLE)}</option>
               <option value={String(PROPINA_PRIMAIRE)}>Primaire — {formatKz(PROPINA_PRIMAIRE)}</option>
               <option value={String(PROPINA_COLLEGE)}>Collège — {formatKz(PROPINA_COLLEGE)}</option>
-              <option value={String(CAMPUS_CIDADE_PROPINA_1)}>
-                Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA_1)}
+              <option value={String(CAMPUS_CIDADE_PROPINA)}>
+                Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA)}
               </option>
-              <option value={String(CAMPUS_CIDADE_PROPINA_IRMAOS)}>
-                Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
+              <option value={String(CAMPUS_CIDADE_PROPINA)}>
+                Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA)}
               </option>
               <option value="__custom__">Outro valor…</option>
             </select>
@@ -1089,8 +1219,8 @@ function MatriculaForm({
               String(PROPINA_MATERNELLE),
               String(PROPINA_PRIMAIRE),
               String(PROPINA_COLLEGE),
-              String(CAMPUS_CIDADE_PROPINA_1),
-              String(CAMPUS_CIDADE_PROPINA_IRMAOS),
+              String(CAMPUS_CIDADE_PROPINA),
+              String(CAMPUS_CIDADE_PROPINA),
               "0",
             ].includes(form.propina) ? (
               <Input
@@ -1112,6 +1242,9 @@ function MatriculaForm({
           {totais.transporte > 0 ? <li>Transporte: {formatKz(totais.transporte)}</li> : null}
           {totais.alimentacao > 0 ? <li>Alimentação: {formatKz(totais.alimentacao)}</li> : null}
           {totais.curso > 0 ? <li>Curso intensivo: {formatKz(totais.curso)}</li> : null}
+          {totais.cartaoEstudante > 0 ? (
+            <li>Cartão de estudante: {formatKz(totais.cartaoEstudante)}</li>
+          ) : null}
           {totais.mensalidade1 > 0 ? (
             <li>
               Propinas
@@ -1130,7 +1263,7 @@ function MatriculaForm({
           {totais.descPct > 0 ? ` · desconto propinas ${totais.descPct}%` : ""}
           {form.seguroExterno ? " (sem seguro da escola)" : ""}
           {form.transferidoCampusCidade
-            ? ` · propina mensal ref. ${formatKz(form.agregadoIrmaos ? CAMPUS_CIDADE_PROPINA_IRMAOS : CAMPUS_CIDADE_PROPINA_1)} (Campus Cidade)`
+            ? ` · propina mensal ref. ${formatKz(form.agregadoIrmaos ? CAMPUS_CIDADE_PROPINA : CAMPUS_CIDADE_PROPINA)} (Campus Cidade)`
             : ""}
         </p>
       </div>
@@ -1282,9 +1415,25 @@ function Alunos() {
       seguro: String(a.seguro === 0 ? DEFAULT_SEGURO_ESCOLA : a.seguro ?? DEFAULT_SEGURO_ESCOLA),
       seguroExterno: (a.seguro ?? 0) === 0,
       transferidoCampusCidade: Boolean(a.transferidoCampusCidade),
+      irmaosNivel: (a as { irmaosNivel?: 0 | 2 | 3 }).irmaosNivel === 3
+        ? 3
+        : (a as { irmaosNivel?: 0 | 2 | 3 }).irmaosNivel === 2 ||
+            (a.obs || "").includes("−10%") ||
+            (a.obs || "").includes("-10%")
+          ? 2
+          : (a.obs || "").includes("−15%") || (a.obs || "").includes("-15%")
+            ? 3
+            : 0,
+      cartaoEstudante: String(
+        (a as { cartaoEstudante?: number }).cartaoEstudante || CARTAO_ESTUDANTE_PRECO,
+      ),
+      incluirCartaoEstudante: Boolean(
+        (a as { cartaoEstudante?: number }).cartaoEstudante &&
+          Number((a as { cartaoEstudante?: number }).cartaoEstudante) > 0,
+      ),
       agregadoIrmaos: Boolean(
         (a.transferidoCampusCidade &&
-          (a.propina === CAMPUS_CIDADE_PROPINA_IRMAOS || (a.obs || "").includes("75.000"))) ||
+          (a.propina === CAMPUS_CIDADE_PROPINA || (a.obs || "").includes("75.000"))) ||
           /irm[aã]os|−10%|2\+/i.test(a.obs || ""),
       ),
       campanhaPromoSetembro: /campanha|−40%|promo/i.test(a.obs || "") || (a.descPct || 0) >= 40,
@@ -1331,6 +1480,9 @@ function Alunos() {
       metodoTransporte: normalizeMetodoStored(a.metodosPagamento?.transporte),
       metodoAlimentacao: normalizeMetodoStored(a.metodosPagamento?.alimentacao),
       metodoCurso: normalizeMetodoStored(a.metodosPagamento?.curso),
+      metodoCartaoEstudante: normalizeMetodoStored(
+        (a.metodosPagamento as { cartaoEstudante?: string } | undefined)?.cartaoEstudante,
+      ),
       pin: "",
     });
   }
@@ -1370,6 +1522,7 @@ function Alunos() {
       transporte: pick(form.metodoTransporte),
       alimentacao: pick(form.metodoAlimentacao),
       curso: pick(form.metodoCurso),
+      cartaoEstudante: pick(form.metodoCartaoEstudante),
     };
     const unique = [...new Set(Object.values(metodosPagamento).filter(Boolean))];
     const metodoPagamento =
@@ -1398,6 +1551,7 @@ function Alunos() {
       [t.transporte, form.metodoTransporte, "Transporte"],
       [t.alimentacao, form.metodoAlimentacao, "Alimentação"],
       [t.curso, form.metodoCurso, "Curso intensivo"],
+      [t.cartaoEstudante, form.metodoCartaoEstudante, "Cartão de estudante"],
     ];
     const emFalta = checks
       .filter(([valor, metodo]) => valor > 0 && !isMetodoEscolhido(metodo))
@@ -1470,6 +1624,7 @@ function Alunos() {
       transporte: t.transporte,
       alimentacao: t.alimentacao,
       curso: t.curso,
+      cartaoEstudante: t.cartaoEstudante || 0,
       mensalidade1: t.mensalidade1,
       mesesPropina: num(form.mesesPropina) || 0,
       dataPag: form.dataPag,
@@ -1496,7 +1651,8 @@ function Alunos() {
       grupoSanguineo: form.grupoSanguineo.trim() || undefined,
       ...metodosFromForm(form),
       transferidoCampusCidade: form.transferidoCampusCidade,
-    };
+      irmaosNivel: irmaosNivelFromForm(form),
+    } as Aluno;
     addAluno(aluno);
     await syncFotoToCloud(id, foto);
     toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
@@ -1547,6 +1703,7 @@ function Alunos() {
         transporte: t.transporte,
         alimentacao: t.alimentacao,
         curso: t.curso,
+        cartaoEstudante: t.cartaoEstudante || 0,
         mensalidade1: t.mensalidade1,
         mesesPropina: num(form.mesesPropina) || 0,
         propina: num(form.propina),
@@ -1556,7 +1713,8 @@ function Alunos() {
         liquido: t.liquido,
         ...metodosFromForm(form),
         transferidoCampusCidade: form.transferidoCampusCidade,
-      });
+        irmaosNivel: irmaosNivelFromForm(form),
+      } as Partial<Aluno>);
       await syncFotoToCloud(editing.id, foto);
       toast.success(`Aluno ${editing.id} actualizado`);
       setEditing(null);
@@ -2845,7 +3003,7 @@ function Alunos() {
                 );
               }}
             >
-              <Mail className="mr-1 size-4" /> Inquérito saúde WhatsApp
+              <Mail className="mr-1 size-4" /> Inquérito de saúde
             </Button>
             <div className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
               <select
@@ -3005,6 +3163,28 @@ function Alunos() {
                     >
                       <ScrollText className="size-3.5" />
                       <span className="ml-1 hidden xl:inline">Cadastro</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Cartão de estudante (só este aluno) — PDF centrado"
+                      onClick={() => {
+                        const escola = getSeed().escola;
+                        const logoUrl =
+                          typeof location !== "undefined"
+                            ? `${location.origin}/logo-escola.jpg`
+                            : "/logo-escola.jpg";
+                        const html = cartoesEstudanteHtml([a], {
+                          anoEscolar: escola.ano || "2025/2026",
+                          escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
+                          telefoneEscola: "922 637 640",
+                          logoUrl,
+                        });
+                        openPrintHtml(html);
+                      }}
+                    >
+                      <IdCard className="size-3.5" />
+                      <span className="ml-1 hidden xl:inline">Cartão</span>
                     </Button>
                     {canEdit ? (
                       <Button size="sm" variant="secondary" onClick={() => openEdit(a)}>
@@ -3440,8 +3620,8 @@ function Alunos() {
                         const v = e.target.value;
                         const a = invoicePreview.aluno;
                         let valor: number;
-                        if (v === "trans1") valor = CAMPUS_CIDADE_PROPINA_1;
-                        else if (v === "trans2") valor = CAMPUS_CIDADE_PROPINA_IRMAOS;
+                        if (v === "trans1") valor = CAMPUS_CIDADE_PROPINA;
+                        else if (v === "trans2") valor = CAMPUS_CIDADE_PROPINA;
                         else if (v === "auto") valor = propinaPorCiclo(a);
                         else valor = propinaPorCiclo(a, v as "mat" | "pri" | "col");
                         const html = buildInvoiceHtml({
@@ -3461,10 +3641,10 @@ function Alunos() {
                       <option value="pri">Primaire — {formatKz(PROPINA_PRIMAIRE)}</option>
                       <option value="col">Collège — {formatKz(PROPINA_COLLEGE)}</option>
                       <option value="trans1">
-                        Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA_1)}
+                        Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA)}
                       </option>
                       <option value="trans2">
-                        Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA_IRMAOS)}
+                        Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA)}
                       </option>
                     </select>
                   </div>

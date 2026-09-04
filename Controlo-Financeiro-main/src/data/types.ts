@@ -113,6 +113,8 @@ export type Aluno = {
   /** Alimentação / cantina (Maternelle). */
   alimentacao?: number;
   curso: number;
+  /** Cartão de estudante (ex.: 10.000 Kz). */
+  cartaoEstudante?: number;
   mensalidade1: number;
   /** Nº de meses de propina incluídos na liquidação da matrícula (1–9). */
   mesesPropina?: number;
@@ -154,6 +156,7 @@ export type Aluno = {
     transporte?: string;
     alimentacao?: string;
     curso?: string;
+    cartaoEstudante?: string;
     restante?: string;
   };
   /**
@@ -162,6 +165,8 @@ export type Aluno = {
    * inscrição 50.000 + seguro 30.000.
    */
   transferidoCampusCidade?: boolean;
+  /** 0 nenhum · 2 (−10%) · 3 (−15%) irmãos. */
+  irmaosNivel?: 0 | 2 | 3;
   /** Foto do aluno (data URL / base64) para o cadastro. */
   foto?: string;
   /** Alergias a medicamentos. */

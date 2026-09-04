@@ -1,4 +1,7 @@
 {
-  "title": "Controlo Financeiro · École Consulaire",
-  "color": "1F5C4A"
+  "title": "École Consulaire · Nova Vida",
+  "description": "École Consulaire du Congo (Brazzaville) – filial Nova Vida",
+  "color": "1F5C4A",
+  "image": "/logo-escola.jpg",
+  "card": "custom"
 }

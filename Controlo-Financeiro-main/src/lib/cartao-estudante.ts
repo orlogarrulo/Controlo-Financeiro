@@ -28,14 +28,31 @@ const CARD_CSS = `
     flex-wrap: wrap;
     gap: 8mm;
     justify-content: center;
+    align-content: center;
     padding-top: 12mm;
     padding-bottom: 8mm;
+    min-height: 0;
+  }
+  /* Um único cartão: centrar na página A4 (vertical + horizontal) */
+  .sheet.single {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 260mm;
+    padding-top: 0;
+    padding-bottom: 0;
   }
   .pair {
     display: flex;
     gap: 8mm;
     page-break-inside: avoid;
     margin-bottom: 8mm;
+    align-items: center;
+    justify-content: center;
+  }
+  .sheet.single .pair {
+    margin-bottom: 0;
   }
   .card {
     width: 86mm; height: 54mm;
@@ -157,6 +174,7 @@ export function cartoesEstudanteHtml(
   alunos: Aluno[],
   opts: CartaoEstudanteOpts = {},
 ): string {
+  const single = alunos.length === 1;
   const pairs = alunos
     .map(
       (a) =>
@@ -171,11 +189,11 @@ export function cartoesEstudanteHtml(
 <html lang="pt">
 <head>
 <meta charset="utf-8"/>
-<title>Cartões de estudante</title>
+<title>${single ? "Cartão de estudante" : "Cartões de estudante"}</title>
 <style>${CARD_CSS}</style>
 </head>
 <body>
-  <div class="sheet">
+  <div class="sheet${single ? " single" : ""}">
     ${pairs}
   </div>
 </body>
