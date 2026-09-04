@@ -2078,20 +2078,19 @@ function Alunos() {
 
 
   async function imprimirAlunosPorClasse() {
-    const lista = [...alunos].sort((a, b) => {
-      const tc = (a.turma || "").localeCompare(b.turma || "", "pt");
-      if (tc !== 0) return tc;
-      return (a.nome || "").localeCompare(b.nome || "", "pt");
-    });
+    // Lista conforme o ecrã: filtro de classe + pesquisa
+    const lista = filteredByClass;
+    if (lista.length === 0) {
+      toast.error("Aucun élève à imprimer. Ajustez le filtre.");
+      return;
+    }
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
-      const k = a.turma || "Sem classe";
+      const k = a.turma || "Sans classe";
       if (!byClass.has(k)) byClass.set(k, []);
       byClass.get(k)!.push(a);
     }
     const logoSrc = `${location.origin}/logo-escola.jpg`;
-    const fmt = (n: number) =>
-      new Intl.NumberFormat("pt-AO", { maximumFractionDigits: 0 }).format(n || 0) + " Kz";
     const fmtDate = (s?: string) => {
       if (!s) return "—";
       const d = s.slice(0, 10);
@@ -2099,88 +2098,129 @@ function Alunos() {
       const [y, m, day] = d.split("-");
       return `${day}/${m}/${y}`;
     };
+    const calcAge = (s?: string) => {
+      if (!s) return "—";
+      const d = s.slice(0, 10);
+      const parts = d.split("-").map(Number);
+      if (parts.length < 3 || !parts[0]) return "—";
+      const [y, m, day] = parts;
+      const born = new Date(y, (m || 1) - 1, day || 1);
+      if (Number.isNaN(born.getTime())) return "—";
+      const now = new Date();
+      let age = now.getFullYear() - born.getFullYear();
+      const md = now.getMonth() - born.getMonth();
+      if (md < 0 || (md === 0 && now.getDate() < born.getDate())) age -= 1;
+      return age >= 0 && age < 120 ? String(age) : "—";
+    };
+    const esc = (v: unknown) =>
+      String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
     let body = "";
     for (const [turma, rows] of byClass) {
-      body += `<h2 style="margin:18px 0 8px;font-size:14px;color:#1f5c4a;border-bottom:2px solid #1f5c4a;padding-bottom:4px;">${turma} <span style="font-weight:400;color:#666">(${rows.length})</span></h2>`;
-      body += `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+      body += `<h2>${esc(turma)} <span class="count">(${rows.length})</span></h2>`;
+      body += `<table>
         <thead>
-          <tr style="background:#1f5c4a;color:#fff;">
-            <th style="padding:6px 8px;text-align:left;">ID</th>
-            <th style="padding:6px 8px;text-align:left;">Classe</th>
-            <th style="padding:6px 8px;text-align:left;">Nome</th>
-            <th style="padding:6px 8px;text-align:left;">Data de nascimento</th>
-            <th style="padding:6px 8px;text-align:right;">Propina mensal</th>
+          <tr>
+            <th style="width:14%">ID</th>
+            <th style="width:22%">Date de naissance</th>
+            <th style="width:12%">Âge</th>
+            <th style="width:52%">Téléphone</th>
           </tr>
         </thead>
         <tbody>`;
       rows.forEach((a, i) => {
-        const bg = i % 2 ? "#f4faf7" : "#fff";
-        body += `<tr style="background:${bg};">
-          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${a.id}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${a.turma || ""}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${a.nome || ""}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;">${fmtDate(a.dataNascimento)}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-variant-numeric:tabular-nums;">${fmt(Number(a.propina) || 0)}</td>
+        const bg = i % 2 ? "#f5f5f5" : "#ffffff";
+        body += `<tr style="background:${bg}">
+          <td>${esc(a.id)}</td>
+          <td>${fmtDate(a.dataNascimento)}</td>
+          <td>${calcAge(a.dataNascimento)}</td>
+          <td>${esc(a.telefone || "—")}</td>
         </tr>`;
       });
       body += `</tbody></table>`;
     }
+
+    const filtroLabel =
+      turmaFiltro !== "todas" ? ` · Classe ${esc(turmaFiltro)}` : " · Toutes les classes";
+    const hoje = new Date().toLocaleDateString("fr-FR");
     const inner = `
 <div class="sheet">
   <div class="head">
-    <img src="${logoSrc}" width="64" height="64" alt="" />
+    <img src="${logoSrc}" width="56" height="56" alt="" />
     <div>
-      <p class="kicker">${escola.nome || "École Consulaire"}</p>
-      <p class="title">Lista de alunos por classe</p>
-      <p class="meta">Ano lectivo ${escola.ano || ""} · Propina mensal de referência · ${lista.length} alunos</p>
+      <p class="kicker">${esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda")}</p>
+      <p class="title">Liste des élèves</p>
+      <p class="meta">Année scolaire ${esc(escola.ano || "")}${filtroLabel} · ${lista.length} élève(s) · ${hoje}</p>
     </div>
   </div>
   ${body}
-  <p class="foot">Documento gerado pelo Departamento de Finanças · ${escola.nome || "École Consulaire"}</p>
+  <p class="foot">Document généré par le Département des Finances · ${hoje}</p>
 </div>`;
-    const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+
+    const docHtml = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<title>Liste des élèves</title>
 <style>
-  @page { size: A4 portrait; margin: 12mm 10mm; }
+  @page { size: A4 portrait; margin: 14mm 12mm 14mm 12mm; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
-    font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
-    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .sheet { padding: 0 2mm; }
-  .head { display: flex; align-items: center; gap: 14px; border-bottom: 2.5px solid #1f5c4a;
-    padding-bottom: 10px; margin-bottom: 12px; }
-  .head img { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; }
-  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
-    color: #1f5c4a; font-weight: 700; }
-  .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
-  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
-  h2 { margin: 16px 0 8px; font-size: 13px; color: #1f5c4a; border-bottom: 2px solid #1f5c4a;
-    padding-bottom: 4px; page-break-after: avoid; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  html, body {
+    margin: 0; padding: 0; background: #fff; color: #000;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .sheet { max-width: 100%; margin: 0 auto; padding: 0; color: #000; }
+  .head { display: flex; gap: 12px; align-items: center;
+    border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
+  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #000; font-weight: 700; }
+  .title { margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #000; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #000; }
+  h2 { margin: 14px 0 6px; font-size: 12px; color: #000; font-weight: 700;
+    border-bottom: 1px solid #333; padding-bottom: 3px; page-break-after: avoid; }
+  h2 .count { font-weight: 400; color: #333; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px;
+    page-break-inside: auto; }
   thead { display: table-header-group; }
-  th { background: #1f5c4a; color: #fff; font-size: 9.5px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.04em; padding: 7px 6px; text-align: left;
-    border: 1px solid #1a4d3e; }
-  td { padding: 5px 6px; border-bottom: 1px solid #d5ddd8; font-size: 10.5px; vertical-align: top; }
+  th {
+    background: #fff; color: #000; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.03em; padding: 7px 8px; text-align: left;
+    border: 1px solid #000;
+  }
+  td {
+    padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
+    color: #000;
+  }
   tr { page-break-inside: avoid; break-inside: avoid; }
-  .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #64748b; }
+  .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #000;
+    border-top: 1px solid #999; padding-top: 6px; }
   @media screen {
     body { padding: 16px; background: #e8ece9; }
-    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 16px 18px;
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px 20px;
       box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   }
 </style>
-</head><body>${inner}</body></html>`;
+</head>
+<body>${inner}</body>
+</html>`;
     try {
       const r = await deliverOfficialHtml(docHtml, {
-        filename: "alunos-por-classe.pdf",
-        shareTitle: "Alunos por classe",
-        shareText: `${lista.length} alunos · École Consulaire`,
+        filename: "liste-eleves.pdf",
+        shareTitle: "Liste des élèves",
+        shareText: `${lista.length} élèves · École Consulaire`,
       });
-      if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
-      else if (isMobileDevice()) toast.success("PDF pronto");
-      else toast.success(`Documento aberto · ${lista.length} alunos — use «Guardar como PDF» se precisar`);
+      if (r.delivery === "shared") toast.success("Choisissez WhatsApp, Gmail ou une autre app");
+      else if (isMobileDevice()) toast.success("PDF prêt");
+      else toast.success(`Document ouvert · ${lista.length} élèves — utilisez « Enregistrer au format PDF » si besoin`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao imprimir");
+      toast.error(e instanceof Error ? e.message : "Erreur d'impression");
     }
   }
 
@@ -2706,14 +2746,6 @@ function Alunos() {
             <Button
               className="shrink-0"
               variant="secondary"
-              title="Abrir formulário público de agendamento"
-              onClick={() => window.open(agendamentoPublicUrl(), "_blank", "noopener,noreferrer")}
-            >
-              <Calendar className="mr-1 size-4" /> Marcar (form)
-            </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
               title="Imprimir cartões de estudante (frente + verso) — usa a selecção da lista ou todos filtrados"
               onClick={() => {
                 const pool = filteredByClass;
@@ -2783,10 +2815,10 @@ function Alunos() {
             <Button
               className="shrink-0"
               variant="secondary"
-              title="PDF A4 com logotipo — alunos por classe (ID, classe, nome, data nascimento, propina)"
+              title="PDF A4 FR — ID, date de naissance, âge, téléphone (selon filtre à l'écran)"
               onClick={() => void imprimirAlunosPorClasse()}
             >
-              <FileText className="mr-1 size-4" /> Imprimir por classe
+              <FileText className="mr-1 size-4" /> PDF liste (FR)
             </Button>
             {canEdit ? (
               <Button
@@ -2829,16 +2861,16 @@ function Alunos() {
 
       <div ref={printRef}>
       {/* Cabeçalho de impressão com logotipo */}
-      <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
-        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-black pb-3 print:flex print:text-black">
+        <img src="/logo-escola.jpg" alt="" className="h-14 w-14 object-contain" width={56} height={56} />
         <div>
-          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
+          <p className="text-[10px] font-medium tracking-[0.14em] text-black uppercase">
             {escola.nome}
           </p>
-          <p className="font-display text-lg leading-tight">Matrículas · lista por classes</p>
-          <p className="text-[11px] text-[var(--color-muted)]">
-            {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
-            {turmaFiltro !== "todas" ? ` · ${turmaFiltro}` : ""}
+          <p className="font-display text-lg leading-tight text-black">Liste des élèves</p>
+          <p className="text-[11px] text-black">
+            {new Date().toLocaleDateString("fr-FR")} · {escola.ano}
+            {turmaFiltro !== "todas" ? ` · ${turmaFiltro}` : " · Toutes les classes"}
           </p>
         </div>
       </header>

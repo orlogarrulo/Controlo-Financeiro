@@ -107,22 +107,29 @@ html[data-theme="dark"] ::selection {
 /* ——— Impressão A4 limpa (menus, filtros e botões ocultos) ——— */
 @media print {
   @page {
-    size: A4;
-    margin: 12mm 10mm;
+    size: A4 portrait;
+    margin: 14mm 12mm 14mm 12mm;
   }
 
   nav,
   aside,
-  header,
   .no-print {
+    display: none !important;
+  }
+
+  /* Manter cabeçalho print-only (não esconder todos os header) */
+  header:not(.print-only) {
     display: none !important;
   }
 
   html,
   body {
     background: white !important;
-    color: black !important;
+    color: #000 !important;
     font-size: 10pt;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -198,14 +205,8 @@ html[data-theme="dark"] ::selection {
 
 /* Recibos: exactamente 1 folha A4 com 1 ou 2 meias-páginas */
 @media print {
-  @page {
-    size: A4 portrait;
-    margin: 6mm;
-  }
-
-  html, body {
-    height: auto !important;
-    overflow: hidden !important;
+  .print-a4-page {
+    /* margens específicas só para recibos via @page no documento isolado */
   }
 
   .print-a4-page {
@@ -514,5 +515,16 @@ html.pdf-export [data-pdf-root="1"] {
   .max-h-\[70vh\] {
     max-height: none !important;
     overflow: visible !important;
+  }
+}
+
+
+/* Matrículas — impressão lista legível, sem corte, texto preto */
+@media print {
+  [ref], div[class*="print"] {
+    color: #000 !important;
+  }
+  .print-only {
+    color: #000 !important;
   }
 }

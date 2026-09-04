@@ -220,9 +220,20 @@ function InboxPage() {
       return;
     }
     const r = processarInbox();
-    toast.success(
-      `Processado: ${r.ordenados} ordenados · ${r.duplicados} duplicado(s) · ${r.ligados} ligado(s) a salários/despesas.`,
-    );
+    const base =
+      `Processado: ${r.ordenados} item(ns) · ${r.ligados} reconciliado(s) · ${r.duplicados} duplicado(s)` +
+      (r.avisos ? ` · ${r.avisos} aviso(s) de semelhança` : "");
+    if (r.duplicados > 0 || r.avisos > 0) {
+      toast.message(base, {
+        description:
+          "Há movimentos semelhantes ou duplicados. Revise a coluna Observações (AVISO) e o estado antes de limpar a Inbox.",
+        duration: 8000,
+      });
+    } else if (r.ligados > 0) {
+      toast.success(base + " · cruzamento com BAI / despesas / salários.");
+    } else {
+      toast.success(base + " · sem ligações automáticas — classifique manualmente se necessário.");
+    }
   }
 
   return (
@@ -230,7 +241,7 @@ function InboxPage() {
       <PageHeader
         kicker="Reconciliação"
         title="Inbox"
-        description="Caixa de entrada dos movimentos atrasados: importar, classificar, processar (ordenar + duplicados + ligações) e gravar na nuvem."
+        description="Adicione aqui todas as faturas e movimentos atrasados. O sistema ordena, detecta duplicados, avisa semelhanças e reconcilia com Banco BAI, Lista de despesas, salários e propinas (auditoria)."
       />
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
@@ -520,7 +531,7 @@ function InboxPage() {
         <Inbox className="mr-1 inline h-3.5 w-3.5" />
         Os itens da Inbox gravam-se na nuvem (Sincronizar). Anexos de imagem são comprimidos; só entram no
         sync se «Sync nuvem» estiver activo e o tamanho for &lt; ~100 KB. PDFs grandes ficam só neste
-        dispositivo. Processar: ordena, duplicados e ligações a salários/despesas.
+        dispositivo. Processar: ordena, marca duplicados, gera AVISO se houver informação semelhante e reconcilia com BAI / despesas / salários / propinas.
       </p>
     </div>
   );

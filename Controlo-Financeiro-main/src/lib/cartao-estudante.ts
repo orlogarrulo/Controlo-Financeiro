@@ -13,10 +13,30 @@ function esc(s: string): string {
 }
 
 const CARD_CSS = `
-  @page { size: A4 portrait; margin: 8mm; }
+  @page { size: A4 portrait; margin: 18mm 12mm 14mm 12mm; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f172a; background: #fff; }
-  .sheet { display: flex; flex-wrap: wrap; gap: 8mm; justify-content: center; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #0f172a;
+    background: #fff;
+  }
+  /* Empurrar cartões para baixo — evita corte no topo da impressora */
+  .sheet {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8mm;
+    justify-content: center;
+    padding-top: 12mm;
+    padding-bottom: 8mm;
+  }
+  .pair {
+    display: flex;
+    gap: 8mm;
+    page-break-inside: avoid;
+    margin-bottom: 8mm;
+  }
   .card {
     width: 86mm; height: 54mm;
     border: 1.5px solid #1f5c4a;
@@ -65,11 +85,14 @@ const CARD_CSS = `
     background: #e8f5f0; color: #1f5c4a; padding: 1mm 2mm; border-radius: 1.5mm;
     display: inline-block; margin-top: 1mm;
   }
-  .back-title { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 3mm; text-align: center; }
-  .back-text { font-size: 8px; line-height: 1.45; text-align: justify; margin: 0; }
-  .back-contact { font-size: 8px; margin-top: 3mm; text-align: center; font-weight: 600; }
+  .back-title { font-size: 11px; font-weight: 700; margin: 0 0 3mm; text-align: center; }
+  .back-text { font-size: 8px; line-height: 1.4; margin: 0; text-align: center; opacity: 0.95; }
+  .back-contact { font-size: 8px; margin: 4mm 0 0; text-align: center; font-weight: 600; }
+  .logo-back { width: 14mm; height: 14mm; object-fit: contain; display: block; margin: 0 auto 3mm;
+    background: #fff; border-radius: 2mm; padding: 1mm; }
   @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { padding-top: 0; }
+    .sheet { padding-top: 10mm; }
   }
 `;
 
@@ -137,7 +160,7 @@ export function cartoesEstudanteHtml(
   const pairs = alunos
     .map(
       (a) =>
-        `<div class="pair" style="display:flex;gap:8mm;page-break-inside:avoid;margin-bottom:8mm;">
+        `<div class="pair">
           ${frontCard(a, opts)}
           ${backCard(opts)}
         </div>`,

@@ -161,7 +161,7 @@ type Store = ExtraState & {
   updateInboxItem: (id: string, patch: Partial<import("@/data/types").InboxMovimento>) => void;
   removeInboxItem: (id: string) => void;
   clearInboxReconciliados: () => void;
-  processarInbox: () => { ordenados: number; duplicados: number; ligados: number };
+  processarInbox: () => { ordenados: number; duplicados: number; ligados: number; avisos: number };
   /** Recria recibos do mês como pagos a partir da lista de funcionários. */
   restaurarRecibosPagos: (staff: { id: string; nome: string; funcao?: string; salario: number; diasUteis?: number; diasTrab?: number; outrosDesc?: number; iban?: string }[], mes: string, mesKey: string, dataPag?: string) => number;
   removeReciboSalario: (id: string) => void;
@@ -348,10 +348,15 @@ export const useFinance = create<Store>()(
           }
         }
 
-        // 3) Ligar a salários / propinas / despesas
+        // 3) Ligar a salários / propinas / despesas / extrato BAI
         const recibos = get().recibosSalario || [];
         const extras = get().extras || [];
         const mens = get().mensalidades || [];
+        const baiMovs = movimentosAll(
+          get().movimentosBaiExtra || [],
+          get().baiOverride,
+          get().movimentosBaiDeletedIds || [],
+        );
         let ligados = 0;
 
         const suggestTipo = (desc: string, valor: number): import("@/data/types").InboxTipo => {
@@ -366,15 +371,55 @@ export const useFinance = create<Store>()(
           return "desconhecido";
         };
 
+        /** Dia civil ±1 (ISO YYYY-MM-DD) para tolerar D+1 de transferências. */
+        const nearDay = (a?: string, b?: string) => {
+          if (!a || !b) return true;
+          if (a === b) return true;
+          const da = new Date(a + "T12:00:00");
+          const db = new Date(b + "T12:00:00");
+          if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return false;
+          return Math.abs(da.getTime() - db.getTime()) <= 86400000 * 1.5;
+        };
+
         items = items.map((it) => {
           if (it.status === "duplicado" || it.status === "ignorado") return it;
           const valor = Math.abs(Number(it.valor) || Number(it.saida) || Number(it.entrada) || 0);
-          let tipo = it.tipo && it.tipo !== "desconhecido" ? it.tipo : suggestTipo(it.descricao, valor);
+          const entradaInbox = Number(it.entrada) || (Number(it.valor) > 0 ? Number(it.valor) : 0);
+          const saidaInbox = Number(it.saida) || (Number(it.valor) < 0 ? Math.abs(Number(it.valor)) : 0);
+          let tipo = it.tipo && it.tipo !== "desconhecido" ? it.tipo : suggestTipo(it.descricao, Number(it.valor) || -valor);
           let linkId = it.linkId;
           let linkLabel = it.linkLabel;
           let status = it.status === "reconciliado" ? it.status : ("classificado" as const);
 
-          if (tipo === "salario" || /sal|honor|rh-/i.test(it.descricao)) {
+          // 3a) Extrato BAI — data ±1 dia + valor (entrada ou saída)
+          if (!linkId && valor > 0) {
+            const matchBai = baiMovs.find((m) => {
+              if (!nearDay(it.data, m.data)) return false;
+              const me = Number(m.entrada) || 0;
+              const ms = Number(m.saida) || 0;
+              if (saidaInbox > 0 && Math.abs(ms - saidaInbox) < 1) return true;
+              if (entradaInbox > 0 && Math.abs(me - entradaInbox) < 1) return true;
+              // valor absoluto genérico
+              if (Math.abs(me - valor) < 1 || Math.abs(ms - valor) < 1) return true;
+              return false;
+            });
+            if (matchBai) {
+              linkId = matchBai.id;
+              const sentido = (Number(matchBai.saida) || 0) > 0 ? "saída" : "entrada";
+              linkLabel = `BAI ${matchBai.id} · ${sentido} ${matchBai.descricao || ""}`.slice(0, 120);
+              status = "reconciliado";
+              if (tipo === "desconhecido") {
+                if ((Number(matchBai.saida) || 0) > 0) tipo = "despesa";
+                else if (/tpa|multicaixa/i.test(matchBai.descricao || "")) tipo = "tpa";
+                else if (/transf/i.test(matchBai.descricao || "")) tipo = "transferencia";
+                else tipo = "deposito";
+              }
+              ligados += 1;
+            }
+          }
+
+          // 3b) Salários (recibos pagos)
+          if (!linkId && (tipo === "salario" || /sal|honor|rh-/i.test(it.descricao))) {
             const match = recibos.find(
               (r) =>
                 r.pago &&
@@ -389,44 +434,115 @@ export const useFinance = create<Store>()(
               ligados += 1;
             }
           }
-          if (!linkId && (tipo === "despesa" || tipo === "desconhecido")) {
+
+          // 3c) Lista de despesas (extras)
+          if (!linkId && (tipo === "despesa" || tipo === "desconhecido" || tipo === "tpa" || tipo === "transferencia")) {
             const match = extras.find(
               (e: { id?: string; valor?: number; data?: string; descricao?: string; docInterno?: string }) =>
                 Math.abs((Number(e.valor) || 0) - valor) < 1 &&
-                (!it.data || !e.data || e.data === it.data),
+                nearDay(it.data, e.data),
             ) as { id?: string; docInterno?: string; descricao?: string } | undefined;
             if (match?.id) {
               linkId = match.id;
               linkLabel = `Despesa ${match.docInterno || match.id}`;
               status = "reconciliado";
-              tipo = "despesa";
+              if (tipo === "desconhecido") tipo = "despesa";
               ligados += 1;
             }
           }
-          if (!linkId && tipo === "propina") {
-            // marca como classificado propina — ligação fina fica no separador Propinas
-            status = status === "reconciliado" ? status : "classificado";
-          }
 
-          if (it.tipo === "desconhecido" || !it.tipo) {
-            tipo = tipo;
+          // 3d) Propinas (mensalidades) — classificação + ligação por valor/mês se possível
+          if (!linkId && tipo === "propina") {
+            const matchM = mens.find(
+              (m: { id?: string; valor?: number; data?: string; mes?: string }) =>
+                Math.abs((Number(m.valor) || 0) - valor) < 1 &&
+                nearDay(it.data, m.data),
+            ) as { id?: string; mes?: string } | undefined;
+            if (matchM?.id) {
+              linkId = matchM.id;
+              linkLabel = `Propina ${matchM.mes || matchM.id}`;
+              status = "reconciliado";
+              ligados += 1;
+            } else {
+              status = status === "reconciliado" ? status : "classificado";
+            }
           }
 
           return {
             ...it,
             tipo,
-            status: status === "por_classificar" && tipo !== "desconhecido" ? "classificado" : status,
+            status:
+              status === "por_classificar" && tipo !== "desconhecido"
+                ? "classificado"
+                : status,
             linkId,
             linkLabel,
           };
         });
 
+        // 4) Avisos: informação semelhante (não exacta) — valor ±2% e data ±3 dias, ou texto próximo
+        let avisos = 0;
+        const textClose = (a: string, b: string) => {
+          const na = norm(a);
+          const nb = norm(b);
+          if (!na || !nb) return false;
+          return na === nb || na.includes(nb) || nb.includes(na);
+        };
+        const dayDiff = (a?: string, b?: string) => {
+          if (!a || !b) return 99;
+          const da = new Date(a + "T12:00:00");
+          const db = new Date(b + "T12:00:00");
+          if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return 99;
+          return Math.abs(da.getTime() - db.getTime()) / 86400000;
+        };
+        items = items.map((it) => {
+          if (it.status === "duplicado" || it.status === "ignorado" || it.status === "reconciliado") {
+            return it;
+          }
+          if (it.observacoes && /AVISO:/i.test(it.observacoes)) return it;
+          const valor = Math.abs(Number(it.valor) || Number(it.saida) || Number(it.entrada) || 0);
+          if (valor <= 0) return it;
+          const hints: string[] = [];
+          // BAI semelhante
+          for (const m of baiMovs) {
+            const mv = Math.max(Number(m.entrada) || 0, Number(m.saida) || 0);
+            if (mv <= 0) continue;
+            const vClose = Math.abs(mv - valor) / valor <= 0.02 || Math.abs(mv - valor) < 2;
+            const dClose = dayDiff(it.data, m.data) <= 3;
+            const tClose = textClose(it.descricao, m.descricao || "");
+            if (vClose && (dClose || tClose) && !(Math.abs(mv - valor) < 1 && dayDiff(it.data, m.data) <= 1.5)) {
+              hints.push(`BAI ${m.id} (${m.data}, ${mv} Kz)`);
+            }
+          }
+          // Despesas semelhantes
+          for (const e of extras as { id?: string; valor?: number; data?: string; descricao?: string }[]) {
+            const ev = Number(e.valor) || 0;
+            if (ev <= 0) continue;
+            const vClose = Math.abs(ev - valor) / valor <= 0.02 || Math.abs(ev - valor) < 2;
+            const dClose = dayDiff(it.data, e.data) <= 3;
+            const tClose = textClose(it.descricao, e.descricao || "");
+            if (vClose && (dClose || tClose) && !(Math.abs(ev - valor) < 1 && (it.data === e.data))) {
+              hints.push(`Despesa ${e.id}`);
+            }
+          }
+          if (hints.length) {
+            avisos += 1;
+            const msg = `AVISO: possível correspondência — ${hints.slice(0, 3).join("; ")}`;
+            return {
+              ...it,
+              observacoes: it.observacoes ? `${it.observacoes} · ${msg}` : msg,
+              status: it.status === "por_classificar" ? "classificado" : it.status,
+            };
+          }
+          return it;
+        });
+
         set({ inboxItems: items });
         get().pushAudit(
           "inbox_processar",
-          `${ordenados} ordenados · ${duplicados} duplicados · ${ligados} ligados`,
+          `${ordenados} ordenados · ${duplicados} duplicados · ${ligados} ligados · ${avisos} avisos`,
         );
-        return { ordenados, duplicados, ligados };
+        return { ordenados, duplicados, ligados, avisos };
       },
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {

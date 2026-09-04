@@ -64,7 +64,7 @@ function Fundo() {
     valor: 0,
     recebeu: "",
     obs: "",
-    atm: atms[0]?.id || "",
+    atm: atms[0]?.id || "SOCIO",
   });
   const [atmForm, setAtmForm] = useState({
     data: todayIso(),
@@ -93,7 +93,7 @@ function Fundo() {
       setCreatingAtm(true);
       return;
     }
-    setForm({ data: todayIso(), descricao: "", valor: 0, recebeu: "", obs: "", atm: atms[0]?.id || "" });
+    setForm({ data: todayIso(), descricao: "", valor: 0, recebeu: "", obs: "", atm: atms[0]?.id || "SOCIO" });
     setCreating(true);
   }
 
@@ -108,11 +108,15 @@ function Fundo() {
       return;
     }
     if (!form.atm) {
-      toast.error("Escolha o bloco ATM de onde sai o dinheiro.");
+      toast.error("Escolha a origem do dinheiro (Sócio ou bloco ATM).");
       return;
     }
     add(form);
-    toast.success("Pagamento em dinheiro registado");
+    toast.success(
+      form.atm === "SOCIO"
+        ? "Pagamento registado · origem Sócio"
+        : "Pagamento em dinheiro registado · bloco ATM",
+    );
     setCreating(false);
   }
 
@@ -442,30 +446,31 @@ function Fundo() {
               <Input value={form.recebeu} onChange={(e) => setForm({ ...form, recebeu: e.target.value })} />
             </div>
             <div>
-              <Label>Bloco ATM (origem do dinheiro)</Label>
-              {atms.length === 0 ? (
-                <p className="text-xs text-amber-700">
-                  Ainda não há blocos. Feche e use «Novo bloco ATM» primeiro.
-                </p>
-              ) : (
-                <select
-                  className="h-10 w-full rounded border border-[var(--color-line)] px-2 text-sm"
-                  value={form.atm}
-                  onChange={(e) => setForm({ ...form, atm: e.target.value })}
-                >
-                  {atms.map((a) => {
+              <Label>Origem do dinheiro</Label>
+              <select
+                className="h-10 w-full rounded border border-[var(--color-line)] px-2 text-sm"
+                value={form.atm || "SOCIO"}
+                onChange={(e) => setForm({ ...form, atm: e.target.value })}
+              >
+                <option value="SOCIO">Sócio (origem do dinheiro)</option>
+                {atms.length === 0 ? (
+                  <option value="" disabled>
+                    — Sem blocos ATM (crie em «Novo bloco ATM») —
+                  </option>
+                ) : (
+                  atms.map((a) => {
                     const g = pags.filter((p) => p.atm === a.id).reduce((s, p) => s + p.valor, 0);
                     const rest = a.valor - g;
                     return (
                       <option key={a.id} value={a.id}>
-                        {a.id} · {formatDate(a.data)} · restam {formatKz(rest)}
+                        ATM {a.id} · {formatDate(a.data)} · restam {formatKz(rest)}
                       </option>
                     );
-                  })}
-                </select>
-              )}
+                  })
+                )}
+              </select>
             </div>
-            <Button onClick={saveNew} disabled={!atms.length}>
+            <Button onClick={saveNew}>
               Guardar
             </Button>
           </div>

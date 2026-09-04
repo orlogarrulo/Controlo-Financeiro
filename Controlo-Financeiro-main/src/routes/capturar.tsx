@@ -30,7 +30,7 @@ const ORIGENS_DESPESA: { value: Origem; label: string; pagamento?: string }[] = 
   { value: "banco", label: "Transferência da conta BAI (ao fornecedor)", pagamento: "Transferência BAI" },
   { value: "banco", label: "Levantamento ATM BAI → fundo de maneio", pagamento: "Levantamento ATM BAI" },
   { value: "fundo", label: "Dinheiro já no fundo de maneio", pagamento: "Dinheiro" },
-  { value: "socio", label: "Pago pelo sócio", pagamento: "Sócio" },
+  { value: "socio", label: "Sócio (origem do dinheiro)", pagamento: "Sócio" },
   { value: "formulario", label: "Outra origem", pagamento: "Outro" },
 ];
 

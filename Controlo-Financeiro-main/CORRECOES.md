@@ -115,3 +115,14 @@ Após deploy: hard refresh. Abrir `/marca`, `/saude` ou `/regras` deve mostrar s
 
 ### WhatsApp
 - `buildInqueritoSaudeWhatsApp` e `buildAgendamentoWhatsApp` — FR + PT no mesmo texto
+
+
+## Inbox · reconciliação BAI + despesas + nuvem
+
+**Verificação:**
+- Nuvem (`finance-cloud`): `inboxItems`, `movimentosBaiExtra`, `extras` (despesas), recibos e propinas entram no payload e fundem por `id` na hidratação.
+- Anexos grandes da Inbox são omitidos do sync (`stripInboxAnexos`, ~100 KB).
+- `syncBaiFromExtras`: só alinha salários pagos → extrato BAI (não recria despesas para evitar duplicados).
+- **Correcção:** `processarInbox` passa a cruzar também com o **extrato BAI** (data ±1 dia + valor entrada/saída), além de Lista de despesas, recibos de salário e propinas.
+
+Ordem de ligação: BAI → salários → despesas → propinas.
