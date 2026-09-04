@@ -4,7 +4,6 @@ import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText, C
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
-import { PrintActions } from "@/components/print-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1231,6 +1230,7 @@ function Alunos() {
   const [cadastroBusy, setCadastroBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportIds, setExportIds] = useState<Set<string>>(new Set());
+  const [pdfLang, setPdfLang] = useState<"pt" | "fr">("fr");
   const [exportBusy, setExportBusy] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
 
@@ -2077,20 +2077,20 @@ function Alunos() {
   }
 
 
-  async function imprimirAlunosPorClasse() {
-    // Lista conforme o ecrã: filtro de classe + pesquisa
+  async function imprimirAlunosPorClasse(lang: "pt" | "fr" = "fr") {
     const lista = filteredByClass;
     if (lista.length === 0) {
-      toast.error("Aucun élève à imprimer. Ajustez le filtre.");
+      toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
-      const k = a.turma || "Sans classe";
+      const k = a.turma || (lang === "fr" ? "Sans classe" : "Sem classe");
       if (!byClass.has(k)) byClass.set(k, []);
       byClass.get(k)!.push(a);
     }
     const logoSrc = `${location.origin}/logo-escola.jpg`;
+    const locale = lang === "fr" ? "fr-FR" : "pt-PT";
     const fmtDate = (s?: string) => {
       if (!s) return "—";
       const d = s.slice(0, 10);
@@ -2119,16 +2119,54 @@ function Alunos() {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
 
+    const L =
+      lang === "fr"
+        ? {
+            title: "Liste des élèves",
+            year: "Année scolaire",
+            all: "Toutes les classes",
+            classPref: "Classe",
+            pupils: "élève(s)",
+            colId: "ID",
+            colName: "Nom de l'élève",
+            colBirth: "Date de naissance",
+            colAge: "Âge",
+            colPhone: "Téléphone",
+            foot: "Document généré par le Département des Finances",
+            ok: "Document ouvert",
+            pdfReady: "PDF prêt",
+            share: "Choisissez WhatsApp, Gmail ou une autre app",
+            saveHint: "utilisez « Enregistrer au format PDF » si besoin",
+          }
+        : {
+            title: "Lista de alunos",
+            year: "Ano lectivo",
+            all: "Todas as classes",
+            classPref: "Classe",
+            pupils: "aluno(s)",
+            colId: "ID",
+            colName: "Nome do aluno",
+            colBirth: "Data de nascimento",
+            colAge: "Idade",
+            colPhone: "Telefone",
+            foot: "Documento gerado pelo Departamento de Finanças",
+            ok: "Documento aberto",
+            pdfReady: "PDF pronto",
+            share: "Escolha WhatsApp, Gmail ou outra app",
+            saveHint: "use «Guardar como PDF» se precisar",
+          };
+
     let body = "";
     for (const [turma, rows] of byClass) {
       body += `<h2>${esc(turma)} <span class="count">(${rows.length})</span></h2>`;
       body += `<table>
         <thead>
           <tr>
-            <th style="width:14%">ID</th>
-            <th style="width:22%">Date de naissance</th>
-            <th style="width:12%">Âge</th>
-            <th style="width:52%">Téléphone</th>
+            <th style="width:10%">${L.colId}</th>
+            <th style="width:32%">${L.colName}</th>
+            <th style="width:18%">${L.colBirth}</th>
+            <th style="width:10%">${L.colAge}</th>
+            <th style="width:30%">${L.colPhone}</th>
           </tr>
         </thead>
         <tbody>`;
@@ -2136,6 +2174,7 @@ function Alunos() {
         const bg = i % 2 ? "#f5f5f5" : "#ffffff";
         body += `<tr style="background:${bg}">
           <td>${esc(a.id)}</td>
+          <td>${esc(a.nome || "—")}</td>
           <td>${fmtDate(a.dataNascimento)}</td>
           <td>${calcAge(a.dataNascimento)}</td>
           <td>${esc(a.telefone || "—")}</td>
@@ -2145,27 +2184,29 @@ function Alunos() {
     }
 
     const filtroLabel =
-      turmaFiltro !== "todas" ? ` · Classe ${esc(turmaFiltro)}` : " · Toutes les classes";
-    const hoje = new Date().toLocaleDateString("fr-FR");
+      turmaFiltro !== "todas"
+        ? ` · ${L.classPref} ${esc(turmaFiltro)}`
+        : ` · ${L.all}`;
+    const hoje = new Date().toLocaleDateString(locale);
     const inner = `
 <div class="sheet">
   <div class="head">
     <img src="${logoSrc}" width="56" height="56" alt="" />
     <div>
       <p class="kicker">${esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda")}</p>
-      <p class="title">Liste des élèves</p>
-      <p class="meta">Année scolaire ${esc(escola.ano || "")}${filtroLabel} · ${lista.length} élève(s) · ${hoje}</p>
+      <p class="title">${L.title}</p>
+      <p class="meta">${L.year} ${esc(escola.ano || "")}${filtroLabel} · ${lista.length} ${L.pupils} · ${hoje}</p>
     </div>
   </div>
   ${body}
-  <p class="foot">Document généré par le Département des Finances · ${hoje}</p>
+  <p class="foot">${L.foot} · ${hoje}</p>
 </div>`;
 
     const docHtml = `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8"/>
-<title>Liste des élèves</title>
+<title>${L.title}</title>
 <style>
   @page { size: A4 portrait; margin: 14mm 12mm 14mm 12mm; }
   * { box-sizing: border-box; }
@@ -2212,15 +2253,15 @@ function Alunos() {
 </html>`;
     try {
       const r = await deliverOfficialHtml(docHtml, {
-        filename: "liste-eleves.pdf",
-        shareTitle: "Liste des élèves",
-        shareText: `${lista.length} élèves · École Consulaire`,
+        filename: lang === "fr" ? "liste-eleves.pdf" : "lista-alunos.pdf",
+        shareTitle: L.title,
+        shareText: `${lista.length} · École Consulaire`,
       });
-      if (r.delivery === "shared") toast.success("Choisissez WhatsApp, Gmail ou une autre app");
-      else if (isMobileDevice()) toast.success("PDF prêt");
-      else toast.success(`Document ouvert · ${lista.length} élèves — utilisez « Enregistrer au format PDF » si besoin`);
+      if (r.delivery === "shared") toast.success(L.share);
+      else if (isMobileDevice()) toast.success(L.pdfReady);
+      else toast.success(`${L.ok} · ${lista.length} ${L.pupils} — ${L.saveHint}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erreur d'impression");
+      toast.error(e instanceof Error ? e.message : lang === "fr" ? "Erreur d'impression" : "Erro ao imprimir");
     }
   }
 
@@ -2806,20 +2847,30 @@ function Alunos() {
             >
               <Mail className="mr-1 size-4" /> Inquérito saúde WhatsApp
             </Button>
-            <PrintActions
-              targetRef={printRef}
-              filename="matriculas.pdf"
-              shareTitle="Matrículas · École Consulaire"
-              shareText="Lista de matrículas · Departamento de Finanças."
-            />
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="PDF A4 FR — ID, date de naissance, âge, téléphone (selon filtre à l'écran)"
-              onClick={() => void imprimirAlunosPorClasse()}
-            >
-              <FileText className="mr-1 size-4" /> PDF liste (FR)
-            </Button>
+            <div className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+              <select
+                className="h-9 rounded-md border-0 bg-transparent px-2 text-xs font-medium text-[var(--color-ink)] outline-none"
+                value={pdfLang}
+                onChange={(e) => setPdfLang(e.target.value as "pt" | "fr")}
+                aria-label="Idioma do PDF"
+                title="Idioma do PDF"
+              >
+                <option value="fr">FR</option>
+                <option value="pt">PT</option>
+              </select>
+              <Button
+                className="shrink-0"
+                variant="secondary"
+                title={
+                  pdfLang === "fr"
+                    ? "PDF A4 — ID, nom, date de naissance, âge, téléphone"
+                    : "PDF A4 — ID, nome, data de nascimento, idade, telefone"
+                }
+                onClick={() => void imprimirAlunosPorClasse(pdfLang)}
+              >
+                <FileText className="mr-1 size-4" /> PDF
+              </Button>
+            </div>
             {canEdit ? (
               <Button
                 className="shrink-0"
