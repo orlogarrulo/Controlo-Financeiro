@@ -73,10 +73,11 @@ const DEFAULT_INSCRICAO = 150000;
 const DEFAULT_SEGURO_ESCOLA = 30000;
 
 /** Tarifário especial — transferidos do Campus Cidade (2026-2027). */
-/** Inscrição: escolher 82.000 ou 127.000 Kz */
+/** Pacote único (já inclui matrícula + seguro de saúde + cartão de estudante): 82 / 99 / 127 mil Kz */
 const CAMPUS_CIDADE_INSCRICAO_82 = 82000;
+const CAMPUS_CIDADE_INSCRICAO_99 = 99000;
 const CAMPUS_CIDADE_INSCRICAO_127 = 127000;
-const CAMPUS_CIDADE_SEGURO = 30000;
+const CAMPUS_CIDADE_SEGURO = 30000; // referência; no pacote transferido o seguro fica a 0 (já incluído)
 /** Propina mensal transferidos */
 const CAMPUS_CIDADE_PROPINA = 75000;
 const CARTAO_ESTUDANTE_PRECO = 10000;
@@ -87,7 +88,14 @@ const NOME_ESCOLA_FATURA =
   "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida";
 
 const CAMPUS_CIDADE_NOTA =
-  "Transferido do Campus Cidade · inscrição 82.000 ou 127.000 Kz · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027";
+  "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027";
+
+/** Valores de pacote Campus Cidade (matrícula+seguro+cartão já incluídos). */
+const CAMPUS_CIDADE_PACOTES = [
+  CAMPUS_CIDADE_INSCRICAO_82,
+  CAMPUS_CIDADE_INSCRICAO_99,
+  CAMPUS_CIDADE_INSCRICAO_127,
+] as const;
 
 const METODO_NAO_ESCOLHIDO = "";
 const METODO_PLACEHOLDER = "— escolher —";
@@ -820,13 +828,16 @@ function MatriculaForm({
             onChange={(e) => {
               const on = e.target.checked;
               if (on) {
+                // Pacote 82 mil por defeito: já inclui matrícula + seguro + cartão
                 setForm({
                   ...form,
                   transferidoCampusCidade: true,
                   seguroExterno: false,
                   agregadoIrmaos: false,
                   inscricao: String(CAMPUS_CIDADE_INSCRICAO_82),
-                  seguro: String(CAMPUS_CIDADE_SEGURO),
+                  seguro: "0",
+                  incluirCartaoEstudante: false,
+                  cartaoEstudante: "0",
                   propina: String(CAMPUS_CIDADE_PROPINA),
                 });
               } else {
@@ -844,42 +855,54 @@ function MatriculaForm({
           <span>
             <strong>Transferido do Campus Cidade</strong>
             <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-              Inscrição: <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_82)}</strong> ou{" "}
-              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_127)}</strong> · Seguro{" "}
-              {formatKz(CAMPUS_CIDADE_SEGURO)} · Propina mensal{" "}
-              <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>. Desconto irmãos nas propinas:
-              −10% (2) ou −15% (3+).
+              Pacote (matrícula + seguro de saúde + cartão de estudante):{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_82)}</strong>,{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_99)}</strong> ou{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_127)}</strong>
+              {" "}· Propina mensal <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>.
+              Desconto irmãos nas propinas: −10% (2) ou −15% (3+).
             </span>
           </span>
         </label>
         {form.transferidoCampusCidade ? (
           <div className="mt-3 space-y-3 border-t border-[var(--color-line)] pt-3 text-sm">
             <div>
-              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">Montante de inscrição</p>
+              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">
+                Pacote pago (matrícula + seguro + cartão de estudante)
+              </p>
               <div className="flex flex-wrap gap-3">
-                <label className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-3 py-2">
-                  <input
-                    type="radio"
-                    name="inscCampus"
-                    checked={num(form.inscricao) === CAMPUS_CIDADE_INSCRICAO_82}
-                    onChange={() =>
-                      setForm({ ...form, inscricao: String(CAMPUS_CIDADE_INSCRICAO_82) })
-                    }
-                  />
-                  {formatKz(CAMPUS_CIDADE_INSCRICAO_82)}
-                </label>
-                <label className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-3 py-2">
-                  <input
-                    type="radio"
-                    name="inscCampus"
-                    checked={num(form.inscricao) === CAMPUS_CIDADE_INSCRICAO_127}
-                    onChange={() =>
-                      setForm({ ...form, inscricao: String(CAMPUS_CIDADE_INSCRICAO_127) })
-                    }
-                  />
-                  {formatKz(CAMPUS_CIDADE_INSCRICAO_127)}
-                </label>
+                {([
+                  CAMPUS_CIDADE_INSCRICAO_82,
+                  CAMPUS_CIDADE_INSCRICAO_99,
+                  CAMPUS_CIDADE_INSCRICAO_127,
+                ] as const).map((pacote) => (
+                  <label
+                    key={pacote}
+                    className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-3 py-2"
+                  >
+                    <input
+                      type="radio"
+                      name="inscCampus"
+                      checked={num(form.inscricao) === pacote}
+                      onChange={() =>
+                        setForm({
+                          ...form,
+                          inscricao: String(pacote),
+                          // Já incluídos no pacote
+                          seguro: "0",
+                          incluirCartaoEstudante: false,
+                          cartaoEstudante: "0",
+                        })
+                      }
+                    />
+                    {formatKz(pacote)}
+                  </label>
+                ))}
               </div>
+              <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
+                Estes valores já incluem matrícula, seguro de saúde e cartão de estudante
+                (não são cobrados em separado).
+              </p>
             </div>
             <p className="text-xs text-[var(--color-muted)]">
               Propina mensal fixa: <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>
@@ -975,7 +998,7 @@ function MatriculaForm({
                     seguro: e.target.checked
                       ? "0"
                       : form.transferidoCampusCidade
-                        ? String(CAMPUS_CIDADE_SEGURO)
+                        ? "0" // pacote transferido já inclui seguro
                         : String(DEFAULT_SEGURO_ESCOLA),
                   })
                 }
@@ -2020,8 +2043,16 @@ function Alunos() {
         ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
         : `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`;
     const cartaoVal = Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0;
+    const inscricaoVal = Number(a.inscricao) || 0;
+    const isPacoteCampus =
+      Boolean(a.transferidoCampusCidade) &&
+      (CAMPUS_CIDADE_PACOTES as readonly number[]).includes(inscricaoVal);
+    const labelInscricao = isPacoteCampus
+      ? `Pacote Campus Cidade ${formatKz(inscricaoVal)} (matrícula + seguro escolar + cartão de estudante)`
+      : "Inscrição";
     return [
-      { key: "inscricao", label: "Inscrição", value: Number(a.inscricao) || 0, on: (Number(a.inscricao) || 0) > 0 },
+      { key: "inscricao", label: labelInscricao, value: inscricaoVal, on: inscricaoVal > 0 },
+      // Seguro/cartão a 0 no pacote transferido — não aparecem como rubricas separadas
       { key: "seguro", label: "Seguro escolar", value: Number(a.seguro) || 0, on: (Number(a.seguro) || 0) > 0 },
       { key: "manuais", label: "Manuais", value: Number(a.manuais) || 0, on: (Number(a.manuais) || 0) > 0 },
       { key: "cadernos", label: "Cadernos", value: Number(a.cadernos) || 0, on: (Number(a.cadernos) || 0) > 0 },
@@ -2145,7 +2176,8 @@ function Alunos() {
         <p style="margin:4px 0 0;font-size:12px;color:#334155;">Aluno: <strong>${a.nome}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#64748b;">${a.id} · ${a.turma}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
-        ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#b45309;font-weight:600;">Transferido Campus Cidade · propina especial</p>` : ""}
+        ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#b45309;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
+        <p style="margin:4px 0 0;font-size:10px;color:#92400e;line-height:1.35;">Pacotes: 82.000 · 99.000 · 127.000 Kz (cada um inclui matrícula + seguro escolar + cartão de estudante). Propina mensal 75.000 Kz.</p>` : ""}
       </div>
     </div>
 
