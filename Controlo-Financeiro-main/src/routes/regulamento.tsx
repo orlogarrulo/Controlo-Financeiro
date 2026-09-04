@@ -66,8 +66,15 @@ export function RegulamentoPage() {
   );
 
   const htmlPreview = useMemo(
-    () => regulamentoInternoHtml(lang, escola),
-    [lang, escola],
+    () =>
+      regulamentoInternoHtml(lang, escola, {
+        alunoNome: alunoNome.trim() || undefined,
+        encarregadoNome: encarregadoNome.trim() || undefined,
+        turma: turma.trim() || undefined,
+        lang,
+        signedAt: done ? new Date().toISOString() : undefined,
+      }),
+    [lang, escola, alunoNome, encarregadoNome, turma, done],
   );
 
   const dataHoje = formatDataHoje(lang);

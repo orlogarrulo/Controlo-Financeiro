@@ -119,7 +119,7 @@ function contentFr(escola: EscolaMeta): string {
   return `
   <p>Le présent règlement intérieur s’applique à tous les élèves de l’${esc(escola.nomeCurto || "École Consulaire du Congo")} – Annexe Nova Vida (Luanda), ainsi qu’à leurs parents / responsables légaux. Il vise le bon fonctionnement de l’établissement, le respect mutuel et la sécurité des enfants.</p>
 
-  <h2>0. Organisation pédagogique (République du Congo – Brazzaville)</h2>
+  <h2>1. Organisation pédagogique (République du Congo – Brazzaville)</h2>
   <p>L’École Consulaire suit le cadre de l’enseignement de la <strong>République du Congo (Brazzaville)</strong>, proche du modèle francophone :</p>
   <ul>
     <li><strong>Préscolaire / Maternelle</strong> : petite, moyenne et grande section (préparation à l’entrée en primaire).</li>
@@ -129,22 +129,24 @@ function contentFr(escola: EscolaMeta): string {
   </ul>
   <p>L’enseignement est orienté vers les programmes et calendriers adaptés au contexte consulaire à Luanda, en cohérence avec les références de la République du Congo (Brazzaville). La direction publie chaque année les classes ouvertes et le calendrier scolaire.</p>
 
-  <h2>1. Horaires et présence</h2>
+  <h2>2. Horaires et présence</h2>
   <ul>
     <li>Les élèves doivent arriver à l’heure. Les retards répétés font l’objet d’un suivi avec la famille.</li>
+    <li><strong>Tolérance d’arrivée :</strong> une marge de <strong>15 minutes</strong> est accordée après le début du premier cours du matin (<strong>7h30</strong>) et après le début du premier cours de l’après-midi (<strong>14h00</strong>). Au-delà de cette tolérance, l’élève est considéré en retard.</li>
     <li><strong>Retards :</strong> <strong>3 retards</strong> dans le même mois civil équivalent à <strong>1 absence</strong> (faute de présence).</li>
     <li><strong>Matériel scolaire :</strong> <strong>3 manquements de matériel</strong> (cahiers, livres, fournitures demandées) dans le même mois civil équivalent également à <strong>1 absence</strong> (faute de présence).</li>
     <li>Toute absence doit être justifiée par écrit (ou message) par le responsable légal, de préférence le jour même.</li>
     <li>Les absences non justifiées peuvent entraîner des mesures pédagogiques et, en cas de récidive, un entretien avec la direction.</li>
     <li><strong>Récupération des élèves :</strong> l’heure limite de prise en charge est <strong>18h00</strong>. Au-delà de 18h00, un service de garde exceptionnel peut être facturé et signalé à la direction.</li>
+    <li>L’<strong>emploi du temps</strong> détaillé par cycle (préscolaire, primaire, collège) figure en <strong>annexe</strong> du présent règlement (année scolaire en cours).</li>
   </ul>
 
-  <h2>2. Retards après 18h00</h2>
+  <h2>3. Retards après 18h00</h2>
   <div class="box">
     <p><strong>Après 18h00</strong>, tout élève non récupéré reste sous la responsabilité de l’école jusqu’à l’arrivée du responsable. Une pénalité de garde peut être appliquée (montant communiqué en début d’année / affiché au secrétariat). En cas de retard répété, la direction convoque les parents.</p>
   </div>
 
-  <h2>3. Jours fériés et dates commémoratives (République du Congo – Brazzaville)</h2>
+  <h2>4. Jours fériés et dates commémoratives (République du Congo – Brazzaville)</h2>
   <p>En tant qu’établissement consulaire congolais, <strong>il n’y a pas de cours</strong> les jours fériés nationaux de la République du Congo (Brazzaville). Les dates à date fixe sont :</p>
   <table class="rules">
     <thead>
@@ -166,7 +168,7 @@ function contentFr(escola: EscolaMeta): string {
   </div>
   <p>La direction publie le calendrier scolaire annuel (y compris éventuels ajustements liés au calendrier local d’accueil). Un jour férié tombant un week-end ne donne pas automatiquement de report, sauf décision écrite de la direction.</p>
 
-  <h2>4. Frais de scolarité, délais et pénalités de retard de paiement</h2>
+  <h2>5. Frais de scolarité, délais et pénalités de retard de paiement</h2>
   <p>Les frais (inscription, assurance scolaire, manuels, uniforme, cantine, transport, cours, <strong>mensualités / propinas</strong>) sont dus selon le calendrier communiqué par le Département des Finances.</p>
   <table class="rules">
     <thead>
@@ -181,14 +183,14 @@ function contentFr(escola: EscolaMeta): string {
   </table>
   <p>Les modes de paiement acceptés : espèces (caisse), dépôt / virement compte BAI, carte Multicaixa. Un reçu ou facture est délivré par l’école.</p>
 
-  <h2>5. Tenue vestimentaire</h2>
+  <h2>6. Tenue vestimentaire</h2>
   <ul>
     <li>L’uniforme officiel de l’école est obligatoire les jours de cours, sauf consigne contraire de la direction.</li>
     <li>Tenue propre, correcte et adaptée à l’âge ; chaussures fermées recommandées.</li>
     <li>Interdits : vêtements provocants, messages offensants, accessoires dangereux.</li>
   </ul>
 
-  <h2>6. Comportement et vie scolaire</h2>
+  <h2>7. Comportement et vie scolaire</h2>
   <ul>
     <li>Respect des enseignants, du personnel, des camarades et des locaux.</li>
     <li>Interdiction de violence, harcèlement, insultes, vol ou dégradation du matériel.</li>
@@ -196,19 +198,19 @@ function contentFr(escola: EscolaMeta): string {
     <li>Les objets de valeur sont déconseillés ; l’école n’est pas responsable des pertes hors faute prouvée.</li>
   </ul>
 
-  <h2>6bis. Accueil des parents / responsables (Département pédagogique)</h2>
+  <h2>8. Accueil des parents / responsables (Département pédagogique)</h2>
   <div class="box">
-    <p>Le Département pédagogique reçoit les parents et responsables d’éducation <strong>les mercredis et jeudis de 14h00 à 16h00</strong>, <strong>uniquement sur rendez-vous</strong> (créneaux de 30 minutes). Lien de prise de rendez-vous disponible auprès du secrétariat / via le portail de l’école.</p>
+    <p>Le Département pédagogique reçoit les parents et responsables d’éducation <strong>les samedis de 09h30 à 12h30</strong>, <strong>uniquement sur rendez-vous</strong> (créneaux de 20 minutes). Lien de prise de rendez-vous disponible auprès du secrétariat / via le portail de l’école.</p>
   </div>
 
-  <h2>7. Santé et sécurité</h2>
+  <h2>9. Santé et sécurité</h2>
   <ul>
     <li>Les allergies, groupe sanguin et clinique de proximité doivent figurer sur la fiche d’inscription.</li>
     <li>En cas d’urgence, l’école contacte les responsables et, si nécessaire, oriente vers la structure de santé indiquée.</li>
     <li>Médicaments : uniquement avec autorisation écrite des parents et consignes claires.</li>
   </ul>
 
-  <h2>8. Canaux de signalement et réclamations</h2>
+  <h2>10. Canaux de signalement et réclamations</h2>
   <div class="box">
     <p>Pour toute réclamation, signalement (comportement, sécurité, harcèlement, facturation) :</p>
     <ul>
@@ -220,10 +222,51 @@ function contentFr(escola: EscolaMeta): string {
     <p>Les signalements sont traités avec confidentialité dans la mesure du possible. Les faits graves peuvent être portés aux autorités compétentes selon la loi angolaise.</p>
   </div>
 
-  <h2>9. Protection des données personnelles</h2>
+  <h2>11. Protection des données personnelles</h2>
   <p>Conformément à la <strong>Loi n° 22/11 du 17 juin</strong> (Loi sur la protection des données personnelles — Angola) et sous le contrôle de l’Agence de Protection des Données (APD), l’école traite les données des élèves et des familles uniquement à des fins scolaires et de sécurité. Les parents disposent des droits d’information, d’accès, de rectification et d’opposition prévus par la loi.</p>
 
-  <h2>10. Acceptation</h2>
+  <h2>12. Passage de classe et redoublement (République du Congo – Brazzaville)</h2>
+  <p>Dans le système éducatif de la <strong>République du Congo (Congo-Brazzaville)</strong>, les règles de passage ou de redoublement reposent sur la <strong>moyenne générale annuelle (MGA)</strong>. L’évaluation suit le modèle francophone : échelle de <strong>0 à 10</strong> au primaire et de <strong>0 à 20</strong> au secondaire.</p>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.1. Enseignement primaire</h3>
+  <ul>
+    <li><strong>Critère de redoublement :</strong> l’élève redouble si sa moyenne annuelle est <strong>inférieure à 5/10</strong>.</li>
+    <li><strong>Marge de rachat :</strong> entre <strong>4,80 et 4,99</strong>, le Conseil d’établissement peut apprécier le comportement et la progression pour autoriser le passage ; à défaut, l’élève redouble.</li>
+    <li>Des réformes récentes ont réduit le primaire et renforcé le contrôle continu ; la direction applique les dispositions en vigueur et communique les critères en début d’année.</li>
+  </ul>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.2. Enseignement secondaire (collège et lycée)</h3>
+  <ul>
+    <li><strong>Critère de redoublement :</strong> l’élève redouble si sa moyenne générale annuelle est <strong>inférieure à 10/20</strong>.</li>
+    <li><strong>Marge de rachat :</strong> entre <strong>9,80 et 9,99</strong>, le conseil de classe peut autoriser le passage selon le dossier et l’assiduité ; sinon, redoublement.</li>
+  </ul>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.3. Établissements d’excellence (le cas échéant)</h3>
+  <ul>
+    <li>Dans les structures d’excellence ou lycées interdépartementaux, la moyenne minimale de passage peut être fixée à <strong>12/20</strong> ; en dessous, l’élève peut être réorienté vers un établissement classique plutôt que maintenu par redoublement.</li>
+  </ul>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.4. Limite de redoublements et âge</h3>
+  <ul>
+    <li>La scolarité obligatoire s’entend, en droit congolais, jusqu’à <strong>16 ans</strong>. L’élève peut redoubler dans cette fourchette d’âge.</li>
+    <li>Des redoublements répétés dans la même classe (en principe plus de deux fois dans le même cycle) ou le dépassement de la limite d’âge pour le niveau concerné peuvent entraîner une <strong>exclusion / réorientation</strong> hors de l’enseignement régulier de l’établissement, après décision motivée de la direction et information des parents.</li>
+  </ul>
+  <p>À l’Annexe Nova Vida, le conseil de classe / d’établissement statue conformément à ces références et au projet pédagogique de l’école ; les décisions sont communiquées par écrit aux responsables légaux.</p>
+
+  <h2>13. Annexe — Emploi du temps (année scolaire 2026–2027)</h2>
+  <p>Horaires indicatifs. L’élève peut rester jusqu’à <strong>18h00</strong> (ATL). <strong>ATL</strong> = activités de temps libre (après les cours).</p>
+  <table class="rules">
+    <thead>
+      <tr><th>Cycles</th><th>Cours / ATL</th><th>Jours</th><th>Horaires</th></tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="1"><strong>Préscolaire<br/>(Maternelle)</strong></td><td>Cours en plein-temps</td><td>Du lundi au vendredi</td><td>7h30 – 18h00</td></tr>
+      <tr><td rowspan="2"><strong>Primaire</strong></td><td>Cours à mi-temps (matin)</td><td>Du lundi au vendredi</td><td>7h30 – 12h30</td></tr>
+      <tr><td>ATL après-midi</td><td>Du lundi au vendredi</td><td>14h00 – 18h00</td></tr>
+      <tr><td rowspan="3"><strong>Secondaire 1<sup>er</sup> degré<br/>(Collège)</strong></td><td>Cours en plein-temps</td><td>Lundi et mercredi</td><td>7h30 – 18h00</td></tr>
+      <tr><td>Cours à mi-temps (matin)</td><td>Mardi, jeudi et vendredi</td><td>7h30 – 12h30</td></tr>
+      <tr><td>ATL après-midi</td><td>Mardi, jeudi et vendredi</td><td>14h00 – 18h00</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:9.5px;color:#555;">Tolérance de 15 minutes après 7h30 (matin) et après 14h00 (après-midi) — voir § 2.</p>
+
+  <h2>14. Acceptation</h2>
   <p>La signature du présent règlement (ou l’acceptation via le lien officiel de l’école) vaut prise de connaissance et engagement à le respecter pour l’année scolaire en cours.</p>
 `;
 }
@@ -238,7 +281,7 @@ function contentPt(escola: EscolaMeta): string {
   return `
   <p>O presente regulamento interno aplica-se a todos os alunos da ${esc(escola.nomeCurto || "École Consulaire du Congo")} – Anexo Nova Vida (Luanda), bem como aos respectivos pais / encarregados de educação. Visa o bom funcionamento do estabelecimento, o respeito mútuo e a segurança das crianças.</p>
 
-  <h2>0. Organização pedagógica (República do Congo – Brazzaville)</h2>
+  <h2>1. Organização pedagógica (República do Congo – Brazzaville)</h2>
   <p>A École Consulaire segue o quadro de ensino da <strong>República do Congo (Brazzaville)</strong>, próximo do modelo francófono:</p>
   <ul>
     <li><strong>Pré-escolar / Maternelle</strong>: pequena, média e grande secção (preparação para o primário).</li>
@@ -248,22 +291,24 @@ function contentPt(escola: EscolaMeta): string {
   </ul>
   <p>O ensino orienta-se pelos programas e calendários adaptados ao contexto consular em Luanda, em coerência com as referências da República do Congo (Brazzaville). A direcção publica anualmente as classes abertas e o calendário escolar.</p>
 
-  <h2>1. Horários e assiduidade</h2>
+  <h2>2. Horários e assiduidade</h2>
   <ul>
     <li>Os alunos devem chegar a horas. Atrasos repetidos são acompanhados com a família.</li>
+    <li><strong>Tolerância de chegada:</strong> é concedida uma margem de <strong>15 minutos</strong> após o início do primeiro tempo da manhã (<strong>7h30</strong>) e após o início do primeiro tempo da tarde (<strong>14h00</strong>). Para além desta tolerância, o aluno é considerado em atraso.</li>
     <li><strong>Atrasos:</strong> <strong>3 atrasos</strong> no mesmo mês civil equivalem a <strong>1 falta de presença</strong>.</li>
     <li><strong>Material escolar:</strong> <strong>3 faltas de material</strong> (cadernos, livros, material pedido) no mesmo mês civil equivalem também a <strong>1 falta de presença</strong>.</li>
     <li>Qualquer falta deve ser justificada por escrito (ou mensagem) pelo encarregado de educação, de preferência no próprio dia.</li>
     <li>Faltas não justificadas podem originar medidas pedagógicas e, em reincidência, reunião com a direcção.</li>
     <li><strong>Recolha dos alunos:</strong> o horário limite de saída / recolha é <strong>18h00</strong>. Após as 18h00, pode ser aplicado serviço de guarda excepcional e comunicação à direcção.</li>
+    <li>O <strong>horário escolar</strong> detalhado por ciclo (pré-escolar, primário, colégio) figura em <strong>anexo</strong> ao presente regulamento (ano lectivo em curso).</li>
   </ul>
 
-  <h2>2. Atrasos depois das 18h00</h2>
+  <h2>3. Atrasos depois das 18h00</h2>
   <div class="box">
     <p><strong>Após as 18h00</strong>, qualquer aluno não recolhido permanece sob responsabilidade da escola até à chegada do responsável. Pode ser aplicada uma penalização de guarda (valor comunicado no início do ano / afixado na secretaria). Em caso de atraso reiterado, a direcção convoca os pais.</p>
   </div>
 
-  <h2>3. Feriados e datas comemorativas (República do Congo – Brazzaville)</h2>
+  <h2>4. Feriados e datas comemorativas (República do Congo – Brazzaville)</h2>
   <p>Enquanto estabelecimento consular congolês, <strong>não há aulas</strong> nos feriados nacionais da República do Congo (Brazzaville). Datas fixas:</p>
   <table class="rules">
     <thead>
@@ -285,7 +330,7 @@ function contentPt(escola: EscolaMeta): string {
   </div>
   <p>A direcção publica o calendário escolar anual (incluindo eventuais ajustes ligados ao calendário local de acolhimento). Feriado que caia em fim de semana não implica, por si, dia de compensação, salvo decisão escrita da direcção.</p>
 
-  <h2>4. Propinas, prazos e multas por atraso de pagamento</h2>
+  <h2>5. Propinas, prazos e multas por atraso de pagamento</h2>
   <p>Os encargos (inscrição, seguro escolar, manuais, uniforme, cantina, transporte, cursos, <strong>mensalidades / propinas</strong>) são devidos segundo o calendário do Departamento de Finanças.</p>
   <table class="rules">
     <thead>
@@ -300,14 +345,14 @@ function contentPt(escola: EscolaMeta): string {
   </table>
   <p>Formas de pagamento: dinheiro (caixa), depósito / transferência conta BAI, cartão Multicaixa. A escola emite recibo ou fatura.</p>
 
-  <h2>5. Vestuário</h2>
+  <h2>6. Vestuário</h2>
   <ul>
     <li>O uniforme oficial da escola é obrigatório nos dias de aulas, salvo indicação em contrário da direcção.</li>
     <li>Roupa limpa, adequada e própria à idade; calçado fechado recomendado.</li>
     <li>Proibido: vestuário provocador, mensagens ofensivas, acessórios perigosos.</li>
   </ul>
 
-  <h2>6. Comportamento e vida escolar</h2>
+  <h2>7. Comportamento e vida escolar</h2>
   <ul>
     <li>Respeito por professores, funcionários, colegas e instalações.</li>
     <li>Proibida violência, assédio, insultos, furto ou danificação de material.</li>
@@ -315,19 +360,19 @@ function contentPt(escola: EscolaMeta): string {
     <li>Objectos de valor são desaconselhados; a escola não se responsabiliza por perdas sem culpa comprovada.</li>
   </ul>
 
-  <h2>6bis. Atendimento aos encarregados de educação (Departamento pedagógico)</h2>
+  <h2>8. Atendimento aos encarregados de educação (Departamento pedagógico)</h2>
   <div class="box">
-    <p>O Departamento pedagógico atende os encarregados de educação <strong>às 4.ª e 5.ª feiras, das 14:00 às 16:00</strong>, <strong>apenas por agendamento</strong> (slots de 30 minutos). O link de marcação está disponível na secretaria / no portal da escola.</p>
+    <p>O Departamento pedagógico atende os encarregados de educação <strong>aos sábados, das 09:30 às 12:30</strong>, <strong>apenas por agendamento</strong> (slots de 20 minutos). O link de marcação está disponível na secretaria / no portal da escola.</p>
   </div>
 
-  <h2>7. Saúde e segurança</h2>
+  <h2>9. Saúde e segurança</h2>
   <ul>
     <li>Alergias, grupo sanguíneo e clínica mais próxima devem constar da ficha de matrícula.</li>
     <li>Em emergência, a escola contacta os responsáveis e, se necessário, orienta para a estrutura de saúde indicada.</li>
     <li>Medicamentos: apenas com autorização escrita dos pais e instruções claras.</li>
   </ul>
 
-  <h2>8. Canais de denúncia e reclamações</h2>
+  <h2>10. Canais de denúncia e reclamações</h2>
   <div class="box">
     <p>Para reclamação ou denúncia (comportamento, segurança, assédio, facturação):</p>
     <ul>
@@ -339,10 +384,51 @@ function contentPt(escola: EscolaMeta): string {
     <p>Os relatos são tratados com a confidencialidade possível. Factos graves podem ser comunicados às autoridades competentes, nos termos da lei angolana.</p>
   </div>
 
-  <h2>9. Protecção de dados pessoais</h2>
+  <h2>11. Protecção de dados pessoais</h2>
   <p>Nos termos da <strong>Lei n.º 22/11, de 17 de Junho</strong> (Lei da Protecção de Dados Pessoais — Angola) e sob fiscalização da Agência de Protecção de Dados (APD), a escola trata os dados dos alunos e famílias apenas para fins escolares e de segurança. Os encarregados dispõem dos direitos de informação, acesso, rectificação e oposição previstos na lei.</p>
 
-  <h2>10. Aceitação</h2>
+  <h2>12. Passagem de ano e chumbo / redoublement (República do Congo – Brazzaville)</h2>
+  <p>No sistema educativo da <strong>República do Congo (Congo-Brazzaville)</strong>, as regras de passagem ou de chumbo do ano lectivo baseiam-se na <strong>média geral anual (MGA — Moyenne Générale Annuelle)</strong>. A avaliação segue o modelo francófono: escala de <strong>0 a 10</strong> no primário e de <strong>0 a 20</strong> no secundário.</p>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.1. Ensino primário</h3>
+  <ul>
+    <li><strong>Critério de chumbo:</strong> o aluno chumba o ano se a média anual for <strong>inferior a 5/10</strong>.</li>
+    <li><strong>Margem de resgate (rachat):</strong> entre <strong>4,80 e 4,99</strong>, o Conselho de Escola (Conseil d’établissement) pode avaliar o comportamento e a evolução para autorizar a passagem; caso contrário, o aluno chumba.</li>
+    <li>Reformas recentes reduziram a duração do primário e reforçaram o controlo contínuo; a direcção aplica as regras em vigor e comunica os critérios no início do ano.</li>
+  </ul>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.2. Ensino secundário (colégio e liceu)</h3>
+  <ul>
+    <li><strong>Critério de chumbo:</strong> o aluno chumba o ano se a média geral anual for <strong>inferior a 10/20</strong>.</li>
+    <li><strong>Margem de resgate:</strong> entre <strong>9,80 e 9,99</strong>, o conselho de turma pode autorizar a passagem conforme o historial e a assiduidade; caso contrário, há repetição de ano.</li>
+  </ul>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.3. Escolas de excelência (quando aplicável)</h3>
+  <ul>
+    <li>Em estruturas de excelência ou liceus interdepartamentais, a média mínima de passagem pode ser de <strong>12/20</strong>; abaixo deste valor, o aluno pode ser reorientado para um estabelecimento clássico, em vez de permanecer por chumbo.</li>
+  </ul>
+  <h3 style="font-size:11px;margin:10px 0 4px;color:#1f5c4a;">12.4. Limite de repetições e idade</h3>
+  <ul>
+    <li>A escolaridade obrigatória, no direito congolês, estende-se em regra até aos <strong>16 anos</strong>. O aluno pode repetir o ano dentro desta faixa etária.</li>
+    <li>Chumbos repetidos na mesma classe (em princípio mais de duas vezes no mesmo ciclo) ou o ultrapassar do limite de idade do nível podem originar <strong>exclusão / reorientação</strong> fora do ensino regular do estabelecimento, após decisão fundamentada da direcção e informação aos encarregados.</li>
+  </ul>
+  <p>No Anexo Nova Vida, o conselho de turma / de estabelecimento delibera segundo estas referências e o projecto pedagógico da escola; as decisões são comunicadas por escrito aos encarregados de educação.</p>
+
+  <h2>13. Anexo — Horário escolar (ano lectivo 2026–2027)</h2>
+  <p>Horários indicativos. O aluno pode permanecer até às <strong>18h00</strong> (ATL). <strong>ATL</strong> = Actividades de Tempos Livres (após as aulas).</p>
+  <table class="rules">
+    <thead>
+      <tr><th>Ciclos</th><th>Aulas / ATL</th><th>Dias</th><th>Horários</th></tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="1"><strong>Pré-escolar<br/>(Maternelle)</strong></td><td>Aulas a tempo inteiro</td><td>De segunda a sexta-feira</td><td>7h30 – 18h00</td></tr>
+      <tr><td rowspan="2"><strong>1.º ciclo<br/>(Primário)</strong></td><td>Aulas a meio tempo (manhã)</td><td>De segunda a sexta-feira</td><td>7h30 – 12h30</td></tr>
+      <tr><td>ATL da tarde</td><td>De segunda a sexta-feira</td><td>14h00 – 18h00</td></tr>
+      <tr><td rowspan="3"><strong>Ensino secundário<br/>1.º grau (Colégio)</strong></td><td>Aulas a tempo inteiro</td><td>Segunda e quarta-feira</td><td>7h30 – 18h00</td></tr>
+      <tr><td>Aulas a meio tempo (manhã)</td><td>Terça, quinta e sexta-feira</td><td>7h30 – 12h30</td></tr>
+      <tr><td>ATL da tarde</td><td>Terça, quinta e sexta-feira</td><td>14h00 – 18h00</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:9.5px;color:#555;">Tolerância de 15 minutos após as 7h30 (manhã) e após as 14h00 (tarde) — ver § 2.</p>
+
+  <h2>14. Aceitação</h2>
   <p>A assinatura deste regulamento (ou a aceitação através do link oficial da escola) implica a tomada de conhecimento e o compromisso de o respeitar no ano lectivo em curso.</p>
 `;
 }
@@ -363,7 +449,7 @@ function signatureBlock(
       <strong>Le responsable légal / parent</strong><br/>
       Nom de l’élève : ${aluno || "_________________________________"}<br/>
       Nom du responsable : ${enc || "_____________________________"}<br/>
-      Date : ${data}<br/>
+      ${ack?.turma ? `Classe : ${esc(ack.turma)}<br/>` : ""}Date : ${data}<br/>
       Signature : _______________________________
     </div>
     <div class="sig">
@@ -380,7 +466,7 @@ function signatureBlock(
       <strong>O(A) encarregado(a) de educação</strong><br/>
       Nome do aluno : ${aluno || "_________________________________"}<br/>
       Nome do encarregado : ${enc || "_____________________________"}<br/>
-      Data : ${data}<br/>
+      ${ack?.turma ? `Turma : ${esc(ack.turma)}<br/>` : ""}Data : ${data}<br/>
       Assinatura : _______________________________
     </div>
     <div class="sig">
