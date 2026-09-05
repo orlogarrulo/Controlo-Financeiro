@@ -358,6 +358,43 @@ function grupoFromTurma(turma: string): string {
   return "Collège";
 }
 
+/**
+ * Sugere a classe/turma a partir da data de nascimento.
+ * Referência: idade em 1 de setembro do ano lectivo 2026-2027 (sistema francês).
+ * Pode ser sempre sobrescrita manualmente no formulário.
+ */
+function turmaFromDataNascimento(dataNascimento: string): string | null {
+  if (!dataNascimento || dataNascimento.length < 8) return null;
+  const parts = dataNascimento.slice(0, 10).split("-").map(Number);
+  if (parts.length < 3 || !parts[0]) return null;
+  const [y, m, day] = parts;
+  const born = new Date(y, (m || 1) - 1, day || 1);
+  if (Number.isNaN(born.getTime())) return null;
+
+  // Idade de referência: 1 de setembro de 2026 (início do ano lectivo 2026-2027)
+  const ref = new Date(2026, 8, 1); // mês 8 = setembro
+  let age = ref.getFullYear() - born.getFullYear();
+  const md = ref.getMonth() - born.getMonth();
+  if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
+  if (age < 0 || age > 25) return null;
+
+  // Faixas etárias típicas (sistema francês / École Consulaire)
+  if (age <= 3) return "Maternelle P1";
+  if (age === 4) return "Maternelle P2";
+  if (age === 5) return "Maternelle P3";
+  if (age === 6) return "CP1";
+  if (age === 7) return "CP2";
+  if (age === 8) return "CE1";
+  if (age === 9) return "CE2";
+  if (age === 10) return "CM1";
+  if (age === 11) return "CM2";
+  if (age === 12) return "6ème";
+  if (age === 13) return "5ème";
+  if (age === 14) return "4ème";
+  if (age >= 15) return "3ème";
+  return null;
+}
+
 /** ID automático: PREFIXO-NN a partir da turma. */
 function nextAlunoId(turma: string, existing: Aluno[]): string {
   const map: Record<string, string> = {
@@ -589,6 +626,25 @@ function MatriculaForm({
         <Input data-focus="mae" value={form.mae} onChange={(e) => setForm({ ...form, mae: e.target.value })} />
       </div>
       <div className="space-y-1.5">
+        <Label>Data de nascimento</Label>
+        <Input
+          type="date"
+          value={form.dataNascimento}
+          onChange={(e) => {
+            const dataNascimento = e.target.value;
+            const suggested = turmaFromDataNascimento(dataNascimento);
+            setForm((prev) => ({
+              ...prev,
+              dataNascimento,
+              ...(suggested ? { turma: suggested } : {}),
+            }));
+          }}
+        />
+        <p className="text-[11px] text-[var(--color-muted)]">
+          A classe é calculada automaticamente a partir da data de nascimento (pode ser alterada).
+        </p>
+      </div>
+      <div className="space-y-1.5">
         <Label>Classe / turma *</Label>
         <select
           className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
@@ -601,14 +657,6 @@ function MatriculaForm({
             </option>
           ))}
         </select>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Data da inscrição</Label>
-        <Input
-          type="date"
-          data-focus="dataPag" value={form.dataPag}
-          onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
-        />
       </div>
       <div className="space-y-2 sm:col-span-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)]/50 p-3">
         <Label className="text-sm font-semibold">Métodos de pagamento (por rubrica)</Label>
@@ -704,11 +752,12 @@ function MatriculaForm({
         <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
       </div>
       <div className="space-y-1.5">
-        <Label>Data de nascimento</Label>
+        <Label>Data da inscrição</Label>
         <Input
           type="date"
-          value={form.dataNascimento}
-          onChange={(e) => setForm({ ...form, dataNascimento: e.target.value })}
+          data-focus="dataPag"
+          value={form.dataPag}
+          onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
         />
       </div>
 
