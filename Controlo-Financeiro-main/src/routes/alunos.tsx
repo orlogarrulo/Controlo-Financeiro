@@ -270,7 +270,7 @@ function emptyForm(): FormState {
     transferidoCampusCidade: false,
     agregadoIrmaos: false,
     irmaosNivel: 0,
-    cartaoEstudante: String(CARTAO_ESTUDANTE_PRECO),
+    cartaoEstudante: "0",
     incluirCartaoEstudante: false,
     campanhaPromoSetembro: false,
     manuais: "0",
@@ -482,7 +482,7 @@ function calcTotais(f: FormState) {
   const transporte = num(f.transporte);
   const alimentacao = num(f.alimentacao);
   const curso = num(f.curso);
-  const cartaoEst = f.incluirCartaoEstudante ? num(f.cartaoEstudante) || CARTAO_ESTUDANTE_PRECO : 0;
+  const cartaoEst = num(f.cartaoEstudante);
   const propCalc = calcPropinaComCampanha(
     num(f.propina),
     num(f.mesesPropina),
@@ -1087,38 +1087,23 @@ function MatriculaForm({
             <Label>Curso intensivo</Label>
             <Input value={form.curso} onChange={(e) => setForm({ ...form, curso: e.target.value })} />
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1 size-4 shrink-0"
-                checked={form.incluirCartaoEstudante}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    incluirCartaoEstudante: e.target.checked,
-                    cartaoEstudante: e.target.checked
-                      ? form.cartaoEstudante || String(CARTAO_ESTUDANTE_PRECO)
-                      : form.cartaoEstudante,
-                  })
-                }
-              />
-              <span>
-                <strong>Cartão de estudante</strong>
-                <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-                  {formatKz(CARTAO_ESTUDANTE_PRECO)} — pode incluir já na inscrição ou acrescentar depois na edição.
-                </span>
-              </span>
-            </label>
-            {form.incluirCartaoEstudante ? (
-              <Input
-                className="mt-2"
-                value={form.cartaoEstudante}
-                onChange={(e) => setForm({ ...form, cartaoEstudante: e.target.value })}
-                inputMode="decimal"
-                placeholder={String(CARTAO_ESTUDANTE_PRECO)}
-              />
-            ) : null}
+          <div className="space-y-1.5">
+            <Label>Cartão de estudante</Label>
+            <Input
+              value={form.cartaoEstudante}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  cartaoEstudante: e.target.value,
+                  incluirCartaoEstudante: num(e.target.value) > 0,
+                })
+              }
+              inputMode="decimal"
+              placeholder={String(CARTAO_ESTUDANTE_PRECO)}
+            />
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Valor habitual {formatKz(CARTAO_ESTUDANTE_PRECO)}. Deixe 0 se não aplicar.
+            </p>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
@@ -1498,11 +1483,10 @@ function Alunos() {
             ? 3
             : 0,
       cartaoEstudante: String(
-        (a as { cartaoEstudante?: number }).cartaoEstudante || CARTAO_ESTUDANTE_PRECO,
+        Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0,
       ),
       incluirCartaoEstudante: Boolean(
-        (a as { cartaoEstudante?: number }).cartaoEstudante &&
-          Number((a as { cartaoEstudante?: number }).cartaoEstudante) > 0,
+        Number((a as { cartaoEstudante?: number }).cartaoEstudante) > 0,
       ),
       agregadoIrmaos: Boolean(
         (a.transferidoCampusCidade &&

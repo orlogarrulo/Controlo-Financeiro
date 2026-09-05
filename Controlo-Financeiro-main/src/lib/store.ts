@@ -859,6 +859,12 @@ export const useFinance = create<Store>()(
           { key: "TRP", label: "Transporte", valor: Number(row.transporte) || 0, met: m("transporte") },
           { key: "ALI", label: "Alimentação", valor: Number(row.alimentacao) || 0, met: m("alimentacao") },
           { key: "CUR", label: "Curso", valor: Number(row.curso) || 0, met: m("curso") },
+          {
+            key: "CAR",
+            label: "Cartão de estudante",
+            valor: Number(row.cartaoEstudante) || 0,
+            met: m("cartaoEstudante"),
+          },
         ];
         // Se não há split e método único via BAI, um só movimento (compatibilidade)
         const mets = new Set(parcelas.filter((p) => p.valor > 0).map((p) => p.met));
