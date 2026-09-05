@@ -360,7 +360,9 @@ function grupoFromTurma(turma: string): string {
 
 /**
  * Sugere a classe/turma a partir da data de nascimento.
- * Referência: idade em 1 de setembro do ano lectivo 2026-2027 (sistema francês).
+ * Referência: idade em 1 de setembro do ano lectivo 2026-2027.
+ * Sistema educativo República do Congo (Brazzaville):
+ * CP1=6, CP2=7, CE1=8, CE2=9, CM1=10, CM2=11.
  * Pode ser sempre sobrescrita manualmente no formulário.
  */
 function turmaFromDataNascimento(dataNascimento: string): string | null {
@@ -378,7 +380,7 @@ function turmaFromDataNascimento(dataNascimento: string): string | null {
   if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
   if (age < 0 || age > 25) return null;
 
-  // Faixas etárias típicas (sistema francês / École Consulaire)
+  // Faixas etárias oficiais — Congo-Brazzaville
   if (age <= 3) return "Maternelle P1";
   if (age === 4) return "Maternelle P2";
   if (age === 5) return "Maternelle P3";
