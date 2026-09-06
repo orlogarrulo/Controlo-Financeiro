@@ -2158,6 +2158,19 @@ function Alunos() {
         value: pc.liquidoPropina > 0 ? pc.liquidoPropina : propinaMes * (meses || 0),
         on: (pc.liquidoPropina > 0 || propinaMes > 0) && meses > 0,
       },
+      // Multas (desligadas por defeito — marcar e escolher % / valor)
+      {
+        key: "multaAtraso",
+        label: "Multa por atraso no pagamento",
+        value: 0,
+        on: false,
+      },
+      {
+        key: "multaRecolha",
+        label: "Multa atraso recolha aluno(a) após 18:00",
+        value: 15000,
+        on: false,
+      },
     ];
   }
 
@@ -3830,26 +3843,79 @@ function Alunos() {
                     </label>
                   </div>
                   <ul className="space-y-1.5">
-                    {invoicePreview.linhas.map((l) => (
-                      <li key={l.key} className="flex flex-wrap items-center gap-2 text-sm">
+                    {invoicePreview.linhas.map((l) => {
+                      const isMultaAtraso = l.key === "multaAtraso";
+                      const isMultaRecolha = l.key === "multaRecolha";
+                      const basePropina =
+                        invoicePreview.linhas.find((x) => x.key === "propinas" && x.on)?.value ||
+                        invoicePreview.linhas.find((x) => x.key === "propinas")?.value ||
+                        0;
+                      return (
+                      <li
+                        key={l.key}
+                        className={
+                          isMultaAtraso || isMultaRecolha
+                            ? "flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50/60 p-2 text-sm"
+                            : "flex flex-wrap items-center gap-2 text-sm"
+                        }
+                      >
                         <input
                           type="checkbox"
                           checked={l.on}
                           onChange={(e) => {
+                            const on = e.target.checked;
+                            let value = l.value;
+                            if (isMultaAtraso && on && !(value > 0) && basePropina > 0) {
+                              // por defeito 10% da propina marcada
+                              value = Math.round(basePropina * 0.1);
+                            }
+                            if (isMultaRecolha && on && !(value > 0)) {
+                              value = 15000;
+                            }
                             const linhas = invoicePreview.linhas.map((x) =>
-                              x.key === l.key ? { ...x, on: e.target.checked } : x,
+                              x.key === l.key ? { ...x, on, value } : x,
                             );
                             refrescarFatura({ linhas });
                           }}
                         />
                         <span className="min-w-[7rem] flex-1">{l.label}</span>
+                        {isMultaAtraso ? (
+                          <select
+                            className="h-8 rounded border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
+                            value={
+                              basePropina > 0 && l.value > 0
+                                ? String(Math.round((l.value / basePropina) * 100))
+                                : "10"
+                            }
+                            disabled={!l.on}
+                            title="Percentagem sobre a propina marcada"
+                            onChange={(e) => {
+                              const pct = Number(e.target.value) || 0;
+                              const value = Math.round(basePropina * (pct / 100));
+                              const linhas = invoicePreview.linhas.map((x) =>
+                                x.key === l.key ? { ...x, value, on: true } : x,
+                              );
+                              refrescarFatura({ linhas });
+                            }}
+                          >
+                            {[5, 10, 15, 20, 25, 30, 35, 40, 50].map((p) => (
+                              <option key={p} value={p}>
+                                {p}%
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
                         <Input
                           type="number"
                           min={0}
                           step="1"
                           className="h-8 w-28 text-right tabular-nums"
                           value={l.value || ""}
-                          title="Valor editável (mesmo se o cadastro estiver a zero)"
+                          title={
+                            isMultaRecolha
+                              ? "Valor editável (predefinição 15.000 Kz)"
+                              : "Valor editável (mesmo se o cadastro estiver a zero)"
+                          }
                           onChange={(e) => {
                             const v = Number(e.target.value) || 0;
                             const linhas = invoicePreview.linhas.map((x) =>
@@ -3861,11 +3927,12 @@ function Alunos() {
                           }}
                         />
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                   <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                    Pode marcar qualquer item e alterar o valor. Itens a zero no cadastro deixam de
-                    bloquear o check.
+                    Pode marcar qualquer item e alterar o valor. Multas: escolha a % de atraso no
+                    pagamento (sobre a propina) ou a multa de recolha após 18:00 (15.000 Kz, editável).
                   </p>
                   <p className="mt-2 text-sm font-semibold text-[var(--color-forest)]">
                     Total fatura: {formatKz(invoicePreview.valor)}
