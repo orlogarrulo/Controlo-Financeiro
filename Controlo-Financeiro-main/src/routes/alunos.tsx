@@ -2419,9 +2419,15 @@ function Alunos() {
       toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
+    // Agrupa pela classe corrigida (Congo-Brazzaville): se há data de nascimento,
+    // recalcula a turma — evita 13 anos em Maternelle no PDF.
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
-      const k = a.turma || (lang === "fr" ? "Sans classe" : "Sem classe");
+      const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
+      const k =
+        suggested ||
+        a.turma ||
+        (lang === "fr" ? "Sans classe" : "Sem classe");
       if (!byClass.has(k)) byClass.set(k, []);
       byClass.get(k)!.push(a);
     }
@@ -2442,10 +2448,11 @@ function Alunos() {
       const [y, m, day] = parts;
       const born = new Date(y, (m || 1) - 1, day || 1);
       if (Number.isNaN(born.getTime())) return "—";
-      const now = new Date();
-      let age = now.getFullYear() - born.getFullYear();
-      const md = now.getMonth() - born.getMonth();
-      if (md < 0 || (md === 0 && now.getDate() < born.getDate())) age -= 1;
+      // Idade de referência: 1 set 2026 (ano lectivo) — alinhado com classe Congo-Brazzaville
+      const ref = new Date(2026, 8, 1);
+      let age = ref.getFullYear() - born.getFullYear();
+      const md = ref.getMonth() - born.getMonth();
+      if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
       return age >= 0 && age < 120 ? String(age) : "—";
     };
     const esc = (v: unknown) =>
@@ -2984,14 +2991,17 @@ function Alunos() {
       const logoSrc = `${location.origin}/logo-escola.jpg`;
       const rows = selected
         .map(
-          (a, i) =>
-            `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
+          (a, i) => {
+            const turmaPdf =
+              (a.dataNascimento && turmaFromDataNascimento(a.dataNascimento)) || a.turma;
+            return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
               <td class="mono">${a.id}</td>
               <td>${a.nome}</td>
-              <td>${a.turma}</td>
+              <td>${turmaPdf}</td>
               <td class="num">${formatKz(a.liquido)}</td>
               <td class="mono">${a.recibo}</td>
-            </tr>`,
+            </tr>`;
+          },
         )
         .join("");
       const inner = `

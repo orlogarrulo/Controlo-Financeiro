@@ -2553,6 +2553,17 @@
       "saida": 1350000.0,
       "saldo": 4230370.76,
       "observacoes": "Importado de captura BAI Express · Cartão 9"
+    },
+    {
+      "id": "BAI-SCR-260906-01",
+      "linha": 133,
+      "data": "2026-09-06",
+      "banco": "Mao obra blaise",
+      "descricao": "Mão de obra Blaise",
+      "entrada": 0.0,
+      "saida": 50000.0,
+      "saldo": 4180370.76,
+      "observacoes": "Importado de captura BAI Express · Cartão 9"
     }
   ],
   "faturasCartao": [

@@ -26,3 +26,9 @@ npm run build
 # ou push para GitHub → Vercel
 ```
 Após deploy: hard refresh (Ctrl+Shift+R).
+
+## 3. Actualização 2026-09-07 (tarde)
+- **BAI:** saída 06-09-2026 «Mão de obra Blaise» −50 000 Kz · saldo final **4 180 370,76 Kz**
+- **Salários:** pesquisa por nome / função / IBAN no cadastro
+- **PDF lista de alunos:** agrupa pela classe recalculada (Congo-Brazzaville); idade em 1/set/2026
+  - Corrige casos como 13 anos em Maternelle P1 → **5ème** no PDF

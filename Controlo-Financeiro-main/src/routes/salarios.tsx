@@ -1319,6 +1319,15 @@ function Salarios() {
   const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
   const rows = salariosAll(salariosExtra, salariosOverrides, salariosDeletedIds);
 
+  const rowsFiltrados = useMemo(() => {
+    const q = searchNome.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const blob = `${r.nome || ""} ${r.funcao || ""} ${r.iban || ""} ${r.telefone || ""} ${r.documento || ""}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [rows, searchNome]);
+
   const [form, setForm] = useState<FormState>(emptyForm());
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Salario | null>(null);
@@ -1358,6 +1367,8 @@ function Salarios() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
+  /** Pesquisa por nome / função / IBAN no cadastro de funcionários. */
+  const [searchNome, setSearchNome] = useState("");
   /** Por defeito: mês de competência (janela 28→10), não «todos» nem o mês civil cego. */
   const [filterMes, setFilterMes] = useState<string>(
     () => competenciaDefault.key,
@@ -1836,12 +1847,25 @@ function Salarios() {
         );
       })()}
 
-      <p className="mb-3 text-sm text-[var(--color-muted)]">
-        {rows.length} funcionário(s) · Folha de referência {formatKz(totalFolha)}
-        {porPagarMes > 0
-          ? ` · ${porPagarMes} por pagar em ${mesActivoLabel}`
-          : ` · ${mesActivoLabel}: ${pagosMes} pago(s)`}
-      </p>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          className="max-w-md"
+          type="search"
+          placeholder="Pesquisar funcionário por nome, função, IBAN…"
+          value={searchNome}
+          onChange={(e) => setSearchNome(e.target.value)}
+          aria-label="Pesquisar funcionários por nome"
+        />
+        <p className="text-sm text-[var(--color-muted)]">
+          {searchNome.trim()
+            ? `${rowsFiltrados.length} de ${rows.length} funcionário(s)`
+            : `${rows.length} funcionário(s)`}
+          {" · "}Folha de referência {formatKz(totalFolha)}
+          {porPagarMes > 0
+            ? ` · ${porPagarMes} por pagar em ${mesActivoLabel}`
+            : ` · ${mesActivoLabel}: ${pagosMes} pago(s)`}
+        </p>
+      </div>
 
       <div ref={printRef} className="overflow-x-auto rounded-[var(--radius)] border border-[var(--color-line)]">
         <table className="w-full min-w-[720px] text-left text-sm">
@@ -1856,7 +1880,16 @@ function Salarios() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rowsFiltrados.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-sm text-[var(--color-muted)]">
+                  {searchNome.trim()
+                    ? `Nenhum funcionário encontrado para «${searchNome.trim()}».`
+                    : "Sem funcionários cadastrados."}
+                </td>
+              </tr>
+            ) : null}
+            {rowsFiltrados.map((r) => (
               <tr key={r.id} className="border-t border-[var(--color-line)]">
                 <td className="px-3 py-2 font-medium">
                   <button type="button" className="text-left hover:underline" onClick={() => setViewing(r)}>
