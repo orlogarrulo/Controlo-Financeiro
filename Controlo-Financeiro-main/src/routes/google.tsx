@@ -20,7 +20,7 @@ import {
   regulamentoAcksToCsv,
   type ReconcileResult,
 } from "@/lib/csv";
-import { downloadCsvAsPrintableSheet } from "@/lib/export-print";
+import { downloadCsvAsPrintablePdf } from "@/lib/export-print";
 import {
   buildLedger,
   getSeed,
@@ -91,14 +91,22 @@ function GooglePage() {
         title ||
         base.replace(/_/g, " ").trim() ||
         "Exportação";
-      void downloadCsvAsPrintableSheet(
-        `${base}_A4.xls`,
+      void downloadCsvAsPrintablePdf(
+        `${base}.pdf`,
         csv,
         sheetTitle,
         "Exportação Google Sheets · École Consulaire",
-      ).catch((err) => console.warn("[export-print]", err));
-      setLastExport(id);
-      toast.success(`CSV + planilha A4: ${base}`);
+      )
+        .then(() => {
+          setLastExport(id);
+          toast.success(`CSV + PDF A4: ${sheetTitle}`);
+        })
+        .catch((err) => {
+          console.warn("[export-print]", err);
+          setLastExport(id);
+          toast.success(`CSV descarregado: ${base}`);
+          toast.error("PDF: use «Imprimir → Guardar como PDF» se a janela não abriu.");
+        });
     } catch (e) {
       console.error(e);
       toast.error(e instanceof Error ? e.message : `Falha ao exportar ${filename}`);
@@ -404,7 +412,7 @@ function GooglePage() {
         title="Google Sheets e Forms · Import / Export"
         description={
           canImport
-            ? "Backup CSV / Excel e reconciliação com o extrato BAI. Cada exportação gera CSV e planilha A4 horizontal (cabeçalho a negrito, pronta a imprimir). As matrículas na app (BAI-MAT-*) são a fonte das entradas de alunos; use o Excel de entradas antigas para confrontar fechos TPA e transferências históricas."
+            ? "Backup CSV / Excel e reconciliação com o extrato BAI. Cada exportação gera CSV e PDF A4 padronizado (vertical ou horizontal conforme colunas, dentro das margens). As matrículas na app (BAI-MAT-*) são a fonte das entradas de alunos; use o Excel de entradas antigas para confrontar fechos TPA e transferências históricas."
             : "Pode exportar CSV. A importação está reservada ao Colaborador 1."
         }
       />
@@ -430,7 +438,7 @@ function GooglePage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
-          <h2 className="font-display text-xl">Exportar CSV + planilha A4 (backup + impressão)</h2>
+          <h2 className="font-display text-xl">Exportar CSV + PDF A4 (backup + impressão)</h2>
           <p className="mt-2 text-sm text-[var(--color-muted)]">
             Separador <code>;</code>, UTF-8 com BOM, valores com vírgula decimal (Excel PT).
             Colunas do master: {SHEET_COLUMNS.slice(0, 8).join(" · ")}…
@@ -509,7 +517,7 @@ function GooglePage() {
             </Button>
           </div>
           <p className="mt-2 text-xs text-[var(--color-muted)]">
-            Clique num botão para descarregar o CSV. O botão fica verde após a exportação.
+            Cada botão descarrega CSV e abre PDF A4 (pronto a imprimir, sem cortar). O botão fica verde após a exportação.
           </p>
           <p className="mt-3 text-xs text-[var(--color-muted)]">
             Saldo BAI: <strong>{formatKz(movsApp[movsApp.length - 1]?.saldo ?? 0)}</strong> ·{" "}
