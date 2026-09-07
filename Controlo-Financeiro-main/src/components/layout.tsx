@@ -5,11 +5,11 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getSeed, useFinance } from "@/lib/store";
 import {
-import { escolaLogoSrc } from "@/lib/logo-escola";
   clearOperatorSession,
   isCollaborator1,
   switchOperatorSession,
 } from "@/lib/can-edit";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 
 const NAV = [
   { to: "/", label: "Quadro", icon: LayoutDashboard },

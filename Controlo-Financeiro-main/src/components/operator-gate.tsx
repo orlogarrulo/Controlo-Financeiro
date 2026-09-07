@@ -5,13 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFinance, getSeed } from "@/lib/store";
 import {
-import { escolaLogoSrc } from "@/lib/logo-escola";
   EDIT_PIN,
   isCollaborator1,
   readSession,
   writeSession,
   type OperatorSession,
 } from "@/lib/can-edit";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 
 /**
  * Bloqueia a app até escolher colaborador.

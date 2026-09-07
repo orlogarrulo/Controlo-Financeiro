@@ -1,4 +1,4 @@
-import { escolaLogoSrc } from "@/lib/logo-escola";
+import { LOGO_ESCOLA_DATA_URL, escolaLogoSrc } from "@/lib/logo-escola";
 /** PDF em layout A4 de impressão — capa numa página, conteúdo nas seguintes. */
 
 type Html2CanvasFn = (

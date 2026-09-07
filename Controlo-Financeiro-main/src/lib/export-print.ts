@@ -1,3 +1,5 @@
+import { escolaLogoSrc } from "@/lib/logo-escola";
+
 /**
  * Exportação de planilhas prontas a imprimir (A4 horizontal)
  * + estilos oficiais partilhados com os PDF da app.
