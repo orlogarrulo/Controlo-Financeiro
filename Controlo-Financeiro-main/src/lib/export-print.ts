@@ -203,29 +203,7 @@ export function downloadPrintableSheet(
 
 /** Carrega logo da escola como data-URL (para PDF e planilhas). */
 export async function loadEscolaLogoDataUrl(): Promise<string> {
-  const candidates = [
-    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "",
-    "/logo-escola.jpg",
-  ].filter(Boolean);
-  for (const src of candidates) {
-    try {
-      const res = await fetch(src, { cache: "force-cache" });
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      if (dataUrl.startsWith("data:image")) return dataUrl;
-    } catch {
-      /* next */
-    }
-  }
-  return typeof location !== "undefined"
-    ? `${location.origin}/logo-escola.jpg`
-    : "/logo-escola.jpg";
+  return escolaLogoSrc();
 }
 
 /** Converte CSV (`;`) em linhas para a planilha imprimível. */

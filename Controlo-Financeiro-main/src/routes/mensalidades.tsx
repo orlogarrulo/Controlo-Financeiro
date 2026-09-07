@@ -14,6 +14,7 @@ import {
   useFinance,
   type EstadoPropinaMes,
 } from "@/lib/store";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatKz } from "@/lib/format";
 import { PrintActions } from "@/components/print-actions";
 import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
@@ -146,7 +147,7 @@ function Mensalidades() {
       <div ref={printRef}>
         <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
           <img
-            src="/logo-escola.jpg"
+            src={escolaLogoSrc()}
             alt=""
             className="h-16 w-16 object-contain"
             width={64}

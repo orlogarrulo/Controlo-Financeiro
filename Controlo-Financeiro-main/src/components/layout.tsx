@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getSeed, useFinance } from "@/lib/store";
 import {
+import { escolaLogoSrc } from "@/lib/logo-escola";
   clearOperatorSession,
   isCollaborator1,
   switchOperatorSession,
@@ -272,7 +273,7 @@ function Brand() {
   return (
     <div className="flex items-center gap-3 px-4 py-4">
       <img
-        src="/logo-escola.jpg"
+        src={escolaLogoSrc()}
         alt=""
         className="size-10 rounded-lg object-contain"
         width={40}

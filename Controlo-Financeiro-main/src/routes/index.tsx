@@ -21,6 +21,7 @@ import {
   getSeed,
   useFinance,
 } from "@/lib/store";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatKz, formatKzShort } from "@/lib/format";
 import { isCollaborator1 } from "@/lib/can-edit";
 
@@ -66,7 +67,7 @@ function Dashboard() {
       {/* —— CAPA DE IMPRESSÃO —— */}
       <section className="print-only print-cover hidden print:flex print:min-h-[260mm] print:flex-col print:items-center print:justify-center print:break-after-page">
         <img
-          src="/logo-escola.jpg"
+          src={escolaLogoSrc()}
           alt=""
           className="mb-6 h-[336px] w-[336px] object-contain"
           width={336}
@@ -111,7 +112,7 @@ function Dashboard() {
 
             {/* Cabeçalho simplificado só na impressão (página 2) */}
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
-        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
+        <img src={escolaLogoSrc()} alt="" className="h-16 w-16 object-contain" width={64} height={64} />
         <div>
           <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
             {escola.nomeCurto}

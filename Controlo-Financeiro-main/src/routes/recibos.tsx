@@ -5,6 +5,7 @@ import { PrintActions } from "@/components/print-actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fundoPagAll, getSeed, useFinance } from "@/lib/store";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatDateLong, formatKz } from "@/lib/format";
 
 export const Route = createFileRoute("/recibos")({ component: Recibos });
@@ -217,7 +218,7 @@ function PrintHeader({ escola }: { escola: ReturnType<typeof getSeed>["escola"] 
   return (
     <div className="mb-3 flex items-start gap-3 border-b border-[var(--color-line-strong)] pb-3">
       <img
-        src="/logo-escola.jpg"
+        src={escolaLogoSrc()}
         alt=""
         className="size-14 shrink-0 object-contain print:size-12"
         width={56}

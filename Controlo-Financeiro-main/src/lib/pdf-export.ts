@@ -1,3 +1,4 @@
+import { escolaLogoSrc } from "@/lib/logo-escola";
 /** PDF em layout A4 de impressão — capa numa página, conteúdo nas seguintes. */
 
 type Html2CanvasFn = (
@@ -41,9 +42,15 @@ function loadScript(src: string): Promise<void> {
 let _logoDataUrlCache: string | null = null;
 async function resolveLogoDataUrl(): Promise<string> {
   if (_logoDataUrlCache) return _logoDataUrlCache;
+  // 1) Embutido no bundle — sempre disponível
+  if (LOGO_ESCOLA_DATA_URL && LOGO_ESCOLA_DATA_URL.startsWith("data:image")) {
+    _logoDataUrlCache = LOGO_ESCOLA_DATA_URL;
+    return _logoDataUrlCache;
+  }
+  // 2) Fallback fetch do ficheiro público
   const candidates = [
-    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "",
-    "/logo-escola.jpg",
+    escolaLogoSrc(),
+    escolaLogoSrc(),
   ].filter(Boolean);
   for (const src of candidates) {
     try {
@@ -64,9 +71,7 @@ async function resolveLogoDataUrl(): Promise<string> {
       /* next */
     }
   }
-  return typeof location !== "undefined"
-    ? `${location.origin}/logo-escola.jpg`
-    : "/logo-escola.jpg";
+  return escolaLogoSrc();
 }
 
 async function ensureLibs(): Promise<{ html2canvas: Html2CanvasFn; jsPDF: JsPdfCtor }> {
@@ -418,9 +423,7 @@ function ensureLogoHeader(root: HTMLElement, title?: string, logoDataUrl?: strin
   }
   const header = document.createElement("div");
   header.setAttribute("data-pdf-logo-header", "1");
-  const logoSrc =
-    logoDataUrl ||
-    `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const logoSrc = logoDataUrl || escolaLogoSrc();
   header.innerHTML = `
     <img src="${logoSrc}" alt="" width="72" height="72" crossorigin="anonymous" />
     <div>
@@ -1154,8 +1157,7 @@ export function buildOfficialListHtml(opts: {
   const escola = escHtml(opts.escola || "École Consulaire");
   const title = escHtml(opts.title);
   const subtitle = escHtml(opts.subtitle || "");
-  const logoSrc =
-    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
+  const logoSrc = escolaLogoSrc();
   const emitido = new Date().toLocaleDateString("pt-PT", {
     day: "2-digit",
     month: "long",
@@ -1465,8 +1467,7 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
   const escola = escHtml(opts?.escola || "École Consulaire du Congo");
   const title = escHtml(opts?.title || "Extrato Banco BAI");
   const filtro = escHtml(opts?.filterLabel || "Todas as movimentações");
-  const logoSrc =
-    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
+  const logoSrc = escolaLogoSrc();
   const emitido = new Date().toLocaleDateString("pt-PT", {
     day: "2-digit",
     month: "long",

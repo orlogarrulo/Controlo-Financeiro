@@ -37,3 +37,9 @@ Após deploy: hard refresh (Ctrl+Shift+R).
 - `src/lib/export-print.ts`: planilhas A4 **horizontal**, cabeçalho a negrito, tabela com faixas, fit impressão
 - Separador **Google Sheets**: cada exportação gera **CSV + .xls A4** prontos a imprimir
 - `src/lib/pdf-export.ts`: margens 16 mm, logo embutido (data-URL) em todos os PDFs da app
+
+## 5. Logotipo embutido + nuvem
+- `src/lib/logo-escola.ts`: logotipo em **data-URL** no bundle (não depende de /public no deploy)
+- UI inicial (layout, operator-gate, index) e **todos os PDFs** usam o logo embutido
+- `/public/logo-escola.jpg` optimizado mantido como fallback
+- Migração classes Congo: flag `ecc-classes-congo-v2` (recalcula na nuvem após deploy)

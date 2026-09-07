@@ -11,6 +11,7 @@ import {
 import { useFinance } from "@/lib/store";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
+const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v2";
 
 /**
  * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):

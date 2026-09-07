@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getSeed, movimentosAll, useFinance } from "@/lib/store";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Origem } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
 import type { MovimentoBai } from "@/data/types";
@@ -266,7 +267,7 @@ function Banco() {
       
       <div ref={printRef}>
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
-        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
+        <img src={escolaLogoSrc()} alt="" className="h-16 w-16 object-contain" width={64} height={64} />
         <div>
           <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
             {escola.nomeCurto}

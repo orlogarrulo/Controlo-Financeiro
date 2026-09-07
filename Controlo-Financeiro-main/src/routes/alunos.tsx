@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
+import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -448,32 +449,9 @@ function nextRecibo(existing: Aluno[]): string {
   return `EF/${String(max + 1).padStart(3, "0")}`;
 }
 
-/** Carrega o logotipo oficial como data-URL (garante aparição no PDF / impressão). */
+/** Logotipo oficial — usa data-URL embutido no bundle. */
 async function loadEscolaLogoDataUrl(): Promise<string> {
-  const candidates = [
-    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "",
-    "/logo-escola.jpg",
-  ].filter(Boolean);
-  for (const src of candidates) {
-    try {
-      const res = await fetch(src, { cache: "force-cache" });
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      if (dataUrl.startsWith("data:image")) return dataUrl;
-    } catch {
-      /* tenta próximo */
-    }
-  }
-  // Fallback: URL absoluta (pode falhar no html2canvas, mas serve para print HTML)
-  return typeof location !== "undefined"
-    ? `${location.origin}/logo-escola.jpg`
-    : "/logo-escola.jpg";
+  return loadLogoShared();
 }
 
 function isMaternelleTurma(turma: string): boolean {
@@ -1912,7 +1890,7 @@ function Alunos() {
       year: "numeric",
     });
     const fmt = (v?: string) => (v && String(v).trim() ? String(v).trim() : "—");
-    const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+    const logoSrc = escolaLogoSrc();
     const semFoto = fr ? "Sans photo" : "Sem foto";
     const fotoBlock = a.foto
       ? `<img src="${a.foto}" alt="" style="width:120px;height:150px;object-fit:contain;object-position:center top;border:1.5px solid #1a4d3e;border-radius:4px;background:#fff;" />`
@@ -2281,7 +2259,7 @@ function Alunos() {
     const { morada, telefones, email: emailEscola, iban } = contacto;
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     const email = (a.email || "").trim();
-    const logoSrc = `${location.origin}/logo-escola.jpg`;
+    const logoSrc = escolaLogoSrc();
     const prazo = prazoFatura(mesLetivo);
     const multa35v = formatKz(Math.round(valor * 0.35));
     const multa40v = formatKz(Math.round(valor * 0.4));
@@ -3203,8 +3181,8 @@ function Alunos() {
                 const escola = getSeed().escola;
                 const logoUrl =
                   typeof location !== "undefined"
-                    ? `${location.origin}/logo-escola.jpg`
-                    : "/logo-escola.jpg";
+                    ? escolaLogoSrc()
+                    : escolaLogoSrc();
                 const html = cartoesEstudanteHtml(comFoto, {
                   anoEscolar: escola.ano || "2025/2026",
                   escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
@@ -3305,7 +3283,7 @@ function Alunos() {
       <div ref={printRef}>
       {/* Cabeçalho de impressão com logotipo */}
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-black pb-3 print:flex print:text-black">
-        <img src="/logo-escola.jpg" alt="" className="h-14 w-14 object-contain" width={56} height={56} />
+        <img src={escolaLogoSrc()} alt="" className="h-14 w-14 object-contain" width={56} height={56} />
         <div>
           <p className="text-[10px] font-medium tracking-[0.14em] text-black uppercase">
             {escola.nome}
@@ -3406,8 +3384,8 @@ function Alunos() {
                         const escola = getSeed().escola;
                         const logoUrl =
                           typeof location !== "undefined"
-                            ? `${location.origin}/logo-escola.jpg`
-                            : "/logo-escola.jpg";
+                            ? escolaLogoSrc()
+                            : escolaLogoSrc();
                         const html = cartoesEstudanteHtml([a], {
                           anoEscolar: escola.ano || "2025/2026",
                           escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",

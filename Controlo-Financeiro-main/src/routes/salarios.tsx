@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isCollaborator1 } from "@/lib/can-edit";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { getSeed, salariosAll, useFinance } from "@/lib/store";
 import { deliverOfficialHtml, isMobileDevice } from "@/lib/pdf-export";
@@ -20,7 +21,7 @@ function listaRecibosCompletaHtml(
   filterRec: string,
   filterMes: string,
 ): string {
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const logo = escolaLogoSrc();
   const titulo =
     filterRec === "pagos"
       ? "Lista de recibos PAGOS"
@@ -646,7 +647,7 @@ function autorizacaoPagamentoHtml(
   recibos: ReciboSalario[],
   _socios?: [string, string],
 ) {
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const logo = escolaLogoSrc();
   const dataDoc = dataDocFinancas(todayIso());
   const mes = recibos[0]?.mes || "—";
   const total = recibos.reduce((s, r) => s + (r.liquido || 0), 0);
@@ -703,7 +704,7 @@ function reciboHonorarioHtml(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const logo = escolaLogoSrc();
   const descricao = descricaoPrestacaoPorFuncao(r.funcao);
   const { ini, fim } = periodoPrestacaoMes(r.mesKey, r.mes);
   const dataDoc = dataDocFinancas(r.dataPag || todayIso());
@@ -757,7 +758,7 @@ function listaFuncionariosHtml(
 ) {
   const mode = opts?.mode || "completo";
   const mostrarTotal = opts?.mostrarTotal !== false;
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const logo = escolaLogoSrc();
   const total = rows.reduce((s, r) => s + (Number(r.salario) || 0), 0);
   const body = rows
     .map(
