@@ -2499,8 +2499,18 @@ function Alunos() {
             saveHint: "use «Guardar como PDF» se precisar",
           };
 
+    // Ordem cronológica do ciclo escolar Congo-Brazzaville (P1 → 3ème)
+    const ordemTurmas = [
+      ...TURMAS,
+      ...[...byClass.keys()].filter((t) => !(TURMAS as readonly string[]).includes(t)),
+    ];
+    const turmasOrdenadas = ordemTurmas.filter((t) => byClass.has(t));
+
     let body = "";
-    for (const [turma, rows] of byClass) {
+    for (const turma of turmasOrdenadas) {
+      const rows = byClass.get(turma)!;
+      // Alunos por nome dentro de cada classe
+      rows.sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt"));
       body += `<h2>${esc(turma)} <span class="count">(${rows.length})</span></h2>`;
       body += `<table>
         <thead>

@@ -1319,15 +1319,6 @@ function Salarios() {
   const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
   const rows = salariosAll(salariosExtra, salariosOverrides, salariosDeletedIds);
 
-  const rowsFiltrados = useMemo(() => {
-    const q = searchNome.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => {
-      const blob = `${r.nome || ""} ${r.funcao || ""} ${r.iban || ""} ${r.telefone || ""} ${r.documento || ""}`.toLowerCase();
-      return blob.includes(q);
-    });
-  }, [rows, searchNome]);
-
   const [form, setForm] = useState<FormState>(emptyForm());
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Salario | null>(null);
@@ -1369,6 +1360,15 @@ function Salarios() {
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
   /** Pesquisa por nome / função / IBAN no cadastro de funcionários. */
   const [searchNome, setSearchNome] = useState("");
+
+  const rowsFiltrados = useMemo(() => {
+    const q = searchNome.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const blob = `${r.nome || ""} ${r.funcao || ""} ${r.iban || ""} ${r.telefone || ""} ${r.documento || ""}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [rows, searchNome]);
   /** Por defeito: mês de competência (janela 28→10), não «todos» nem o mês civil cego. */
   const [filterMes, setFilterMes] = useState<string>(
     () => competenciaDefault.key,
