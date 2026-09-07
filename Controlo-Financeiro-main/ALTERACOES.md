@@ -32,3 +32,8 @@ Após deploy: hard refresh (Ctrl+Shift+R).
 - **Salários:** pesquisa por nome / função / IBAN no cadastro
 - **PDF lista de alunos:** agrupa pela classe recalculada (Congo-Brazzaville); idade em 1/set/2026
   - Corrige casos como 13 anos em Maternelle P1 → **5ème** no PDF
+
+## 4. Formatação uniforme impressão (planilhas + PDF)
+- `src/lib/export-print.ts`: planilhas A4 **horizontal**, cabeçalho a negrito, tabela com faixas, fit impressão
+- Separador **Google Sheets**: cada exportação gera **CSV + .xls A4** prontos a imprimir
+- `src/lib/pdf-export.ts`: margens 16 mm, logo embutido (data-URL) em todos os PDFs da app

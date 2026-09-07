@@ -448,6 +448,34 @@ function nextRecibo(existing: Aluno[]): string {
   return `EF/${String(max + 1).padStart(3, "0")}`;
 }
 
+/** Carrega o logotipo oficial como data-URL (garante aparição no PDF / impressão). */
+async function loadEscolaLogoDataUrl(): Promise<string> {
+  const candidates = [
+    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "",
+    "/logo-escola.jpg",
+  ].filter(Boolean);
+  for (const src of candidates) {
+    try {
+      const res = await fetch(src, { cache: "force-cache" });
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+      if (dataUrl.startsWith("data:image")) return dataUrl;
+    } catch {
+      /* tenta próximo */
+    }
+  }
+  // Fallback: URL absoluta (pode falhar no html2canvas, mas serve para print HTML)
+  return typeof location !== "undefined"
+    ? `${location.origin}/logo-escola.jpg`
+    : "/logo-escola.jpg";
+}
+
 function isMaternelleTurma(turma: string): boolean {
   return turma.startsWith("Maternelle");
 }
@@ -2431,7 +2459,7 @@ function Alunos() {
       if (!byClass.has(k)) byClass.set(k, []);
       byClass.get(k)!.push(a);
     }
-    const logoSrc = `${location.origin}/logo-escola.jpg`;
+    const logoSrc = await loadEscolaLogoDataUrl();
     const locale = lang === "fr" ? "fr-FR" : "pt-PT";
     const fmtDate = (s?: string) => {
       if (!s) return "—";
@@ -2544,7 +2572,7 @@ function Alunos() {
     const inner = `
 <div class="sheet">
   <div class="head">
-    <img src="${logoSrc}" width="56" height="56" alt="" />
+    <img src="${logoSrc}" width="72" height="72" alt="Logo École Consulaire" />
     <div>
       <p class="kicker">${esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda")}</p>
       <p class="title">${L.title}</p>
@@ -2561,7 +2589,7 @@ function Alunos() {
 <meta charset="utf-8"/>
 <title>${L.title}</title>
 <style>
-  @page { size: A4 portrait; margin: 14mm 12mm 14mm 12mm; }
+  @page { size: A4 portrait; margin: 18mm 16mm 18mm 16mm; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
@@ -2569,10 +2597,18 @@ function Alunos() {
     font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  .sheet { max-width: 100%; margin: 0 auto; padding: 0; color: #000; }
-  .head { display: flex; gap: 12px; align-items: center;
-    border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
-  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .sheet {
+    max-width: 100%; margin: 0 auto; padding: 4mm 2mm 6mm 2mm; color: #000;
+    overflow: visible;
+  }
+  .head { display: flex; gap: 14px; align-items: center;
+    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 16px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .head img {
+    width: 72px; height: 72px; object-fit: contain; flex-shrink: 0;
+    display: block; background: #fff;
+  }
   .kicker { margin: 0; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
     color: #000; font-weight: 700; }
   .title { margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #000; }
@@ -2585,12 +2621,12 @@ function Alunos() {
   thead { display: table-header-group; }
   th {
     background: #fff; color: #000; font-size: 10px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.03em; padding: 7px 8px; text-align: left;
+    text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 10px; text-align: left;
     border: 1px solid #000;
   }
   td {
-    padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
-    color: #000;
+    padding: 7px 10px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
+    color: #000; word-break: break-word;
   }
   tr { page-break-inside: avoid; break-inside: avoid; }
   .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #000;
@@ -2998,7 +3034,7 @@ function Alunos() {
     }
     setExportBusy(true);
     try {
-      const logoSrc = `${location.origin}/logo-escola.jpg`;
+      const logoSrc = await loadEscolaLogoDataUrl();
       const rows = selected
         .map(
           (a, i) => {
@@ -3017,7 +3053,7 @@ function Alunos() {
       const inner = `
 <div class="sheet">
   <div class="head">
-    <img src="${logoSrc}" width="56" height="56" alt="" />
+    <img src="${logoSrc}" width="72" height="72" alt="Logo École Consulaire" />
     <div>
       <p class="kicker">${escola.nome || "École Consulaire"}</p>
       <p class="title">Lista de matrículas</p>
@@ -3040,15 +3076,15 @@ function Alunos() {
 </div>`;
       const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 portrait; margin: 12mm 10mm; }
+  @page { size: A4 portrait; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
     font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .sheet { padding: 0 2mm; }
+  .sheet { padding: 4mm 2mm 6mm 2mm; overflow: visible; }
   .head { display: flex; align-items: center; gap: 14px; border-bottom: 2.5px solid #1f5c4a;
-    padding-bottom: 10px; margin-bottom: 12px; }
-  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+    padding-bottom: 12px; margin-bottom: 14px; page-break-inside: avoid; }
+  .head img { width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; display: block; }
   .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
     color: #1f5c4a; font-weight: 700; }
   .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }

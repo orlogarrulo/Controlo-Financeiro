@@ -20,6 +20,7 @@ import {
   regulamentoAcksToCsv,
   type ReconcileResult,
 } from "@/lib/csv";
+import { downloadCsvAsPrintableSheet } from "@/lib/export-print";
 import {
   buildLedger,
   getSeed,
@@ -76,12 +77,28 @@ function GooglePage() {
   const [recon, setRecon] = useState<ReconcileResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  function runExport(id: string, filename: string, build: () => string) {
+  function runExport(
+    id: string,
+    filename: string,
+    build: () => string,
+    title?: string,
+  ) {
     try {
       const csv = build();
       downloadCsv(filename, csv);
+      const base = filename.replace(/\.csv$/i, "");
+      const sheetTitle =
+        title ||
+        base.replace(/_/g, " ").trim() ||
+        "Exportação";
+      void downloadCsvAsPrintableSheet(
+        `${base}_A4.xls`,
+        csv,
+        sheetTitle,
+        "Exportação Google Sheets · École Consulaire",
+      ).catch((err) => console.warn("[export-print]", err));
       setLastExport(id);
-      toast.success(`CSV descarregado: ${filename}`);
+      toast.success(`CSV + planilha A4: ${base}`);
     } catch (e) {
       console.error(e);
       toast.error(e instanceof Error ? e.message : `Falha ao exportar ${filename}`);
@@ -89,27 +106,33 @@ function GooglePage() {
   }
 
   function exportMaster() {
-    runExport("master", "Controlo_Financeiro_Escola_master_Lancamentos.csv", () =>
-      ledgerToCsv(ledger),
+    runExport(
+      "master",
+      "Controlo_Financeiro_Escola_master_Lancamentos.csv",
+      () => ledgerToCsv(ledger),
+      "Lançamentos — Controlo Financeiro",
     );
   }
 
   function exportBai() {
-    runExport("bai", "BAI_Movimentos_export.csv", () => baiToCsv(movsApp || []));
+    runExport("bai", "BAI_Movimentos_export.csv", () => baiToCsv(movsApp || []), "Extrato BAI — Movimentos");
   }
 
   function exportAlunos() {
-    runExport("alunos", "Matriculas_alunos.csv", () => alunosToCsv(alunos || []));
+    runExport("alunos", "Matriculas_alunos.csv", () => alunosToCsv(alunos || []), "Matrículas — Alunos");
   }
 
   function exportPropinas() {
-    runExport("propinas", "Propinas_mensalidades.csv", () =>
-      mensalidadesToCsv(mensalidades || [], [...MESES_LETIVOS]),
+    runExport(
+      "propinas",
+      "Propinas_mensalidades.csv",
+      () => mensalidadesToCsv(mensalidades || [], [...MESES_LETIVOS]),
+      "Propinas / Mensalidades",
     );
   }
 
   function exportSalarios() {
-    runExport("salarios", "Salarios.csv", () => salariosToCsv(salarios || []));
+    runExport("salarios", "Salarios.csv", () => salariosToCsv(salarios || []), "Salários e contratos");
   }
 
   function exportFundo() {
@@ -119,7 +142,7 @@ function GooglePage() {
       const pags = [...seedFundo, ...(fundoExtra || [])];
       const atmExtra = useFinance.getState().fundoAtmExtra || [];
       return fundoToCsv(pags, [...seedAtm, ...atmExtra]);
-    });
+    }, "Fundo de maneio");
   }
 
   async function exportRegulamento() {
@@ -140,6 +163,7 @@ function GooglePage() {
       }
       runExport("regulamento", "Regulamento_tomadas_de_conhecimento.csv", () =>
         regulamentoAcksToCsv(rows),
+        "Regulamento — Tomadas de conhecimento",
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao exportar regulamento");
@@ -205,7 +229,7 @@ function GooglePage() {
           if (raw) rows = JSON.parse(raw);
         } catch { /* */ }
       }
-      runExport("inquerito", "Inquerito_saude_respostas.csv", () => inqueritoSaudeToCsv(rows));
+      runExport("inquerito", "Inquerito_saude_respostas.csv", () => inqueritoSaudeToCsv(rows), "Inquérito de saúde — Respostas");
       if (!rows.length) toast.message("Sem respostas de inquérito ainda");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao exportar inquérito");
@@ -226,7 +250,7 @@ function GooglePage() {
           if (raw) rows = JSON.parse(raw);
         } catch { /* */ }
       }
-      runExport("agendamento", "Agendamentos_pedagogico.csv", () => agendamentosToCsv(rows));
+      runExport("agendamento", "Agendamentos_pedagogico.csv", () => agendamentosToCsv(rows), "Agendamentos pedagógicos");
       if (!rows.length) toast.message("Sem agendamentos ainda");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao exportar agendamentos");
@@ -380,7 +404,7 @@ function GooglePage() {
         title="Google Sheets e Forms · Import / Export"
         description={
           canImport
-            ? "Backup CSV / Excel e reconciliação com o extrato BAI. As matrículas na app (BAI-MAT-*) são a fonte das entradas de alunos; use o Excel de entradas antigas para confrontar fechos TPA e transferências históricas."
+            ? "Backup CSV / Excel e reconciliação com o extrato BAI. Cada exportação gera CSV e planilha A4 horizontal (cabeçalho a negrito, pronta a imprimir). As matrículas na app (BAI-MAT-*) são a fonte das entradas de alunos; use o Excel de entradas antigas para confrontar fechos TPA e transferências históricas."
             : "Pode exportar CSV. A importação está reservada ao Colaborador 1."
         }
       />
@@ -406,7 +430,7 @@ function GooglePage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
-          <h2 className="font-display text-xl">Exportar CSV (backup + contabilista)</h2>
+          <h2 className="font-display text-xl">Exportar CSV + planilha A4 (backup + impressão)</h2>
           <p className="mt-2 text-sm text-[var(--color-muted)]">
             Separador <code>;</code>, UTF-8 com BOM, valores com vírgula decimal (Excel PT).
             Colunas do master: {SHEET_COLUMNS.slice(0, 8).join(" · ")}…

@@ -38,6 +38,37 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
+let _logoDataUrlCache: string | null = null;
+async function resolveLogoDataUrl(): Promise<string> {
+  if (_logoDataUrlCache) return _logoDataUrlCache;
+  const candidates = [
+    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "",
+    "/logo-escola.jpg",
+  ].filter(Boolean);
+  for (const src of candidates) {
+    try {
+      const res = await fetch(src, { cache: "force-cache" });
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result || ""));
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(blob);
+      });
+      if (dataUrl.startsWith("data:image")) {
+        _logoDataUrlCache = dataUrl;
+        return dataUrl;
+      }
+    } catch {
+      /* next */
+    }
+  }
+  return typeof location !== "undefined"
+    ? `${location.origin}/logo-escola.jpg`
+    : "/logo-escola.jpg";
+}
+
 async function ensureLibs(): Promise<{ html2canvas: Html2CanvasFn; jsPDF: JsPdfCtor }> {
   const w = window as unknown as {
     html2canvas?: Html2CanvasFn;
@@ -81,6 +112,8 @@ const STAGE_CSS = `
     line-height: 1.4 !important;
     opacity: 1 !important;
     visibility: visible !important;
+    padding: 8px 10px !important;
+    box-sizing: border-box !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     box-sizing: border-box !important;
@@ -372,12 +405,22 @@ function makeStage(landscape = false): HTMLElement {
 
 
 /** Garante logotipo no topo de qualquer PDF (se a página não tiver). */
-function ensureLogoHeader(root: HTMLElement, title?: string): void {
+function ensureLogoHeader(root: HTMLElement, title?: string, logoDataUrl?: string): void {
   const hasLogo = root.querySelector('img[src*="logo"], img[src*="escola"]');
-  if (hasLogo) return;
+  if (hasLogo) {
+    // Substitui URL relativa/absoluta por data-URL se disponível (evita logo em branco)
+    if (logoDataUrl) {
+      root.querySelectorAll('img[src*="logo"], img[src*="escola"]').forEach((img) => {
+        (img as HTMLImageElement).src = logoDataUrl;
+      });
+    }
+    return;
+  }
   const header = document.createElement("div");
   header.setAttribute("data-pdf-logo-header", "1");
-  const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const logoSrc =
+    logoDataUrl ||
+    `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   header.innerHTML = `
     <img src="${logoSrc}" alt="" width="72" height="72" crossorigin="anonymous" />
     <div>
@@ -558,7 +601,7 @@ function addCoverPage(
 
 
 /** Margem única em todos os PDFs oficiais (mm). 12 mm evita corte nas laterais. */
-const PDF_MARGIN_MM = 14;
+const PDF_MARGIN_MM = 16;
 
 /**
  * Desenha o canvas no PDF A4 com regras FIXAS:
@@ -689,6 +732,22 @@ async function htmlToPdfBlob(
       wrap.appendChild(box);
     }
     stage.appendChild(wrap);
+
+    // Logotipo embutido (data-URL) — evita PDF sem logo por CORS / caminho relativo
+    try {
+      const logoData = await resolveLogoDataUrl();
+      wrap.querySelectorAll("img").forEach((img) => {
+        const el = img as HTMLImageElement;
+        const s = (el.getAttribute("src") || el.src || "").toLowerCase();
+        if (s.includes("logo") || s.includes("escola") || !s || s.endsWith("/")) {
+          el.src = logoData;
+        }
+      });
+      ensureLogoHeader(wrap, opts?.filename || "Documento", logoData);
+    } catch {
+      /* logo opcional */
+    }
+
     await waitImages(stage);
     await wait(100);
 
@@ -793,7 +852,7 @@ export async function htmlFragmentsToMultiPageA4Pdf(
 
   const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 portrait; margin: 8mm; }
+  @page { size: A4 portrait; margin: 14mm 12mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
     font-family: Georgia, "Times New Roman", Times, serif;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -838,7 +897,13 @@ export async function elementToPdfBlob(
   const wantStamp = opts?.stamp !== false;
 
   const clone = prepareClone(el);
-  ensureLogoHeader(clone);
+  const logoData = await resolveLogoDataUrl().catch(() => undefined);
+  ensureLogoHeader(clone, undefined, logoData);
+  if (logoData) {
+    clone.querySelectorAll('img[src*="logo"], img[src*="escola"]').forEach((img) => {
+      (img as HTMLImageElement).src = logoData;
+    });
+  }
   const covers = Array.from(clone.querySelectorAll<HTMLElement>(".print-cover"));
 
   const coverNodes: HTMLElement[] = [];
@@ -1124,7 +1189,7 @@ export function buildOfficialListHtml(opts: {
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm 8mm; }
+  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 14mm 12mm; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #0f172a;
