@@ -360,17 +360,23 @@ function grupoFromTurma(turma: string): string {
 
 /**
  * Sugere a classe/turma a partir da data de nascimento.
- * Referência: idade em 1 de setembro do ano lectivo 2026-2027.
- * Sistema educativo República do Congo (Brazzaville):
- * CP1=6, CP2=7, CE1=8, CE2=9, CM1=10, CM2=11.
+ * Referência: idade completa em 1 de setembro do ano lectivo 2026-2027.
+ * Sistema educativo República do Congo (Brazzaville) — faixas oficiais:
+ *   Maternelle P1 ≤3 · P2 =4 · P3 =5
+ *   CP1=6 · CP2=7 · CE1=8 · CE2=9 · CM1=10 · CM2=11
+ *   6ème=12 · 5ème=13 · 4ème=14 · 3ème≥15
+ * Um aluno de 13 anos NUNCA fica em Maternelle — vai para 5ème.
  * Pode ser sempre sobrescrita manualmente no formulário.
  */
 function turmaFromDataNascimento(dataNascimento: string): string | null {
   if (!dataNascimento || dataNascimento.length < 8) return null;
   const parts = dataNascimento.slice(0, 10).split("-").map(Number);
-  if (parts.length < 3 || !parts[0]) return null;
-  const [y, m, day] = parts;
-  const born = new Date(y, (m || 1) - 1, day || 1);
+  if (parts.length < 3 || !parts[0] || !Number.isFinite(parts[0])) return null;
+  const y = parts[0];
+  const m = parts[1] || 1;
+  const day = parts[2] || 1;
+  if (y < 1995 || y > 2026) return null;
+  const born = new Date(y, m - 1, day);
   if (Number.isNaN(born.getTime())) return null;
 
   // Idade de referência: 1 de setembro de 2026 (início do ano lectivo 2026-2027)
@@ -380,7 +386,7 @@ function turmaFromDataNascimento(dataNascimento: string): string | null {
   if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
   if (age < 0 || age > 25) return null;
 
-  // Faixas etárias oficiais — Congo-Brazzaville
+  // Faixas etárias oficiais — Congo-Brazzaville (não misturar ciclos)
   if (age <= 3) return "Maternelle P1";
   if (age === 4) return "Maternelle P2";
   if (age === 5) return "Maternelle P3";
@@ -395,6 +401,13 @@ function turmaFromDataNascimento(dataNascimento: string): string | null {
   if (age === 14) return "4ème";
   if (age >= 15) return "3ème";
   return null;
+}
+
+/** Propina mensal de referência pelo ciclo da turma (não transferidos). */
+function propinaDefaultFromTurma(turma: string): number {
+  if (turma.startsWith("Maternelle")) return PROPINA_MATERNELLE;
+  if (["6ème", "5ème", "4ème", "3ème"].includes(turma)) return PROPINA_COLLEGE;
+  return PROPINA_PRIMAIRE;
 }
 
 /** ID automático: PREFIXO-NN a partir da turma. */
@@ -635,15 +648,23 @@ function MatriculaForm({
           onChange={(e) => {
             const dataNascimento = e.target.value;
             const suggested = turmaFromDataNascimento(dataNascimento);
-            setForm((prev) => ({
-              ...prev,
-              dataNascimento,
-              ...(suggested ? { turma: suggested } : {}),
-            }));
+            setForm((prev) => {
+              if (!suggested) return { ...prev, dataNascimento };
+              // Recalcula classe + propina de referência do ciclo (Congo-Brazzaville)
+              const propinaRef = prev.transferidoCampusCidade
+                ? prev.propina
+                : String(propinaDefaultFromTurma(suggested));
+              return {
+                ...prev,
+                dataNascimento,
+                turma: suggested,
+                propina: propinaRef,
+              };
+            });
           }}
         />
         <p className="text-[11px] text-[var(--color-muted)]">
-          A classe é calculada automaticamente a partir da data de nascimento (pode ser alterada).
+          Classe automática pelo sistema Congo-Brazzaville (idade em 1/set/2026): 13 anos → 5ème, não Maternelle. Pode alterar manualmente.
         </p>
       </div>
       <div className="space-y-1.5">
@@ -651,7 +672,15 @@ function MatriculaForm({
         <select
           className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
           value={form.turma}
-          onChange={(e) => setForm({ ...form, turma: e.target.value })}
+          onChange={(e) => {
+            const turma = e.target.value;
+            setForm((prev) => {
+              const propina = prev.transferidoCampusCidade
+                ? prev.propina
+                : String(propinaDefaultFromTurma(turma));
+              return { ...prev, turma, propina };
+            });
+          }}
         >
           {TURMAS.map((t) => (
             <option key={t} value={t}>
@@ -1514,11 +1543,17 @@ function Alunos() {
       return;
     }
     setEditing(a);
+    // Recalcular classe a partir da data de nascimento (sistema Congo-Brazzaville).
+    // Corrige casos incorrectos (ex.: 13 anos em Maternelle → 5ème).
+    const suggestedTurma = a.dataNascimento
+      ? turmaFromDataNascimento(a.dataNascimento)
+      : null;
+    const turmaCorrigida = suggestedTurma || a.turma || TURMAS[0];
     setForm({
       nome: a.nome || "",
       pai: a.pai || "",
       mae: a.mae || "",
-      turma: a.turma || TURMAS[0],
+      turma: turmaCorrigida,
       dataPag: a.dataPag || todayIso(),
       inscricao: String(a.inscricao ?? DEFAULT_INSCRICAO),
       seguro: String(a.seguro === 0 ? DEFAULT_SEGURO_ESCOLA : a.seguro ?? DEFAULT_SEGURO_ESCOLA),
@@ -1556,7 +1591,13 @@ function Alunos() {
       mesesPropina: String(
         a.mesesPropina ?? (a.mensalidade1 && a.mensalidade1 > 0 ? 1 : 0),
       ),
-      propina: String(a.propina ?? 0),
+      propina: String(
+        a.transferidoCampusCidade
+          ? (a.propina ?? CAMPUS_CIDADE_PROPINA)
+          : suggestedTurma && suggestedTurma !== a.turma
+            ? propinaDefaultFromTurma(turmaCorrigida)
+            : (a.propina ?? propinaDefaultFromTurma(turmaCorrigida)),
+      ),
       telefone: a.telefone || "",
       email: a.email || "",
       morada: a.morada || "",
@@ -3352,12 +3393,17 @@ function Alunos() {
         </DialogContent>
       </Dialog>
 
-      {/* Editar */}
+      {/* Editar — mesmo formulário e campos que «Nova matrícula» */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); clearDeepLink(); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Editar {editing?.id}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              Editar matrícula {editing?.id}
+            </DialogTitle>
           </DialogHeader>
+          <p className="text-xs text-[var(--color-muted)]">
+            Mesmos campos que a nova matrícula. A classe é recalculada pela data de nascimento (sistema Congo-Brazzaville: 13 anos → 5ème). Pode alterar manualmente. ID e recibo mantêm-se.
+          </p>
           <MatriculaForm form={form} setForm={setForm} onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
         </DialogContent>
       </Dialog>

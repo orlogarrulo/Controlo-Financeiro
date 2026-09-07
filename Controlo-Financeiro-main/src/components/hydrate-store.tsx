@@ -95,6 +95,21 @@ export function HydrateStore() {
       await pullAndMerge("boot");
       ready.current = true;
 
+      // Migração única: recalcular classes Congo-Brazzaville e persistir na nuvem
+      try {
+        if (typeof localStorage !== "undefined" && !localStorage.getItem(CLASSES_MIGRATE_KEY)) {
+          const n = recalcularClassesMatriculas();
+          localStorage.setItem(CLASSES_MIGRATE_KEY, new Date().toISOString());
+          if (n > 0) {
+            toast.success(
+              `Classes actualizadas (Congo-Brazzaville): ${n} matrícula(s). A sincronizar com a nuvem…`,
+            );
+          }
+        }
+      } catch (e) {
+        console.warn("[classes-congo] migrate", e);
+      }
+
       unsub = useFinance.subscribe(() => {
         if (!ready.current || applyingRemote.current) return;
         if (timer.current) clearTimeout(timer.current);

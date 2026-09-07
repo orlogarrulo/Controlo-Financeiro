@@ -126,3 +126,25 @@ Após deploy: hard refresh. Abrir `/marca`, `/saude` ou `/regras` deve mostrar s
 - **Correcção:** `processarInbox` passa a cruzar também com o **extrato BAI** (data ±1 dia + valor entrada/saída), além de Lista de despesas, recibos de salário e propinas.
 
 Ordem de ligação: BAI → salários → despesas → propinas.
+
+## Classes Congo-Brazzaville + formulário edição (2026-09)
+
+### Problema
+- Aluno de 13 anos podia ficar em Maternelle (classe incorrecta).
+- Campo `grupo` no seed estava como "CM2"/"3ème" em vez de Primaire/Collège.
+- Formulário de edição sem o mesmo texto de ajuda da nova matrícula.
+
+### Solução
+1. **`src/lib/classe-congo.ts`** — faixas oficiais (idade em 1/set/2026): 13→5ème.
+2. **Nova/edição matrícula** — data de nascimento recalcula turma + propina; ao abrir edição corrige turma.
+3. **`recalcularClassesMatriculas()`** no store — percorre seed/extras/overrides e grava correcções.
+4. **HydrateStore** — após boot + pull da nuvem, migração única (`ecc-classes-congo-v1`) e push automático para a nuvem.
+5. **seed.json** — grupos normalizados.
+
+### Deploy
+```bash
+git add src/lib/classe-congo.ts src/lib/store.ts src/routes/alunos.tsx src/data/seed.json src/components/hydrate-store.tsx
+git commit -m "fix: classes Congo-Brazzaville + formulário edição + migração nuvem"
+git push
+```
+Vercel faz deploy automático. Após deploy: hard refresh. A migração corre uma vez por browser e sincroniza com a nuvem.

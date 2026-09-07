@@ -15,6 +15,11 @@ import type {
 } from "@/data/types";
 import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
 import { assertCanEdit } from "@/lib/can-edit";
+import {
+  turmaFromDataNascimento,
+  grupoFromTurma,
+  propinaDefaultFromTurma,
+} from "@/lib/classe-congo";
 
 const seed = seedJson as Seed;
 
@@ -1915,6 +1920,98 @@ export function computeTotals(
   };
 }
 
+
+/**
+ * Recalcula turma + grupo de TODAS as matrículas com data de nascimento
+ * (sistema Congo-Brazzaville). Grava em alunosExtra / alunosOverrides
+ * para sincronizar com a nuvem no próximo push.
+ * Idempotente: só altera quando a sugestão difere da turma actual.
+ * @returns número de alunos corrigidos
+ */
+export function recalcularClassesMatriculas(): number {
+  const state = useFinance.getState();
+  const extras = [...(state.alunosExtra || [])];
+  const overrides = { ...(state.alunosOverrides || {}) } as Record<string, Partial<Aluno>>;
+  let changed = 0;
+
+  const applyPatch = (id: string, patch: Partial<Aluno>, isExtra: boolean, idx: number) => {
+    if (isExtra) {
+      extras[idx] = { ...extras[idx], ...patch };
+    } else {
+      overrides[id] = { ...(overrides[id] || {}), ...patch };
+    }
+    changed += 1;
+  };
+
+  // 1) Alunos extra (criados na app)
+  extras.forEach((a, idx) => {
+    if (!a?.id || !a.dataNascimento) return;
+    const suggested = turmaFromDataNascimento(a.dataNascimento);
+    if (!suggested) return;
+    const g = grupoFromTurma(suggested);
+    const needTurma = a.turma !== suggested;
+    const needGrupo = a.grupo !== g;
+    if (!needTurma && !needGrupo) return;
+    const patch: Partial<Aluno> = {};
+    if (needTurma) {
+      patch.turma = suggested;
+      if (!a.transferidoCampusCidade) {
+        patch.propina = propinaDefaultFromTurma(suggested, false);
+      }
+    }
+    if (needGrupo || needTurma) patch.grupo = g;
+    applyPatch(a.id, patch, true, idx);
+  });
+
+  // 2) Seed + overrides: percorre seed e aplica override quando necessário
+  for (const a of seed.alunos || []) {
+    if (!a?.id) continue;
+    const merged = { ...a, ...(overrides[a.id] || {}) } as Aluno;
+    const dn = merged.dataNascimento;
+    if (!dn) {
+      // só normaliza grupo se estiver errado
+      const g = grupoFromTurma(merged.turma || "");
+      if (merged.grupo !== g) {
+        overrides[a.id] = { ...(overrides[a.id] || {}), grupo: g };
+        changed += 1;
+      }
+      continue;
+    }
+    const suggested = turmaFromDataNascimento(dn);
+    if (!suggested) continue;
+    const g = grupoFromTurma(suggested);
+    const needTurma = merged.turma !== suggested;
+    const needGrupo = merged.grupo !== g;
+    if (!needTurma && !needGrupo) continue;
+    const patch: Partial<Aluno> = { ...(overrides[a.id] || {}) };
+    if (needTurma) {
+      patch.turma = suggested;
+      if (!merged.transferidoCampusCidade) {
+        patch.propina = propinaDefaultFromTurma(suggested, false);
+      }
+    }
+    patch.grupo = g;
+    overrides[a.id] = patch;
+    changed += 1;
+  }
+
+  if (changed > 0) {
+    useFinance.setState({
+      alunosExtra: extras,
+      alunosOverrides: overrides,
+    });
+    try {
+      useFinance.getState().pushAudit?.(
+        "recalcular_classes",
+        `${changed} matrícula(s) · Congo-Brazzaville (idade em 1/set/2026)`,
+      );
+    } catch {
+      /* audit opcional */
+    }
+  }
+  return changed;
+}
+
 export function alunosAll(
   extras: Aluno[] = [],
   overrides: Record<string, Partial<Aluno>> = {},
@@ -1923,7 +2020,11 @@ export function alunosAll(
   const deleted = new Set(deletedIds);
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
-    return o ? { ...a, ...o, id: a.id } : a;
+    const merged = o ? { ...a, ...o, id: a.id } : { ...a };
+    // Normaliza grupo pelo ciclo da turma (corrige seed antigo CM2→CM2, 3ème→3ème, etc.)
+    const g = grupoFromTurma(merged.turma || "");
+    if (merged.grupo !== g) merged.grupo = g;
+    return merged;
   };
   const norm = (n: string) =>
     (n || "")
