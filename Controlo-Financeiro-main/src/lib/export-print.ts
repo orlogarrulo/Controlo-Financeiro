@@ -87,7 +87,7 @@ export function officialPrintCss(opts?: {
     else fs = 10;
   }
   // Margens generosas e equilibradas (não coladas à borda)
-  const margin = landscape ? "14mm 14mm" : "16mm 15mm";
+  const margin = landscape ? "14mm 16mm" : "16mm 18mm";
   return `
 @page {
   size: A4 ${landscape ? "landscape" : "portrait"};
@@ -113,15 +113,18 @@ body {
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  padding: 0;
+  /* Espaço branco igual à esquerda e à direita */
+  padding: 0 8mm;
   overflow: visible;
+  box-sizing: border-box;
 }
 .head {
   display: flex; align-items: center; gap: 10px;
   border-bottom: 2.5px solid ${PRINT_BRAND.forestMid};
   padding-bottom: 8px; margin: 0 auto 12px auto;
   page-break-inside: avoid; break-inside: avoid;
-  max-width: 100%;
+  max-width: 92%;
+  width: 100%;
 }
 .head img {
   width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; display: block;
@@ -139,15 +142,20 @@ body {
   width: 100%;
   display: flex;
   justify-content: center;
+  align-items: center;
+  /* Margens laterais iguais: a tabela encolhe e o branco fica simétrico */
+  padding: 0 4mm;
+  box-sizing: border-box;
 }
 table.data {
-  /* Não forçar 100% se poucas colunas curtas — cresce com o conteúdo, centrada */
+  /* Encolhe em relação à página; nunca estica até às margens da folha */
   width: auto;
-  max-width: 100%;
-  min-width: 60%;
+  max-width: 92%;
+  min-width: 0;
   border-collapse: collapse;
   table-layout: auto;
-  margin: 0 auto;
+  margin-left: auto;
+  margin-right: auto;
   page-break-inside: auto;
 }
 table.data thead { display: table-header-group; }
@@ -177,7 +185,7 @@ table.data th.col-narrow, table.data td.col-narrow {
 .foot {
   margin: 12px auto 0 auto; font-size: 7px; color: ${PRINT_BRAND.muted}; text-align: center;
   border-top: 1px solid #cbd5e1; padding-top: 6px;
-  page-break-inside: avoid; max-width: 100%;
+  page-break-inside: avoid; max-width: 92%; width: 100%;
 }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .center { text-align: center; }
