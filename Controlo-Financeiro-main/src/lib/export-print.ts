@@ -1,11 +1,12 @@
 import { escolaLogoSrc } from "@/lib/logo-escola";
-import { deliverOfficialHtml, isMobileDevice } from "@/lib/pdf-export";
+import { deliverOfficialHtml } from "@/lib/pdf-export";
 
 /**
- * Exportação de planilhas/PDF oficiais — A4 padronizado.
- * - ≤ 6 colunas → A4 vertical
- * - > 6 colunas → A4 horizontal
- * - Margens seguras, cabeçalho a negrito, sem cortar conteúdo
+ * Exportação PDF/planilha A4 padronizada (Google Sheets + resto da app).
+ * - Margens confortáveis (não esticadas à beira da folha)
+ * - Tabela centrada na página
+ * - Larguras de coluna proporcionais ao conteúdo (colunas curtas não esticam)
+ * - ≤6 colunas → vertical; >6 → horizontal
  */
 
 export const PRINT_BRAND = {
@@ -35,12 +36,42 @@ function escHtml(v: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Orientação automática: muitas colunas → horizontal. */
 export function pickOrientation(columnCount: number): "portrait" | "landscape" {
   return columnCount > 6 ? "landscape" : "portrait";
 }
 
-/** CSS oficial A4 — margens generosas, conteúdo dentro da página. */
+/**
+ * Estima larguras relativas (em %) a partir do cabeçalho + amostra de células.
+ * Colunas curtas (telefone, grupo sanguíneo) ficam estreitas; texto longo ganha espaço.
+ */
+export function estimateColumnPercents(
+  columns: SheetColumn[],
+  rows: Record<string, string | number | null | undefined>[],
+): number[] {
+  const n = columns.length;
+  if (n === 0) return [];
+  const weights = columns.map((c) => {
+    let maxLen = Math.max(4, (c.label || "").length);
+    const sample = rows.slice(0, 40);
+    for (const row of sample) {
+      const v = row[c.key];
+      const s = v == null ? "" : String(v);
+      if (s.length > maxLen) maxLen = s.length;
+    }
+    // Limitar extremos: mín 6, máx 48 “unidades”
+    return Math.min(48, Math.max(6, maxLen));
+  });
+  const sum = weights.reduce((a, b) => a + b, 0) || 1;
+  // Converter para % e arredondar; corrigir residual na maior coluna
+  const pcts = weights.map((w) => Math.max(5, Math.round((w / sum) * 1000) / 10));
+  const drift = 100 - pcts.reduce((a, b) => a + b, 0);
+  if (pcts.length) {
+    const iMax = pcts.indexOf(Math.max(...pcts));
+    pcts[iMax] = Math.round((pcts[iMax] + drift) * 10) / 10;
+  }
+  return pcts;
+}
+
 export function officialPrintCss(opts?: {
   landscape?: boolean;
   fontSizePx?: number;
@@ -48,16 +79,15 @@ export function officialPrintCss(opts?: {
 }): string {
   const landscape = opts?.landscape === true;
   const cols = opts?.columns ?? 6;
-  // Fonte mais pequena com muitas colunas para caber nas margens
   let fs = opts?.fontSizePx;
   if (fs == null) {
-    if (cols >= 14) fs = 6.5;
-    else if (cols >= 10) fs = 7.5;
-    else if (cols >= 7) fs = 8.5;
+    if (cols >= 14) fs = 7;
+    else if (cols >= 10) fs = 8;
+    else if (cols >= 7) fs = 9;
     else fs = 10;
   }
-  // Margens A4 seguras (evita corte na impressão)
-  const margin = landscape ? "12mm 10mm" : "14mm 12mm";
+  // Margens generosas e equilibradas (não coladas à borda)
+  const margin = landscape ? "14mm 14mm" : "16mm 15mm";
   return `
 @page {
   size: A4 ${landscape ? "landscape" : "portrait"};
@@ -67,67 +97,106 @@ export function officialPrintCss(opts?: {
 html, body {
   margin: 0; padding: 0; background: #fff; color: ${PRINT_BRAND.ink};
   font-family: Arial, Helvetica, sans-serif;
-  font-size: ${fs}px; line-height: 1.3;
+  font-size: ${fs}px; line-height: 1.35;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  height: 100%;
+}
+/* Centrar conteúdo na folha (horizontal + vertical no ecrã/impressão) */
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
 }
 .sheet {
-  width: 100%; max-width: 100%; margin: 0; padding: 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0;
   overflow: visible;
 }
 .head {
   display: flex; align-items: center; gap: 10px;
   border-bottom: 2.5px solid ${PRINT_BRAND.forestMid};
-  padding-bottom: 8px; margin-bottom: 10px;
+  padding-bottom: 8px; margin: 0 auto 12px auto;
   page-break-inside: avoid; break-inside: avoid;
+  max-width: 100%;
 }
 .head img {
-  width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; display: block;
+  width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; display: block;
 }
 .kicker {
   margin: 0; font-size: 8px; letter-spacing: 0.06em; text-transform: uppercase;
   color: ${PRINT_BRAND.forest}; font-weight: 700;
 }
-.title { margin: 2px 0 0; font-size: ${landscape ? 13 : 15}px; font-weight: 700; color: ${PRINT_BRAND.ink}; }
+.title {
+  margin: 2px 0 0; font-size: ${landscape ? 13 : 14}px; font-weight: 700;
+  color: ${PRINT_BRAND.ink};
+}
 .meta { margin: 2px 0 0; font-size: 8px; color: ${PRINT_BRAND.muted}; }
+.table-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
 table.data {
-  width: 100%; border-collapse: collapse; table-layout: fixed;
+  /* Não forçar 100% se poucas colunas curtas — cresce com o conteúdo, centrada */
+  width: auto;
+  max-width: 100%;
+  min-width: 60%;
+  border-collapse: collapse;
+  table-layout: auto;
+  margin: 0 auto;
   page-break-inside: auto;
 }
 table.data thead { display: table-header-group; }
 table.data th {
   background: ${PRINT_BRAND.forest} !important;
   color: ${PRINT_BRAND.headerFg} !important;
-  font-weight: 700; font-size: ${Math.max(6, fs - 1)}px;
+  font-weight: 700; font-size: ${Math.max(7, fs - 1)}px;
   text-transform: uppercase; letter-spacing: 0.02em;
-  padding: 5px 4px; text-align: center; vertical-align: middle;
+  padding: 6px 8px; text-align: center; vertical-align: middle;
   border: 1px solid ${PRINT_BRAND.forestMid};
-  word-wrap: break-word; overflow-wrap: anywhere;
+  white-space: normal;
+  word-wrap: break-word;
 }
 table.data td {
-  padding: 4px 4px; border: 1px solid ${PRINT_BRAND.border};
-  font-size: ${fs}px; vertical-align: top;
+  padding: 5px 8px; border: 1px solid ${PRINT_BRAND.border};
+  font-size: ${fs}px; vertical-align: middle;
   word-wrap: break-word; overflow-wrap: anywhere;
   color: ${PRINT_BRAND.ink};
 }
 table.data tbody tr:nth-child(even) td { background: ${PRINT_BRAND.altRow} !important; }
 table.data tbody tr { page-break-inside: avoid; break-inside: avoid; }
+/* Colunas estreitas típicas */
+table.data th.col-narrow, table.data td.col-narrow {
+  white-space: nowrap;
+  width: 1%;
+}
 .foot {
-  margin-top: 10px; font-size: 7px; color: ${PRINT_BRAND.muted}; text-align: center;
+  margin: 12px auto 0 auto; font-size: 7px; color: ${PRINT_BRAND.muted}; text-align: center;
   border-top: 1px solid #cbd5e1; padding-top: 6px;
-  page-break-inside: avoid;
+  page-break-inside: avoid; max-width: 100%;
 }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .center { text-align: center; }
 @media print {
-  html, body { margin: 0; }
+  html, body {
+    margin: 0; height: auto; min-height: 0;
+    display: block;
+  }
+  body {
+    display: block;
+  }
+  .sheet {
+    margin: 0 auto;
+  }
   .no-print { display: none !important; }
 }
 `;
 }
 
-/**
- * HTML oficial de lista/tabela — A4 com orientação automática.
- */
 export function buildPrintableSheetHtml(opts: {
   title: string;
   subtitle?: string;
@@ -151,11 +220,30 @@ export function buildPrintableSheetHtml(opts: {
     minute: "2-digit",
   });
   const orientLabel = landscape ? "A4 horizontal" : "A4 vertical";
+  const pcts = estimateColumnPercents(opts.columns, opts.rows);
+
+  // Classificar colunas estreitas (telefone, grupo sanguíneo, datas curtas, ids)
+  const narrowKeys = new Set(
+    opts.columns
+      .filter((c, i) => {
+        const label = (c.label || "").toLowerCase();
+        if (/telefone|phone|grupo.?sang|blood|id\b|n[ºo°]|data|criado/.test(label)) return true;
+        return (pcts[i] || 0) <= 9;
+      })
+      .map((c) => c.key),
+  );
+
+  const colgroup = opts.columns
+    .map((c, i) => {
+      const pct = pcts[i] ?? Math.round(100 / Math.max(cols, 1));
+      return `<col style="width:${pct}%" />`;
+    })
+    .join("");
 
   const th = opts.columns
     .map((c) => {
-      const w = c.width ? ` style="width:${c.width}"` : "";
-      return `<th${w}>${escHtml(c.label)}</th>`;
+      const narrow = narrowKeys.has(c.key) ? " col-narrow" : "";
+      return `<th class="${narrow}">${escHtml(c.label)}</th>`;
     })
     .join("");
 
@@ -165,9 +253,14 @@ export function buildPrintableSheetHtml(opts: {
         .map((c) => {
           const raw = row[c.key];
           const text = raw == null || raw === "" ? "—" : String(raw);
-          const cls =
-            c.align === "right" ? "num" : c.align === "center" ? "center" : "";
-          return `<td class="${cls}">${escHtml(text)}</td>`;
+          const narrow = narrowKeys.has(c.key) ? " col-narrow" : "";
+          const align =
+            c.align === "right"
+              ? "num"
+              : c.align === "center" || narrowKeys.has(c.key)
+                ? "center"
+                : "";
+          return `<td class="${align}${narrow}">${escHtml(text)}</td>`;
         })
         .join("");
       return `<tr>${cells}</tr>`;
@@ -188,24 +281,26 @@ export function buildPrintableSheetHtml(opts: {
 <body>
 <div class="sheet">
   <div class="head">
-    <img src="${logo}" width="56" height="56" alt="Logo" />
+    <img src="${logo}" width="52" height="52" alt="Logo" />
     <div>
       <p class="kicker">${escHtml(PRINT_BRAND.school)}</p>
       <p class="title">${escHtml(opts.title)}</p>
       <p class="meta">${escHtml(opts.subtitle || "")}${opts.subtitle ? " · " : ""}${opts.rows.length} linha(s) · ${orientLabel} · ${escHtml(emitido)}</p>
     </div>
   </div>
-  <table class="data">
-    <thead><tr>${th}</tr></thead>
-    <tbody>${body || `<tr><td colspan="${cols}" class="center">Sem dados</td></tr>`}</tbody>
-  </table>
+  <div class="table-wrap">
+    <table class="data">
+      <colgroup>${colgroup}</colgroup>
+      <thead><tr>${th}</tr></thead>
+      <tbody>${body || `<tr><td colspan="${cols}" class="center">Sem dados</td></tr>`}</tbody>
+    </table>
+  </div>
   <p class="foot">${escHtml(foot)}</p>
 </div>
 </body>
 </html>`;
 }
 
-/** Converte CSV (`;`) em colunas/linhas. */
 export function csvToSheetRows(csv: string): {
   columns: SheetColumn[];
   rows: Record<string, string>[];
@@ -253,10 +348,6 @@ export function csvToSheetRows(csv: string): {
   return { columns, rows };
 }
 
-/**
- * Gera PDF A4 oficial a partir de CSV e abre impressão / partilha.
- * Orientação automática (vertical ≤6 colunas, horizontal >6).
- */
 export async function downloadCsvAsPrintablePdf(
   filename: string,
   csv: string,
@@ -283,7 +374,7 @@ export async function downloadCsvAsPrintablePdf(
   });
 }
 
-/** @deprecated — use downloadCsvAsPrintablePdf */
+/** @deprecated */
 export async function downloadCsvAsPrintableSheet(
   filename: string,
   csv: string,
