@@ -194,28 +194,46 @@ function InboxPage() {
     );
   }
 
+  function rowsFromParsed(
+    parsed: { data: string; valor: number; descricao: string; entrada?: number; saida?: number }[],
+    prefix: string,
+    obs?: string,
+  ): InboxMovimento[] {
+    return parsed.map((p, i) => {
+      const entrada = Number(p.entrada) > 0 ? Number(p.entrada) : Number(p.valor) > 0 ? Number(p.valor) : 0;
+      const saida = Number(p.saida) > 0 ? Number(p.saida) : Number(p.valor) < 0 ? Math.abs(Number(p.valor)) : 0;
+      return {
+        id: `${prefix}${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        data: p.data,
+        valor: entrada || -saida || p.valor,
+        entrada,
+        saida,
+        descricao: p.descricao,
+        tipo: "desconhecido" as InboxTipo,
+        status: "por_classificar" as const,
+        criadoEm: new Date().toISOString(),
+        observacoes: obs,
+      };
+    });
+  }
+
   function importPaste() {
     if (!canEdit) {
       toast.error("Apenas o Colaborador 1 pode editar.");
       return;
     }
-    const parsed = parseLinhas(paste);
+    const fromBai = parseBaiExtratoText(paste);
+    const parsed =
+      fromBai.length > 0
+        ? fromBai
+        : parseLinhas(paste);
     if (!parsed.length) {
-      toast.error("Cole linhas no formato: data;valor;descrição");
+      toast.error("Cole linhas no formato: data;valor;descrição (ou o texto do extrato BAI).");
       return;
     }
-    const rows: InboxMovimento[] = parsed.map((p, i) => ({
-      id: `INB-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-      data: p.data,
-      valor: p.valor,
-      descricao: p.descricao,
-      tipo: "desconhecido" as InboxTipo,
-      status: "por_classificar" as const,
-      criadoEm: new Date().toISOString(),
-    }));
-    addInboxItems(rows);
+    addInboxItems(rowsFromParsed(parsed, "INB-"));
     setPaste("");
-    toast.success(`${rows.length} movimento(s) importado(s).`);
+    toast.success(`${parsed.length} movimento(s) importado(s).`);
   }
 
   async function onLerExtrato(file: File) {
@@ -269,9 +287,10 @@ function InboxPage() {
         };
       });
       addInboxItems(rows);
+      setPaste(text);
       const proc = processarInbox();
       toast.success(
-        `${rows.length} movimento(s) lido(s) do screenshot · ${proc.duplicados} duplicado(s) · ${proc.ligados} já no BAI.`,
+        `${rows.length} movimento(s) lido(s) do screenshot · ${proc.duplicados} duplicado(s) na Inbox · ${proc.ligados} já existiam no BAI. Reveja e clique «Sincronizar com Banco BAI».`,
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha no OCR do extrato.");
@@ -287,7 +306,8 @@ function InboxPage() {
     }
     const r = syncInboxParaBai();
     toast.success(
-      `BAI actualizado: ${r.criados} novo(s) · ${r.duplicados} já existiam · saldo recalculado e gravado na nuvem.`,
+      `Sincronizado: ${r.criados} novo(s) no BAI · ${r.duplicados} já estavam no extrato · ${r.removidos} saíram da Inbox.` +
+        (r.pendentes ? ` Ficam ${r.pendentes} por tratar.` : " Inbox limpa."),
     );
   }
 
@@ -318,7 +338,7 @@ function InboxPage() {
       <PageHeader
         kicker="Reconciliação"
         title="Inbox"
-        description="Submeta screenshots do extrato BAI: a app lê entradas e saídas, reescreve os movimentos, marca duplicados e sincroniza com o Banco BAI (saldo recalculado e gravado na nuvem)."
+        description="Screenshot → rever linhas → Sincronizar com Banco BAI. O que entrar no extrato sai da Inbox; só ficam os que não foi possível sincronizar."
       />
 
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
@@ -426,8 +446,8 @@ function InboxPage() {
         <div className="space-y-3 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
           <h2 className="text-sm font-semibold">Importar lista (colar)</h2>
           <p className="text-[11px] text-[var(--color-muted)]">
-            Uma linha por movimento. Formato: <code>data;valor;descrição</code> (ex.{" "}
-            <code>2026-08-30;90000;Honorários Kativa</code>). Também aceita tab ou vírgula.
+            Uma linha por movimento. Aceita o CSV BAI (<code>data;banco;descrição;entrada;saída;saldo</code>)
+            ou <code>data;valor;descrição</code>. Depois: Processar → Sincronizar com Banco BAI.
           </p>
           <textarea
             className="min-h-[120px] w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-bg)] p-2 text-sm"

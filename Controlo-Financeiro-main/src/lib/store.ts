@@ -167,8 +167,14 @@ type Store = ExtraState & {
   removeInboxItem: (id: string) => void;
   clearInboxReconciliados: () => void;
   processarInbox: () => { ordenados: number; duplicados: number; ligados: number; avisos: number };
-  /** Envia itens Inbox (não duplicados) para o extrato BAI e recalcula saldo. */
-  syncInboxParaBai: (ids?: string[]) => { criados: number; duplicados: number; ignorados: number };
+  /** Envia itens Inbox para o extrato BAI, recalcula saldo e limpa da Inbox os já tratados. */
+  syncInboxParaBai: (ids?: string[]) => {
+    criados: number;
+    duplicados: number;
+    ignorados: number;
+    removidos: number;
+    pendentes: number;
+  };
   /** Recria recibos do mês como pagos a partir da lista de funcionários. */
   restaurarRecibosPagos: (staff: { id: string; nome: string; funcao?: string; salario: number; diasUteis?: number; diasTrab?: number; outrosDesc?: number; iban?: string }[], mes: string, mesKey: string, dataPag?: string) => number;
   removeReciboSalario: (id: string) => void;
@@ -343,7 +349,10 @@ export const useFinance = create<Store>()(
             const ti = norm(items[i].descricao);
             const tj = norm(items[j].descricao);
             const textClose =
-              ti && tj && (ti === tj || ti.includes(tj) || tj.includes(ti));
+              ti &&
+              tj &&
+              (ti === tj ||
+                (ti.length >= 8 && tj.length >= 8 && (ti.includes(tj) || tj.includes(ti))));
             if (sameDay && sameVal && textClose) {
               items[j] = {
                 ...items[j],
@@ -401,13 +410,11 @@ export const useFinance = create<Store>()(
           // 3a) Extrato BAI — data ±1 dia + valor (entrada ou saída)
           if (!linkId && valor > 0) {
             const matchBai = baiMovs.find((m) => {
-              if (!nearDay(it.data, m.data)) return false;
+              if (it.data && m.data && it.data !== m.data) return false;
               const me = Number(m.entrada) || 0;
               const ms = Number(m.saida) || 0;
-              if (saidaInbox > 0 && Math.abs(ms - saidaInbox) < 1) return true;
-              if (entradaInbox > 0 && Math.abs(me - entradaInbox) < 1) return true;
-              // valor absoluto genérico
-              if (Math.abs(me - valor) < 1 || Math.abs(ms - valor) < 1) return true;
+              if (saidaInbox > 0 && Math.abs(ms - saidaInbox) < 0.02) return true;
+              if (entradaInbox > 0 && Math.abs(me - entradaInbox) < 0.02) return true;
               return false;
             });
             if (matchBai) {
@@ -554,7 +561,7 @@ export const useFinance = create<Store>()(
       syncInboxParaBai: (ids) => {
         requireEdit(get);
         const items = (get().inboxItems || []).filter((it) => {
-          if (it.status === "duplicado" || it.status === "ignorado") return false;
+          if (it.status === "ignorado") return false;
           if (ids && ids.length && !ids.includes(it.id)) return false;
           const v = Math.abs(Number(it.valor) || Number(it.entrada) || Number(it.saida) || 0);
           return v > 0;
@@ -565,13 +572,18 @@ export const useFinance = create<Store>()(
           get().movimentosBaiDeletedIds || [],
         );
         const fp = (data: string, entrada: number, saida: number, desc: string) =>
-          `${data}|${entrada}|${saida}|${(desc || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 40)}`;
+          `${data}|${Math.round(entrada * 100)}|${Math.round(saida * 100)}|${(desc || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9à-ú]+/gi, " ")
+            .trim()
+            .slice(0, 16)}`;
         const fps = new Set(existing.map((m) => fp(m.data, Number(m.entrada) || 0, Number(m.saida) || 0, m.descricao || "")));
         const idsExist = new Set(existing.map((m) => m.id));
         let criados = 0;
         let duplicados = 0;
         let ignorados = 0;
         const patched = [...(get().inboxItems || [])];
+        const limpar = new Set<string>();
         for (const it of items) {
           const entrada =
             Number(it.entrada) > 0
@@ -594,17 +606,7 @@ export const useFinance = create<Store>()(
           const key = fp(it.data, entrada, saida, it.descricao);
           if (fps.has(key) || (it.linkId && idsExist.has(it.linkId))) {
             duplicados += 1;
-            const idx = patched.findIndex((x) => x.id === it.id);
-            if (idx >= 0) {
-              patched[idx] = {
-                ...patched[idx],
-                status: "duplicado",
-                observacoes: patched[idx].observacoes
-                  ? `${patched[idx].observacoes} · já no BAI`
-                  : "já no extrato BAI",
-                linkLabel: patched[idx].linkLabel || "já no BAI",
-              };
-            }
+            limpar.add(it.id);
             continue;
           }
           const movId = `INB-BAI-${it.id}`.slice(0, 40);
@@ -619,32 +621,33 @@ export const useFinance = create<Store>()(
           });
           if (!ok) {
             duplicados += 1;
+            limpar.add(it.id);
             continue;
           }
           fps.add(key);
           idsExist.add(movId);
           criados += 1;
-          const idx = patched.findIndex((x) => x.id === it.id);
-          if (idx >= 0) {
-            patched[idx] = {
-              ...patched[idx],
-              status: "reconciliado",
-              linkId: movId,
-              linkLabel: `BAI ${movId}`,
-              entrada,
-              saida,
-            };
-          }
+          limpar.add(it.id);
         }
+        for (const it of get().inboxItems || []) {
+          if (it.status === "reconciliado" || it.status === "duplicado") limpar.add(it.id);
+        }
+        const kept = patched.filter((r) => !limpar.has(r.id));
         set({
-          inboxItems: patched,
+          inboxItems: kept,
           movimentosBaiExtra: sortAndRecalcBai(get().movimentosBaiExtra || []),
         });
         get().pushAudit(
           "inbox_sync_bai",
-          `${criados} criados · ${duplicados} duplicados · ${ignorados} ignorados`,
+          `${criados} criados no BAI · ${duplicados} já existiam · ${limpar.size} saíram da Inbox · ${kept.length} pendente(s)`,
         );
-        return { criados, duplicados, ignorados };
+        return {
+          criados,
+          duplicados,
+          ignorados,
+          removidos: limpar.size,
+          pendentes: kept.length,
+        };
       },
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
