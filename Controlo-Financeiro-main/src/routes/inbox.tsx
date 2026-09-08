@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Inbox, RefreshCw, Trash2, Camera, Landmark } from "lucide-react";
 import { toast } from "sonner";
@@ -149,6 +149,12 @@ function InboxPage() {
   } | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrPreview, setOcrPreview] = useState("");
+  const shotInputRef = useRef<HTMLInputElement>(null);
+
+  function limparFicheiroScreenshot() {
+    setOcrPreview("");
+    if (shotInputRef.current) shotInputRef.current.value = "";
+  }
 
   const filtrados = useMemo(() => {
     let list = [...inboxItems].sort((a, b) => (a.data || "").localeCompare(b.data || ""));
@@ -280,22 +286,20 @@ function InboxPage() {
           status: "classificado",
           criadoEm: new Date().toISOString(),
           observacoes: "OCR extrato BAI",
-          anexoNome: c.nome,
-          anexoMime: c.mime,
-          anexoDataUrl: i === 0 ? c.dataUrl : undefined,
-          anexoSync: i === 0 ? c.syncOk : false,
         };
       });
       addInboxItems(rows);
-      setPaste(text);
       const proc = processarInbox();
+      limparFicheiroScreenshot();
       toast.success(
-        `${rows.length} movimento(s) lido(s) do screenshot · ${proc.duplicados} duplicado(s) na Inbox · ${proc.ligados} já existiam no BAI. Reveja e clique «Sincronizar com Banco BAI».`,
+        `${rows.length} movimento(s) lido(s) · ficheiro removido · ${proc.duplicados} duplicado(s) · ${proc.ligados} já no BAI. Reveja e sincronize.`,
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha no OCR do extrato.");
+      limparFicheiroScreenshot();
     } finally {
       setOcrBusy(false);
+      limparFicheiroScreenshot();
     }
   }
 
@@ -351,19 +355,23 @@ function InboxPage() {
             Foto ou captura do extrato (BAI Directo / app). OCR no browser (português), sem enviar a imagem para um servidor de terceiros além da CDN do Tesseract.
           </p>
           <Input
+            ref={shotInputRef}
             type="file"
             accept="image/*"
             capture="environment"
             disabled={!canEdit || ocrBusy}
             onChange={(e) => {
               const f = e.target.files?.[0];
-              e.target.value = "";
               if (f) void onLerExtrato(f);
             }}
           />
-          {ocrBusy ? <p className="text-xs">A ler caracteres do extrato…</p> : null}
-          {ocrPreview ? (
-            <img src={ocrPreview} alt="Extrato" className="max-h-28 rounded border object-contain" />
+          {ocrBusy ? (
+            <div className="space-y-1">
+              <p className="text-xs">A ler caracteres do extrato…</p>
+              {ocrPreview ? (
+                <img src={ocrPreview} alt="" className="max-h-20 rounded border object-contain opacity-60" />
+              ) : null}
+            </div>
           ) : null}
         </div>
         <div className="space-y-3 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
