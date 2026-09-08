@@ -15,6 +15,7 @@ import type {
 } from "@/data/types";
 import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
 import { assertCanEdit } from "@/lib/can-edit";
+import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
 import {
   turmaFromDataNascimento,
   grupoFromTurma,
@@ -482,9 +483,13 @@ export const useFinance = create<Store>()(
             }
           }
 
+          const sent = aplicarSentido(tipo, it.descricao, valor, it);
           return {
             ...it,
             tipo,
+            entrada: sent.entrada,
+            saida: sent.saida,
+            valor: sent.valor,
             status:
               status === "por_classificar" && tipo !== "desconhecido"
                 ? "classificado"
@@ -585,20 +590,9 @@ export const useFinance = create<Store>()(
         const patched = [...(get().inboxItems || [])];
         const limpar = new Set<string>();
         for (const it of items) {
-          const entrada =
-            Number(it.entrada) > 0
-              ? Number(it.entrada)
-              : Number(it.valor) > 0
-                ? Number(it.valor)
-                : 0;
-          const saida =
-            Number(it.saida) > 0
-              ? Number(it.saida)
-              : Number(it.valor) < 0
-                ? Math.abs(Number(it.valor))
-                : entrada > 0
-                  ? 0
-                  : Math.abs(Number(it.valor) || 0);
+          const sent = aplicarSentido(it.tipo, it.descricao, montanteAbs(it), it);
+          const entrada = sent.entrada;
+          const saida = sent.saida;
           if (entrada <= 0 && saida <= 0) {
             ignorados += 1;
             continue;

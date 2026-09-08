@@ -11,6 +11,7 @@ import { formatKz, todayIso } from "@/lib/format";
 import { useFinance } from "@/lib/store";
 import type { InboxMovimento, InboxTipo } from "@/data/types";
 import { ocrImage, parseBaiExtratoText } from "@/lib/ocr";
+import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
 
 
 /** Comprime imagem para JPEG (max lado 1280px, qualidade 0.55). PDF/outros: lê até 80KB. */
@@ -172,12 +173,15 @@ function InboxPage() {
       toast.error("Indique a descrição.");
       return;
     }
+    const sent = aplicarSentido(tipo, desc.trim(), v);
     const id = `INB-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     addInboxItems([
       {
         id,
         data: data || todayIso(),
-        valor: v,
+        valor: sent.valor,
+        entrada: sent.entrada,
+        saida: sent.saida,
         descricao: desc.trim(),
         tipo,
         status: tipo === "desconhecido" ? "por_classificar" : "classificado",
@@ -206,14 +210,13 @@ function InboxPage() {
     obs?: string,
   ): InboxMovimento[] {
     return parsed.map((p, i) => {
-      const entrada = Number(p.entrada) > 0 ? Number(p.entrada) : Number(p.valor) > 0 ? Number(p.valor) : 0;
-      const saida = Number(p.saida) > 0 ? Number(p.saida) : Number(p.valor) < 0 ? Math.abs(Number(p.valor)) : 0;
+      const sent = aplicarSentido("desconhecido", p.descricao, montanteAbs(p), p);
       return {
         id: `${prefix}${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
         data: p.data,
-        valor: entrada || -saida || p.valor,
-        entrada,
-        saida,
+        valor: sent.valor,
+        entrada: sent.entrada,
+        saida: sent.saida,
         descricao: p.descricao,
         tipo: "desconhecido" as InboxTipo,
         status: "por_classificar" as const,
@@ -264,23 +267,24 @@ function InboxPage() {
         return;
       }
       const rows: InboxMovimento[] = parsed.map((p, i) => {
-        const tipo: InboxTipo = p.entrada > 0
-          ? /tpa|multicaixa/i.test(p.descricao)
-            ? "tpa"
-            : /transf/i.test(p.descricao)
-              ? "transferencia"
-              : "deposito"
-          : /sal|honor/i.test(p.descricao)
-            ? "salario"
-            : /tpa|multicaixa/i.test(p.descricao)
+        const tipo: InboxTipo = /sal[aá]rio|honor/i.test(p.descricao)
+          ? "salario"
+          : /propina|mensalidade/i.test(p.descricao)
+            ? "propina"
+            : /fecho\s*tpa|tpa-mcx|multicaixa/i.test(p.descricao)
               ? "tpa"
-              : "despesa";
+              : /transf|kwik/i.test(p.descricao)
+                ? "transferencia"
+                : p.entrada > 0
+                  ? "deposito"
+                  : "despesa";
+        const sent = aplicarSentido(tipo, p.descricao, montanteAbs(p), p);
         return {
           id: `INB-OCR-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
           data: p.data,
-          valor: p.entrada || -p.saida,
-          entrada: p.entrada,
-          saida: p.saida,
+          valor: sent.valor,
+          entrada: sent.entrada,
+          saida: sent.saida,
           descricao: p.descricao,
           tipo,
           status: "classificado",
@@ -549,26 +553,33 @@ function InboxPage() {
                   <td className="px-3 py-2 whitespace-nowrap">{r.data}</td>
                   <td className="px-3 py-2">{r.descricao}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-[var(--color-forest)]">
-                    {Number(r.entrada) > 0 || Number(r.valor) > 0
-                      ? formatKz(Number(r.entrada) || Number(r.valor))
-                      : "—"}
+                    {(() => {
+                      const s = aplicarSentido(r.tipo, r.descricao, montanteAbs(r), r);
+                      return s.entrada > 0 ? formatKz(s.entrada) : "—";
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-red-700">
-                    {Number(r.saida) > 0 || Number(r.valor) < 0
-                      ? formatKz(Number(r.saida) || Math.abs(Number(r.valor)))
-                      : "—"}
+                    {(() => {
+                      const s = aplicarSentido(r.tipo, r.descricao, montanteAbs(r), r);
+                      return s.saida > 0 ? formatKz(s.saida) : "—";
+                    })()}
                   </td>
                   <td className="px-3 py-2">
                     <select
                       className="h-8 max-w-[10rem] rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-xs"
                       value={r.tipo}
                       disabled={!canEdit}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const next = e.target.value as InboxTipo;
+                        const s = aplicarSentido(next, r.descricao, montanteAbs(r), r);
                         updateInboxItem(r.id, {
-                          tipo: e.target.value as InboxTipo,
-                          status: e.target.value === "desconhecido" ? "por_classificar" : "classificado",
-                        })
-                      }
+                          tipo: next,
+                          status: next === "desconhecido" ? "por_classificar" : "classificado",
+                          entrada: s.entrada,
+                          saida: s.saida,
+                          valor: s.valor,
+                        });
+                      }}
                     >
                       {TIPOS.map((t) => (
                         <option key={t.value} value={t.value}>
