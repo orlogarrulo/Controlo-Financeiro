@@ -332,7 +332,10 @@ export type InboxTipo =
   | "despesa"
   | "tpa"
   | "transferencia"
-  | "deposito";
+  | "deposito"
+  | "comissao_transferencia"
+  | "comissao_fecho_tpa"
+  | "taxa_aluguer_tpa";
 
 export type InboxStatus = "por_classificar" | "classificado" | "reconciliado" | "duplicado" | "ignorado";
 

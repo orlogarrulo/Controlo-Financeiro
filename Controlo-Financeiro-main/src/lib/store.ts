@@ -380,6 +380,9 @@ export const useFinance = create<Store>()(
           const d = (desc || "").toLowerCase();
           if (/sal[aá]rio|honor[aá]rio|rh-20|app-sal/i.test(d)) return "salario";
           if (/propina|mensalidade|prop-|frais|scolarit/i.test(d)) return "propina";
+          if (/comiss[aã]o.*fecho|fecho.*comiss/i.test(d)) return "comissao_fecho_tpa";
+          if (/alug(?:uer)?\s*tpa|comiss[aã]o\s*alug/i.test(d)) return "taxa_aluguer_tpa";
+          if (/comiss[aã]o.*transf|iva\s*sobre\s*comis/i.test(d)) return "comissao_transferencia";
           if (/tpa|multicaixa|cart[aã]o/i.test(d)) return "tpa";
           if (/transf|transfer/i.test(d)) return "transferencia";
           if (/dep[oó]sito|deposito/i.test(d)) return "deposito";

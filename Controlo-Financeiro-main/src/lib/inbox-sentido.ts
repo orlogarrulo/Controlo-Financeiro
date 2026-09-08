@@ -6,6 +6,9 @@ export function tipoESaida(tipo: InboxTipo | undefined, descricao = ""): boolean
   switch (tipo) {
     case "salario":
     case "despesa":
+    case "comissao_transferencia":
+    case "comissao_fecho_tpa":
+    case "taxa_aluguer_tpa":
       return true;
     case "propina":
     case "deposito":

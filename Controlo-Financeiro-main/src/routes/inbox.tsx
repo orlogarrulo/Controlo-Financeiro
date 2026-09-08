@@ -86,6 +86,9 @@ const TIPOS: { value: InboxTipo; label: string }[] = [
   { value: "tpa", label: "TPA / cartão" },
   { value: "transferencia", label: "Transferência" },
   { value: "deposito", label: "Depósito" },
+  { value: "comissao_transferencia", label: "Comissão de transferência" },
+  { value: "comissao_fecho_tpa", label: "Comissão de fecho TPA" },
+  { value: "taxa_aluguer_tpa", label: "Taxa aluguer de TPA" },
 ];
 
 function parseLinhas(text: string): Omit<InboxMovimento, "id" | "criadoEm" | "status" | "tipo">[] {
@@ -271,13 +274,19 @@ function InboxPage() {
           ? "salario"
           : /propina|mensalidade/i.test(p.descricao)
             ? "propina"
-            : /fecho\s*tpa|tpa-mcx|multicaixa/i.test(p.descricao)
-              ? "tpa"
-              : /transf|kwik/i.test(p.descricao)
-                ? "transferencia"
-                : p.entrada > 0
-                  ? "deposito"
-                  : "despesa";
+            : /comiss[aã]o.*fecho|fecho.*comiss/i.test(p.descricao)
+              ? "comissao_fecho_tpa"
+              : /alug(?:uer)?\s*tpa|comiss[aã]o\s*alug/i.test(p.descricao)
+                ? "taxa_aluguer_tpa"
+                : /comiss[aã]o.*transf|iva\s*sobre\s*comis/i.test(p.descricao)
+                  ? "comissao_transferencia"
+                  : /fecho\s*tpa|tpa-mcx|multicaixa/i.test(p.descricao)
+                    ? "tpa"
+                    : /transf|kwik/i.test(p.descricao)
+                      ? "transferencia"
+                      : p.entrada > 0
+                        ? "deposito"
+                        : "despesa";
         const sent = aplicarSentido(tipo, p.descricao, montanteAbs(p), p);
         return {
           id: `INB-OCR-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
