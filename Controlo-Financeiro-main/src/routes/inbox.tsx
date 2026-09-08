@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Inbox, RefreshCw, Trash2 } from "lucide-react";
+import { Inbox, RefreshCw, Trash2, Camera, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { isCollaborator1 } from "@/lib/can-edit";
 import { formatKz, todayIso } from "@/lib/format";
 import { useFinance } from "@/lib/store";
 import type { InboxMovimento, InboxTipo } from "@/data/types";
+import { ocrImage, parseBaiExtratoText } from "@/lib/ocr";
 
 
 /** Comprime imagem para JPEG (max lado 1280px, qualidade 0.55). PDF/outros: lê até 80KB. */
@@ -129,6 +130,7 @@ function InboxPage() {
   const removeInboxItem = useFinance((s) => s.removeInboxItem);
   const clearInboxReconciliados = useFinance((s) => s.clearInboxReconciliados);
   const processarInbox = useFinance((s) => s.processarInbox);
+  const syncInboxParaBai = useFinance((s) => s.syncInboxParaBai);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators || []);
   const canEdit = isCollaborator1(activeOperator || "", operators);
@@ -145,6 +147,8 @@ function InboxPage() {
     dataUrl: string;
     syncOk: boolean;
   } | null>(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrPreview, setOcrPreview] = useState("");
 
   const filtrados = useMemo(() => {
     let list = [...inboxItems].sort((a, b) => (a.data || "").localeCompare(b.data || ""));
@@ -214,6 +218,79 @@ function InboxPage() {
     toast.success(`${rows.length} movimento(s) importado(s).`);
   }
 
+  async function onLerExtrato(file: File) {
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1 pode editar.");
+      return;
+    }
+    setOcrBusy(true);
+    try {
+      const c = await compressAnexo(file);
+      setOcrPreview(c.dataUrl);
+      if (!file.type.startsWith("image/")) {
+        toast.error("Envie um screenshot (imagem) do extrato BAI.");
+        return;
+      }
+      toast.message("A ler o extrato… isto pode demorar uns segundos.");
+      const text = await ocrImage(c.dataUrl);
+      const parsed = parseBaiExtratoText(text);
+      if (!parsed.length) {
+        toast.error("Não foi possível ler movimentos. Confirme que o screenshot está nítido ou cole as linhas.");
+        setPaste((p) => p || text.slice(0, 2000));
+        return;
+      }
+      const rows: InboxMovimento[] = parsed.map((p, i) => {
+        const tipo: InboxTipo = p.entrada > 0
+          ? /tpa|multicaixa/i.test(p.descricao)
+            ? "tpa"
+            : /transf/i.test(p.descricao)
+              ? "transferencia"
+              : "deposito"
+          : /sal|honor/i.test(p.descricao)
+            ? "salario"
+            : /tpa|multicaixa/i.test(p.descricao)
+              ? "tpa"
+              : "despesa";
+        return {
+          id: `INB-OCR-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          data: p.data,
+          valor: p.entrada || -p.saida,
+          entrada: p.entrada,
+          saida: p.saida,
+          descricao: p.descricao,
+          tipo,
+          status: "classificado",
+          criadoEm: new Date().toISOString(),
+          observacoes: "OCR extrato BAI",
+          anexoNome: c.nome,
+          anexoMime: c.mime,
+          anexoDataUrl: i === 0 ? c.dataUrl : undefined,
+          anexoSync: i === 0 ? c.syncOk : false,
+        };
+      });
+      addInboxItems(rows);
+      const proc = processarInbox();
+      toast.success(
+        `${rows.length} movimento(s) lido(s) do screenshot · ${proc.duplicados} duplicado(s) · ${proc.ligados} já no BAI.`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha no OCR do extrato.");
+    } finally {
+      setOcrBusy(false);
+    }
+  }
+
+  function onSyncBai() {
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1 pode editar.");
+      return;
+    }
+    const r = syncInboxParaBai();
+    toast.success(
+      `BAI actualizado: ${r.criados} novo(s) · ${r.duplicados} já existiam · saldo recalculado e gravado na nuvem.`,
+    );
+  }
+
   function onProcessar() {
     if (!canEdit) {
       toast.error("Apenas o Colaborador 1 pode editar.");
@@ -241,10 +318,34 @@ function InboxPage() {
       <PageHeader
         kicker="Reconciliação"
         title="Inbox"
-        description="Adicione aqui todas as faturas e movimentos atrasados. O sistema ordena, detecta duplicados, avisa semelhanças e reconcilia com Banco BAI, Lista de despesas, salários e propinas (auditoria)."
+        description="Submeta screenshots do extrato BAI: a app lê entradas e saídas, reescreve os movimentos, marca duplicados e sincroniza com o Banco BAI (saldo recalculado e gravado na nuvem)."
       />
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-2">
+      <div className="mb-4 grid gap-4 lg:grid-cols-3">
+        <div className="space-y-3 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <Camera className="h-4 w-4" />
+            Screenshot do extrato BAI
+          </h2>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            Foto ou captura do extrato (BAI Directo / app). OCR no browser (português), sem enviar a imagem para um servidor de terceiros além da CDN do Tesseract.
+          </p>
+          <Input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            disabled={!canEdit || ocrBusy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void onLerExtrato(f);
+            }}
+          />
+          {ocrBusy ? <p className="text-xs">A ler caracteres do extrato…</p> : null}
+          {ocrPreview ? (
+            <img src={ocrPreview} alt="Extrato" className="max-h-28 rounded border object-contain" />
+          ) : null}
+        </div>
         <div className="space-y-3 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
           <h2 className="text-sm font-semibold">Adicionar manualmente</h2>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -343,7 +444,11 @@ function InboxPage() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button type="button" disabled={!canEdit} onClick={onProcessar}>
           <RefreshCw className="mr-1 h-4 w-4" />
-          Processar
+          Processar / duplicados
+        </Button>
+        <Button type="button" disabled={!canEdit} onClick={onSyncBai}>
+          <Landmark className="mr-1 h-4 w-4" />
+          Sincronizar com Banco BAI
         </Button>
         <Button
           type="button"
@@ -394,7 +499,8 @@ function InboxPage() {
             <tr>
               <th className="px-3 py-2">Data</th>
               <th className="px-3 py-2">Descrição</th>
-              <th className="px-3 py-2 text-right">Valor</th>
+              <th className="px-3 py-2 text-right">Entrada</th>
+              <th className="px-3 py-2 text-right">Saída</th>
               <th className="px-3 py-2">Tipo</th>
               <th className="px-3 py-2">Estado</th>
               <th className="px-3 py-2">Ligação</th>
@@ -405,7 +511,7 @@ function InboxPage() {
           <tbody>
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-[var(--color-muted)]">
+                <td colSpan={9} className="px-3 py-8 text-center text-[var(--color-muted)]">
                   Inbox vazia. Adicione movimentos atrasados e pressione Processar.
                 </td>
               </tr>
@@ -414,7 +520,16 @@ function InboxPage() {
                 <tr key={r.id} className="border-t border-[var(--color-line)]">
                   <td className="px-3 py-2 whitespace-nowrap">{r.data}</td>
                   <td className="px-3 py-2">{r.descricao}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatKz(r.valor)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[var(--color-forest)]">
+                    {Number(r.entrada) > 0 || Number(r.valor) > 0
+                      ? formatKz(Number(r.entrada) || Number(r.valor))
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-red-700">
+                    {Number(r.saida) > 0 || Number(r.valor) < 0
+                      ? formatKz(Number(r.saida) || Math.abs(Number(r.valor)))
+                      : "—"}
+                  </td>
                   <td className="px-3 py-2">
                     <select
                       className="h-8 max-w-[10rem] rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-xs"

@@ -1,5 +1,11 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 6. Inbox · OCR de extrato BAI (2026-09-08)
+- Screenshot do extrato no separador **Inbox** → Tesseract.js (por+eng)
+- Parser `parseBaiExtratoText` reescreve entradas/saídas
+- Duplicados (data + valor + texto) marcados no Processar
+- **Sincronizar com Banco BAI** cria movimentos em falta, recalcula saldo (`sortAndRecalcBai`) e grava na nuvem (`inboxItems` + `movimentosBaiExtra`)
+
 Data: 2026-09-07
 
 ## 1. Classes Congo-Brazzaville

@@ -167,6 +167,8 @@ type Store = ExtraState & {
   removeInboxItem: (id: string) => void;
   clearInboxReconciliados: () => void;
   processarInbox: () => { ordenados: number; duplicados: number; ligados: number; avisos: number };
+  /** Envia itens Inbox (não duplicados) para o extrato BAI e recalcula saldo. */
+  syncInboxParaBai: (ids?: string[]) => { criados: number; duplicados: number; ignorados: number };
   /** Recria recibos do mês como pagos a partir da lista de funcionários. */
   restaurarRecibosPagos: (staff: { id: string; nome: string; funcao?: string; salario: number; diasUteis?: number; diasTrab?: number; outrosDesc?: number; iban?: string }[], mes: string, mesKey: string, dataPag?: string) => number;
   removeReciboSalario: (id: string) => void;
@@ -548,6 +550,101 @@ export const useFinance = create<Store>()(
           `${ordenados} ordenados · ${duplicados} duplicados · ${ligados} ligados · ${avisos} avisos`,
         );
         return { ordenados, duplicados, ligados, avisos };
+      },
+      syncInboxParaBai: (ids) => {
+        requireEdit(get);
+        const items = (get().inboxItems || []).filter((it) => {
+          if (it.status === "duplicado" || it.status === "ignorado") return false;
+          if (ids && ids.length && !ids.includes(it.id)) return false;
+          const v = Math.abs(Number(it.valor) || Number(it.entrada) || Number(it.saida) || 0);
+          return v > 0;
+        });
+        const existing = movimentosAll(
+          get().movimentosBaiExtra || [],
+          get().baiOverride,
+          get().movimentosBaiDeletedIds || [],
+        );
+        const fp = (data: string, entrada: number, saida: number, desc: string) =>
+          `${data}|${entrada}|${saida}|${(desc || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 40)}`;
+        const fps = new Set(existing.map((m) => fp(m.data, Number(m.entrada) || 0, Number(m.saida) || 0, m.descricao || "")));
+        const idsExist = new Set(existing.map((m) => m.id));
+        let criados = 0;
+        let duplicados = 0;
+        let ignorados = 0;
+        const patched = [...(get().inboxItems || [])];
+        for (const it of items) {
+          const entrada =
+            Number(it.entrada) > 0
+              ? Number(it.entrada)
+              : Number(it.valor) > 0
+                ? Number(it.valor)
+                : 0;
+          const saida =
+            Number(it.saida) > 0
+              ? Number(it.saida)
+              : Number(it.valor) < 0
+                ? Math.abs(Number(it.valor))
+                : entrada > 0
+                  ? 0
+                  : Math.abs(Number(it.valor) || 0);
+          if (entrada <= 0 && saida <= 0) {
+            ignorados += 1;
+            continue;
+          }
+          const key = fp(it.data, entrada, saida, it.descricao);
+          if (fps.has(key) || (it.linkId && idsExist.has(it.linkId))) {
+            duplicados += 1;
+            const idx = patched.findIndex((x) => x.id === it.id);
+            if (idx >= 0) {
+              patched[idx] = {
+                ...patched[idx],
+                status: "duplicado",
+                observacoes: patched[idx].observacoes
+                  ? `${patched[idx].observacoes} · já no BAI`
+                  : "já no extrato BAI",
+                linkLabel: patched[idx].linkLabel || "já no BAI",
+              };
+            }
+            continue;
+          }
+          const movId = `INB-BAI-${it.id}`.slice(0, 40);
+          const ok = pushBaiMovimento(get, set, {
+            id: movId,
+            data: it.data,
+            entrada,
+            saida,
+            banco: entrada > 0 ? "INBOX-ENTRADA" : "INBOX-SAIDA",
+            descricao: it.descricao || "Movimento Inbox → BAI",
+            observacoes: `Sync Inbox ${it.id}`,
+          });
+          if (!ok) {
+            duplicados += 1;
+            continue;
+          }
+          fps.add(key);
+          idsExist.add(movId);
+          criados += 1;
+          const idx = patched.findIndex((x) => x.id === it.id);
+          if (idx >= 0) {
+            patched[idx] = {
+              ...patched[idx],
+              status: "reconciliado",
+              linkId: movId,
+              linkLabel: `BAI ${movId}`,
+              entrada,
+              saida,
+            };
+          }
+        }
+        set({
+          inboxItems: patched,
+          movimentosBaiExtra: sortAndRecalcBai(get().movimentosBaiExtra || []),
+        });
+        get().pushAudit(
+          "inbox_sync_bai",
+          `${criados} criados · ${duplicados} duplicados · ${ignorados} ignorados`,
+        );
+        return { criados, duplicados, ignorados };
       },
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
