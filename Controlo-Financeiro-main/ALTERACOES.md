@@ -1,5 +1,11 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 8. Turma oficial = prefixo do ID (2026-09-09)
+- **Causa real do erro no PDF:** a migração `recalcularClassesMatriculas` sobrescrevia `a.turma` com a idade (ex.: P3-05 nascido 20/10/2021 → idade 4 → P2). O ID ficava P3-05 e a tabela passava a P2; CP1-02 e 4E-02 iam para Maternelle P3.
+- **Regra de ouro:** o **ID** define a classe (P3-05 → Maternelle P3). Data de nascimento só sugere em matrícula nova ou turma vazia.
+- `turmaFromId()` em `classe-congo.ts`; PDF e edição usam o prefixo do ID.
+- Migração `ecc-classes-congo-v4` restaura turmas desalinhadas e sincroniza na nuvem.
+
 ## 7. PDF classes · turma oficial + idade em 1/out (2026-09-09)
 - **Causa do bug:** o PDF das classes agrupava pela turma *sugerida* pela data de nascimento, ignorando a turma já atribuída (`a.turma`) e o ID (ex.: P3-05 aparecia na tabela Maternelle P2).
 - **Correcção:** `imprimirAlunosPorClasse` passa a agrupar pela **turma oficial** (`a.turma`). A sugestão por nascimento só é usada se a matrícula ainda não tiver turma.

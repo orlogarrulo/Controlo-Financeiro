@@ -440,6 +440,29 @@ function nextAlunoId(turma: string, existing: Aluno[]): string {
   return `${prefix}-${String(max + 1).padStart(2, "0")}`;
 }
 
+/** Turma oficial a partir do prefixo do ID (P3-05 → Maternelle P3). O ID manda. */
+function turmaFromIdLocal(id: string): string | null {
+  if (!id) return null;
+  const prefix = id.split("-")[0]?.toUpperCase() || "";
+  const map: Record<string, string> = {
+    P1: "Maternelle P1",
+    P2: "Maternelle P2",
+    P3: "Maternelle P3",
+    MAT: "Maternelle",
+    CP1: "CP1",
+    CP2: "CP2",
+    CE1: "CE1",
+    CE2: "CE2",
+    CM1: "CM1",
+    CM2: "CM2",
+    "6E": "6ème",
+    "5E": "5ème",
+    "4E": "4ème",
+    "3E": "3ème",
+  };
+  return map[prefix] || null;
+}
+
 function nextRecibo(existing: Aluno[]): string {
   let max = 0;
   for (const a of existing) {
@@ -1549,12 +1572,13 @@ function Alunos() {
       return;
     }
     setEditing(a);
-    // Recalcular classe a partir da data de nascimento (sistema Congo-Brazzaville).
-    // Corrige casos incorrectos (ex.: 13 anos em Maternelle → 5ème).
+    // A turma oficial é a do ID (P3-05 → Maternelle P3). Só se não houver
+    // prefixo conhecido se usa a turma gravada ou a sugestão por nascimento.
+    const fromId = turmaFromIdLocal(a.id);
     const suggestedTurma = a.dataNascimento
       ? turmaFromDataNascimento(a.dataNascimento)
       : null;
-    const turmaCorrigida = suggestedTurma || a.turma || TURMAS[0];
+    const turmaCorrigida = fromId || a.turma || suggestedTurma || TURMAS[0];
     setForm({
       nome: a.nome || "",
       pai: a.pai || "",
@@ -1600,9 +1624,7 @@ function Alunos() {
       propina: String(
         a.transferidoCampusCidade
           ? (a.propina ?? CAMPUS_CIDADE_PROPINA)
-          : suggestedTurma && suggestedTurma !== a.turma
-            ? propinaDefaultFromTurma(turmaCorrigida)
-            : (a.propina ?? propinaDefaultFromTurma(turmaCorrigida)),
+          : (a.propina ?? propinaDefaultFromTurma(turmaCorrigida)),
       ),
       telefone: a.telefone || "",
       email: a.email || "",
@@ -2425,14 +2447,15 @@ function Alunos() {
       toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
-    // Agrupa pela turma OFICIAL já atribuída (a.turma), que corresponde ao ID
-    // (ex.: P3-05 → tabela Maternelle P3). Só usa a sugestão por data de nascimento
-    // quando a matrícula ainda não tem turma definida. Assim o PDF respeita o ID
-    // e a classe escolhida no separador Matrículas (Congo-Brazzaville).
+    // Agrupa pela turma OFICIAL: 1) prefixo do ID (P3-05 → Maternelle P3),
+    // 2) turma gravada, 3) só então sugestão por data de nascimento.
+    // Nunca move um aluno para outra tabela só porque a idade "sugere" outra classe.
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
+      const fromId = turmaFromIdLocal(a.id);
       const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
       const k =
+        fromId ||
         (a.turma && String(a.turma).trim()) ||
         suggested ||
         (lang === "fr" ? "Sans classe" : "Sem classe");
@@ -3018,8 +3041,8 @@ function Alunos() {
       const rows = selected
         .map(
           (a, i) => {
-            const turmaPdf =
-              (a.dataNascimento && turmaFromDataNascimento(a.dataNascimento)) || a.turma;
+            // Turma oficial = ID / turma gravada (não recalcular por idade no PDF)
+            const turmaPdf = turmaFromIdLocal(a.id) || a.turma;
             return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
               <td class="mono">${a.id}</td>
               <td>${a.nome}</td>

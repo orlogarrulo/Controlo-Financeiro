@@ -18,6 +18,7 @@ import { assertCanEdit } from "@/lib/can-edit";
 import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
 import {
   turmaFromDataNascimento,
+  turmaFromId,
   grupoFromTurma,
   propinaDefaultFromTurma,
 } from "@/lib/classe-congo";
@@ -2019,10 +2020,19 @@ export function computeTotals(
 
 
 /**
- * Recalcula turma + grupo de TODAS as matrículas com data de nascimento
- * (sistema Congo-Brazzaville). Grava em alunosExtra / alunosOverrides
- * para sincronizar com a nuvem no próximo push.
- * Idempotente: só altera quando a sugestão difere da turma actual.
+ * Alinha turma + grupo das matrículas.
+ *
+ * REGRA DE OURO: o ID é a fonte de verdade da classe atribuída
+ * (ex.: P3-05 → Maternelle P3). A data de nascimento só sugere a classe
+ * em matrículas NOVAS ou quando a turma está vazia — NUNCA sobrescreve
+ * uma turma que já corresponde ao prefixo do ID.
+ *
+ * Esta função:
+ * 1) Restaura turma a partir do prefixo do ID quando estiver desalinhada
+ *    (corrige migrações anteriores que moveram alunos pela idade).
+ * 2) Só preenche turma vazia com a sugestão por data de nascimento.
+ * 3) Normaliza o campo grupo.
+ *
  * @returns número de alunos corrigidos
  */
 export function recalcularClassesMatriculas(): number {
@@ -2040,33 +2050,50 @@ export function recalcularClassesMatriculas(): number {
     changed += 1;
   };
 
+  /** Decide a turma correcta sem destruir a atribuição oficial. */
+  const resolveTurma = (a: { id?: string; turma?: string; dataNascimento?: string }): string | null => {
+    const fromId = a.id ? turmaFromId(a.id) : null;
+    const current = (a.turma || "").trim();
+    // 1) Se o ID tem prefixo conhecido, o ID manda (restaura desalinhamentos)
+    if (fromId) return fromId;
+    // 2) Turma já atribuída manualmente — manter
+    if (current) return current;
+    // 3) Sem turma: sugerir pela data de nascimento
+    if (a.dataNascimento) return turmaFromDataNascimento(a.dataNascimento);
+    return null;
+  };
+
   // 1) Alunos extra (criados na app)
   extras.forEach((a, idx) => {
-    if (!a?.id || !a.dataNascimento) return;
-    const suggested = turmaFromDataNascimento(a.dataNascimento);
-    if (!suggested) return;
-    const g = grupoFromTurma(suggested);
-    const needTurma = a.turma !== suggested;
+    if (!a?.id) return;
+    const resolved = resolveTurma(a);
+    if (!resolved) {
+      const g = grupoFromTurma(a.turma || "");
+      if (a.grupo !== g) {
+        applyPatch(a.id, { grupo: g }, true, idx);
+      }
+      return;
+    }
+    const g = grupoFromTurma(resolved);
+    const needTurma = a.turma !== resolved;
     const needGrupo = a.grupo !== g;
     if (!needTurma && !needGrupo) return;
     const patch: Partial<Aluno> = {};
     if (needTurma) {
-      patch.turma = suggested;
-      if (!a.transferidoCampusCidade) {
-        patch.propina = propinaDefaultFromTurma(suggested, false);
-      }
+      patch.turma = resolved;
+      // Não alterar propina automaticamente ao restaurar do ID —
+      // o valor cobrado pode ter sido negociado.
     }
     if (needGrupo || needTurma) patch.grupo = g;
     applyPatch(a.id, patch, true, idx);
   });
 
-  // 2) Seed + overrides: percorre seed e aplica override quando necessário
+  // 2) Seed + overrides
   for (const a of seed.alunos || []) {
     if (!a?.id) continue;
     const merged = { ...a, ...(overrides[a.id] || {}) } as Aluno;
-    const dn = merged.dataNascimento;
-    if (!dn) {
-      // só normaliza grupo se estiver errado
+    const resolved = resolveTurma(merged);
+    if (!resolved) {
       const g = grupoFromTurma(merged.turma || "");
       if (merged.grupo !== g) {
         overrides[a.id] = { ...(overrides[a.id] || {}), grupo: g };
@@ -2074,19 +2101,12 @@ export function recalcularClassesMatriculas(): number {
       }
       continue;
     }
-    const suggested = turmaFromDataNascimento(dn);
-    if (!suggested) continue;
-    const g = grupoFromTurma(suggested);
-    const needTurma = merged.turma !== suggested;
+    const g = grupoFromTurma(resolved);
+    const needTurma = merged.turma !== resolved;
     const needGrupo = merged.grupo !== g;
     if (!needTurma && !needGrupo) continue;
     const patch: Partial<Aluno> = { ...(overrides[a.id] || {}) };
-    if (needTurma) {
-      patch.turma = suggested;
-      if (!merged.transferidoCampusCidade) {
-        patch.propina = propinaDefaultFromTurma(suggested, false);
-      }
-    }
+    if (needTurma) patch.turma = resolved;
     patch.grupo = g;
     overrides[a.id] = patch;
     changed += 1;
@@ -2100,7 +2120,7 @@ export function recalcularClassesMatriculas(): number {
     try {
       useFinance.getState().pushAudit?.(
         "recalcular_classes",
-        `${changed} matrícula(s) · Congo-Brazzaville (idade em 1/out/2026)`,
+        `${changed} matrícula(s) · turma alinhada ao ID (Congo-Brazzaville)`,
       );
     } catch {
       /* audit opcional */
@@ -2108,6 +2128,7 @@ export function recalcularClassesMatriculas(): number {
   }
   return changed;
 }
+
 
 export function alunosAll(
   extras: Aluno[] = [],

@@ -55,6 +55,33 @@ export function grupoFromTurma(turma: string): string {
   return turma || "Primaire";
 }
 
+/**
+ * Turma oficial a partir do prefixo do ID (ex.: P3-05 → Maternelle P3).
+ * O ID é a fonte de verdade da classe atribuída na matrícula; a data de
+ * nascimento só sugere a classe em novas matrículas, não sobrescreve o ID.
+ */
+export function turmaFromId(id: string): string | null {
+  if (!id || typeof id !== "string") return null;
+  const prefix = id.split("-")[0]?.toUpperCase() || "";
+  const map: Record<string, string> = {
+    P1: "Maternelle P1",
+    P2: "Maternelle P2",
+    P3: "Maternelle P3",
+    MAT: "Maternelle",
+    CP1: "CP1",
+    CP2: "CP2",
+    CE1: "CE1",
+    CE2: "CE2",
+    CM1: "CM1",
+    CM2: "CM2",
+    "6E": "6ème",
+    "5E": "5ème",
+    "4E": "4ème",
+    "3E": "3ème",
+  };
+  return map[prefix] || null;
+}
+
 export const PROPINA_MATERNELLE = 170000;
 export const PROPINA_PRIMAIRE = 250000;
 export const PROPINA_COLLEGE = 260000;
