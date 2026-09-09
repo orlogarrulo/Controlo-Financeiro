@@ -832,23 +832,38 @@ export const useFinance = create<Store>()(
             : input.origem === "banco"
               ? "TRANSF"
               : "CARTAO";
+          const abatimento = isAbatimentoDividaSocio({
+            descricao: input.descricao,
+            observacoes: input.observacoes,
+            categoria: input.categoria,
+          });
+          const descBase =
+            input.descricao ||
+            input.categoria ||
+            (isLevantamento
+              ? "Levantamento ATM BAI"
+              : input.origem === "banco"
+                ? "Transferência conta BAI"
+                : "Despesa cartão BAI");
           const mov: MovimentoBai = {
             id: `APP-${id}`,
             linha: (last?.linha ?? 0) + 1,
             data: input.data,
             banco: `${tipoBai}-APP`,
-            descricao:
-              input.descricao ||
-              input.categoria ||
-              (isLevantamento
-                ? "Levantamento ATM BAI"
-                : input.origem === "banco"
-                  ? "Transferência conta BAI"
-                  : "Despesa cartão BAI"),
+            descricao: abatimento && !/a\s*reembolsar/i.test(descBase)
+              ? `${descBase} · A reembolsar`
+              : descBase,
             entrada: 0,
             saida,
             saldo: prevSaldo - saida,
-            observacoes: `Lançamento ${id}${input.fornecedor ? ` · ${input.fornecedor}` : ""}`,
+            observacoes: [
+              `Lançamento ${id}`,
+              input.fornecedor ? String(input.fornecedor) : "",
+              abatimento ? "A reembolsar" : "",
+              input.observacoes && !abatimento ? String(input.observacoes).slice(0, 120) : "",
+            ]
+              .filter(Boolean)
+              .join(" · "),
           };
           set({ movimentosBaiExtra: [...get().movimentosBaiExtra, mov] });
           get().pushAudit("bai_saida_app", `${mov.id} · -${saida} · ${tipoBai}`);
@@ -1945,6 +1960,35 @@ export function computeDividaSocio(
   const seenIds = new Set<string>();
   const seenFp = new Set<string>(); // data|valor — evita contar CX e BAI em duplicado
 
+  /** Preferir descrição específica; «A reembolsar» sozinho vira detalhe disponível. */
+  const labelAbatimento = (parts: {
+    descricao?: string;
+    observacoes?: string;
+    categoria?: string;
+    fornecedor?: string;
+  }): string => {
+    const d = (parts.descricao || "").trim();
+    const o = (parts.observacoes || "").trim();
+    const cat = (parts.categoria || "").trim();
+    const forn = (parts.fornecedor || "").trim();
+    const onlyReemb = (s: string) => /^a\s*reembolsar\b/i.test(s) && s.replace(/a\s*reembolsar/ig, "").replace(/[·\-–|,;]/g, "").trim().length < 2;
+    const clean = (s: string) =>
+      s
+        .replace(/\s*[·|]\s*A\s*reembolsar\s*/gi, " ")
+        .replace(/^A\s*reembolsar\s*[·|\-–]?\s*/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    const specific =
+      (d && !onlyReemb(d) ? clean(d) : "") ||
+      (o && !onlyReemb(o) ? clean(o) : "") ||
+      (cat && !/^outras/i.test(cat) ? cat : "") ||
+      forn;
+    if (specific) {
+      return /a\s*reembolsar/i.test(specific) ? specific : `${specific} · A reembolsar`;
+    }
+    return "A reembolsar";
+  };
+
   const push = (id: string, data: string, descricao: string, valor: number, origem: string) => {
     if (!id || valor <= 0 || seenIds.has(id)) return;
     const fp = `${(data || "").slice(0, 10)}|${Number(valor).toFixed(2)}`;
@@ -1960,14 +2004,30 @@ export function computeDividaSocio(
     const sai = Number(m.saida) || 0;
     if (sai <= 0) continue;
     if (isAbatimentoDividaSocio({ descricao: m.descricao, observacoes: m.observacoes })) {
-      push(m.id, m.data, m.descricao || m.observacoes || "A reembolsar", sai, "banco");
+      push(
+        m.id,
+        m.data,
+        labelAbatimento({ descricao: m.descricao, observacoes: m.observacoes }),
+        sai,
+        "banco",
+      );
     }
   }
 
   // 2) Faturas cartão seed (só se não houver já linha BAI na mesma data/valor)
   for (const c of seed.faturasCartao || []) {
     if (isAbatimentoDividaSocio(c)) {
-      push(c.id, c.data, c.descricao || "A reembolsar", Number(c.valor) || 0, "cartao");
+      push(
+        c.id,
+        c.data,
+        labelAbatimento({
+          descricao: c.descricao,
+          observacoes: c.observacoes,
+          fornecedor: c.fornecedor,
+        }),
+        Number(c.valor) || 0,
+        "cartao",
+      );
     }
   }
 
@@ -1975,14 +2035,36 @@ export function computeDividaSocio(
   for (const l of extras) {
     if (l.tipo !== "despesa") continue;
     if (!isAbatimentoDividaSocio(l)) continue;
-    push(l.id, l.data, l.descricao || l.observacoes || "A reembolsar", Number(l.valor) || 0, l.origem || "cartao");
+    push(
+      l.id,
+      l.data,
+      labelAbatimento({
+        descricao: l.descricao,
+        observacoes: l.observacoes,
+        categoria: l.categoria,
+        fornecedor: l.fornecedor,
+      }),
+      Number(l.valor) || 0,
+      l.origem || "cartao",
+    );
   }
 
   // 4) Lançamentos socio seed explicitamente abatimento (raro)
   for (const l of seed.lancamentosSocio || []) {
     if (l.tipo !== "despesa") continue;
     if (!isAbatimentoDividaSocio(l)) continue;
-    push(l.id, l.data, l.descricao || "A reembolsar", Number(l.valor) || 0, "socio");
+    push(
+      l.id,
+      l.data,
+      labelAbatimento({
+        descricao: l.descricao,
+        observacoes: l.observacoes,
+        categoria: l.categoria,
+        fornecedor: l.fornecedor,
+      }),
+      Number(l.valor) || 0,
+      "socio",
+    );
   }
 
   linhas.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));

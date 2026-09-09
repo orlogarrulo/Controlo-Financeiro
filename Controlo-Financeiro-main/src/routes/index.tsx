@@ -80,10 +80,10 @@ function Dashboard() {
         </tr>`,
         )
         .join("");
-      const html = `<div style="font-family:Helvetica,Arial,sans-serif;color:#0f172a;">
-  <div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #0b3d2c;padding-bottom:12px;margin-bottom:16px;">
-    <img src="${logoSrc}" width="64" height="64" alt="Logo" style="object-fit:contain;" />
-    <div>
+      const html = `<div style="font-family:Helvetica,Arial,sans-serif;color:#0f172a;box-sizing:border-box;width:100%;max-width:170mm;margin:0 auto;padding:4mm 2mm;">
+  <div style="display:flex;align-items:center;justify-content:center;gap:14px;border-bottom:2px solid #0b3d2c;padding-bottom:12px;margin-bottom:16px;text-align:left;">
+    <img src="${logoSrc}" width="64" height="64" alt="Logo" style="object-fit:contain;flex-shrink:0;" />
+    <div style="min-width:0;">
       <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#0b3d2c;font-weight:600;">${escola.nomeCurto || "École Consulaire"}</p>
       <p style="margin:4px 0 0;font-size:16px;font-weight:700;color:#0b3d2c;">Controlo · Dívida à sócia</p>
       <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Acerto cartão BAI · ${new Date().toLocaleDateString("pt-PT")}</p>
@@ -93,16 +93,16 @@ function Dashboard() {
     A escola autorizou a sócia a utilizar o cartão BAI por falta de liquidez.
     Esses gastos extraordinários (nota «A reembolsar») <strong>abatem</strong> o valor em dívida para com ela.
   </p>
-  <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px;">
-    <tr><td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;">Base (empréstimos / adiantamentos)</td>
-        <td style="padding:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:right;font-weight:700;">${formatKz(divSocio.base)}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;">Abatimentos (uso autorizado do cartão)</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-weight:700;color:#b45309;">− ${formatKz(divSocio.abatimentos)}</td></tr>
-    <tr><td style="padding:10px 8px;background:#0b3d2c;color:#fff;border:1px solid #0b3d2c;font-weight:700;">Ainda devido à sócia</td>
-        <td style="padding:10px 8px;background:#0b3d2c;color:#fff;border:1px solid #0b3d2c;text-align:right;font-weight:700;">${formatKz(divSocio.aindaDevido)}</td></tr>
+  <table style="width:100%;border-collapse:collapse;margin:0 auto 14px;font-size:12px;">
+    <tr><td style="padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;">Base (empréstimos / adiantamentos)</td>
+        <td style="padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;text-align:right;font-weight:700;white-space:nowrap;">${formatKz(divSocio.base)}</td></tr>
+    <tr><td style="padding:8px 10px;border:1px solid #e2e8f0;">Abatimentos (uso autorizado do cartão)</td>
+        <td style="padding:8px 10px;border:1px solid #e2e8f0;text-align:right;font-weight:700;color:#b45309;white-space:nowrap;">− ${formatKz(divSocio.abatimentos)}</td></tr>
+    <tr><td style="padding:10px;background:#0b3d2c;color:#fff;border:1px solid #0b3d2c;font-weight:700;">Ainda devido à sócia</td>
+        <td style="padding:10px;background:#0b3d2c;color:#fff;border:1px solid #0b3d2c;text-align:right;font-weight:700;white-space:nowrap;">${formatKz(divSocio.aindaDevido)}</td></tr>
   </table>
   <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#0b3d2c;">Movimentos de abatimento</p>
-  <table style="width:100%;border-collapse:collapse;">
+  <table style="width:100%;border-collapse:collapse;margin:0 auto;">
     <thead>
       <tr style="background:#0b3d2c;color:#fff;">
         <th style="padding:7px 8px;text-align:left;font-size:10px;">Data</th>
@@ -115,7 +115,7 @@ function Dashboard() {
       ${rows || '<tr><td colspan="4" style="padding:12px;text-align:center;color:#94a3b8;font-size:11px;">Nenhum abatimento registado</td></tr>'}
     </tbody>
   </table>
-  <p style="margin-top:18px;font-size:9px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;">
+  <p style="margin-top:18px;font-size:9px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;text-align:center;">
     Documento gerado pelo Departamento de Finanças · ${escola.nome || "École Consulaire"} · Luanda
   </p>
 </div>`;

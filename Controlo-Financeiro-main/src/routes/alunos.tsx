@@ -2592,7 +2592,7 @@ function Alunos() {
 <meta charset="utf-8"/>
 <title>${L.title}</title>
 <style>
-  @page { size: A4 portrait; margin: 18mm 16mm 18mm 16mm; }
+  @page { size: A4 portrait; margin: 16mm 16mm 16mm 16mm; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
@@ -2601,8 +2601,9 @@ function Alunos() {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .sheet {
-    max-width: 100%; margin: 0 auto; padding: 4mm 2mm 6mm 2mm; color: #000;
-    overflow: visible;
+    max-width: 100%; width: 100%; margin: 0 auto;
+    padding: 2mm 0 4mm 0; color: #000;
+    overflow: visible; box-sizing: border-box;
   }
   .head { display: flex; gap: 14px; align-items: center;
     border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 16px;
@@ -2624,19 +2625,19 @@ function Alunos() {
   thead { display: table-header-group; }
   th {
     background: #fff; color: #000; font-size: 10px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.03em; padding: 8px 10px; text-align: left;
+    text-transform: uppercase; letter-spacing: 0.03em; padding: 7px 8px; text-align: left;
     border: 1px solid #000;
   }
   td {
-    padding: 7px 10px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
-    color: #000; word-break: break-word;
+    padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
+    color: #000; word-break: break-word; overflow-wrap: anywhere;
   }
   tr { page-break-inside: avoid; break-inside: avoid; }
   .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #000;
     border-top: 1px solid #999; padding-top: 6px; }
   @media screen {
     body { padding: 16px; background: #e8ece9; }
-    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px 20px;
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px 18px;
       box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   }
 </style>

@@ -604,7 +604,7 @@ function addCoverPage(
 
 
 /** Margem única em todos os PDFs oficiais (mm). 12 mm evita corte nas laterais. */
-const PDF_MARGIN_MM = 16;
+const PDF_MARGIN_MM = 18;
 
 /**
  * Desenha o canvas no PDF A4 com regras FIXAS:
@@ -855,7 +855,7 @@ export async function htmlFragmentsToMultiPageA4Pdf(
 
   const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 portrait; margin: 14mm 12mm; }
+  @page { size: A4 portrait; margin: 16mm 16mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
     font-family: Georgia, "Times New Roman", Times, serif;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1191,7 +1191,7 @@ export function buildOfficialListHtml(opts: {
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 14mm 12mm; }
+  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 16mm 16mm; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #0f172a;

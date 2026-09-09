@@ -213,6 +213,8 @@ function Banco() {
         <Kpi label="Saídas" value={saidas} />
       </div>
 
+      
+
       <p className="mb-4 text-sm text-[var(--color-muted)]">
         As <strong>faturas TPA</strong> (cartão) e os IDs internos estão no separador <strong>Arquivo</strong> — sem duplicar aqui.
       </p>
