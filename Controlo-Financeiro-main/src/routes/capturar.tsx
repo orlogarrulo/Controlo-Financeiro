@@ -43,6 +43,7 @@ function Capturar() {
   const nav = useNavigate();
   const [foto, setFoto] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [abatimentoSocio, setAbatimentoSocio] = useState(false);
   const cats = seed.categorias.filter((c) => c.tipo === "despesa");
   const [form, setForm] = useState<CapturaInput>({
     data: todayIso(),
@@ -114,8 +115,16 @@ function Capturar() {
       return;
     }
     try {
-      const row = add({ ...form, tipo: "despesa", foto });
-      toast.success(`Despesa ${row.docInterno} registada`);
+      const obs = form.observacoes || "";
+      const observacoes = abatimentoSocio
+        ? (obs.toLowerCase().includes("a reembolsar") ? obs : [obs, "A reembolsar"].filter(Boolean).join(" · "))
+        : obs;
+      const row = add({ ...form, tipo: "despesa", foto, observacoes });
+      toast.success(
+        abatimentoSocio
+          ? `Despesa ${row.docInterno} registada · abatimento à dívida da sócia`
+          : `Despesa ${row.docInterno} registada`,
+      );
       void nav({ to: "/lancamentos" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : VIEW_ONLY_MSG);
@@ -298,11 +307,29 @@ function Capturar() {
                 />
               </Field>
             )}
+            <Field label="Acerto com a sócia" className="sm:col-span-2">
+              <label className="flex cursor-pointer items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg-elevated)] p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={abatimentoSocio}
+                  onChange={(e) => setAbatimentoSocio(e.target.checked)}
+                />
+                <span>
+                  <strong className="text-[var(--color-ink)]">Abatimento à dívida da sócia</strong>
+                  <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
+                    Uso autorizado do cartão por falta de liquidez da escola. O valor reduz o que ainda é devido à sócia
+                    (nota automática «A reembolsar»). Não conta como custo operacional.
+                  </span>
+                </span>
+              </label>
+            </Field>
             <Field label="Observações" className="sm:col-span-2">
               <Textarea
                 value={form.observacoes}
                 onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
                 rows={2}
+                placeholder={abatimentoSocio ? "A reembolsar (preenchido ao guardar se vazio)" : ""}
               />
             </Field>
           </div>

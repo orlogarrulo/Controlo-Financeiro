@@ -1908,6 +1908,93 @@ function guessCategoria(desc: string): string {
   return "Outras Despesas";
 }
 
+
+/** Gastos extraordinários autorizados (cartão/conta) a favor da sócia — abatem a dívida. */
+export function isAbatimentoDividaSocio(blob: {
+  descricao?: string;
+  observacoes?: string;
+  categoria?: string;
+  fonte?: string;
+}): boolean {
+  const t = `${blob.descricao || ""} ${blob.observacoes || ""} ${blob.categoria || ""} ${blob.fonte || ""}`.toLowerCase();
+  return /a\s*reembolsar|abatimento\s*(à|a)?\s*d[ií]vida|acerto\s*s[oó]ci/.test(t);
+}
+
+/**
+ * Controlo da dívida à sócia:
+ * - Base = entradas do sócio (empréstimo / adiantamento)
+ * - Abatimentos = gastos no cartão/conta marcados «A reembolsar» (uso autorizado)
+ * - Ainda devido = base − abatimentos
+ */
+export function computeDividaSocio(
+  extras: Lancamento[] = [],
+  movimentosBaiExtra: MovimentoBai[] = [],
+  baiOverride = false,
+  movimentosBaiDeletedIds: string[] = [],
+): {
+  base: number;
+  abatimentos: number;
+  aindaDevido: number;
+  linhasAbatimento: { id: string; data: string; descricao: string; valor: number; origem: string }[];
+} {
+  const base = seed.lancamentosSocio
+    .filter((l) => l.tipo === "entrada")
+    .reduce((s, l) => s + l.valor, 0);
+
+  const linhas: { id: string; data: string; descricao: string; valor: number; origem: string }[] = [];
+  const seenIds = new Set<string>();
+  const seenFp = new Set<string>(); // data|valor — evita contar CX e BAI em duplicado
+
+  const push = (id: string, data: string, descricao: string, valor: number, origem: string) => {
+    if (!id || valor <= 0 || seenIds.has(id)) return;
+    const fp = `${(data || "").slice(0, 10)}|${Number(valor).toFixed(2)}`;
+    if (seenFp.has(fp)) return;
+    seenIds.add(id);
+    seenFp.add(fp);
+    linhas.push({ id, data, descricao, valor, origem });
+  };
+
+  // 1) Movimentos BAI (fonte de verdade da saída do cartão/conta)
+  const bai = movimentosAll(movimentosBaiExtra, baiOverride, movimentosBaiDeletedIds);
+  for (const m of bai) {
+    const sai = Number(m.saida) || 0;
+    if (sai <= 0) continue;
+    if (isAbatimentoDividaSocio({ descricao: m.descricao, observacoes: m.observacoes })) {
+      push(m.id, m.data, m.descricao || m.observacoes || "A reembolsar", sai, "banco");
+    }
+  }
+
+  // 2) Faturas cartão seed (só se não houver já linha BAI na mesma data/valor)
+  for (const c of seed.faturasCartao || []) {
+    if (isAbatimentoDividaSocio(c)) {
+      push(c.id, c.data, c.descricao || "A reembolsar", Number(c.valor) || 0, "cartao");
+    }
+  }
+
+  // 3) Lançamentos extras da app (Nova despesa) marcados
+  for (const l of extras) {
+    if (l.tipo !== "despesa") continue;
+    if (!isAbatimentoDividaSocio(l)) continue;
+    push(l.id, l.data, l.descricao || l.observacoes || "A reembolsar", Number(l.valor) || 0, l.origem || "cartao");
+  }
+
+  // 4) Lançamentos socio seed explicitamente abatimento (raro)
+  for (const l of seed.lancamentosSocio || []) {
+    if (l.tipo !== "despesa") continue;
+    if (!isAbatimentoDividaSocio(l)) continue;
+    push(l.id, l.data, l.descricao || "A reembolsar", Number(l.valor) || 0, "socio");
+  }
+
+  linhas.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  const abatimentos = linhas.reduce((s, r) => s + r.valor, 0);
+  return {
+    base,
+    abatimentos,
+    aindaDevido: Math.max(0, base - abatimentos),
+    linhasAbatimento: linhas,
+  };
+}
+
 export type Totals = {
   alunos: number;
   inscricoesLiquido: number;
@@ -1916,6 +2003,10 @@ export type Totals = {
   descontos: number;
   socioEntradas: number;
   socioDespesas: number;
+  /** Gastos cartão/conta marcados «A reembolsar» — abatem a dívida à sócia */
+  socioAbatimentos: number;
+  /** Ainda devido à sócia = entradas − abatimentos */
+  socioAindaDevido: number;
   custosOperacionais: number;
   custosTotais: number;
   proveitos: number;
@@ -1958,6 +2049,14 @@ export function computeTotals(
   const socioDespesas = seed.lancamentosSocio
     .filter((l) => l.tipo === "despesa")
     .reduce((s, l) => s + l.valor, 0);
+  const divSocio = computeDividaSocio(
+    extras,
+    movimentosBaiExtra,
+    baiOverride,
+    movimentosBaiDeletedIds,
+  );
+  const socioAbatimentos = divSocio.abatimentos;
+  const socioAindaDevido = divSocio.aindaDevido;
 
   const ledger = buildLedger(extras);
   const custosOperacionais = ledger
@@ -1966,6 +2065,8 @@ export function computeTotals(
       // Levantamento ATM = mudança de forma de dinheiro, não custo
       const blob = `${l.pagamento} ${l.categoria} ${l.descricao}`;
       if (/levantamento\s*atm/i.test(blob)) return false;
+      // Abatimento à dívida da sócia ≠ custo operacional da escola
+      if (isAbatimentoDividaSocio(l)) return false;
       return true;
     })
     .reduce((s, l) => s + l.valor, 0);
@@ -2004,6 +2105,8 @@ export function computeTotals(
     descontos,
     socioEntradas,
     socioDespesas,
+    socioAbatimentos,
+    socioAindaDevido,
     custosOperacionais,
     custosTotais,
     proveitos,
