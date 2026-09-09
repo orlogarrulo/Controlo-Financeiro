@@ -361,8 +361,8 @@ function grupoFromTurma(turma: string): string {
 
 /**
  * Sugere a classe/turma a partir da data de nascimento.
- * Referência: idade completa em 1 de setembro do ano lectivo 2026-2027.
- * Sistema educativo República do Congo (Brazzaville) — faixas oficiais:
+ * Referência: idade completa em 1 de outubro do ano lectivo 2026-2027
+ * (início das aulas). Sistema educativo República do Congo (Brazzaville):
  *   Maternelle P1 ≤3 · P2 =4 · P3 =5
  *   CP1=6 · CP2=7 · CE1=8 · CE2=9 · CM1=10 · CM2=11
  *   6ème=12 · 5ème=13 · 4ème=14 · 3ème≥15
@@ -380,8 +380,8 @@ function turmaFromDataNascimento(dataNascimento: string): string | null {
   const born = new Date(y, m - 1, day);
   if (Number.isNaN(born.getTime())) return null;
 
-  // Idade de referência: 1 de setembro de 2026 (início do ano lectivo 2026-2027)
-  const ref = new Date(2026, 8, 1); // mês 8 = setembro
+  // Idade de referência: 1 de outubro de 2026 (início das aulas / ano lectivo 2026-2027)
+  const ref = new Date(2026, 9, 1); // mês 9 = outubro
   let age = ref.getFullYear() - born.getFullYear();
   const md = ref.getMonth() - born.getMonth();
   if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
@@ -670,7 +670,7 @@ function MatriculaForm({
           }}
         />
         <p className="text-[11px] text-[var(--color-muted)]">
-          Classe automática pelo sistema Congo-Brazzaville (idade em 1/set/2026): 13 anos → 5ème, não Maternelle. Pode alterar manualmente.
+          Classe automática pelo sistema Congo-Brazzaville (idade em 1/out/2026 — início das aulas): 13 anos → 5ème, não Maternelle. Pode alterar manualmente.
         </p>
       </div>
       <div className="space-y-1.5">
@@ -2425,14 +2425,16 @@ function Alunos() {
       toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
-    // Agrupa pela classe corrigida (Congo-Brazzaville): se há data de nascimento,
-    // recalcula a turma — evita 13 anos em Maternelle no PDF.
+    // Agrupa pela turma OFICIAL já atribuída (a.turma), que corresponde ao ID
+    // (ex.: P3-05 → tabela Maternelle P3). Só usa a sugestão por data de nascimento
+    // quando a matrícula ainda não tem turma definida. Assim o PDF respeita o ID
+    // e a classe escolhida no separador Matrículas (Congo-Brazzaville).
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
       const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
       const k =
+        (a.turma && String(a.turma).trim()) ||
         suggested ||
-        a.turma ||
         (lang === "fr" ? "Sans classe" : "Sem classe");
       if (!byClass.has(k)) byClass.set(k, []);
       byClass.get(k)!.push(a);
@@ -2454,8 +2456,8 @@ function Alunos() {
       const [y, m, day] = parts;
       const born = new Date(y, (m || 1) - 1, day || 1);
       if (Number.isNaN(born.getTime())) return "—";
-      // Idade de referência: 1 set 2026 (ano lectivo) — alinhado com classe Congo-Brazzaville
-      const ref = new Date(2026, 8, 1);
+      // Idade de referência: 1 out 2026 (início das aulas / ano lectivo) — alinhado com classe Congo-Brazzaville
+      const ref = new Date(2026, 9, 1);
       let age = ref.getFullYear() - born.getFullYear();
       const md = ref.getMonth() - born.getMonth();
       if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;

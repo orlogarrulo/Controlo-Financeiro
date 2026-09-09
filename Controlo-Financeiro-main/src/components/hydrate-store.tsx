@@ -8,10 +8,10 @@ import {
   saveAlunoFoto,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
-import { useFinance } from "@/lib/store";
+import { useFinance, recalcularClassesMatriculas } from "@/lib/store";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
-const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v2";
+const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v3"; // v3: ref idade = 1/out/2026 + PDF agrupa por turma oficial
 
 /**
  * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):

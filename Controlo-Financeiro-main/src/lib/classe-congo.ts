@@ -1,6 +1,7 @@
 /**
  * Sistema educativo República do Congo (Brazzaville).
- * Idade de referência: 1 de setembro do ano lectivo 2026-2027.
+ * Idade de referência: 1 de outubro do ano lectivo 2026-2027
+ * (início das aulas / referência oficial da escola).
  *
  * Maternelle P1 ≤3 · P2=4 · P3=5
  * CP1=6 · CP2=7 · CE1=8 · CE2=9 · CM1=10 · CM2=11
@@ -9,7 +10,7 @@
  * Um aluno de 13 anos NUNCA fica em Maternelle — vai para 5ème.
  */
 
-export const REF_ANO_LECTIVO = new Date(2026, 8, 1); // 1 set 2026
+export const REF_ANO_LECTIVO = new Date(2026, 9, 1); // 1 out 2026
 
 export function idadeEmRef(dataNascimento: string, ref: Date = REF_ANO_LECTIVO): number | null {
   if (!dataNascimento || dataNascimento.length < 8) return null;

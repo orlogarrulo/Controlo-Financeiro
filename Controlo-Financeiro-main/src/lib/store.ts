@@ -2100,7 +2100,7 @@ export function recalcularClassesMatriculas(): number {
     try {
       useFinance.getState().pushAudit?.(
         "recalcular_classes",
-        `${changed} matrícula(s) · Congo-Brazzaville (idade em 1/set/2026)`,
+        `${changed} matrícula(s) · Congo-Brazzaville (idade em 1/out/2026)`,
       );
     } catch {
       /* audit opcional */

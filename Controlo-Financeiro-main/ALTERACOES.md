@@ -1,5 +1,12 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 7. PDF classes · turma oficial + idade em 1/out (2026-09-09)
+- **Causa do bug:** o PDF das classes agrupava pela turma *sugerida* pela data de nascimento, ignorando a turma já atribuída (`a.turma`) e o ID (ex.: P3-05 aparecia na tabela Maternelle P2).
+- **Correcção:** `imprimirAlunosPorClasse` passa a agrupar pela **turma oficial** (`a.turma`). A sugestão por nascimento só é usada se a matrícula ainda não tiver turma.
+- Referência de idade alinhada com o início das aulas: **1 de outubro de 2026** (`classe-congo.ts`, formulário e PDF).
+- Migração nuvem: flag `ecc-classes-congo-v3` (recalcula e faz push após deploy).
+- Import em falta de `recalcularClassesMatriculas` em `hydrate-store.tsx` corrigido.
+
 ## 6. Inbox · OCR de extrato BAI (2026-09-08)
 - Screenshot do extrato no separador **Inbox** → Tesseract.js (por+eng)
 - Parser `parseBaiExtratoText` reescreve entradas/saídas
@@ -36,8 +43,8 @@ Após deploy: hard refresh (Ctrl+Shift+R).
 ## 3. Actualização 2026-09-07 (tarde)
 - **BAI:** saída 06-09-2026 «Mão de obra Blaise» −50 000 Kz · saldo final **4 180 370,76 Kz**
 - **Salários:** pesquisa por nome / função / IBAN no cadastro
-- **PDF lista de alunos:** agrupa pela classe recalculada (Congo-Brazzaville); idade em 1/set/2026
-  - Corrige casos como 13 anos em Maternelle P1 → **5ème** no PDF
+- **PDF lista de alunos:** agrupa pela turma oficial atribuída (respeita o ID); idade de referência 1/out/2026
+  - Ver secção 7 (correcção do agrupamento incorrecto)
 
 ## 4. Formatação uniforme impressão (planilhas + PDF)
 - `src/lib/export-print.ts`: planilhas A4 **horizontal**, cabeçalho a negrito, tabela com faixas, fit impressão
@@ -48,4 +55,4 @@ Após deploy: hard refresh (Ctrl+Shift+R).
 - `src/lib/logo-escola.ts`: logotipo em **data-URL** no bundle (não depende de /public no deploy)
 - UI inicial (layout, operator-gate, index) e **todos os PDFs** usam o logo embutido
 - `/public/logo-escola.jpg` optimizado mantido como fallback
-- Migração classes Congo: flag `ecc-classes-congo-v2` (recalcula na nuvem após deploy)
+- Migração classes Congo: flag `ecc-classes-congo-v3` (recalcula na nuvem após deploy; ref. 1/out/2026)
