@@ -2447,18 +2447,18 @@ function Alunos() {
       toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
-    // Agrupa pela mesma turma que a app mostra em Matrículas (campo `turma`).
-    // O ID continua visível na linha, mas NÃO decide a secção do PDF — evita
-    // alunos com ID antigo (ex. P1-xx) a aparecerem em Maternelle quando a
-    // matrícula já está noutra classe, e o contrário.
+    // REGRA OBRIGATÓRIA: secção do PDF = prefixo do ID (P3-05 → Maternelle P3).
+    // A turma gravada pode estar corruptida por migrações antigas; o ID é a
+    // identificação oficial do aluno e da classe. Fallback só se o ID não
+    // tiver prefixo conhecido.
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
       const fromId = turmaFromIdLocal(a.id);
-      const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
       const stored = a.turma && String(a.turma).trim();
+      const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
       const k =
-        stored ||
         fromId ||
+        stored ||
         suggested ||
         (lang === "fr" ? "Sans classe" : "Sem classe");
       if (!byClass.has(k)) byClass.set(k, []);

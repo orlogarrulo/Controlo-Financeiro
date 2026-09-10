@@ -1,5 +1,15 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 9. CORRECÇÃO CRÍTICA — PDF/tabelas por ID (2026-09-10)
+- **Problema:** alunos com ID correcto (P3-05, CP1-02, 4E-02) apareciam na tabela errada no PDF.
+- **Causa:** `a.turma` na nuvem/local tinha sido sobrescrita pela idade; o PDF agrupava por `a.turma`.
+- **Solução definitiva:**
+  1. `alunosAll()` força `turma = prefixo do ID` em tempo de leitura
+  2. PDF `imprimirAlunosPorClasse` agrupa **sempre** por `turmaFromId(id)` primeiro
+  3. `recalcularClassesMatriculas` restaura turma a partir do ID e grava na nuvem
+  4. Migração `ecc-classes-congo-v6`
+- Resultado: P3-05 → tabela Maternelle P3; CP1-02 → CP1; 4E-02 → 4ème
+
 ## 8. Turma oficial = prefixo do ID (2026-09-09)
 - **Causa real do erro no PDF:** a migração `recalcularClassesMatriculas` sobrescrevia `a.turma` com a idade (ex.: P3-05 nascido 20/10/2021 → idade 4 → P2). O ID ficava P3-05 e a tabela passava a P2; CP1-02 e 4E-02 iam para Maternelle P3.
 - **Regra de ouro:** o **ID** define a classe (P3-05 → Maternelle P3). Data de nascimento só sugere em matrícula nova ou turma vazia.

@@ -2236,25 +2236,17 @@ export function recalcularClassesMatriculas(): number {
     changed += 1;
   };
 
-  /** Decide a turma correcta sem destruir a atribuição oficial na matrícula. */
+  /** Decide a turma correcta. ID (prefixo) é sempre a fonte de verdade. */
   const resolveTurma = (a: { id?: string; turma?: string; dataNascimento?: string }): string | null => {
     const fromId = a.id ? turmaFromId(a.id) : null;
     const current = (a.turma || "").trim();
     const fromBirth = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
-    const age = a.dataNascimento ? idadeEmRef(a.dataNascimento) : null;
 
-    // Inconsistência grave: idade ≥ 6 em Maternelle (ex. 11/13 anos em P1) → classe pela idade
-    if (fromBirth && age !== null && age >= 6) {
-      const matStored = current.startsWith("Maternelle");
-      const matId = Boolean(fromId && fromId.startsWith("Maternelle"));
-      if (matStored || matId) return fromBirth;
-    }
-
-    // 1) Turma já gravada na matrícula — manda (é o que a app mostra)
-    if (current) return current;
-    // 2) Sem turma: prefixo do ID
+    // 1) Prefixo do ID manda sempre (P3-05 → Maternelle P3)
     if (fromId) return fromId;
-    // 3) Sem turma nem ID legível: sugestão pela data de nascimento
+    // 2) Turma já gravada
+    if (current) return current;
+    // 3) Sugestão por data de nascimento
     if (fromBirth) return fromBirth;
     return null;
   };
@@ -2335,7 +2327,12 @@ export function alunosAll(
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
     const merged = o ? { ...a, ...o, id: a.id } : { ...a };
-    // Normaliza grupo pelo ciclo da turma (corrige seed antigo CM2→CM2, 3ème→3ème, etc.)
+    // Fonte de verdade: prefixo do ID (P3-05 → Maternelle P3). Corrige
+    // overrides/seed onde a turma foi sobrescrita pela idade.
+    const fromId = turmaFromId(merged.id);
+    if (fromId && merged.turma !== fromId) {
+      merged.turma = fromId;
+    }
     const g = grupoFromTurma(merged.turma || "");
     if (merged.grupo !== g) merged.grupo = g;
     return merged;

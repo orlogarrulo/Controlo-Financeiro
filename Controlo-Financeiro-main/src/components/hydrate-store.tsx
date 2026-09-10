@@ -11,7 +11,7 @@ import {
 import { useFinance, recalcularClassesMatriculas } from "@/lib/store";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
-const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v5"; // v5: turma gravada manda; PDF/app alinhados; ID não sobrescreve turma
+const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v6"; // v6: PDF/dados — turma = prefixo do ID sempre
 
 /**
  * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):
