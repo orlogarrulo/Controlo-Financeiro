@@ -2592,7 +2592,7 @@ function Alunos() {
 <meta charset="utf-8"/>
 <title>${L.title}</title>
 <style>
-  @page { size: A4 portrait; margin: 16mm 16mm 16mm 16mm; }
+  @page { size: A4 portrait; margin: 16mm 14mm 16mm 32mm; } /* top right bottom left — esquerda 2× */
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
@@ -2601,7 +2601,7 @@ function Alunos() {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .sheet {
-    max-width: 100%; width: 100%; margin: 0 auto;
+    max-width: 100%; width: 100%; margin: 0;
     padding: 2mm 0 4mm 0; color: #000;
     overflow: visible; box-sizing: border-box;
   }
