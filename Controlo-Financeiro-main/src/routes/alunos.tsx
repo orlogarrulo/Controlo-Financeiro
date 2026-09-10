@@ -354,6 +354,16 @@ function num(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Telefone preenchido na matrícula (ignora traços / n/d). */
+function temContactoTelefonico(a: { telefone?: string }): boolean {
+  const t = String(a.telefone || "")
+    .replace(/[\s./()-]/g, "")
+    .toLowerCase();
+  if (!t) return false;
+  if (/^(—|-|n\/?a|n\/?d|nd|sem|s\/n|nenhum|none|null|undefined)$/i.test(t)) return false;
+  return /\d{6,}/.test(t);
+}
+
 function grupoFromTurma(turma: string): string {
   if (turma.startsWith("Maternelle")) return "Maternelle";
   if (["CP1", "CP2", "CE1", "CE2", "CM1", "CM2"].includes(turma)) return "Primaire";
@@ -1476,6 +1486,7 @@ function Alunos() {
 
   const [q, setQ] = useState("");
   const [turmaFiltro, setTurmaFiltro] = useState("todas");
+  const [soSemTelefone, setSoSemTelefone] = useState(false);
   const [editing, setEditing] = useState<Aluno | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -1516,10 +1527,12 @@ function Alunos() {
     () => ["todas", ...TURMAS.filter((t) => alunos.some((a) => a.turma === t))],
     [alunos],
   );
+  const semTelefoneCount = alunos.filter((a) => !temContactoTelefonico(a)).length;
   const filtered = alunos.filter((a) => {
     if (turmaFiltro !== "todas" && a.turma !== turmaFiltro) return false;
+    if (soSemTelefone && temContactoTelefonico(a)) return false;
     if (!q) return true;
-    return `${a.nome} ${a.id} ${a.familia} ${a.encarregado} ${a.pai || ""} ${a.mae || ""}`
+    return `${a.nome} ${a.id} ${a.familia} ${a.encarregado} ${a.pai || ""} ${a.mae || ""} ${a.telefone || ""}`
       .toLowerCase()
       .includes(q.toLowerCase());
   });
@@ -2473,9 +2486,9 @@ function Alunos() {
     const L =
       lang === "fr"
         ? {
-            title: "Liste des élèves",
+            title: soSemTelefone ? "Élèves sans contact téléphonique" : "Liste des élèves",
             year: "Année scolaire",
-            all: "Toutes les classes",
+            all: soSemTelefone ? "Sans téléphone à l'inscription" : "Toutes les classes",
             classPref: "Classe",
             pupils: "élève(s)",
             colId: "ID",
@@ -2490,9 +2503,9 @@ function Alunos() {
             saveHint: "utilisez « Enregistrer au format PDF » si besoin",
           }
         : {
-            title: "Lista de alunos",
+            title: soSemTelefone ? "Alunos sem contacto telefónico" : "Lista de alunos",
             year: "Ano lectivo",
-            all: "Todas as classes",
+            all: soSemTelefone ? "Sem telefone na matrícula" : "Todas as classes",
             classPref: "Classe",
             pupils: "aluno(s)",
             colId: "ID",
@@ -3298,10 +3311,24 @@ function Alunos() {
             </option>
           ))}
         </select>
+        <Button
+          type="button"
+          variant={soSemTelefone ? "default" : "outline"}
+          className="shrink-0"
+          title="Mostrar só matrículas sem número de telefone"
+          onClick={() => setSoSemTelefone((v) => !v)}
+        >
+          Sem telefone{semTelefoneCount ? ` (${semTelefoneCount})` : ""}
+        </Button>
       </div>
 
       <p className="mb-2 text-sm text-[var(--color-muted)]">
         {filtered.length} alunos · Total liquidado {formatKz(total)} · {escola.ano}
+        {semTelefoneCount > 0 ? (
+          <span className="ml-2 text-amber-800 dark:text-amber-300">
+            · {semTelefoneCount} sem contacto telefónico na matrícula
+          </span>
+        ) : null}
       </p>
 
       <div ref={printRef}>
@@ -3327,6 +3354,7 @@ function Alunos() {
               <th className="px-3 py-2 text-left">ID</th>
               <th className="px-3 py-2 text-left">Nome</th>
               <th className="px-3 py-2 text-left">Turma</th>
+              <th className="px-3 py-2 text-left">Telefone</th>
               <th className="px-3 py-2 text-left">Data</th>
               <th className="px-3 py-2 text-right">Líquido</th>
               <th className="px-3 py-2 text-left">Seguro</th>
@@ -3355,6 +3383,13 @@ function Alunos() {
                   ) : null}
                 </td>
                 <td className="px-3 py-2">{a.turma}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs">
+                  {temContactoTelefonico(a) ? (
+                    a.telefone
+                  ) : (
+                    <span className="text-amber-800 dark:text-amber-300">Sem contacto</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   {a.dataPag ? formatDate(a.dataPag) : "—"}
                 </td>
