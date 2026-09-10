@@ -19,6 +19,8 @@ import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
 import {
   grupoFromTurma,
   resolveTurmaOficial,
+  turmaFromId,
+  nextIdForTurma,
 } from "@/lib/classe-congo";
 
 const seed = seedJson as Seed;
@@ -2316,7 +2318,132 @@ export function recalcularClassesMatriculas(): number {
       /* audit opcional */
     }
   }
+  changed += realinharIdsPorTurma();
   return changed;
+}
+
+/**
+ * Quando a turma oficial já não corresponde ao prefixo do ID
+ * (P1-07 em CM2, 4E-02 com 5 anos em P3), emite um ID novo da turma
+ * e actualiza propinas, extrato BAI, fotos e overrides.
+ */
+export function realinharIdsPorTurma(): number {
+  const state = useFinance.getState();
+  let extras = [...(state.alunosExtra || [])];
+  let overrides = { ...(state.alunosOverrides || {}) } as Record<string, Partial<Aluno>>;
+  let deleted = [...(state.alunosDeletedIds || [])];
+  let mensalidades = [...(state.mensalidades || [])];
+  let faturas = [...(state.faturasPropina || [])];
+  let fotos = { ...(state.fotos || {}) } as Record<string, string>;
+  let baiExtra = [...(state.movimentosBaiExtra || [])];
+  let baiDeleted = [...(state.movimentosBaiDeletedIds || [])];
+
+  const seedIds = new Set((seed.alunos || []).map((a) => a.id));
+  const taken = new Set<string>([
+    ...(seed.alunos || []).map((a) => a.id),
+    ...extras.map((a) => a.id),
+    ...deleted,
+  ]);
+
+  const rewriteBlob = (s: string, from: string, to: string) =>
+    (s || "").split(from).join(to);
+
+  const applyRename = (oldId: string, newId: string) => {
+    extras = extras.map((a) =>
+      a.id === oldId ? { ...a, id: newId, idAnterior: oldId } : a,
+    );
+    if (overrides[oldId]) {
+      const prev = overrides[oldId];
+      delete overrides[oldId];
+      overrides[newId] = { ...prev, idAnterior: oldId };
+    }
+    mensalidades = mensalidades.map((m) =>
+      m.id === oldId ? { ...m, id: newId } : m,
+    );
+    faturas = faturas.map((f) =>
+      (f as { alunoId?: string }).alunoId === oldId
+        ? { ...f, alunoId: newId }
+        : f,
+    );
+    if (fotos[oldId] && !fotos[newId]) {
+      fotos[newId] = fotos[oldId];
+    }
+    delete fotos[oldId];
+    baiExtra = baiExtra.map((m) => ({
+      ...m,
+      id: rewriteBlob(m.id, oldId, newId),
+      descricao: rewriteBlob(m.descricao || "", oldId, newId),
+      observacoes: rewriteBlob(m.observacoes || "", oldId, newId),
+    }));
+    baiDeleted = baiDeleted.map((id) => rewriteBlob(id, oldId, newId));
+    if (!deleted.includes(oldId)) deleted.push(oldId);
+    taken.delete(oldId);
+    taken.add(newId);
+  };
+
+  let remapped = 0;
+
+  // Extras
+  for (const a of [...extras]) {
+    if (!a?.id) continue;
+    const turma = resolveTurmaOficial(a);
+    if (!turma) continue;
+    const fromId = turmaFromId(a.id);
+    if (fromId === turma) continue;
+    const newId = nextIdForTurma(turma, taken);
+    if (newId === a.id) continue;
+    extras = extras.map((row) =>
+      row.id === a.id ? { ...row, turma, grupo: grupoFromTurma(turma) } : row,
+    );
+    applyRename(a.id, newId);
+    remapped += 1;
+  }
+
+  // Seed cujo prefixo já não bate certo: clonar para extra com ID novo e esconder o seed
+  for (const raw of seed.alunos || []) {
+    if (!raw?.id || deleted.includes(raw.id)) continue;
+    const merged = { ...raw, ...(overrides[raw.id] || {}) } as Aluno;
+    const turma = resolveTurmaOficial(merged);
+    if (!turma) continue;
+    const fromId = turmaFromId(raw.id);
+    if (fromId === turma) continue;
+    const newId = nextIdForTurma(turma, taken);
+    extras.push({
+      ...merged,
+      id: newId,
+      idAnterior: raw.id,
+      turma,
+      grupo: grupoFromTurma(turma),
+    });
+    if (overrides[raw.id]) {
+      overrides[newId] = { ...overrides[raw.id], idAnterior: raw.id };
+      delete overrides[raw.id];
+    }
+    applyRename(raw.id, newId);
+    remapped += 1;
+  }
+
+  if (remapped === 0) return 0;
+
+  useFinance.setState({
+    alunosExtra: extras,
+    alunosOverrides: overrides,
+    alunosDeletedIds: deleted,
+    mensalidades,
+    faturasPropina: faturas,
+    fotos,
+    movimentosBaiExtra: baiExtra,
+    movimentosBaiDeletedIds: baiDeleted,
+  });
+  try {
+    useFinance.getState().pushAudit?.(
+      "realinhar_ids",
+      `${remapped} ID(s) alinhados à turma oficial`,
+    );
+  } catch {
+    /* audit opcional */
+  }
+  return remapped;
 }
 
 

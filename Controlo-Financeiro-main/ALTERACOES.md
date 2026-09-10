@@ -1,5 +1,12 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 11. Realinhar IDs à turma (2026-09-10)
+- O PDF já punha Abdel (11 anos) em CM2 e William (5 anos, ID 4E-02) em P3, mas o **ID antigo** continuava visível na tabela.
+- `realinharIdsPorTurma()` emite ID novo da turma (P1-07 → CM2-xx, 4E-02 → P3-xx) e actualiza propinas, BAI, fotos.
+- IDs antigos vão para `alunosDeletedIds` (não reaparecem no merge da nuvem).
+- Migração `ecc-classes-congo-v8` + botão **Realinhar IDs** em Matrículas.
+- Depois: hard refresh e voltar a gerar o PDF.
+
 ## 10. Classes pela idade + Inbox abatimento sócia (2026-09-10)
 - **PDF / tabelas:** deixar de forçar a turma pelo prefixo do ID. Um aluno P1-07 com 11 anos (2015) ou P1-05 com 13 anos (2012) **não** fica em Maternelle P1 — vai para CM2 / 5ème.
 - Nova função `resolveTurmaOficial()`: idade incompatível com o ID prevalece; turma gravada só se mantém se estiver ±1 ano da faixa.

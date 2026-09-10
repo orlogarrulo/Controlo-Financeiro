@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance } from "@/lib/store";
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas } from "@/lib/store";
 import { resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -3235,6 +3235,23 @@ function Alunos() {
                 <option value="fr">FR</option>
                 <option value="pt">PT</option>
               </select>
+              {canEdit ? (
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  title="Corrige turma pela idade e muda o ID (P1-07 com 11 anos → CM2-xx)"
+                  onClick={() => {
+                    const n = recalcularClassesMatriculas();
+                    if (n > 0) {
+                      toast.success(`${n} matrícula(s) realinhada(s). Volte a gerar o PDF.`);
+                    } else {
+                      toast.message("Nada a corrigir — IDs já correspondem à turma.");
+                    }
+                  }}
+                >
+                  Realinhar IDs
+                </Button>
+              ) : null}
               <Button
                 className="shrink-0"
                 variant="secondary"

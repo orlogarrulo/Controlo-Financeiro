@@ -82,6 +82,38 @@ export function turmaFromId(id: string): string | null {
   return map[prefix] || null;
 }
 
+export const PREFIXO_TURMA: Record<string, string> = {
+  "Maternelle P1": "P1",
+  "Maternelle P2": "P2",
+  "Maternelle P3": "P3",
+  Maternelle: "MAT",
+  CP1: "CP1",
+  CP2: "CP2",
+  CE1: "CE1",
+  CE2: "CE2",
+  CM1: "CM1",
+  CM2: "CM2",
+  "6ème": "6E",
+  "5ème": "5E",
+  "4ème": "4E",
+  "3ème": "3E",
+};
+
+export function prefixFromTurma(turma: string): string {
+  return PREFIXO_TURMA[(turma || "").trim()] || "AL";
+}
+
+export function nextIdForTurma(turma: string, taken: Iterable<string>): string {
+  const prefix = prefixFromTurma(turma);
+  const re = new RegExp(`^${prefix}-(\\d+)$`, "i");
+  let max = 0;
+  for (const id of taken) {
+    const m = String(id || "").match(re);
+    if (m) max = Math.max(max, Number(m[1]) || 0);
+  }
+  return `${prefix}-${String(max + 1).padStart(2, "0")}`;
+}
+
 /** Idade típica da turma em 1/out (min, max inclusive). */
 export function idadeFaixaTurma(turma: string): [number, number] | null {
   const t = (turma || "").trim();

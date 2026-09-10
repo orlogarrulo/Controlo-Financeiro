@@ -11,7 +11,7 @@ import {
 import { useFinance, recalcularClassesMatriculas } from "@/lib/store";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
-const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v7"; // v7: idade prevalece se ID incompatível (P1 + 11 anos → CM2)
+const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
 
 /**
  * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):
@@ -103,7 +103,7 @@ export function HydrateStore() {
           localStorage.setItem(CLASSES_MIGRATE_KEY, new Date().toISOString());
           if (n > 0) {
             toast.success(
-              `Classes actualizadas (Congo-Brazzaville): ${n} matrícula(s). A sincronizar com a nuvem…`,
+              `Classes e IDs actualizados: ${n} matrícula(s). A sincronizar com a nuvem…`,
             );
           }
         }

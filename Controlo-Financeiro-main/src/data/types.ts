@@ -96,6 +96,8 @@ export type FundoPagamento = {
 
 export type Aluno = {
   id: string;
+  /** ID anterior quando a matrícula foi realinhada à turma correcta. */
+  idAnterior?: string;
   nome: string;
   /** Data de nascimento (YYYY-MM-DD). */
   dataNascimento?: string;
