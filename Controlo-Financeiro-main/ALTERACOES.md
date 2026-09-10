@@ -1,5 +1,11 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 10. Classes pela idade + Inbox abatimento sócia (2026-09-10)
+- **PDF / tabelas:** deixar de forçar a turma pelo prefixo do ID. Um aluno P1-07 com 11 anos (2015) ou P1-05 com 13 anos (2012) **não** fica em Maternelle P1 — vai para CM2 / 5ème.
+- Nova função `resolveTurmaOficial()`: idade incompatível com o ID prevalece; turma gravada só se mantém se estiver ±1 ano da faixa.
+- Migração `ecc-classes-congo-v7`.
+- **Abatimento da dívida da sócia:** tipo Inbox «Abatimento dívida sócia». Registo → extrato BAI (nota «A reembolsar») + Quadro actualiza «ainda devido». **Não** cria despesa da escola.
+
 ## 9. CORRECÇÃO CRÍTICA — PDF/tabelas por ID (2026-09-10)
 - **Problema:** alunos com ID correcto (P3-05, CP1-02, 4E-02) apareciam na tabela errada no PDF.
 - **Causa:** `a.turma` na nuvem/local tinha sido sobrescrita pela idade; o PDF agrupava por `a.turma`.

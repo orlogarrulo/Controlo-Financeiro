@@ -335,7 +335,8 @@ export type InboxTipo =
   | "deposito"
   | "comissao_transferencia"
   | "comissao_fecho_tpa"
-  | "taxa_aluguer_tpa";
+  | "taxa_aluguer_tpa"
+  | "abatimento_socio";
 
 export type InboxStatus = "por_classificar" | "classificado" | "reconciliado" | "duplicado" | "ignorado";
 

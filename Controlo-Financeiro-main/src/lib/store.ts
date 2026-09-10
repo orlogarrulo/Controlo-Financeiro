@@ -17,11 +17,8 @@ import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
 import { assertCanEdit } from "@/lib/can-edit";
 import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
 import {
-  turmaFromDataNascimento,
-  turmaFromId,
   grupoFromTurma,
-  idadeEmRef,
-  propinaDefaultFromTurma,
+  resolveTurmaOficial,
 } from "@/lib/classe-congo";
 
 const seed = seedJson as Seed;
@@ -381,6 +378,7 @@ export const useFinance = create<Store>()(
         const suggestTipo = (desc: string, valor: number): import("@/data/types").InboxTipo => {
           const d = (desc || "").toLowerCase();
           if (/sal[aá]rio|honor[aá]rio|rh-20|app-sal/i.test(d)) return "salario";
+          if (/a\s*reembolsar|abatimento\s*(à|a)?\s*d[ií]vida|acerto\s*s[oó]ci/i.test(d)) return "abatimento_socio";
           if (/propina|mensalidade|prop-|frais|scolarit/i.test(d)) return "propina";
           if (/comiss[aã]o.*fecho|fecho.*comiss/i.test(d)) return "comissao_fecho_tpa";
           if (/alug(?:uer)?\s*tpa|comiss[aã]o\s*alug/i.test(d)) return "taxa_aluguer_tpa";
@@ -609,14 +607,29 @@ export const useFinance = create<Store>()(
             continue;
           }
           const movId = `INB-BAI-${it.id}`.slice(0, 40);
+          const abatSocio =
+            it.tipo === "abatimento_socio" ||
+            isAbatimentoDividaSocio({
+              descricao: it.descricao,
+              observacoes: it.observacoes,
+            });
+          const descBai = abatSocio && !/a\s*reembolsar/i.test(it.descricao || "")
+            ? `${it.descricao || "Uso do cartão"} · A reembolsar`
+            : it.descricao || "Movimento Inbox → BAI";
           const ok = pushBaiMovimento(get, set, {
             id: movId,
             data: it.data,
             entrada,
             saida,
-            banco: entrada > 0 ? "INBOX-ENTRADA" : "INBOX-SAIDA",
-            descricao: it.descricao || "Movimento Inbox → BAI",
-            observacoes: `Sync Inbox ${it.id}`,
+            banco: entrada > 0 ? "INBOX-ENTRADA" : abatSocio ? "INBOX-SOCIO" : "INBOX-SAIDA",
+            descricao: descBai,
+            observacoes: [
+              `Sync Inbox ${it.id}`,
+              abatSocio ? "A reembolsar" : "",
+              it.observacoes || "",
+            ]
+              .filter(Boolean)
+              .join(" · "),
           });
           if (!ok) {
             duplicados += 1;
@@ -2208,14 +2221,12 @@ export function computeTotals(
 /**
  * Alinha turma + grupo das matrículas.
  *
- * REGRA DE OURO: o ID é a fonte de verdade da classe atribuída
- * (ex.: P3-05 → Maternelle P3). A data de nascimento só sugere a classe
- * em matrículas NOVAS ou quando a turma está vazia — NUNCA sobrescreve
- * uma turma que já corresponde ao prefixo do ID.
+ * REGRA DE OURO: a turma da tabela segue a idade (sistema Congo) quando
+ * o prefixo do ID é incompatível (P1-07 nascido em 2015 ≠ Maternelle P1).
+ * Se a turma gravada for compatível com a idade (±1 ano), mantém-se.
  *
  * Esta função:
- * 1) Restaura turma a partir do prefixo do ID quando estiver desalinhada
- *    (corrige migrações anteriores que moveram alunos pela idade).
+ * 1) Corrige turmas incompatíveis com a data de nascimento.
  * 2) Só preenche turma vazia com a sugestão por data de nascimento.
  * 3) Normaliza o campo grupo.
  *
@@ -2236,19 +2247,10 @@ export function recalcularClassesMatriculas(): number {
     changed += 1;
   };
 
-  /** Decide a turma correcta. ID (prefixo) é sempre a fonte de verdade. */
+  /** Decide a turma correcta. Idade incompatível com o ID (ex. 13 anos em P1) manda. */
   const resolveTurma = (a: { id?: string; turma?: string; dataNascimento?: string }): string | null => {
-    const fromId = a.id ? turmaFromId(a.id) : null;
-    const current = (a.turma || "").trim();
-    const fromBirth = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
-
-    // 1) Prefixo do ID manda sempre (P3-05 → Maternelle P3)
-    if (fromId) return fromId;
-    // 2) Turma já gravada
-    if (current) return current;
-    // 3) Sugestão por data de nascimento
-    if (fromBirth) return fromBirth;
-    return null;
+    const resolved = resolveTurmaOficial(a);
+    return resolved || null;
   };
 
   // 1) Alunos extra (criados na app)
@@ -2327,11 +2329,11 @@ export function alunosAll(
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
     const merged = o ? { ...a, ...o, id: a.id } : { ...a };
-    // Fonte de verdade: prefixo do ID (P3-05 → Maternelle P3). Corrige
-    // overrides/seed onde a turma foi sobrescrita pela idade.
-    const fromId = turmaFromId(merged.id);
-    if (fromId && merged.turma !== fromId) {
-      merged.turma = fromId;
+    // Turma oficial: idade prevalece se o prefixo do ID for incompatível
+    // (P1-07 com 11 anos → CM2, não Maternelle P1).
+    const resolved = resolveTurmaOficial(merged);
+    if (resolved && merged.turma !== resolved) {
+      merged.turma = resolved;
     }
     const g = grupoFromTurma(merged.turma || "");
     if (merged.grupo !== g) merged.grupo = g;

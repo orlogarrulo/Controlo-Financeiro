@@ -11,7 +11,7 @@ import {
 import { useFinance, recalcularClassesMatriculas } from "@/lib/store";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
-const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v6"; // v6: PDF/dados — turma = prefixo do ID sempre
+const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v7"; // v7: idade prevalece se ID incompatível (P1 + 11 anos → CM2)
 
 /**
  * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
+import { resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
 import {
@@ -438,29 +439,6 @@ function nextAlunoId(turma: string, existing: Aluno[]): string {
     }
   }
   return `${prefix}-${String(max + 1).padStart(2, "0")}`;
-}
-
-/** Turma oficial a partir do prefixo do ID (P3-05 → Maternelle P3). O ID manda. */
-function turmaFromIdLocal(id: string): string | null {
-  if (!id) return null;
-  const prefix = id.split("-")[0]?.toUpperCase() || "";
-  const map: Record<string, string> = {
-    P1: "Maternelle P1",
-    P2: "Maternelle P2",
-    P3: "Maternelle P3",
-    MAT: "Maternelle",
-    CP1: "CP1",
-    CP2: "CP2",
-    CE1: "CE1",
-    CE2: "CE2",
-    CM1: "CM1",
-    CM2: "CM2",
-    "6E": "6ème",
-    "5E": "5ème",
-    "4E": "4ème",
-    "3E": "3ème",
-  };
-  return map[prefix] || null;
 }
 
 function nextRecibo(existing: Aluno[]): string {
@@ -1572,13 +1550,12 @@ function Alunos() {
       return;
     }
     setEditing(a);
-    // A turma oficial é a do ID (P3-05 → Maternelle P3). Só se não houver
-    // prefixo conhecido se usa a turma gravada ou a sugestão por nascimento.
-    const fromId = turmaFromIdLocal(a.id);
+    // Turma oficial: idade prevalece se o ID (ex. P1-07) for incompatível.
     const suggestedTurma = a.dataNascimento
       ? turmaFromDataNascimento(a.dataNascimento)
       : null;
-    const turmaCorrigida = fromId || a.turma || suggestedTurma || TURMAS[0];
+    const turmaCorrigida =
+      resolveTurmaOficial(a) || a.turma || suggestedTurma || TURMAS[0];
     setForm({
       nome: a.nome || "",
       pai: a.pai || "",
@@ -2447,17 +2424,15 @@ function Alunos() {
       toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
-    // REGRA OBRIGATÓRIA: secção do PDF = prefixo do ID (P3-05 → Maternelle P3).
-    // A turma gravada pode estar corruptida por migrações antigas; o ID é a
-    // identificação oficial do aluno e da classe. Fallback só se o ID não
-    // tiver prefixo conhecido.
+    // REGRA: secção do PDF = turma oficial (idade se o ID for incompatível).
+    // P1-07 com 11 anos vai para CM2, não para Maternelle P1.
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
-      const fromId = turmaFromIdLocal(a.id);
+      const official = resolveTurmaOficial(a);
       const stored = a.turma && String(a.turma).trim();
       const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
       const k =
-        fromId ||
+        official ||
         stored ||
         suggested ||
         (lang === "fr" ? "Sans classe" : "Sem classe");
@@ -3049,8 +3024,7 @@ function Alunos() {
       const rows = selected
         .map(
           (a, i) => {
-            // Turma oficial = ID / turma gravada (não recalcular por idade no PDF)
-            const turmaPdf = (a.turma && String(a.turma).trim()) || turmaFromIdLocal(a.id) || a.turma;
+            const turmaPdf = resolveTurmaOficial(a) || (a.turma && String(a.turma).trim()) || a.turma;
             return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
               <td class="mono">${a.id}</td>
               <td>${a.nome}</td>

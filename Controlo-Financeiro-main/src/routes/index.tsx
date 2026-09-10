@@ -213,8 +213,8 @@ function Dashboard() {
           <div>
             <CardTitle>Acerto com a sócia · uso do cartão</CardTitle>
             <p className="mt-1 text-xs text-[var(--color-muted)]">
-              Dívida base − gastos extraordinários autorizados (nota «A reembolsar») = ainda devido.
-              Estes gastos não entram nos custos operacionais da escola.
+              Dívida base − uso autorizado do cartão (Inbox → extrato BAI, nota «A reembolsar») = ainda devido.
+              Não registar como despesa da escola: o movimento sai no BAI e o Quadro actualiza na hora.
             </p>
           </div>
           <Button type="button" variant="outline" size="sm" className="no-print" onClick={() => void imprimirDividaSocio()}>
@@ -261,8 +261,8 @@ function Dashboard() {
             </div>
           ) : (
             <p className="text-xs text-[var(--color-muted)]">
-              Ainda sem abatimentos. Em <strong>Nova despesa</strong>, marque «Abatimento dívida sócia»
-              ou escreva <em>A reembolsar</em> nas observações / descrição do movimento no cartão.
+              Ainda sem abatimentos. Na <strong>Inbox</strong>, tipo «Abatimento dívida sócia»:
+              a linha vai para o extrato BAI e o saldo devido actualiza-se aqui, sem despesa da escola.
             </p>
           )}
         </CardContent>

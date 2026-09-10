@@ -82,6 +82,62 @@ export function turmaFromId(id: string): string | null {
   return map[prefix] || null;
 }
 
+/** Idade típica da turma em 1/out (min, max inclusive). */
+export function idadeFaixaTurma(turma: string): [number, number] | null {
+  const t = (turma || "").trim();
+  const map: Record<string, [number, number]> = {
+    "Maternelle P1": [0, 3],
+    "Maternelle P2": [3, 5],
+    "Maternelle P3": [4, 6],
+    Maternelle: [0, 6],
+    CP1: [5, 7],
+    CP2: [6, 8],
+    CE1: [7, 9],
+    CE2: [8, 10],
+    CM1: [9, 11],
+    CM2: [10, 12],
+    "6ème": [11, 13],
+    "5ème": [12, 14],
+    "4ème": [13, 15],
+    "3ème": [14, 18],
+  };
+  return map[t] || null;
+}
+
+/** Permite 1 ano de folga (adiantado / repetente). 11 anos em P1 = incompatível. */
+export function turmaCompativelComIdade(turma: string, age: number): boolean {
+  const faixa = idadeFaixaTurma(turma);
+  if (!faixa) return true;
+  return age >= faixa[0] - 1 && age <= faixa[1] + 1;
+}
+
+/**
+ * Turma oficial para tabelas / PDF.
+ *
+ * A data de nascimento prevalece quando o prefixo do ID ou a turma gravada
+ * são incompatíveis com a idade (ex.: P1-07 com 11 anos NÃO fica em Maternelle P1).
+ * Se a turma gravada for compatível (±1 ano), respeita a colocação manual.
+ */
+export function resolveTurmaOficial(a: {
+  id?: string;
+  turma?: string;
+  dataNascimento?: string;
+}): string {
+  const stored = (a.turma || "").trim();
+  const fromId = a.id ? turmaFromId(a.id) : null;
+  const fromBirth = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
+  const age = a.dataNascimento ? idadeEmRef(a.dataNascimento) : null;
+
+  if (age !== null && fromBirth) {
+    if (stored && turmaCompativelComIdade(stored, age)) return stored;
+    if (fromId && turmaCompativelComIdade(fromId, age)) return fromId;
+    return fromBirth;
+  }
+  if (stored) return stored;
+  if (fromId) return fromId;
+  return fromBirth || "";
+}
+
 export const PROPINA_MATERNELLE = 170000;
 export const PROPINA_PRIMAIRE = 250000;
 export const PROPINA_COLLEGE = 260000;

@@ -89,6 +89,7 @@ const TIPOS: { value: InboxTipo; label: string }[] = [
   { value: "comissao_transferencia", label: "Comissão de transferência" },
   { value: "comissao_fecho_tpa", label: "Comissão de fecho TPA" },
   { value: "taxa_aluguer_tpa", label: "Taxa aluguer de TPA" },
+  { value: "abatimento_socio", label: "Abatimento dívida sócia (uso do cartão)" },
 ];
 
 function parseLinhas(text: string): Omit<InboxMovimento, "id" | "criadoEm" | "status" | "tipo">[] {
@@ -176,7 +177,12 @@ function InboxPage() {
       toast.error("Indique a descrição.");
       return;
     }
-    const sent = aplicarSentido(tipo, desc.trim(), v);
+    const rawDesc = desc.trim();
+    const descFinal =
+      tipo === "abatimento_socio" && !/a\s*reembolsar/i.test(rawDesc)
+        ? `${rawDesc} · A reembolsar`
+        : rawDesc;
+    const sent = aplicarSentido(tipo, descFinal, v);
     const id = `INB-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     addInboxItems([
       {
@@ -185,10 +191,11 @@ function InboxPage() {
         valor: sent.valor,
         entrada: sent.entrada,
         saida: sent.saida,
-        descricao: desc.trim(),
+        descricao: descFinal,
         tipo,
         status: tipo === "desconhecido" ? "por_classificar" : "classificado",
         criadoEm: new Date().toISOString(),
+        observacoes: tipo === "abatimento_socio" ? "A reembolsar · não é despesa da escola" : undefined,
         anexoNome: pendingAnexo?.nome,
         anexoMime: pendingAnexo?.mime,
         anexoDataUrl: pendingAnexo?.dataUrl,
@@ -198,6 +205,17 @@ function InboxPage() {
     setDesc("");
     setValor("");
     setPendingAnexo(null);
+    if (tipo === "abatimento_socio") {
+      const r = syncInboxParaBai([id]);
+      toast.success(
+        r.criados
+          ? "Abatimento na Inbox → extrato BAI. O Quadro actualiza o saldo devido à sócia (não entra como despesa da escola)."
+          : r.duplicados
+            ? "Já existia no extrato BAI. O Quadro usa essa linha para abater a dívida da sócia."
+            : "Registado na Inbox. Use «Sincronizar com Banco BAI» se a linha ainda não saiu.",
+      );
+      return;
+    }
     toast.success(
       pendingAnexo
         ? pendingAnexo.syncOk
@@ -355,7 +373,7 @@ function InboxPage() {
       <PageHeader
         kicker="Reconciliação"
         title="Inbox"
-        description="Screenshot → rever linhas → Sincronizar com Banco BAI. O que entrar no extrato sai da Inbox; só ficam os que não foi possível sincronizar."
+        description="Screenshot → rever linhas → Sincronizar com Banco BAI. Uso autorizado do cartão pela sócia: tipo «Abatimento dívida sócia» — sai no extrato BAI e no Quadro, sem criar despesa da escola."
       />
 
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
@@ -415,6 +433,12 @@ function InboxPage() {
                   </option>
                 ))}
               </select>
+              {tipo === "abatimento_socio" ? (
+                <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                  Uso autorizado do cartão pela sócia (pode não ser compra da escola). Ao gravar,
+                  a linha sai no extrato BAI e o Quadro reduz o saldo devido — sem despesa escolar.
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="space-y-1 sm:col-span-2">
