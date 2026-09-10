@@ -20,6 +20,7 @@ import {
   turmaFromDataNascimento,
   turmaFromId,
   grupoFromTurma,
+  idadeEmRef,
   propinaDefaultFromTurma,
 } from "@/lib/classe-congo";
 
@@ -2235,16 +2236,26 @@ export function recalcularClassesMatriculas(): number {
     changed += 1;
   };
 
-  /** Decide a turma correcta sem destruir a atribuição oficial. */
+  /** Decide a turma correcta sem destruir a atribuição oficial na matrícula. */
   const resolveTurma = (a: { id?: string; turma?: string; dataNascimento?: string }): string | null => {
     const fromId = a.id ? turmaFromId(a.id) : null;
     const current = (a.turma || "").trim();
-    // 1) Se o ID tem prefixo conhecido, o ID manda (restaura desalinhamentos)
-    if (fromId) return fromId;
-    // 2) Turma já atribuída manualmente — manter
+    const fromBirth = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
+    const age = a.dataNascimento ? idadeEmRef(a.dataNascimento) : null;
+
+    // Inconsistência grave: idade ≥ 6 em Maternelle (ex. 11/13 anos em P1) → classe pela idade
+    if (fromBirth && age !== null && age >= 6) {
+      const matStored = current.startsWith("Maternelle");
+      const matId = Boolean(fromId && fromId.startsWith("Maternelle"));
+      if (matStored || matId) return fromBirth;
+    }
+
+    // 1) Turma já gravada na matrícula — manda (é o que a app mostra)
     if (current) return current;
-    // 3) Sem turma: sugerir pela data de nascimento
-    if (a.dataNascimento) return turmaFromDataNascimento(a.dataNascimento);
+    // 2) Sem turma: prefixo do ID
+    if (fromId) return fromId;
+    // 3) Sem turma nem ID legível: sugestão pela data de nascimento
+    if (fromBirth) return fromBirth;
     return null;
   };
 
@@ -2305,7 +2316,7 @@ export function recalcularClassesMatriculas(): number {
     try {
       useFinance.getState().pushAudit?.(
         "recalcular_classes",
-        `${changed} matrícula(s) · turma alinhada ao ID (Congo-Brazzaville)`,
+        `${changed} matrícula(s) · turma da matrícula preservada (Congo-Brazzaville)`,
       );
     } catch {
       /* audit opcional */

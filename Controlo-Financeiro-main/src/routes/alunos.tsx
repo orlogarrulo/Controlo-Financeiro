@@ -2447,16 +2447,18 @@ function Alunos() {
       toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
-    // Agrupa pela turma OFICIAL: 1) prefixo do ID (P3-05 → Maternelle P3),
-    // 2) turma gravada, 3) só então sugestão por data de nascimento.
-    // Nunca move um aluno para outra tabela só porque a idade "sugere" outra classe.
+    // Agrupa pela mesma turma que a app mostra em Matrículas (campo `turma`).
+    // O ID continua visível na linha, mas NÃO decide a secção do PDF — evita
+    // alunos com ID antigo (ex. P1-xx) a aparecerem em Maternelle quando a
+    // matrícula já está noutra classe, e o contrário.
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
       const fromId = turmaFromIdLocal(a.id);
       const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
+      const stored = a.turma && String(a.turma).trim();
       const k =
+        stored ||
         fromId ||
-        (a.turma && String(a.turma).trim()) ||
         suggested ||
         (lang === "fr" ? "Sans classe" : "Sem classe");
       if (!byClass.has(k)) byClass.set(k, []);
@@ -3048,7 +3050,7 @@ function Alunos() {
         .map(
           (a, i) => {
             // Turma oficial = ID / turma gravada (não recalcular por idade no PDF)
-            const turmaPdf = turmaFromIdLocal(a.id) || a.turma;
+            const turmaPdf = (a.turma && String(a.turma).trim()) || turmaFromIdLocal(a.id) || a.turma;
             return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
               <td class="mono">${a.id}</td>
               <td>${a.nome}</td>
