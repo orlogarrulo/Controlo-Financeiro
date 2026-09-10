@@ -2592,7 +2592,8 @@ function Alunos() {
 <meta charset="utf-8"/>
 <title>${L.title}</title>
 <style>
-  @page { size: A4 portrait; margin: 16mm 14mm 16mm 32mm; } /* top right bottom left — esquerda 2× */
+  /* Margem esquerda 3× a base (16mm→48mm) para a impressão não cortar a coluna ID */
+  @page { size: A4 portrait; margin: 14mm 12mm 14mm 48mm; } /* top right bottom left */
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
@@ -2604,6 +2605,10 @@ function Alunos() {
     max-width: 100%; width: 100%; margin: 0;
     padding: 2mm 0 4mm 0; color: #000;
     overflow: visible; box-sizing: border-box;
+  }
+  @media print {
+    html, body { margin: 0 !important; padding: 0 !important; }
+    .sheet { margin: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
   }
   .head { display: flex; gap: 14px; align-items: center;
     border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 16px;
