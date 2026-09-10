@@ -80,6 +80,7 @@ export const Route = createFileRoute("/inbox")({ component: InboxPage });
 
 const TIPOS: { value: InboxTipo; label: string }[] = [
   { value: "desconhecido", label: "Desconhecido" },
+  { value: "abatimento_socio", label: "Abatimento dívida sócia (uso do cartão)" },
   { value: "salario", label: "Salário / honorários" },
   { value: "propina", label: "Propina" },
   { value: "despesa", label: "Despesa" },
@@ -89,7 +90,6 @@ const TIPOS: { value: InboxTipo; label: string }[] = [
   { value: "comissao_transferencia", label: "Comissão de transferência" },
   { value: "comissao_fecho_tpa", label: "Comissão de fecho TPA" },
   { value: "taxa_aluguer_tpa", label: "Taxa aluguer de TPA" },
-  { value: "abatimento_socio", label: "Abatimento dívida sócia (uso do cartão)" },
 ];
 
 function parseLinhas(text: string): Omit<InboxMovimento, "id" | "criadoEm" | "status" | "tipo">[] {
@@ -177,12 +177,25 @@ function InboxPage() {
       toast.error("Indique a descrição.");
       return;
     }
+    if (v <= 0) {
+      toast.error("Indique o valor em Kz (maior que zero).");
+      return;
+    }
     const rawDesc = desc.trim();
+    const looksAbat =
+      tipo === "abatimento_socio" ||
+      /a\s*reembolsar|abatimento|d[ií]vida\s*(da\s*)?s[oó]ci/i.test(rawDesc);
+    const tipoFinal: InboxTipo = looksAbat ? "abatimento_socio" : tipo;
     const descFinal =
-      tipo === "abatimento_socio" && !/a\s*reembolsar/i.test(rawDesc)
+      looksAbat && !/a\s*reembolsar/i.test(rawDesc)
         ? `${rawDesc} · A reembolsar`
         : rawDesc;
-    const sent = aplicarSentido(tipo, descFinal, v);
+    let sent = aplicarSentido(tipoFinal, descFinal, v);
+    if (v > 0 && sent.entrada <= 0 && sent.saida <= 0) {
+      sent = looksAbat || tipoFinal !== "deposito"
+        ? { entrada: 0, saida: v, valor: -v }
+        : { entrada: v, saida: 0, valor: v };
+    }
     const id = `INB-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     addInboxItems([
       {
@@ -192,10 +205,10 @@ function InboxPage() {
         entrada: sent.entrada,
         saida: sent.saida,
         descricao: descFinal,
-        tipo,
-        status: tipo === "desconhecido" ? "por_classificar" : "classificado",
+        tipo: tipoFinal,
+        status: tipoFinal === "desconhecido" ? "por_classificar" : "classificado",
         criadoEm: new Date().toISOString(),
-        observacoes: tipo === "abatimento_socio" ? "A reembolsar · não é despesa da escola" : undefined,
+        observacoes: looksAbat ? "A reembolsar · não é despesa da escola" : undefined,
         anexoNome: pendingAnexo?.nome,
         anexoMime: pendingAnexo?.mime,
         anexoDataUrl: pendingAnexo?.dataUrl,
@@ -205,15 +218,19 @@ function InboxPage() {
     setDesc("");
     setValor("");
     setPendingAnexo(null);
-    if (tipo === "abatimento_socio") {
+    if (looksAbat) {
       const r = syncInboxParaBai([id]);
-      toast.success(
-        r.criados
-          ? "Abatimento na Inbox → extrato BAI. O Quadro actualiza o saldo devido à sócia (não entra como despesa da escola)."
-          : r.duplicados
-            ? "Já existia no extrato BAI. O Quadro usa essa linha para abater a dívida da sócia."
-            : "Registado na Inbox. Use «Sincronizar com Banco BAI» se a linha ainda não saiu.",
-      );
+      if (r.criados) {
+        toast.success(
+          "Abatimento gravado no extrato BAI. Abra Banco BAI — a linha «A reembolsar» já deve estar lá. O Quadro reduz o devido à sócia.",
+        );
+      } else if (r.duplicados) {
+        toast.success("Já existia no extrato BAI. O Quadro usa essa linha para abater a dívida.");
+      } else {
+        toast.error(
+          "A linha ficou na Inbox mas não entrou no BAI. Confirme o valor (> 0) e clique «Sincronizar com Banco BAI».",
+        );
+      }
       return;
     }
     toast.success(
@@ -418,7 +435,7 @@ function InboxPage() {
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Descrição</Label>
-              <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Ex.: Honorários agosto Massamba" />
+              <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Ex.: Uso do cartão pela sócia" />
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Tipo</Label>

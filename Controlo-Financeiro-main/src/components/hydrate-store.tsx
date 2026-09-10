@@ -160,7 +160,7 @@ function hasLocalData(): boolean {
 }
 
 
-/** Mantém só movimentos gerados na app (salários, propinas, ATM manual) — não congela extrato antigo. */
+/** Mantém movimentos gerados na app — não congela extrato BAI antigo importado. */
 function sanitizeBaiExtra(extra: unknown[]): unknown[] {
   return (extra || []).filter((row) => {
     const m = row as { id?: string; banco?: string };
@@ -169,8 +169,11 @@ function sanitizeBaiExtra(extra: unknown[]): unknown[] {
     return (
       id.startsWith("APP-") ||
       id.startsWith("ATM-MAN-") ||
+      id.startsWith("INB-BAI-") ||
+      id.startsWith("APP-INB-") ||
       banco === "SALARIO-APP" ||
-      banco === "PROPINA-APP"
+      banco === "PROPINA-APP" ||
+      banco.startsWith("INBOX-")
     );
   });
 }

@@ -595,9 +595,20 @@ export const useFinance = create<Store>()(
         const patched = [...(get().inboxItems || [])];
         const limpar = new Set<string>();
         for (const it of items) {
-          const sent = aplicarSentido(it.tipo, it.descricao, montanteAbs(it), it);
-          const entrada = sent.entrada;
-          const saida = sent.saida;
+          const sent0 = aplicarSentido(it.tipo, it.descricao, montanteAbs(it), it);
+          let entrada = sent0.entrada;
+          let saida = sent0.saida;
+          if (entrada <= 0 && saida <= 0) {
+            const n = montanteAbs(it);
+            if (n > 0) {
+              const credit =
+                it.tipo === "deposito" ||
+                it.tipo === "propina" ||
+                /dep[oó]sito|entrada|recebid|fecho\s*tpa/i.test(it.descricao || "");
+              if (credit) entrada = n;
+              else saida = n;
+            }
+          }
           if (entrada <= 0 && saida <= 0) {
             ignorados += 1;
             continue;
@@ -608,7 +619,7 @@ export const useFinance = create<Store>()(
             limpar.add(it.id);
             continue;
           }
-          const movId = `INB-BAI-${it.id}`.slice(0, 40);
+          const movId = `APP-INB-${it.id}`.replace(/\s+/g, "").slice(0, 48);
           const abatSocio =
             it.tipo === "abatimento_socio" ||
             isAbatimentoDividaSocio({
