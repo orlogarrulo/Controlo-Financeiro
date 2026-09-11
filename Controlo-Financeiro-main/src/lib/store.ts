@@ -127,6 +127,12 @@ type Store = ExtraState & {
   setMensalidade: (id: string, mes: string, valor: number) => void;
   /** Garante que todos os alunos activos têm linha em Propinas (backfill). */
   syncPropinasFromMatriculas: () => number;
+  /**
+   * Funde um censo (JSON de outro PC / backup) no cadastro local.
+   * Alunos cujo ID já existe no seed recebem override; os outros vão para alunosExtra.
+   * Nunca apaga matrículas que já estejam neste dispositivo.
+   */
+  importCensoAlunos: (alunos: Aluno[], mensalidades?: Mensalidade[]) => number;
   confirmPropinaBai: (id: string, mes: string) => { ok: boolean; message: string };
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
@@ -1141,6 +1147,78 @@ export const useFinance = create<Store>()(
         }
         return missing.length;
       },
+      importCensoAlunos: (incoming, mensIncoming = []) => {
+        requireEdit(get);
+        const seedIds = new Set(seed.alunos.map((a) => a.id));
+        const deleted = new Set(get().alunosDeletedIds || []);
+        const extras = [...(get().alunosExtra || [])];
+        const extraIds = new Set(extras.map((a) => a.id));
+        const overrides = { ...(get().alunosOverrides || {}) };
+        let fused = 0;
+
+        const norm = (n: string) =>
+          (n || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+        const extraNames = new Set(extras.map((a) => norm(a.nome)));
+        for (const a of seed.alunos) extraNames.add(norm(a.nome));
+
+        for (const raw of incoming || []) {
+          if (!raw?.id || !raw?.nome) continue;
+          if (deleted.has(raw.id)) continue;
+          const clean: Aluno = { ...raw };
+          delete (clean as { foto?: string }).foto;
+          if (seedIds.has(clean.id)) {
+            const prev = overrides[clean.id] || {};
+            overrides[clean.id] = { ...prev, ...clean, id: clean.id };
+            fused += 1;
+            continue;
+          }
+          const idx = extras.findIndex((x) => x.id === clean.id);
+          if (idx >= 0) {
+            extras[idx] = { ...extras[idx], ...clean, id: clean.id };
+            fused += 1;
+            continue;
+          }
+          if (extraNames.has(norm(clean.nome))) {
+            fused += 1;
+            continue;
+          }
+          extras.push(clean);
+          extraIds.add(clean.id);
+          extraNames.add(norm(clean.nome));
+          fused += 1;
+        }
+
+        const mens = [...(get().mensalidades || [])];
+        const mensIds = new Set(mens.map((m) => m.id));
+        for (const m of mensIncoming || []) {
+          if (!m?.id) continue;
+          const i = mens.findIndex((x) => x.id === m.id);
+          if (i >= 0) {
+            mens[i] = {
+              ...mens[i],
+              ...m,
+              pagamentos: { ...(mens[i].pagamentos || {}), ...(m.pagamentos || {}) },
+              pagamentosEm: { ...(mens[i].pagamentosEm || {}), ...(m.pagamentosEm || {}) },
+            };
+          } else if (!mensIds.has(m.id)) {
+            mens.push(m);
+            mensIds.add(m.id);
+          }
+        }
+
+        set({
+          alunosExtra: extras,
+          alunosOverrides: overrides,
+          mensalidades: mens,
+        });
+        get().pushAudit("import_censo", `${fused} aluno(s) · ${incoming.length} no ficheiro`);
+        return fused;
+      },
       /** Confirma o valor da propina no mês e regista entrada no Banco BAI (id estável por aluno+mês). */
       confirmPropinaBai: (id, mes) => {
         requireEdit(get);
@@ -1760,7 +1838,7 @@ export const useFinance = create<Store>()(
 ,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      version: 3,
+      version: 4,
       migrate: (persisted: unknown) => {
         // Seed manda: limpa override BAI, extras de alunos (duplicados) e volta ao cadastro do seed
         const s = (persisted || {}) as Record<string, unknown>;
@@ -1775,15 +1853,38 @@ export const useFinance = create<Store>()(
           if (id.startsWith("ATM-MAN-")) return true;
           return false;
         });
+        let extras = Array.isArray(s.alunosExtra) ? [...(s.alunosExtra as unknown[])] : [];
+        let overrides =
+          s.alunosOverrides && typeof s.alunosOverrides === "object"
+            ? (s.alunosOverrides as Record<string, unknown>)
+            : {};
+        // Recuperar censo de chaves antigas (v1/v2) se o v3 as tiver esvaziado
+        if (extras.length === 0 && typeof localStorage !== "undefined") {
+          for (const key of ["ecc-financeiro-v2", "ecc-financeiro-v1"]) {
+            try {
+              const raw = localStorage.getItem(key);
+              if (!raw) continue;
+              const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
+              const st = (parsed.state || parsed) as Record<string, unknown>;
+              const oldExtra = Array.isArray(st.alunosExtra) ? (st.alunosExtra as unknown[]) : [];
+              if (oldExtra.length > extras.length) extras = oldExtra;
+              const oldOv = st.alunosOverrides;
+              if (oldOv && typeof oldOv === "object" && Object.keys(overrides).length === 0) {
+                overrides = oldOv as Record<string, unknown>;
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        }
         return {
           ...s,
           movimentosBaiExtra: keepExtra,
           baiOverride: false,
           movimentosBaiDeletedIds: [],
-          // Evita alunos repetidos vindos de sessões / nuvem antigas
-          alunosExtra: [],
-          alunosOverrides: {},
-          alunosDeletedIds: [],
+          alunosExtra: extras,
+          alunosOverrides: overrides,
+          alunosDeletedIds: Array.isArray(s.alunosDeletedIds) ? s.alunosDeletedIds : [],
         };
       },
       partialize: (s) => ({

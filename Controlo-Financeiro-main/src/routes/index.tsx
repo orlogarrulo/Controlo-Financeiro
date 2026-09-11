@@ -191,7 +191,12 @@ function Dashboard() {
       </header>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 print-sheet">
-        <Kpi label="Alunos inscritos" value={String(t.alunos)} />
+        <Kpi
+          label="Alunos inscritos"
+          value={String(t.alunos)}
+          hint={t.alunos < 48 ? "Meta 48 · abrir Rastreio para fundir o censo" : "Cadastro completo"}
+          tone={t.alunos < 48 ? "amber" : "forest"}
+        />
         <Kpi label="Proveitos" value={t.proveitos} tone="forest" />
         <Kpi label="Custos" value={t.custosTotais} />
         <Kpi

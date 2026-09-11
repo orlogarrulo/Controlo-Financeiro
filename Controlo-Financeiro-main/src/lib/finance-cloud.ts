@@ -7,6 +7,8 @@ import { createServerFn } from "@tanstack/react-start";
 export type FinanceCloudPayload = {
   extras: unknown[];
   alunosExtra: unknown[];
+  /** Cópia sem fotos dos alunos extra + overrides relevantes — recuperação multi-PC. */
+  alunosCenso?: unknown[];
   alunosOverrides: Record<string, unknown>;
   alunosDeletedIds?: string[];
   mensalidades: unknown[];
@@ -43,6 +45,7 @@ function emptyPayload(): FinanceCloudPayload {
   return {
     extras: [],
     alunosExtra: [],
+    alunosCenso: [],
     alunosOverrides: {},
     mensalidades: [],
     fundoExtra: [],
@@ -117,6 +120,40 @@ export const loadFinanceCloud = createServerFn({ method: "GET" }).handler(
   },
 );
 
+function idOf(row: unknown): string {
+  return String((row as { id?: string } | undefined)?.id || "");
+}
+
+function mergeById(existing: unknown[] | undefined, incoming: unknown[] | undefined): unknown[] {
+  const map = new Map<string, unknown>();
+  for (const row of existing || []) {
+    const id = idOf(row);
+    if (id) map.set(id, row);
+  }
+  for (const row of incoming || []) {
+    const id = idOf(row);
+    if (!id) continue;
+    const prev = map.get(id);
+    map.set(id, prev && typeof prev === "object" ? { ...(prev as object), ...(row as object) } : row);
+  }
+  return Array.from(map.values());
+}
+
+function unionIds(a?: string[], b?: string[]): string[] {
+  return Array.from(new Set([...(a || []), ...(b || [])]));
+}
+
+/** Nunca deixar um PC vazio apagar o censo que já está na nuvem. */
+function mergeAlunosCloud(
+  existing: unknown[] | undefined,
+  incoming: unknown[] | undefined,
+): unknown[] {
+  const inc = incoming || [];
+  const cur = existing || [];
+  if (inc.length === 0 && cur.length > 0) return cur;
+  return mergeById(cur, inc);
+}
+
 export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
   async (ctx): Promise<{ ok: boolean; updatedAt: string }> => {
     const data = ((ctx as { data?: FinanceCloudPayload }).data ?? emptyPayload()) as FinanceCloudPayload;
@@ -124,9 +161,55 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
     const sql = await getSql();
     await ensureFinanceCloudTable(sql);
     const updatedAt = new Date().toISOString();
+
+    let current: FinanceCloudPayload = emptyPayload();
+    try {
+      const rows = await sql.query<{ payload: FinanceCloudPayload | string }>(
+        `SELECT payload FROM finance_cloud WHERE id = $1 LIMIT 1`,
+        ["escola"],
+      );
+      if (rows.length) {
+        const raw = rows[0].payload;
+        current =
+          typeof raw === "string"
+            ? { ...emptyPayload(), ...(JSON.parse(raw) as FinanceCloudPayload) }
+            : { ...emptyPayload(), ...raw };
+      }
+    } catch (e) {
+      console.warn("[finance-cloud] read-before-save", e);
+    }
+
     const payload: FinanceCloudPayload = {
       ...emptyPayload(),
+      ...current,
       ...data,
+      extras: mergeById(current.extras, data.extras),
+      alunosExtra: mergeAlunosCloud(
+        mergeById(current.alunosExtra, current.alunosCenso),
+        mergeById(data.alunosExtra, data.alunosCenso),
+      ),
+      alunosCenso: mergeAlunosCloud(current.alunosCenso, data.alunosCenso || data.alunosExtra),
+      alunosOverrides: {
+        ...(current.alunosOverrides || {}),
+        ...(data.alunosOverrides || {}),
+      },
+      alunosDeletedIds: unionIds(current.alunosDeletedIds, data.alunosDeletedIds),
+      mensalidades: mergeById(current.mensalidades, data.mensalidades),
+      fundoExtra: mergeById(current.fundoExtra, data.fundoExtra),
+      fundoAtmExtra: mergeById(current.fundoAtmExtra, data.fundoAtmExtra),
+      movimentosBaiExtra: mergeById(current.movimentosBaiExtra, data.movimentosBaiExtra),
+      movimentosBaiDeletedIds: unionIds(current.movimentosBaiDeletedIds, data.movimentosBaiDeletedIds),
+      salariosExtra: mergeById(current.salariosExtra, data.salariosExtra),
+      salariosOverrides: {
+        ...(current.salariosOverrides || {}),
+        ...(data.salariosOverrides || {}),
+      },
+      salariosDeletedIds: unionIds(current.salariosDeletedIds, data.salariosDeletedIds),
+      recibosSalario: mergeById(current.recibosSalario, data.recibosSalario),
+      faturasPropina: mergeById(current.faturasPropina, data.faturasPropina),
+      inboxItems: mergeById(current.inboxItems, data.inboxItems),
+      auditLog: mergeById(current.auditLog, data.auditLog).slice(-200),
+      sessionLog: (data.sessionLog?.length ? data.sessionLog : current.sessionLog) || [],
       clientUpdatedAt: updatedAt,
     };
     try {
@@ -231,6 +314,7 @@ export function sliceFromStoreDetailed(s: {
     payload: {
       extras: s.extras,
       alunosExtra: alunosExtraSafe,
+      alunosCenso: alunosExtraSafe,
       alunosOverrides: overridesSafe,
       alunosDeletedIds: s.alunosDeletedIds || [],
       mensalidades: s.mensalidades,

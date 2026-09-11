@@ -1,5 +1,10 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 12. Censo fiel em qualquer PC + Rastreio (2026-09-11)
+- **Causa dos 19 vs 48:** a migração do storage v3 esvaziava `alunosExtra`. O gravar na nuvem substituía o JSON inteiro — um PC com só o seed (19) apagava as matrículas extra em todos os dispositivos.
+- **Correcção:** persist v4 já não apaga extras; `saveFinanceCloud` funde por ID e recusa lista vazia por cima de lista cheia; campo `alunosCenso` na nuvem; separador **Rastreio** (Campus Cidade / outros / dívidas + Excel + censo JSON).
+- Depois do deploy: no PC que já mostra os 48, Rastreio → Censo JSON. Nos outros PCs, Importar censo. Hard refresh.
+
 ## 11. Realinhar IDs à turma (2026-09-10)
 - O PDF já punha Abdel (11 anos) em CM2 e William (5 anos, ID 4E-02) em P3, mas o **ID antigo** continuava visível na tabela.
 - `realinharIdsPorTurma()` emite ID novo da turma (P1-07 → CM2-xx, 4E-02 → P3-xx) e actualiza propinas, BAI, fotos.

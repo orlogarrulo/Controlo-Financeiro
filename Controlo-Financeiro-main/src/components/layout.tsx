@@ -16,6 +16,7 @@ const NAV = [
   { to: "/capturar", label: "Nova despesa", icon: Camera, adminOnly: true },
   { to: "/lancamentos", label: "Lista despesas", icon: BookOpen },
   { to: "/alunos", label: "Matrículas", icon: Users },
+  { to: "/rastreio", label: "Rastreio", icon: ListChecks },
   { to: "/mensalidades", label: "Propinas", icon: Receipt },
   { to: "/recibos", label: "Recibos", icon: FileSpreadsheet },
   { to: "/banco", label: "Banco BAI", icon: Landmark },

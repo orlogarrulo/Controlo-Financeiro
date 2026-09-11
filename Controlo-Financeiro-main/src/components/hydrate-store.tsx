@@ -44,6 +44,7 @@ export function HydrateStore() {
         const hasRemote =
           remoteTs > 0 &&
           (remote.payload.alunosExtra?.length ||
+            remote.payload.alunosCenso?.length ||
             remote.payload.extras?.length ||
             remote.payload.mensalidades?.length ||
             remote.payload.salariosExtra?.length ||
@@ -202,7 +203,10 @@ function mergeById(local: unknown[], remote: unknown[]): never[] {
 function applyPayload(p: FinanceCloudPayload) {
   const local = useFinance.getState();
   // Fundir por id: nuvem + local (telemóvel e PC passam a ver os mesmos registos)
-  const remoteAlunos = (p.alunosExtra as never[]) || [];
+  const remoteAlunos = mergeById(
+    (p.alunosCenso as never[]) || [],
+    (p.alunosExtra as never[]) || [],
+  );
   const localAlunos = local.alunosExtra || [];
   const alunosMerged = mergeById(localAlunos, remoteAlunos);
   const deletedAlunos = new Set([

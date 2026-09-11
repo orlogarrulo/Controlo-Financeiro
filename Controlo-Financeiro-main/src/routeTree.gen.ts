@@ -23,6 +23,7 @@ import { Route as PendenciasRouteImport } from './routes/pendencias'
 import { Route as AuditoriaRouteImport } from './routes/auditoria'
 import { Route as ArquivoRouteImport } from './routes/arquivo'
 import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as RastreioRouteImport } from './routes/rastreio'
 import { Route as RegulamentoRouteImport } from './routes/regulamento'
 import { Route as AgendamentoRouteImport } from './routes/agendamento'
 import { Route as InqueritoSaudeRouteImport } from './routes/inquerito-saude'
@@ -130,6 +131,11 @@ const InboxRoute = InboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RastreioRoute = RastreioRouteImport.update({
+  id: '/rastreio',
+  path: '/rastreio',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -152,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/auditoria': typeof AuditoriaRoute
   '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
+  '/rastreio': typeof RastreioRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -174,6 +181,7 @@ export interface FileRoutesByTo {
   '/auditoria': typeof AuditoriaRoute
   '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
+  '/rastreio': typeof RastreioRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   '/auditoria': typeof AuditoriaRoute
   '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
+  '/rastreio': typeof RastreioRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
     | '/auditoria'
     | '/arquivo'
     | '/inbox'
+    | '/rastreio'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -243,6 +253,7 @@ export interface FileRouteTypes {
     | '/auditoria'
     | '/arquivo'
     | '/inbox'
+    | '/rastreio'
   id:
     | '__root__'
     | '/'
@@ -265,6 +276,7 @@ export interface FileRouteTypes {
     | '/auditoria'
     | '/arquivo'
     | '/inbox'
+    | '/rastreio'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -288,6 +300,7 @@ export interface RootRouteChildren {
   AuditoriaRoute: typeof AuditoriaRoute
   ArquivoRoute: typeof ArquivoRoute
   InboxRoute: typeof InboxRoute
+  RastreioRoute: typeof RastreioRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -432,6 +445,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rastreio': {
+      id: '/rastreio'
+      path: '/rastreio'
+      fullPath: '/rastreio'
+      preLoaderRoute: typeof RastreioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -456,6 +476,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditoriaRoute: AuditoriaRoute,
   ArquivoRoute: ArquivoRoute,
   InboxRoute: InboxRoute,
+  RastreioRoute: RastreioRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
