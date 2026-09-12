@@ -32,6 +32,8 @@ function Rastreio() {
   const mensalidades = useFinance((s) => s.mensalidades || []);
   const importCensoAlunos = useFinance((s) => s.importCensoAlunos);
   const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
+  const restoreAluno = useFinance((s) => s.restoreAluno);
+  const recuperarAlunosOcultos = useFinance((s) => s.recuperarAlunosOcultos);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const canEdit = isCollaborator1(activeOperator, operators);
@@ -100,6 +102,7 @@ function Rastreio() {
   }
 
   const falta = Math.max(0, META_MATRICULADOS - alunos.length);
+  const apagados = alunosDeletedIds;
 
   return (
     <div>
@@ -165,12 +168,47 @@ function Rastreio() {
       </div>
 
       {falta > 0 && (
-        <p className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Este PC só vê <strong>{alunos.length}</strong> matrículas. Os nomes em falta estão no
-          computador da escola (nuvem Neon) ou num <strong>Censo JSON</strong> exportado de lá.
-          Abra a app no PC que já tem os {META_MATRICULADOS}, clique «Censo JSON» e importe aqui —
-          a nuvem passa a guardar a lista completa e deixa de ser apagada por engano.
-        </p>
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>
+            Cadastro com <strong>{alunos.length}</strong> / {META_MATRICULADOS}. O sistema varre
+            propinas, BAI, fotos e IDs antigos para repor o aluno em falta.
+          </p>
+          {canEdit && (
+            <Button
+              type="button"
+              className="mt-2"
+              onClick={() => {
+                const r = recuperarAlunosOcultos();
+                syncPropinasFromMatriculas();
+                if (r.restaurados) toast.success(`${r.restaurados} ficha(s) reposta(s).`);
+                else toast.message("Nenhum rasto extra neste dispositivo — veja IDs apagados abaixo.");
+              }}
+            >
+              Repor aluno em falta
+            </Button>
+          )}
+          {apagados.length > 0 && (
+            <ul className="mt-2 list-disc pl-5">
+              {apagados.map((id) => (
+                <li key={id} className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono">{id}</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => {
+                        restoreAluno(id);
+                        toast.success(`Reposto ${id}`);
+                      }}
+                    >
+                      Restaurar
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <div className="mb-3 flex flex-wrap gap-2">

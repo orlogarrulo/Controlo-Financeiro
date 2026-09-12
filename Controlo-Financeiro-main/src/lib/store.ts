@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import seedJson from "@/data/seed.json";
 import type {
   Aluno,
+  FaturaPropina,
   FundoAtm,
   FundoPagamento,
   Lancamento,
@@ -156,6 +157,10 @@ type Store = ExtraState & {
   /** Apaga um movimento do extrato BAI e recalcula saldos em cadeia. */
   deleteBaiMovimento: (id: string) => void;
   removeAluno: (id: string) => void;
+  /** Tira o ID da lista de apagados e reconstroi a ficha se ainda houver rasto. */
+  restoreAluno: (id: string) => boolean;
+  /** Varre propinas, BAI, overrides e IDs apagados; repõe fichas ocultas. */
+  recuperarAlunosOcultos: () => { restaurados: number; detalhes: string[] };
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   updateReciboSalario: (
@@ -1698,6 +1703,49 @@ export const useFinance = create<Store>()(
         set({ alunosOverrides: ov });
         get().pushAudit("apagar_aluno", id);
       },
+      restoreAluno: (id) => {
+        requireEdit(get);
+        if (!id) return false;
+        const deleted = (get().alunosDeletedIds || []).filter((x) => x !== id);
+        const extras = [...(get().alunosExtra || [])];
+        const ov = { ...(get().alunosOverrides || {}) };
+        const mens = get().mensalidades || [];
+        const seedHit = seed.alunos.find((a) => a.id === id);
+        const extraHit = extras.find((a) => a.id === id);
+        if (!extraHit && !seedHit) {
+          const m = mens.find((x) => x.id === id);
+          const patch = ov[id] || {};
+          extras.push({
+            id,
+            nome: String(patch.nome || m?.nome || id),
+            turma: String(patch.turma || m?.turma || turmaFromId(id) || ""),
+            grupo: String(patch.grupo || ""),
+            inscricao: Number(patch.inscricao || 0),
+            manuais: Number(patch.manuais || 0),
+            uniforme: Number(patch.uniforme || 0),
+            seguro: Number(patch.seguro || 0),
+            extras: Number(patch.extras || 0),
+            curso: Number(patch.curso || 0),
+            mensalidade1: Number(patch.mensalidade1 || m?.propina || 0),
+            dataPag: String(patch.dataPag || ""),
+            bruto: Number(patch.bruto || 0),
+            descPct: Number(patch.descPct || 0),
+            liquido: Number(patch.liquido || 0),
+            encarregado: String(patch.encarregado || ""),
+            telefone: String(patch.telefone || ""),
+            bi: String(patch.bi || ""),
+            familia: String(patch.familia || ""),
+            recibo: String(patch.recibo || ""),
+            obs: "Reposto automaticamente (rasto no sistema)",
+            propina: Number(patch.propina || m?.propina || 0),
+            statusPag: (patch.statusPag as Aluno["statusPag"]) || "registado",
+          });
+        }
+        set({ alunosDeletedIds: deleted, alunosExtra: extras });
+        get().pushAudit("restaurar_aluno", id);
+        return true;
+      },
+      recuperarAlunosOcultos: () => recuperarAlunosOcultos(),
       importLancamentos: (rows) => {
         requireEdit(get);
         let n = 0;
@@ -2559,6 +2607,161 @@ export function realinharIdsPorTurma(): number {
 }
 
 
+const ID_ALUNO_RE = /\b(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2}\b/gi;
+
+function collectTraceIds(state: {
+  alunosExtra?: Aluno[];
+  alunosOverrides?: Record<string, Partial<Aluno>>;
+  mensalidades?: Mensalidade[];
+  fotos?: Record<string, string>;
+  faturasPropina?: FaturaPropina[];
+  movimentosBaiExtra?: MovimentoBai[];
+  alunosDeletedIds?: string[];
+}): string[] {
+  const ids = new Set<string>();
+  const add = (raw?: string) => {
+    const id = String(raw || "").trim();
+    if (id) ids.add(id);
+  };
+  for (const a of state.alunosExtra || []) {
+    add(a.id);
+    add(a.idAnterior);
+  }
+  for (const id of Object.keys(state.alunosOverrides || {})) add(id);
+  for (const m of state.mensalidades || []) add(m.id);
+  for (const id of Object.keys(state.fotos || {})) add(id);
+  for (const f of state.faturasPropina || []) add(f.alunoId);
+  for (const id of state.alunosDeletedIds || []) add(id);
+  const bai = [...(seed.movimentosBai || []), ...(state.movimentosBaiExtra || [])];
+  for (const m of bai) {
+    const blob = `${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`;
+    const found = blob.match(ID_ALUNO_RE);
+    if (found) for (const id of found) add(id.toUpperCase());
+  }
+  return Array.from(ids);
+}
+
+function stubAlunoFromTrace(
+  id: string,
+  ov: Partial<Aluno> | undefined,
+  mens: Mensalidade | undefined,
+  faturaNome?: string,
+): Aluno {
+  const turma = String(ov?.turma || mens?.turma || turmaFromId(id) || "");
+  return {
+    id,
+    nome: String(ov?.nome || mens?.nome || faturaNome || `Aluno ${id}`),
+    turma,
+    grupo: String(ov?.grupo || grupoFromTurma(turma)),
+    inscricao: Number(ov?.inscricao || 0),
+    manuais: Number(ov?.manuais || 0),
+    uniforme: Number(ov?.uniforme || 0),
+    seguro: Number(ov?.seguro || 0),
+    extras: Number(ov?.extras || 0),
+    curso: Number(ov?.curso || 0),
+    mensalidade1: Number(ov?.mensalidade1 || mens?.propina || 0),
+    dataPag: String(ov?.dataPag || ""),
+    bruto: Number(ov?.bruto || 0),
+    descPct: Number(ov?.descPct || 0),
+    liquido: Number(ov?.liquido || 0),
+    encarregado: String(ov?.encarregado || ""),
+    telefone: String(ov?.telefone || ""),
+    bi: String(ov?.bi || ""),
+    familia: String(ov?.familia || ""),
+    recibo: String(ov?.recibo || ""),
+    obs: ov?.obs || "Reposto a partir de rasto (propinas / BAI / ID antigo)",
+    propina: Number(ov?.propina || mens?.propina || 0),
+    statusPag: (ov?.statusPag as Aluno["statusPag"]) || "registado",
+    dataNascimento: ov?.dataNascimento,
+    idAnterior: ov?.idAnterior,
+    transferidoCampusCidade: ov?.transferidoCampusCidade,
+  };
+}
+
+/**
+ * Reabre fichas que o realinhamento ou o merge da nuvem esconderam
+ * (ID antigo em alunosDeletedIds sem substituto, ou só restava a linha de propinas).
+ */
+export function recuperarAlunosOcultos(): { restaurados: number; detalhes: string[] } {
+  const state = useFinance.getState();
+  const extras = [...(state.alunosExtra || [])];
+  const overrides = { ...(state.alunosOverrides || {}) };
+  let deleted = [...(state.alunosDeletedIds || [])];
+  const mensalidades = state.mensalidades || [];
+  const faturas = state.faturasPropina || [];
+  const detalhes: string[] = [];
+
+  const hasReplacement = (oldId: string) =>
+    extras.some((a) => a.idAnterior === oldId || a.id === oldId);
+
+  const keptDeleted: string[] = [];
+  for (const id of deleted) {
+    const isSeed = seed.alunos.some((a) => a.id === id);
+    if (isSeed && !extras.some((a) => a.idAnterior === id)) {
+      detalhes.push(`Seed ${id} estava escondido sem substituto — reaberto`);
+      continue;
+    }
+    if (extras.some((a) => a.id === id)) {
+      detalhes.push(`Extra ${id} estava na lista de apagados — reaberto`);
+      continue;
+    }
+    keptDeleted.push(id);
+  }
+  deleted = keptDeleted;
+
+  const visible = new Set(
+    alunosAll(extras, overrides, deleted).map((a) => a.id),
+  );
+  const traces = collectTraceIds({
+    alunosExtra: extras,
+    alunosOverrides: overrides,
+    mensalidades,
+    fotos: state.fotos,
+    faturasPropina: faturas,
+    movimentosBaiExtra: state.movimentosBaiExtra,
+    alunosDeletedIds: state.alunosDeletedIds,
+  });
+
+  for (const id of traces) {
+    if (visible.has(id)) continue;
+    if (seed.alunos.some((a) => a.id === id) && !deleted.includes(id)) {
+      visible.add(id);
+      continue;
+    }
+    if (deleted.includes(id) && hasReplacement(id)) continue;
+    if (extras.some((a) => a.id === id)) {
+      deleted = deleted.filter((x) => x !== id);
+      visible.add(id);
+      detalhes.push(`ID ${id} reaberto (ficha extra ainda existia)`);
+      continue;
+    }
+    const ov = overrides[id];
+    const mens = mensalidades.find((m) => m.id === id);
+    const fat = faturas.find((f) => f.alunoId === id);
+    if (!ov && !mens && !fat) continue;
+    extras.push(stubAlunoFromTrace(id, ov, mens, fat?.alunoNome));
+    deleted = deleted.filter((x) => x !== id);
+    visible.add(id);
+    detalhes.push(`ID ${id} reconstruído (${ov?.nome || mens?.nome || fat?.alunoNome || "sem nome"})`);
+  }
+
+  if (detalhes.length) {
+    useFinance.setState({
+      alunosExtra: extras,
+      alunosDeletedIds: deleted,
+    });
+    try {
+      useFinance.getState().pushAudit?.(
+        "recuperar_alunos",
+        `${detalhes.length} rasto(s): ${detalhes.slice(0, 6).join(" · ")}`,
+      );
+    } catch {
+      /* audit opcional */
+    }
+  }
+  return { restaurados: detalhes.length, detalhes };
+}
+
 export function alunosAll(
   extras: Aluno[] = [],
   overrides: Record<string, Partial<Aluno>> = {},
@@ -2578,24 +2781,12 @@ export function alunosAll(
     if (merged.grupo !== g) merged.grupo = g;
     return merged;
   };
-  const norm = (n: string) =>
-    (n || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
-  const seenNames = new Set<string>();
 
   const push = (a: Aluno) => {
     if (deleted.has(a.id) || seenIds.has(a.id)) return;
-    const nn = norm(a.nome);
-    if (nn && seenNames.has(nn)) return; // bloqueia duplicado por nome
     seenIds.add(a.id);
-    if (nn) seenNames.add(nn);
     out.push(apply(a));
   };
 

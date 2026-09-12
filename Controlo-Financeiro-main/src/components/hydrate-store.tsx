@@ -8,7 +8,7 @@ import {
   saveAlunoFoto,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
-import { useFinance, recalcularClassesMatriculas } from "@/lib/store";
+import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
@@ -64,6 +64,11 @@ export function HydrateStore() {
         if (remoteFotos && Object.keys(remoteFotos).length > 0) {
           applyAlunoFotos(remoteFotos);
         }
+        try {
+          recuperarAlunosOcultos();
+        } catch (e) {
+          console.warn("[recuperar-alunos]", e);
+        }
         applyingRemote.current = false;
         lastPull.current = Date.now();
         if (reason === "boot" && (hasRemote || Object.keys(remoteFotos || {}).length > 0)) {
@@ -107,6 +112,12 @@ export function HydrateStore() {
               `Classes e IDs actualizados: ${n} matrícula(s). A sincronizar com a nuvem…`,
             );
           }
+        }
+        const rec = recuperarAlunosOcultos();
+        if (rec.restaurados > 0) {
+          toast.success(
+            `${rec.restaurados} aluno(s) repostos a partir de rastos no sistema.`,
+          );
         }
       } catch (e) {
         console.warn("[classes-congo] migrate", e);

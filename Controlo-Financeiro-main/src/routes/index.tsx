@@ -194,8 +194,8 @@ function Dashboard() {
         <Kpi
           label="Alunos inscritos"
           value={String(t.alunos)}
-          hint={t.alunos < 48 ? "Meta 48 · abrir Rastreio para fundir o censo" : "Cadastro completo"}
-          tone={t.alunos < 48 ? "amber" : "forest"}
+          hint={t.alunos >= 48 ? "Cadastro completo" : `${t.alunos} de 48 — a repor automaticamente`}
+          tone={t.alunos >= 48 ? "forest" : "amber"}
         />
         <Kpi label="Proveitos" value={t.proveitos} tone="forest" />
         <Kpi label="Custos" value={t.custosTotais} />

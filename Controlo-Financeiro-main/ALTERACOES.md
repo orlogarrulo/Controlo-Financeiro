@@ -1,5 +1,9 @@
 # Alterações — Controlo Financeiro École Consulaire
 
+## 13. Repor o 48.º aluno oculto (2026-09-12)
+- **Causa do 47 vs 48:** `alunosAll()` escondia um segundo aluno com o mesmo nome normalizado; o realinhar de IDs punha o ID antigo em `alunosDeletedIds` e, se o substituto se perdia na nuvem, a ficha desaparecia em todos os PCs.
+- **Correcção:** deixa de ocultar por nome; `recuperarAlunosOcultos()` no arranque varre propinas, BAI, overrides, fotos e IDs apagados e reabre a ficha. Rastreio → «Repor aluno em falta».
+
 ## 12. Censo fiel em qualquer PC + Rastreio (2026-09-11)
 - **Causa dos 19 vs 48:** a migração do storage v3 esvaziava `alunosExtra`. O gravar na nuvem substituía o JSON inteiro — um PC com só o seed (19) apagava as matrículas extra em todos os dispositivos.
 - **Correcção:** persist v4 já não apaga extras; `saveFinanceCloud` funde por ID e recusa lista vazia por cima de lista cheia; campo `alunosCenso` na nuvem; separador **Rastreio** (Campus Cidade / outros / dívidas + Excel + censo JSON).
