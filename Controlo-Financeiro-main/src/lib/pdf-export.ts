@@ -694,7 +694,7 @@ function addCanvasToPdf(
  * Motor único: HTML → canvas → PDF A4 (retrato ou paisagem).
  * Todos os separadores devem usar este caminho para tamanho padronizado.
  */
-async function htmlToPdfBlob(
+export async function htmlToPdfBlob(
   html: string,
   opts?: {
     filename?: string;

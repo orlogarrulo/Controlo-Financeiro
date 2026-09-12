@@ -172,7 +172,11 @@ function fmtData(d: Date): string {
   return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
-/** Limite de pagamento: dia 10 do mês civil seguinte ao mês da fatura. */
+/**
+ * Limite de pagamento:
+ * - 1.ª fatura (outubro): até 15 de setembro (antes do início das aulas)
+ * - Restantes meses: até dia 10 do mês civil seguinte
+ */
 function prazoFatura(mesLetivo: string): {
   limite: string;
   de11a30: string;
@@ -187,6 +191,21 @@ function prazoFatura(mesLetivo: string): {
   let y = now.getFullYear();
   if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
   if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
+
+  // Excepção: propina de outubro → limite 15 de setembro do mesmo ano lectivo
+  if (mesLetivo === "out") {
+    const limite = new Date(y, 8, 15); // 15 set
+    const de11 = new Date(y, 8, 16);
+    const dia30 = new Date(y, 8, 30);
+    const multa40 = new Date(y, 9, 10); // 10 out
+    return {
+      limite: fmtData(limite),
+      de11a30: `${fmtData(de11)} a ${fmtData(dia30)}`,
+      multa40: fmtData(multa40),
+      suspensao: fmtData(multa40),
+    };
+  }
+
   const limite = new Date(y, baseMonth + 1, 10);
   const dia30 = new Date(y, baseMonth + 1, 30);
   const dia10Seguinte = new Date(y, baseMonth + 2, 10);
@@ -1466,6 +1485,7 @@ function Alunos() {
   const updateAluno = useFinance((s) => s.updateAluno);
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
   const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
+  const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
   const faturasPropina = useFinance((s) => s.faturasPropina) || EMPTY_FATURAS;
   const mensalidades = useFinance((s) => s.mensalidades);
   const operators = useFinance((s) => s.operators);
@@ -2253,10 +2273,13 @@ function Alunos() {
     contacto: EscolaContacto;
     linhas?: LinhaFat[];
     modo?: "fatura" | "recibo";
+    /** Código único anti-falsificação (só recibos) */
+    codigoVerificacao?: string;
   }): string {
     const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto, linhas } = opts;
     const modo = opts.modo || "fatura";
     const isRecibo = modo === "recibo";
+    const codigoVerificacao = opts.codigoVerificacao || "";
     const linhasAtivas = (linhas || []).filter((l) => l.on && l.value > 0);
     const linhasHtml = linhasAtivas.length
       ? `<table style="width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:12px;">
@@ -2288,9 +2311,9 @@ function Alunos() {
     // Tipografia Georgia / Times New Roman
     return `
 <div style="font-family:Georgia,'Times New Roman',Times,serif;color:#374151;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;padding:0;">
-  <!-- Cabeçalho compacto: só logo a cores + lema (sem faixas coloridas) -->
-  <div style="background:#ffffff;padding:6px 20px 8px;display:flex;align-items:center;justify-content:center;gap:12px;border-bottom:1px solid #d1d5db;">
-    <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;border-radius:8px;" crossorigin="anonymous" />
+  <!-- Cabeçalho compacto à esquerda (alinhado com Facture) -->
+  <div style="background:#ffffff;padding:6px 28px 8px;display:flex;align-items:center;justify-content:flex-start;gap:12px;border-bottom:1px solid #d1d5db;">
+    <img src="${logoSrc}" width="64" height="64" alt="Logo" style="width:64px;height:64px;object-fit:contain;border-radius:8px;flex-shrink:0;" crossorigin="anonymous" />
     <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;">Apprendre · Grandir · Réussir</p>
   </div>
 
@@ -2348,6 +2371,7 @@ function Alunos() {
         <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
         <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#111827;">${formatKz(valor)}</p>
         <p style="margin:6px 0 0;font-size:10px;color:#6b7280;">${isRecibo ? "Pago" : `até ${prazo.limite}`}</p>
+        ${isRecibo && codigoVerificacao ? `<p style="margin:10px 0 0;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;font-weight:700;">Código de verificação</p><p style="margin:4px 0 0;font-size:13px;font-weight:800;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.06em;color:#111827;">${codigoVerificacao}</p>` : ""}
       </div>
     </div>
 
@@ -2705,6 +2729,22 @@ function Alunos() {
     }));
     const total = totalLinhas(linhas);
     const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
+    const rubricas = linhas.filter((l) => l.on && l.value > 0).map((l) => l.label).join(", ");
+    let codigoVerificacao = "";
+    try {
+      if (typeof addCodigoRecibo === "function") {
+        const reg = addCodigoRecibo({
+          alunoId: a.id,
+          alunoNome: a.nome,
+          mesKey,
+          valor: total || 0,
+          rubricas,
+        });
+        codigoVerificacao = reg.codigo;
+      }
+    } catch {
+      /* ignore */
+    }
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2715,6 +2755,7 @@ function Alunos() {
       contacto,
       linhas,
       modo: "recibo",
+      codigoVerificacao,
     });
     setInvoicePreview({
       aluno: a,
@@ -2729,7 +2770,8 @@ function Alunos() {
       linhas,
       mesesProp,
       modo: "recibo",
-    });
+      codigoVerificacao,
+    } as never);
   }
 
   function refrescarFatura(patch: {

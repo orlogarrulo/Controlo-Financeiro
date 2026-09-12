@@ -4,6 +4,7 @@ import seedJson from "@/data/seed.json";
 import type {
   Aluno,
   CrmEnvio,
+  CodigoRecibo,
   FaturaPropina,
   FundoAtm,
   FundoPagamento,
@@ -122,6 +123,8 @@ type ExtraState = {
   inboxItems: import("@/data/types").InboxMovimento[];
   /** Histórico de envios de faturas/propinas aos encarregados (CRM). */
   crmEnvios: CrmEnvio[];
+  /** Códigos únicos de recibos emitidos (anti-falsificação). */
+  codigosRecibo: CodigoRecibo[];
 };
 
 type Store = ExtraState & {
@@ -213,6 +216,8 @@ type Store = ExtraState & {
   addCrmEnvio: (e: Omit<CrmEnvio, "id" | "enviadoEm" | "confirmado"> & { id?: string; enviadoEm?: string; confirmado?: boolean }) => void;
   updateCrmEnvio: (id: string, patch: Partial<CrmEnvio>) => void;
   removeCrmEnvio: (id: string) => void;
+  addCodigoRecibo: (c: Omit<CodigoRecibo, "id" | "codigo" | "emitidoEm"> & { id?: string; codigo?: string; emitidoEm?: string }) => CodigoRecibo;
+  findCodigoRecibo: (codigo: string) => CodigoRecibo | undefined;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -305,6 +310,7 @@ export const useFinance = create<Store>()(
       uiPrefs: {},
       inboxItems: [],
       crmEnvios: [],
+      codigosRecibo: [],
       setUiPrefs: (patch) => {
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
       },
@@ -1869,6 +1875,32 @@ export const useFinance = create<Store>()(
         requireEdit(get);
         set({ crmEnvios: (get().crmEnvios || []).filter((r) => r.id !== id) });
       },
+      addCodigoRecibo: (c) => {
+        requireEdit(get);
+        const mes = (c.mesKey || "").replace(/-/g, "").slice(0, 6) || new Date().toISOString().slice(0, 7).replace(/-/g, "");
+        const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+        const chk = String((rand.charCodeAt(0) + rand.charCodeAt(1) + (c.valor || 0)) % 100).padStart(2, "0");
+        const codigo = c.codigo || `RC-${mes}-${rand}-${chk}`;
+        const row: CodigoRecibo = {
+          id: c.id || `RCOD-${Date.now().toString(36)}-${rand}`,
+          codigo,
+          alunoId: c.alunoId,
+          alunoNome: c.alunoNome,
+          mesKey: c.mesKey,
+          valor: c.valor,
+          rubricas: c.rubricas,
+          emitidoEm: c.emitidoEm || new Date().toISOString(),
+          criadoPor: c.criadoPor || get().activeOperator,
+        };
+        set({ codigosRecibo: [...(get().codigosRecibo || []), row] });
+        get().pushAudit("recibo_codigo", `${row.codigo} · ${row.alunoNome} · ${row.mesKey}`);
+        return row;
+      },
+      findCodigoRecibo: (codigo) => {
+        const k = (codigo || "").trim().toUpperCase();
+        return (get().codigosRecibo || []).find((r) => r.codigo.toUpperCase() === k);
+      },
+
       resetLocal: () => {
         requireEdit(get);
         set({
@@ -1892,6 +1924,7 @@ export const useFinance = create<Store>()(
           faturasPropina: [],
           inboxItems: [],
           crmEnvios: [],
+          codigosRecibo: [],
         });
       },
       resetLocalStorage: () => {
@@ -2001,6 +2034,7 @@ export const useFinance = create<Store>()(
         uiPrefs: s.uiPrefs || {},
         inboxItems: s.inboxItems || [],
         crmEnvios: s.crmEnvios || [],
+        codigosRecibo: s.codigosRecibo || [],
       }),
     },
   ),

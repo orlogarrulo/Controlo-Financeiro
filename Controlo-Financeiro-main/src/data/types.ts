@@ -218,6 +218,23 @@ export type CrmEnvio = {
   criadoPor?: string;
 };
 
+
+/** Código único de recibo (anti-falsificação + reconciliação). */
+export type CodigoRecibo = {
+  id: string;
+  /** Ex.: RC-202610-K7M2-41 — impresso no recibo */
+  codigo: string;
+  alunoId: string;
+  alunoNome: string;
+  /** YYYY-MM */
+  mesKey: string;
+  valor: number;
+  /** Rubricas pagas (opcional) */
+  rubricas?: string;
+  emitidoEm: string;
+  criadoPor?: string;
+};
+
 export type Mensalidade = {
   id: string;
   nome: string;

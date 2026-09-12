@@ -33,6 +33,7 @@ export type FinanceCloudPayload = {
   };
   inboxItems?: unknown[];
   crmEnvios?: unknown[];
+  codigosRecibo?: unknown[];
   clientUpdatedAt?: string;
 };
 
@@ -210,6 +211,7 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
       faturasPropina: mergeById(current.faturasPropina, data.faturasPropina),
       inboxItems: mergeById(current.inboxItems, data.inboxItems),
       crmEnvios: mergeById(current.crmEnvios, data.crmEnvios),
+      codigosRecibo: mergeById(current.codigosRecibo, data.codigosRecibo),
       auditLog: mergeById(current.auditLog, data.auditLog).slice(-200),
       sessionLog: (data.sessionLog?.length ? data.sessionLog : current.sessionLog) || [],
       clientUpdatedAt: updatedAt,
@@ -274,6 +276,7 @@ export function sliceFromStore(s: {
   };
   inboxItems?: unknown[];
   crmEnvios?: unknown[];
+  codigosRecibo?: unknown[];
 }): FinanceCloudPayload {
   return sliceFromStoreDetailed(s).payload;
 }
@@ -306,6 +309,7 @@ export function sliceFromStoreDetailed(s: {
   };
   inboxItems?: unknown[];
   crmEnvios?: unknown[];
+  codigosRecibo?: unknown[];
 }): SliceCloudResult {
   const { list: alunosExtraSafe, omitted: o1 } = stripLargeFotosFromAlunos(
     s.alunosExtra || [],
@@ -341,6 +345,7 @@ export function sliceFromStoreDetailed(s: {
       // Anexos: só enviam base64 se anexoSync e tamanho < ~100 KB
       inboxItems: stripInboxAnexos(s.inboxItems || []),
       crmEnvios: s.crmEnvios || [],
+      codigosRecibo: s.codigosRecibo || [],
     },
   };
 }

@@ -11,6 +11,7 @@ import {
   FileText,
   Eye,
   Receipt,
+  FolderDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
@@ -31,6 +32,7 @@ import {
   useFinance,
 } from "@/lib/store";
 import { formatKz, formatDate } from "@/lib/format";
+import { htmlToPdfBlob } from "@/lib/pdf-export";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Aluno, CrmEnvio, FaturaPropina } from "@/data/types";
 
@@ -193,6 +195,8 @@ function CrmPage() {
   const faturas = useFinance((s) => s.faturasPropina) || [];
   const mensalidades = useFinance((s) => s.mensalidades) || [];
   const crmEnvios = useFinance((s) => s.crmEnvios) || [];
+  const codigosRecibo = useFinance((s) => s.codigosRecibo) || [];
+  const findCodigoRecibo = useFinance((s) => s.findCodigoRecibo);
   const addCrmEnvio = useFinance((s) => s.addCrmEnvio);
   const updateCrmEnvio = useFinance((s) => s.updateCrmEnvio);
   const active = useFinance((s) => s.activeOperator);
@@ -208,6 +212,8 @@ function CrmPage() {
   const [filtro, setFiltro] = useState<"todos" | "enviados" | "por_enviar">("todos");
   const [draft, setDraft] = useState<SendDraft | null>(null);
   const [viewFatura, setViewFatura] = useState<Row | null>(null);
+  const [verifyCodigo, setVerifyCodigo] = useState("");
+  const [verifyResult, setVerifyResult] = useState<string | null>(null);
 
   const rows: Row[] = useMemo(() => {
     const fatByAluno = new Map<string, FaturaPropina>();
@@ -410,6 +416,92 @@ function CrmPage() {
     }
   }
 
+  async function descarregarFaturasPasta() {
+    const lista = selected.size
+      ? filtered.filter((r) => selected.has(r.aluno.id))
+      : filtered;
+    if (!lista.length) {
+      toast.message("Nenhum aluno na lista filtrada.");
+      return;
+    }
+    toast.message(`A gerar ${lista.length} PDF(s)… isto pode demorar alguns minutos.`);
+    try {
+      const w = window as unknown as {
+        JSZip?: new () => {
+          file: (name: string, data: Blob) => void;
+          generateAsync: (opts: { type: string }) => Promise<Blob>;
+        };
+      };
+      if (!w.JSZip) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error("Falha ao carregar JSZip"));
+          document.head.appendChild(s);
+        });
+      }
+      const JSZipCtor = (
+        window as unknown as {
+          JSZip: new () => {
+            file: (name: string, data: Blob) => void;
+            generateAsync: (opts: { type: string }) => Promise<Blob>;
+          };
+        }
+      ).JSZip;
+      const zip = new JSZipCtor();
+      const pasta = `Faturas-${mesKey}`;
+      let ok = 0;
+      for (const row of lista) {
+        const a = row.aluno;
+        const valor = valorPropina(a, row.fatura) ?? 0;
+        const html = buildFaturaPreviewHtml({
+          escolaNome: escola.nome || "École Consulaire",
+          subtitulo: escola.subtitulo,
+          aluno: a,
+          fatura: row.fatura,
+          mesRef: mesLabel(mesKey),
+          valor,
+        });
+        const safe = (a.nome || a.id || "aluno")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^\w\s-]/g, "")
+          .trim()
+          .replace(/\s+/g, "-")
+          .slice(0, 50);
+        const num = row.fatura?.numero || `REF-${a.id}`;
+        const fname = `${num}_${safe}.pdf`;
+        try {
+          const { blob } = await htmlToPdfBlob(html, {
+            filename: fname,
+            forceSinglePage: true,
+          });
+          zip.file(`${pasta}/${fname}`, blob);
+          ok += 1;
+        } catch (err) {
+          console.warn("PDF falhou", a.id, err);
+        }
+      }
+      if (!ok) {
+        toast.error("Nenhum PDF gerado.");
+        return;
+      }
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Faturas-${mesKey}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(
+        `ZIP com ${ok} PDF(s) descarregado. Extraia para uma pasta e anexe no Outlook a partir dessa pasta.`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao gerar ZIP de PDFs");
+    }
+  }
+
   function enviarGrupo(canal: "email" | "whatsapp") {
     const alvos = filtered.filter((r) => selected.has(r.aluno.id));
     if (!alvos.length) {
@@ -505,6 +597,64 @@ function CrmPage() {
         />
       </div>
 
+
+      <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-4">
+        <p className="text-sm font-medium">Verificar código de recibo</p>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">
+          Cada recibo emitido em Matrículas leva um código único (ex.: RC-202610-K7M2-41).
+          Introduza o código para confirmar autenticidade e ver aluno / mês / valor.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="min-w-[200px] flex-1 space-y-1">
+            <Label htmlFor="vcode">Código</Label>
+            <Input
+              id="vcode"
+              value={verifyCodigo}
+              onChange={(e) => {
+                setVerifyCodigo(e.target.value);
+                setVerifyResult(null);
+              }}
+              placeholder="RC-202610-XXXX-00"
+              className="font-mono uppercase"
+            />
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              const found = findCodigoRecibo?.(verifyCodigo.trim());
+              if (!found) {
+                setVerifyResult("Código não encontrado — recibo inválido ou ainda não emitido neste sistema.");
+                return;
+              }
+              setVerifyResult(
+                `Válido · ${found.alunoNome} (${found.alunoId}) · ${found.mesKey} · ${formatKz(found.valor)}` +
+                  (found.rubricas ? ` · ${found.rubricas}` : "") +
+                  ` · emitido ${formatDate(found.emitidoEm.slice(0, 10))}`,
+              );
+            }}
+          >
+            Verificar
+          </Button>
+        </div>
+        {verifyResult ? (
+          <p
+            className={`mt-2 text-sm ${
+              verifyResult.startsWith("Válido")
+                ? "text-emerald-700"
+                : "text-red-700"
+            }`}
+          >
+            {verifyResult}
+          </p>
+        ) : null}
+        {(codigosRecibo as { codigo: string }[]).length > 0 ? (
+          <p className="mt-2 text-xs text-[var(--color-muted)]">
+            {(codigosRecibo as unknown[]).length} código(s) registado(s) neste dispositivo /
+            nuvem.
+          </p>
+        ) : null}
+      </div>
+
       <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-3 text-xs text-[var(--color-muted)] sm:p-4">
         <p className="font-medium text-[var(--color-ink)]">Como funciona</p>
         <ol className="mt-1 list-decimal space-y-0.5 pl-4">
@@ -516,13 +666,12 @@ function CrmPage() {
           <li>Envie no Outlook / WhatsApp Web. Depois clique no botão <strong>verde</strong>.</li>
         </ol>
         <p className="mt-2">
-          <strong>Anexar PDF no Outlook:</strong> o browser <em>não permite</em> anexar ficheiros
-          automaticamente via <code>mailto</code>. Emite o PDF em{" "}
-          <Link to="/alunos" className="underline text-[var(--color-forest)]">
-            Matrículas
-          </Link>{" "}
-          (Fatura → PDF), guarde o ficheiro e anexe-o manualmente na mensagem do Outlook. Em envio
-          em grupo, o mesmo: um PDF por aluno, anexado à mão (ou BCC só com texto).
+          <strong>Anexo no Outlook (100 alunos):</strong> use{" "}
+          <strong>Pasta de faturas (ZIP)</strong> — descarrega um ZIP com um ficheiro por aluno
+          (nome = n.º + nome). Extraia para ex.{" "}
+          <code>Documentos\Faturas-2026-10</code>. No Outlook, ao anexar, escolha{" "}
+          <em>Procurar Neste PC</em> e abra essa pasta: as faturas aparecem por nome. O browser não
+          consegue anexar sozinho.
         </p>
         <p className="mt-1">
           WhatsApp: telefone na ficha deve ter <strong>9 dígitos a começar por 9</strong> (ex.:
@@ -582,6 +731,10 @@ function CrmPage() {
           {selected.size === filtered.length && filtered.length > 0
             ? "Limpar selecção"
             : `Seleccionar visíveis (${filtered.length})`}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => void descarregarFaturasPasta()}>
+          <FolderDown className="mr-1 size-4" />
+          Pasta de faturas (ZIP)
         </Button>
         <Button
           size="sm"
@@ -714,8 +867,16 @@ function CrmPage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          title="Fatura — ver e enviar"
+                          onClick={() => abrirVisualizacaoFatura(row)}
+                        >
+                          <FileText className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           disabled={!email}
-                          title={email ? `Pré-visualizar e-mail para ${email}` : "Sem e-mail"}
+                          title={email ? `E-mail fatura → ${email}` : "Sem e-mail"}
                           onClick={() => abrirRascunho(row, "email", "fatura")}
                         >
                           <Mail className="size-3.5" />
