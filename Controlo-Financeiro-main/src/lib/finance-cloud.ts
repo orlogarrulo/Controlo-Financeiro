@@ -32,6 +32,7 @@ export type FinanceCloudPayload = {
     salariosFilterMes?: string;
   };
   inboxItems?: unknown[];
+  crmEnvios?: unknown[];
   clientUpdatedAt?: string;
 };
 
@@ -208,6 +209,7 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
       recibosSalario: mergeById(current.recibosSalario, data.recibosSalario),
       faturasPropina: mergeById(current.faturasPropina, data.faturasPropina),
       inboxItems: mergeById(current.inboxItems, data.inboxItems),
+      crmEnvios: mergeById(current.crmEnvios, data.crmEnvios),
       auditLog: mergeById(current.auditLog, data.auditLog).slice(-200),
       sessionLog: (data.sessionLog?.length ? data.sessionLog : current.sessionLog) || [],
       clientUpdatedAt: updatedAt,
@@ -271,6 +273,7 @@ export function sliceFromStore(s: {
     salariosFilterMes?: string;
   };
   inboxItems?: unknown[];
+  crmEnvios?: unknown[];
 }): FinanceCloudPayload {
   return sliceFromStoreDetailed(s).payload;
 }
@@ -302,6 +305,7 @@ export function sliceFromStoreDetailed(s: {
     salariosFilterMes?: string;
   };
   inboxItems?: unknown[];
+  crmEnvios?: unknown[];
 }): SliceCloudResult {
   const { list: alunosExtraSafe, omitted: o1 } = stripLargeFotosFromAlunos(
     s.alunosExtra || [],
@@ -336,6 +340,7 @@ export function sliceFromStoreDetailed(s: {
       uiPrefs: s.uiPrefs || {},
       // Anexos: só enviam base64 se anexoSync e tamanho < ~100 KB
       inboxItems: stripInboxAnexos(s.inboxItems || []),
+      crmEnvios: s.crmEnvios || [],
     },
   };
 }

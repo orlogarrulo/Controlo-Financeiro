@@ -200,6 +200,24 @@ export type FaturaPropina = {
   emitidoEm: string;
 };
 
+/** Registo de envio de fatura/propina ao encarregado (CRM). */
+export type CrmEnvio = {
+  id: string;
+  alunoId: string;
+  alunoNome: string;
+  /** YYYY-MM */
+  mesKey: string;
+  canal: "email" | "whatsapp";
+  /** ISO timestamp do clique em enviar */
+  enviadoEm: string;
+  /** Utilizador confirmou entrega (botão verde) */
+  confirmado: boolean;
+  /** Número da fatura se existir */
+  faturaNumero?: string;
+  valor?: number;
+  criadoPor?: string;
+};
+
 export type Mensalidade = {
   id: string;
   nome: string;

@@ -302,6 +302,10 @@ function applyPayload(p: FinanceCloudPayload) {
       (local.inboxItems as never[]) || [],
       (p.inboxItems as never[]) || [],
     ) as never[],
+    crmEnvios: mergeById(
+      (local.crmEnvios as never[]) || [],
+      (p.crmEnvios as never[]) || [],
+    ) as never[],
   });
   // Alinha botões com extrato após aplicar nuvem
   try {

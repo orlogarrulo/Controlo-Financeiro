@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import seedJson from "@/data/seed.json";
 import type {
   Aluno,
+  CrmEnvio,
   FaturaPropina,
   FundoAtm,
   FundoPagamento,
@@ -119,6 +120,8 @@ type ExtraState = {
   };
   /** Caixa de entrada de reconciliação (atrasados). */
   inboxItems: import("@/data/types").InboxMovimento[];
+  /** Histórico de envios de faturas/propinas aos encarregados (CRM). */
+  crmEnvios: CrmEnvio[];
 };
 
 type Store = ExtraState & {
@@ -206,6 +209,10 @@ type Store = ExtraState & {
   addSalario: (s: Salario) => void;
   updateSalario: (id: string, patch: Partial<Salario>) => void;
   removeSalario: (id: string) => void;
+  /** Regista envio de fatura/propina ao encarregado (CRM). */
+  addCrmEnvio: (e: Omit<CrmEnvio, "id" | "enviadoEm" | "confirmado"> & { id?: string; enviadoEm?: string; confirmado?: boolean }) => void;
+  updateCrmEnvio: (id: string, patch: Partial<CrmEnvio>) => void;
+  removeCrmEnvio: (id: string) => void;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -297,6 +304,7 @@ export const useFinance = create<Store>()(
       salariosOverrides: {},
       uiPrefs: {},
       inboxItems: [],
+      crmEnvios: [],
       setUiPrefs: (patch) => {
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
       },
@@ -1831,6 +1839,36 @@ export const useFinance = create<Store>()(
         set({ faturasPropina: [...(get().faturasPropina || []), f] });
         get().pushAudit("emitir_fatura_propina", `${f.numero} · ${f.alunoNome} · ${f.mesRef}`);
       },
+      addCrmEnvio: (e) => {
+        requireEdit(get);
+        const id = e.id || `CRM-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const row: CrmEnvio = {
+          id,
+          alunoId: e.alunoId,
+          alunoNome: e.alunoNome,
+          mesKey: e.mesKey,
+          canal: e.canal,
+          enviadoEm: e.enviadoEm || new Date().toISOString(),
+          confirmado: e.confirmado ?? false,
+          faturaNumero: e.faturaNumero,
+          valor: e.valor,
+          criadoPor: e.criadoPor || get().activeOperator,
+        };
+        set({ crmEnvios: [...(get().crmEnvios || []), row] });
+        get().pushAudit("crm_envio", `${row.canal} · ${row.alunoNome} · ${row.mesKey}`);
+      },
+      updateCrmEnvio: (id, patch) => {
+        requireEdit(get);
+        set({
+          crmEnvios: (get().crmEnvios || []).map((r) =>
+            r.id === id ? { ...r, ...patch } : r,
+          ),
+        });
+      },
+      removeCrmEnvio: (id) => {
+        requireEdit(get);
+        set({ crmEnvios: (get().crmEnvios || []).filter((r) => r.id !== id) });
+      },
       resetLocal: () => {
         requireEdit(get);
         set({
@@ -1852,6 +1890,8 @@ export const useFinance = create<Store>()(
           salariosDeletedIds: [],
           recibosSalario: [],
           faturasPropina: [],
+          inboxItems: [],
+          crmEnvios: [],
         });
       },
       resetLocalStorage: () => {
@@ -1960,6 +2000,7 @@ export const useFinance = create<Store>()(
         faturasPropina: s.faturasPropina,
         uiPrefs: s.uiPrefs || {},
         inboxItems: s.inboxItems || [],
+        crmEnvios: s.crmEnvios || [],
       }),
     },
   ),
