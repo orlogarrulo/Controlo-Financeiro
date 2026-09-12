@@ -10,6 +10,7 @@ import {
   Search,
   FileText,
   Eye,
+  Receipt,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
@@ -39,7 +40,11 @@ export const Route = createFileRoute("/crm")({
 
 function mesKeyAtual(): string {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  let m = d.getMonth(); // 0-11
+  const y = d.getFullYear();
+  // Antes das aulas (ago/set): 1.ª cobrança = outubro
+  if (m === 7 || m === 8) m = 9;
+  return `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 
 function mesLabel(key: string): string {
@@ -52,14 +57,28 @@ function mesLabel(key: string): string {
   return `${nomes[idx] || m} de ${y}`;
 }
 
-/** Normaliza telefone angolano para wa.me (244XXXXXXXXX). */
+/**
+ * Normaliza telefone angolano para wa.me (244XXXXXXXXX).
+ * Aceita vários números na mesma célula (ex.: "92417061 / 923255562")
+ * e escolhe o primeiro móvel válido de 9 dígitos a começar por 9.
+ */
 function phoneToWa(raw?: string): string | null {
   if (!raw) return null;
-  let d = raw.replace(/\D/g, "");
-  if (d.startsWith("00244")) d = d.slice(5);
-  if (d.startsWith("244")) d = d.slice(3);
-  if (d.length === 9 && /^9/.test(d)) return `244${d}`;
-  if (d.length === 12 && d.startsWith("244")) return d;
+  const parts = String(raw)
+    .split(/[/|,;]+|\s{2,}|\s+e\s+/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const candidates = parts.length ? parts : [String(raw)];
+  for (const part of candidates) {
+    let d = part.replace(/\D/g, "");
+    if (d.startsWith("00244")) d = d.slice(5);
+    if (d.startsWith("244") && d.length >= 12) d = d.slice(3);
+    if (d.length === 9 && d.startsWith("9")) return `244${d}`;
+    if (d.length === 12 && d.startsWith("244") && d[3] === "9") return d;
+  }
+  const all = String(raw).replace(/\D/g, "");
+  const m = all.match(/9\d{8}/);
+  if (m) return `244${m[0]}`;
   return null;
 }
 
@@ -70,18 +89,31 @@ function buildMensagemFatura(opts: {
   escolaNome: string;
   faturaNumero?: string;
   encarregado?: string;
+  tipo?: "fatura" | "recibo";
 }): string {
   const valorTxt = opts.valor != null ? formatKz(opts.valor) : "conforme tarifário";
-  const fat = opts.faturaNumero ? `\nN.º fatura: ${opts.faturaNumero}` : "";
+  const fat = opts.faturaNumero
+    ? `\nN.º ${opts.tipo === "recibo" ? "recibo" : "fatura"}: ${opts.faturaNumero}`
+    : "";
   const saudacao = opts.encarregado
     ? `Olá ${opts.encarregado},`
     : "Olá,";
+  if (opts.tipo === "recibo") {
+    return (
+      `${saudacao}\n\n` +
+      `Confirmamos o *recibo de pagamento* da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
+      `Valor recebido: *${valorTxt}*${fat}\n\n` +
+      `${opts.escolaNome}\n` +
+      `Obrigado.`
+    );
+  }
   return (
     `${saudacao}\n\n` +
     `Segue a referência da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
     `Valor: *${valorTxt}*${fat}\n\n` +
     `${opts.escolaNome}\n` +
-    `Por favor confirme o pagamento ou contacte a secretaria.`
+    `Por favor confirme o pagamento ou contacte a secretaria.\n\n` +
+    `_Nota: o PDF da fatura pode ser obtido em Matrículas (botão Fatura) e anexado manualmente no Outlook._`
   );
 }
 
@@ -143,6 +175,7 @@ type SendDraft = {
   row: Row;
   canal: "email" | "whatsapp";
   mensagem: string;
+  tipoDoc: "fatura" | "recibo";
 };
 
 function CrmPage() {
@@ -240,7 +273,7 @@ function CrmPage() {
     return a.propina || undefined;
   }
 
-  function mensagemPara(row: Row): string {
+  function mensagemPara(row: Row, tipoDoc: "fatura" | "recibo" = "fatura"): string {
     const a = row.aluno;
     return buildMensagemFatura({
       alunoNome: a.nome,
@@ -249,10 +282,15 @@ function CrmPage() {
       escolaNome: escola.nome || "École Consulaire",
       faturaNumero: row.fatura?.numero,
       encarregado: a.encarregado || a.pai || a.mae,
+      tipo: tipoDoc,
     });
   }
 
-  function abrirRascunho(row: Row, canal: "email" | "whatsapp") {
+  function abrirRascunho(
+    row: Row,
+    canal: "email" | "whatsapp",
+    tipoDoc: "fatura" | "recibo" = "fatura",
+  ) {
     const a = row.aluno;
     if (canal === "email") {
       const email = (a.email || row.fatura?.email || "").trim();
@@ -262,11 +300,13 @@ function CrmPage() {
       }
     } else {
       if (!phoneToWa(a.telefone)) {
-        toast.error("Telefone inválido ou em falta. Actualize em Matrículas.");
+        toast.error(
+          "Telefone inválido ou em falta (precisa de 9 dígitos a começar por 9). Actualize em Matrículas.",
+        );
         return;
       }
     }
-    setDraft({ row, canal, mensagem: mensagemPara(row) });
+    setDraft({ row, canal, mensagem: mensagemPara(row, tipoDoc), tipoDoc });
   }
 
   function confirmarEnvio() {
@@ -465,21 +505,29 @@ function CrmPage() {
       </div>
 
       <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-3 text-xs text-[var(--color-muted)] sm:p-4">
-        <p className="font-medium text-[var(--color-ink)]">Como funciona a confirmação</p>
+        <p className="font-medium text-[var(--color-ink)]">Como funciona</p>
         <ol className="mt-1 list-decimal space-y-0.5 pl-4">
-          <li>Clique no envelope ou no WhatsApp → abre a <strong>pré-visualização</strong> da mensagem (e pode ver a fatura).</li>
-          <li>Confirme o texto e clique em <strong>Abrir e-mail / Abrir WhatsApp</strong>.</li>
-          <li>Envie a mensagem no cliente (Outlook, Gmail, WhatsApp Web/App).</li>
-          <li>Volte à app e clique no botão <strong>verde</strong> para assinalar entrega confirmada.</li>
+          <li>
+            <strong>Envelope</strong> = fatura por e-mail · <strong>WhatsApp</strong> = fatura por
+            WhatsApp · <strong>Recibo</strong> = comprovativo de pagamento.
+          </li>
+          <li>Abre a <strong>pré-visualização</strong> do texto (editável). Confirme e abra o cliente.</li>
+          <li>Envie no Outlook / WhatsApp Web. Depois clique no botão <strong>verde</strong>.</li>
         </ol>
         <p className="mt-2">
-          O WhatsApp abre a conversa com o <strong>número do encarregado</strong> (não o da escola).
-          O e-mail abre o cliente predefinido do PC (ex.: Outlook) com o endereço do encarregado.
-          Para emitir/editar a fatura completa com linhas de matrícula, use{" "}
+          <strong>Anexar PDF no Outlook:</strong> o browser <em>não permite</em> anexar ficheiros
+          automaticamente via <code>mailto</code>. Emite o PDF em{" "}
           <Link to="/alunos" className="underline text-[var(--color-forest)]">
             Matrículas
-          </Link>
-          .
+          </Link>{" "}
+          (Fatura → PDF), guarde o ficheiro e anexe-o manualmente na mensagem do Outlook. Em envio
+          em grupo, o mesmo: um PDF por aluno, anexado à mão (ou BCC só com texto).
+        </p>
+        <p className="mt-1">
+          WhatsApp: telefone na ficha deve ter <strong>9 dígitos a começar por 9</strong> (ex.:
+          923555562). Se houver dois números, use o formato{" "}
+          <code>923555562 / 924170610</code> — a app escolhe o primeiro válido. O botão fica
+          inactivo se o número for inválido (não é “WhatsApp offline”).
         </p>
       </div>
 
@@ -672,7 +720,7 @@ function CrmPage() {
                           variant="outline"
                           disabled={!email}
                           title={email ? `Pré-visualizar e-mail para ${email}` : "Sem e-mail"}
-                          onClick={() => abrirRascunho(row, "email")}
+                          onClick={() => abrirRascunho(row, "email", "fatura")}
                         >
                           <Mail className="size-3.5" />
                         </Button>
@@ -680,10 +728,29 @@ function CrmPage() {
                           size="sm"
                           variant="outline"
                           disabled={!waOk}
-                          title={waOk ? "Pré-visualizar WhatsApp" : "Telefone inválido"}
-                          onClick={() => abrirRascunho(row, "whatsapp")}
+                          title={
+                            waOk
+                              ? `WhatsApp → ${phoneToWa(a.telefone)}`
+                              : "Telefone inválido (use 9 dígitos, ex. 923555562)"
+                          }
+                          onClick={() => abrirRascunho(row, "whatsapp", "fatura")}
                         >
                           <MessageCircle className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!email && !waOk}
+                          title="Enviar recibo (comprovativo de pagamento)"
+                          onClick={() =>
+                            abrirRascunho(
+                              row,
+                              email ? "email" : "whatsapp",
+                              "recibo",
+                            )
+                          }
+                        >
+                          <Receipt className="size-3.5" />
                         </Button>
                         <Button
                           size="sm"
@@ -723,7 +790,8 @@ function CrmPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {draft?.canal === "email" ? "Pré-visualizar e-mail" : "Pré-visualizar WhatsApp"}
+              {draft?.tipoDoc === "recibo" ? "Pré-visualizar recibo" : "Pré-visualizar fatura"}{" "}
+              · {draft?.canal === "email" ? "e-mail" : "WhatsApp"}
             </DialogTitle>
           </DialogHeader>
           {draft ? (
