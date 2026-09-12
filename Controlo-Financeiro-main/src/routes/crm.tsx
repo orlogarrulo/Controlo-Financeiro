@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Mail,
@@ -8,6 +8,8 @@ import {
   Users,
   Send,
   Search,
+  FileText,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
@@ -16,11 +18,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
   alunosAll,
   getSeed,
   useFinance,
 } from "@/lib/store";
 import { formatKz, formatDate } from "@/lib/format";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Aluno, CrmEnvio, FaturaPropina } from "@/data/types";
 
 export const Route = createFileRoute("/crm")({
@@ -59,16 +69,65 @@ function buildMensagemFatura(opts: {
   valor?: number;
   escolaNome: string;
   faturaNumero?: string;
+  encarregado?: string;
 }): string {
-  const valorTxt = opts.valor ? formatKz(opts.valor) : "conforme tarifário";
-  const fat = opts.faturaNumero ? `\nFatura: ${opts.faturaNumero}` : "";
+  const valorTxt = opts.valor != null ? formatKz(opts.valor) : "conforme tarifário";
+  const fat = opts.faturaNumero ? `\nN.º fatura: ${opts.faturaNumero}` : "";
+  const saudacao = opts.encarregado
+    ? `Olá ${opts.encarregado},`
+    : "Olá,";
   return (
-    `Olá,\n\n` +
+    `${saudacao}\n\n` +
     `Segue a referência da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
     `Valor: *${valorTxt}*${fat}\n\n` +
     `${opts.escolaNome}\n` +
     `Por favor confirme o pagamento ou contacte a secretaria.`
   );
+}
+
+/** HTML simples para visualizar a fatura já emitida (sem editar linhas de matrícula). */
+function buildFaturaPreviewHtml(opts: {
+  escolaNome: string;
+  subtitulo?: string;
+  aluno: Aluno;
+  fatura: FaturaPropina;
+  mesRef: string;
+}): string {
+  const logo = escolaLogoSrc();
+  const emitido = opts.fatura.emitidoEm
+    ? formatDate(opts.fatura.emitidoEm.slice(0, 10))
+    : "—";
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${opts.fatura.numero}</title>
+<style>
+  body{font-family:Georgia,serif;color:#1a1a1a;margin:0;padding:24px;background:#f8f6f1}
+  .sheet{max-width:640px;margin:0 auto;background:#fff;padding:28px 32px;border:1px solid #e5e0d5;border-radius:8px}
+  .head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1b4d3e;padding-bottom:14px;margin-bottom:18px}
+  .head img{height:56px;width:auto}
+  h1{font-size:18px;margin:0;color:#1b4d3e}
+  .sub{font-size:12px;color:#666;margin-top:2px}
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #eee}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#666}
+  .total{font-size:18px;font-weight:700;color:#1b4d3e}
+  .foot{margin-top:24px;font-size:11px;color:#888}
+</style></head><body><div class="sheet">
+  <div class="head">
+    ${logo ? `<img src="${logo}" alt="Logo"/>` : ""}
+    <div>
+      <h1>${opts.escolaNome}</h1>
+      <div class="sub">${opts.subtitulo || ""} · Fatura de propina</div>
+    </div>
+  </div>
+  <table>
+    <tr><th>N.º</th><td>${opts.fatura.numero}</td></tr>
+    <tr><th>Aluno</th><td>${opts.aluno.nome} (${opts.aluno.id} · ${opts.aluno.turma || "—"})</td></tr>
+    <tr><th>Encarregado</th><td>${opts.aluno.encarregado || opts.aluno.pai || opts.aluno.mae || "—"}</td></tr>
+    <tr><th>Mês</th><td>${opts.mesRef}</td></tr>
+    <tr><th>Emitida em</th><td>${emitido}</td></tr>
+    <tr><th>Valor</th><td class="total">${formatKz(opts.fatura.valor)}</td></tr>
+  </table>
+  <p class="foot">Documento de referência · École Consulaire · Controlo Financeiro</p>
+</div></body></html>`;
 }
 
 type Row = {
@@ -78,6 +137,12 @@ type Row = {
   ultimo?: CrmEnvio;
   confirmado: boolean;
   enviado: boolean;
+};
+
+type SendDraft = {
+  row: Row;
+  canal: "email" | "whatsapp";
+  mensagem: string;
 };
 
 function CrmPage() {
@@ -101,6 +166,8 @@ function CrmPage() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filtro, setFiltro] = useState<"todos" | "enviados" | "por_enviar">("todos");
+  const [draft, setDraft] = useState<SendDraft | null>(null);
+  const [viewFatura, setViewFatura] = useState<Row | null>(null);
 
   const rows: Row[] = useMemo(() => {
     const fatByAluno = new Map<string, FaturaPropina>();
@@ -121,7 +188,6 @@ function CrmPage() {
       envios.sort((x, y) => (y.enviadoEm || "").localeCompare(x.enviadoEm || ""));
       const ultimo = envios[0];
       const fatura = fatByAluno.get(a.id);
-      // Valor da propina: fatura > mensalidade
       list.push({
         aluno: a,
         fatura,
@@ -168,80 +234,78 @@ function CrmPage() {
   }, [rows, crmEnvios, mesKey]);
 
   function valorPropina(a: Aluno, fatura?: FaturaPropina): number | undefined {
-    if (fatura?.valor) return fatura.valor;
-    const m = mensalidades.find(
-      (x) => x.id === a.id || x.nome === a.nome,
-    );
+    if (fatura?.valor != null) return fatura.valor;
+    const m = mensalidades.find((x) => x.id === a.id || x.nome === a.nome);
     if (m?.propina) return m.propina;
     return a.propina || undefined;
   }
 
-  function registarEnvio(
-    a: Aluno,
-    canal: "email" | "whatsapp",
-    fatura?: FaturaPropina,
-  ) {
-    const valor = valorPropina(a, fatura);
+  function mensagemPara(row: Row): string {
+    const a = row.aluno;
+    return buildMensagemFatura({
+      alunoNome: a.nome,
+      mesRef: mesLabel(mesKey),
+      valor: valorPropina(a, row.fatura),
+      escolaNome: escola.nome || "École Consulaire",
+      faturaNumero: row.fatura?.numero,
+      encarregado: a.encarregado || a.pai || a.mae,
+    });
+  }
+
+  function abrirRascunho(row: Row, canal: "email" | "whatsapp") {
+    const a = row.aluno;
+    if (canal === "email") {
+      const email = (a.email || row.fatura?.email || "").trim();
+      if (!email) {
+        toast.error("Sem e-mail do encarregado. Actualize em Matrículas.");
+        return;
+      }
+    } else {
+      if (!phoneToWa(a.telefone)) {
+        toast.error("Telefone inválido ou em falta. Actualize em Matrículas.");
+        return;
+      }
+    }
+    setDraft({ row, canal, mensagem: mensagemPara(row) });
+  }
+
+  function confirmarEnvio() {
+    if (!draft) return;
+    const { row, canal, mensagem } = draft;
+    const a = row.aluno;
+    const valor = valorPropina(a, row.fatura);
+
+    if (canal === "email") {
+      const email = (a.email || row.fatura?.email || "").trim();
+      const subject = encodeURIComponent(
+        `Propina ${mesLabel(mesKey)} — ${a.nome} · ${escola.nomeCurto || escola.nome || "École Consulaire"}`,
+      );
+      const body = encodeURIComponent(mensagem);
+      window.open(`mailto:${email}?subject=${subject}&body=${body}`, "_blank");
+    } else {
+      const wa = phoneToWa(a.telefone)!;
+      window.open(
+        `https://wa.me/${wa}?text=${encodeURIComponent(mensagem)}`,
+        "_blank",
+      );
+    }
+
     addCrmEnvio({
       alunoId: a.id,
       alunoNome: a.nome,
       mesKey,
       canal,
-      faturaNumero: fatura?.numero,
+      faturaNumero: row.fatura?.numero,
       valor,
       criadoPor: active,
+      confirmado: false,
     });
+    setDraft(null);
     toast.success(
       canal === "email"
-        ? `E-mail aberto · ${a.encarregado || a.nome}`
-        : `WhatsApp aberto · ${a.encarregado || a.nome}`,
+        ? "Cliente de e-mail aberto. Após enviar, use o botão verde para confirmar."
+        : "WhatsApp aberto. Após enviar a mensagem, use o botão verde para confirmar.",
     );
-  }
-
-  function enviarEmail(row: Row) {
-    const a = row.aluno;
-    const email = (a.email || row.fatura?.email || "").trim();
-    if (!email) {
-      toast.error("Sem e-mail do encarregado. Actualize em Matrículas.");
-      return;
-    }
-    const valor = valorPropina(a, row.fatura);
-    const mesRef = mesLabel(mesKey);
-    const subject = encodeURIComponent(
-      `Propina ${mesRef} — ${a.nome} · ${escola.nomeCurto || escola.nome || "École Consulaire"}`,
-    );
-    const body = encodeURIComponent(
-      buildMensagemFatura({
-        alunoNome: a.nome,
-        mesRef,
-        valor,
-        escolaNome: escola.nome || "École Consulaire",
-        faturaNumero: row.fatura?.numero,
-      }),
-    );
-    window.open(`mailto:${email}?subject=${subject}&body=${body}`, "_blank");
-    registarEnvio(a, "email", row.fatura);
-  }
-
-  function enviarWhatsApp(row: Row) {
-    const a = row.aluno;
-    const wa = phoneToWa(a.telefone);
-    if (!wa) {
-      toast.error("Telefone inválido ou em falta. Actualize em Matrículas.");
-      return;
-    }
-    const valor = valorPropina(a, row.fatura);
-    const text = encodeURIComponent(
-      buildMensagemFatura({
-        alunoNome: a.nome,
-        mesRef: mesLabel(mesKey),
-        valor,
-        escolaNome: escola.nome || "École Consulaire",
-        faturaNumero: row.fatura?.numero,
-      }),
-    );
-    window.open(`https://wa.me/${wa}?text=${text}`, "_blank");
-    registarEnvio(a, "whatsapp", row.fatura);
   }
 
   function toggleConfirmado(row: Row) {
@@ -250,11 +314,42 @@ function CrmPage() {
       return;
     }
     const next = !row.confirmado;
-    // Confirma todos os envios deste aluno/mês
     for (const e of row.envios) {
       updateCrmEnvio(e.id, { confirmado: next });
     }
-    toast.success(next ? "Confirmado (verde)" : "Confirmação removida");
+    toast.success(
+      next
+        ? "Confirmado: entrega assinalada (verde)"
+        : "Confirmação removida",
+    );
+  }
+
+  function abrirVisualizacaoFatura(row: Row) {
+    if (!row.fatura) {
+      toast.message(
+        "Ainda não há fatura emitida para este mês. Emita em Matrículas → Fatura, ou envie só a referência de propina.",
+      );
+      return;
+    }
+    setViewFatura(row);
+  }
+
+  function imprimirFaturaPreview(row: Row) {
+    if (!row.fatura) return;
+    const html = buildFaturaPreviewHtml({
+      escolaNome: escola.nome || "École Consulaire",
+      subtitulo: escola.subtitulo,
+      aluno: row.aluno,
+      fatura: row.fatura,
+      mesRef: mesLabel(mesKey),
+    });
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast.error("Permita pop-ups para ver a fatura.");
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
   }
 
   function toggleSelect(id: string) {
@@ -296,45 +391,57 @@ function CrmPage() {
           `Por favor consulte os valores individuais com a secretaria.\n\n` +
           `${escola.nome || "École Consulaire"}`,
       );
-      // BCC para não expor contactos
       window.open(
         `mailto:?bcc=${emails.join(",")}&subject=${subject}&body=${body}`,
         "_blank",
       );
       for (const r of alvos) {
         if ((r.aluno.email || r.fatura?.email || "").trim()) {
-          registarEnvio(r.aluno, "email", r.fatura);
+          addCrmEnvio({
+            alunoId: r.aluno.id,
+            alunoNome: r.aluno.nome,
+            mesKey,
+            canal: "email",
+            faturaNumero: r.fatura?.numero,
+            valor: valorPropina(r.aluno, r.fatura),
+            criadoPor: active,
+            confirmado: false,
+          });
         }
       }
+      toast.success(
+        "Cliente de e-mail aberto (BCC). Após enviar, confirme um a um com o botão verde.",
+      );
       return;
     }
-    // WhatsApp: abre o primeiro; restantes ficam registados e o utilizador pode continuar
     let abertos = 0;
     for (const r of alvos) {
       const wa = phoneToWa(r.aluno.telefone);
       if (!wa) continue;
-      const valor = valorPropina(r.aluno, r.fatura);
-      const text = encodeURIComponent(
-        buildMensagemFatura({
-          alunoNome: r.aluno.nome,
-          mesRef: mesLabel(mesKey),
-          valor,
-          escolaNome: escola.nome || "École Consulaire",
-          faturaNumero: r.fatura?.numero,
-        }),
-      );
+      const text = encodeURIComponent(mensagemPara(r));
       if (abertos === 0) {
         window.open(`https://wa.me/${wa}?text=${text}`, "_blank");
       }
-      registarEnvio(r.aluno, "whatsapp", r.fatura);
+      addCrmEnvio({
+        alunoId: r.aluno.id,
+        alunoNome: r.aluno.nome,
+        mesKey,
+        canal: "whatsapp",
+        faturaNumero: r.fatura?.numero,
+        valor: valorPropina(r.aluno, r.fatura),
+        criadoPor: active,
+        confirmado: false,
+      });
       abertos += 1;
     }
     if (abertos === 0) {
       toast.error("Nenhum telefone válido nos seleccionados.");
     } else if (abertos > 1) {
       toast.message(
-        `WhatsApp aberto para o 1.º de ${abertos}. Os restantes ficaram registados como enviados — use o botão individual para abrir cada conversa.`,
+        `WhatsApp aberto para o 1.º de ${abertos}. Os restantes ficaram como «enviados» sem confirmação — use o botão individual para abrir cada conversa e depois o verde para confirmar.`,
       );
+    } else {
+      toast.success("WhatsApp aberto. Após enviar, confirme com o botão verde.");
     }
   }
 
@@ -342,18 +449,38 @@ function CrmPage() {
     <div className="space-y-6">
       <PageHeader
         title="CRM · Encarregados"
-        description="Contactos, envio de faturas/propinas (e-mail e WhatsApp) e confirmação de entrega."
+        description="Contactos, pré-visualização da mensagem, visualização da fatura, envio (e-mail / WhatsApp) e confirmação de entrega."
       />
 
+      {/* KPIs: contagens inteiras (não valores em Kz) */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Kpi label="Alunos" value={stats.total} />
-        <Kpi label="Enviados" value={stats.enviados} />
-        <Kpi label="Confirmados" value={stats.confirmados} />
-        <Kpi label="Por enviar" value={stats.porEnviar} />
+        <Kpi label="Alunos" value={String(stats.total)} />
+        <Kpi label="Enviados" value={String(stats.enviados)} />
+        <Kpi label="Confirmados" value={String(stats.confirmados)} tone="forest" />
+        <Kpi label="Por enviar" value={String(stats.porEnviar)} tone="clay" />
         <Kpi
           label="E-mail / WhatsApp"
           value={`${stats.emails} / ${stats.whats}`}
         />
+      </div>
+
+      <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-3 text-xs text-[var(--color-muted)] sm:p-4">
+        <p className="font-medium text-[var(--color-ink)]">Como funciona a confirmação</p>
+        <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+          <li>Clique no envelope ou no WhatsApp → abre a <strong>pré-visualização</strong> da mensagem (e pode ver a fatura).</li>
+          <li>Confirme o texto e clique em <strong>Abrir e-mail / Abrir WhatsApp</strong>.</li>
+          <li>Envie a mensagem no cliente (Outlook, Gmail, WhatsApp Web/App).</li>
+          <li>Volte à app e clique no botão <strong>verde</strong> para assinalar entrega confirmada.</li>
+        </ol>
+        <p className="mt-2">
+          O WhatsApp abre a conversa com o <strong>número do encarregado</strong> (não o da escola).
+          O e-mail abre o cliente predefinido do PC (ex.: Outlook) com o endereço do encarregado.
+          Para emitir/editar a fatura completa com linhas de matrícula, use{" "}
+          <Link to="/alunos" className="underline text-[var(--color-forest)]">
+            Matrículas
+          </Link>
+          .
+        </p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-4">
@@ -426,12 +553,12 @@ function CrmPage() {
           WhatsApp grupo ({selected.size})
         </Button>
         <span className="text-xs text-[var(--color-muted)]">
-          Verde = confirmado · Vermelho = sem confirmação / por enviar
+          Verde = entrega confirmada · Vermelho = por confirmar / por enviar
         </span>
       </div>
 
       <div className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--color-line)]">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[960px] text-sm">
           <thead className="bg-[var(--color-bg)] text-left text-xs uppercase tracking-wide text-[var(--color-muted)]">
             <tr>
               <th className="px-3 py-2 w-10"></th>
@@ -446,7 +573,10 @@ function CrmPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-[var(--color-muted)]">
+                <td
+                  colSpan={7}
+                  className="px-3 py-8 text-center text-[var(--color-muted)]"
+                >
                   Nenhum registo para os filtros actuais.
                 </td>
               </tr>
@@ -492,7 +622,9 @@ function CrmPage() {
                         <div className="text-[var(--color-muted)]">
                           {row.fatura.numero}
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="text-[var(--color-muted)]">sem fatura emitida</div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       {row.confirmado ? (
@@ -506,13 +638,17 @@ function CrmPage() {
                           Sem confirmação
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-red-700 border-red-300">
+                        <Badge
+                          variant="outline"
+                          className="border-red-300 text-red-700"
+                        >
                           Por enviar
                         </Badge>
                       )}
                       {row.ultimo ? (
                         <div className="mt-1 text-[10px] text-[var(--color-muted)]">
-                          {row.ultimo.canal} · {formatDate(row.ultimo.enviadoEm.slice(0, 10))}
+                          {row.ultimo.canal} ·{" "}
+                          {formatDate(row.ultimo.enviadoEm.slice(0, 10))}
                         </div>
                       ) : null}
                     </td>
@@ -521,9 +657,22 @@ function CrmPage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          title={
+                            row.fatura
+                              ? "Ver fatura"
+                              : "Sem fatura emitida neste mês"
+                          }
+                          disabled={!row.fatura}
+                          onClick={() => abrirVisualizacaoFatura(row)}
+                        >
+                          <Eye className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           disabled={!email}
-                          title={email ? `Enviar para ${email}` : "Sem e-mail"}
-                          onClick={() => enviarEmail(row)}
+                          title={email ? `Pré-visualizar e-mail para ${email}` : "Sem e-mail"}
+                          onClick={() => abrirRascunho(row, "email")}
                         >
                           <Mail className="size-3.5" />
                         </Button>
@@ -531,8 +680,8 @@ function CrmPage() {
                           size="sm"
                           variant="outline"
                           disabled={!waOk}
-                          title={waOk ? "Abrir WhatsApp" : "Telefone inválido"}
-                          onClick={() => enviarWhatsApp(row)}
+                          title={waOk ? "Pré-visualizar WhatsApp" : "Telefone inválido"}
+                          onClick={() => abrirRascunho(row, "whatsapp")}
                         >
                           <MessageCircle className="size-3.5" />
                         </Button>
@@ -542,9 +691,9 @@ function CrmPage() {
                           className={
                             row.confirmado
                               ? "bg-emerald-600 hover:bg-emerald-700"
-                              : "text-red-700 border-red-300 hover:bg-red-50"
+                              : "border-red-300 text-red-700 hover:bg-red-50"
                           }
-                          title="Marcar confirmação de envio"
+                          title="Marcar confirmação de entrega (depois de enviar)"
                           onClick={() => toggleConfirmado(row)}
                         >
                           {row.confirmado ? (
@@ -565,10 +714,132 @@ function CrmPage() {
 
       <p className="text-xs text-[var(--color-muted)]">
         <Send className="mr-1 inline size-3" />
-        O envio abre o cliente de e-mail (mailto) ou o WhatsApp Web/App (wa.me).
-        O estado fica registado neste separador para reconciliação. Actualize
-        e-mails e telefones em <strong>Matrículas</strong> quando estiverem em falta.
+        Os botões de envio abrem o cliente do utilizador (Outlook/Gmail ou WhatsApp Web/App)
+        com o contacto do encarregado. Não enviam sozinhos a partir do servidor da escola.
       </p>
+
+      {/* Pré-visualização antes de abrir e-mail / WhatsApp */}
+      <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {draft?.canal === "email" ? "Pré-visualizar e-mail" : "Pré-visualizar WhatsApp"}
+            </DialogTitle>
+          </DialogHeader>
+          {draft ? (
+            <div className="space-y-3">
+              <div className="text-sm">
+                <p>
+                  <span className="text-[var(--color-muted)]">Aluno: </span>
+                  {draft.row.aluno.nome}
+                </p>
+                <p>
+                  <span className="text-[var(--color-muted)]">Destino: </span>
+                  {draft.canal === "email"
+                    ? draft.row.aluno.email || draft.row.fatura?.email
+                    : draft.row.aluno.telefone}
+                </p>
+                {draft.row.fatura ? (
+                  <p className="flex items-center gap-2">
+                    <span className="text-[var(--color-muted)]">Fatura: </span>
+                    {draft.row.fatura.numero} · {formatKz(draft.row.fatura.valor)}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7"
+                      onClick={() => imprimirFaturaPreview(draft.row)}
+                    >
+                      <FileText className="mr-1 size-3.5" />
+                      Ver fatura
+                    </Button>
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-700">
+                    Sem fatura emitida neste mês — a mensagem leva só a referência de propina.
+                    Emita a fatura em Matrículas se precisar do documento completo.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label>Texto a enviar (pode editar)</Label>
+                <Textarea
+                  rows={8}
+                  value={draft.mensagem}
+                  onChange={(e) =>
+                    setDraft({ ...draft, mensagem: e.target.value })
+                  }
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setDraft(null)}>
+                  Cancelar
+                </Button>
+                <Button onClick={confirmarEnvio}>
+                  {draft.canal === "email" ? (
+                    <>
+                      <Mail className="mr-1 size-4" /> Abrir e-mail
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="mr-1 size-4" /> Abrir WhatsApp
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Visualização rápida da fatura */}
+      <Dialog open={!!viewFatura} onOpenChange={(o) => !o && setViewFatura(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Fatura · {viewFatura?.fatura?.numero}</DialogTitle>
+          </DialogHeader>
+          {viewFatura?.fatura ? (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-4">
+                <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide">
+                  Aluno
+                </p>
+                <p className="font-medium">
+                  {viewFatura.aluno.nome}{" "}
+                  <span className="text-[var(--color-muted)]">
+                    ({viewFatura.aluno.id})
+                  </span>
+                </p>
+                <p className="mt-2 text-xs text-[var(--color-muted)] uppercase tracking-wide">
+                  Mês
+                </p>
+                <p>{mesLabel(mesKey)}</p>
+                <p className="mt-2 text-xs text-[var(--color-muted)] uppercase tracking-wide">
+                  Valor
+                </p>
+                <p className="font-display text-xl text-[var(--color-forest)]">
+                  {formatKz(viewFatura.fatura.valor)}
+                </p>
+                <p className="mt-2 text-xs text-[var(--color-muted)]">
+                  Emitida em{" "}
+                  {formatDate(viewFatura.fatura.emitidoEm.slice(0, 10))}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => imprimirFaturaPreview(viewFatura)}>
+                  <FileText className="mr-1 size-4" />
+                  Abrir documento
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link to="/alunos">Ir a Matrículas</Link>
+                </Button>
+                <Button variant="outline" onClick={() => setViewFatura(null)}>
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
