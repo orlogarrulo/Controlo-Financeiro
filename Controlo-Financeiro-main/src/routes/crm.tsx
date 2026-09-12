@@ -112,51 +112,58 @@ function buildMensagemFatura(opts: {
     `Segue a referência da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
     `Valor: *${valorTxt}*${fat}\n\n` +
     `${opts.escolaNome}\n` +
-    `Por favor confirme o pagamento ou contacte a secretaria.\n\n` +
-    `_Nota: o PDF da fatura pode ser obtido em Matrículas (botão Fatura) e anexado manualmente no Outlook._`
+    `Por favor confirme o pagamento ou contacte a secretaria.`
   );
 }
 
-/** HTML simples para visualizar a fatura já emitida (sem editar linhas de matrícula). */
+/** HTML simples para visualizar fatura emitida ou referência de propina. */
 function buildFaturaPreviewHtml(opts: {
   escolaNome: string;
   subtitulo?: string;
   aluno: Aluno;
-  fatura: FaturaPropina;
+  fatura?: FaturaPropina;
   mesRef: string;
+  valor?: number;
 }): string {
   const logo = escolaLogoSrc();
-  const emitido = opts.fatura.emitidoEm
+  const numero = opts.fatura?.numero || "— (ainda não emitida)";
+  const emitido = opts.fatura?.emitidoEm
     ? formatDate(opts.fatura.emitidoEm.slice(0, 10))
     : "—";
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${opts.fatura.numero}</title>
+  const valor =
+    opts.fatura?.valor != null
+      ? opts.fatura.valor
+      : opts.valor != null
+        ? opts.valor
+        : 0;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${numero}</title>
 <style>
-  body{font-family:Georgia,serif;color:#1a1a1a;margin:0;padding:24px;background:#f8f6f1}
-  .sheet{max-width:640px;margin:0 auto;background:#fff;padding:28px 32px;border:1px solid #e5e0d5;border-radius:8px}
-  .head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #1b4d3e;padding-bottom:14px;margin-bottom:18px}
+  body{font-family:Georgia,serif;color:#374151;margin:0;padding:24px;background:#f3f4f6}
+  .sheet{max-width:640px;margin:0 auto;background:#fff;padding:28px 32px;border:1px solid #d1d5db;border-radius:8px}
+  .head{display:flex;align-items:center;gap:14px;border-bottom:1px solid #d1d5db;padding-bottom:14px;margin-bottom:18px}
   .head img{height:56px;width:auto}
-  h1{font-size:18px;margin:0;color:#1b4d3e}
-  .sub{font-size:12px;color:#666;margin-top:2px}
+  h1{font-size:18px;margin:0;color:#111827}
+  .sub{font-size:12px;color:#6b7280;margin-top:2px}
   table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
-  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #eee}
-  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#666}
-  .total{font-size:18px;font-weight:700;color:#1b4d3e}
-  .foot{margin-top:24px;font-size:11px;color:#888}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #e5e7eb}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280}
+  .total{font-size:18px;font-weight:700;color:#111827}
+  .foot{margin-top:24px;font-size:11px;color:#9ca3af}
 </style></head><body><div class="sheet">
   <div class="head">
     ${logo ? `<img src="${logo}" alt="Logo"/>` : ""}
     <div>
       <h1>${opts.escolaNome}</h1>
-      <div class="sub">${opts.subtitulo || ""} · Fatura de propina</div>
+      <div class="sub">${opts.subtitulo || ""} · Fatura / propina</div>
     </div>
   </div>
   <table>
-    <tr><th>N.º</th><td>${opts.fatura.numero}</td></tr>
+    <tr><th>N.º</th><td>${numero}</td></tr>
     <tr><th>Aluno</th><td>${opts.aluno.nome} (${opts.aluno.id} · ${opts.aluno.turma || "—"})</td></tr>
     <tr><th>Encarregado</th><td>${opts.aluno.encarregado || opts.aluno.pai || opts.aluno.mae || "—"}</td></tr>
     <tr><th>Mês</th><td>${opts.mesRef}</td></tr>
     <tr><th>Emitida em</th><td>${emitido}</td></tr>
-    <tr><th>Valor</th><td class="total">${formatKz(opts.fatura.valor)}</td></tr>
+    <tr><th>Valor</th><td class="total">${valor ? formatKz(valor) : "—"}</td></tr>
   </table>
   <p class="foot">Documento de referência · École Consulaire · Controlo Financeiro</p>
 </div></body></html>`;
@@ -365,23 +372,17 @@ function CrmPage() {
   }
 
   function abrirVisualizacaoFatura(row: Row) {
-    if (!row.fatura) {
-      toast.message(
-        "Ainda não há fatura emitida para este mês. Emita em Matrículas → Fatura, ou envie só a referência de propina.",
-      );
-      return;
-    }
     setViewFatura(row);
   }
 
   function imprimirFaturaPreview(row: Row) {
-    if (!row.fatura) return;
     const html = buildFaturaPreviewHtml({
       escolaNome: escola.nome || "École Consulaire",
       subtitulo: escola.subtitulo,
       aluno: row.aluno,
       fatura: row.fatura,
       mesRef: mesLabel(mesKey),
+      valor: valorPropina(row.aluno, row.fatura),
     });
     const w = window.open("", "_blank");
     if (!w) {
@@ -705,12 +706,7 @@ function CrmPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          title={
-                            row.fatura
-                              ? "Ver fatura"
-                              : "Sem fatura emitida neste mês"
-                          }
-                          disabled={!row.fatura}
+                          title="Ver fatura / propina"
                           onClick={() => abrirVisualizacaoFatura(row)}
                         >
                           <Eye className="size-3.5" />
@@ -859,13 +855,17 @@ function CrmPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Visualização rápida da fatura */}
+      {/* Visualização rápida da fatura / propina */}
       <Dialog open={!!viewFatura} onOpenChange={(o) => !o && setViewFatura(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Fatura · {viewFatura?.fatura?.numero}</DialogTitle>
+            <DialogTitle>
+              {viewFatura?.fatura?.numero
+                ? `Fatura · ${viewFatura.fatura.numero}`
+                : "Propina / fatura"}
+            </DialogTitle>
           </DialogHeader>
-          {viewFatura?.fatura ? (
+          {viewFatura ? (
             <div className="space-y-3 text-sm">
               <div className="rounded-lg border border-[var(--color-line)] bg-[var(--color-bg)] p-4">
                 <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide">
@@ -885,17 +885,38 @@ function CrmPage() {
                   Valor
                 </p>
                 <p className="font-display text-xl text-[var(--color-forest)]">
-                  {formatKz(viewFatura.fatura.valor)}
+                  {formatKz(
+                    viewFatura.fatura?.valor ??
+                      valorPropina(viewFatura.aluno, viewFatura.fatura) ??
+                      0,
+                  )}
                 </p>
-                <p className="mt-2 text-xs text-[var(--color-muted)]">
-                  Emitida em{" "}
-                  {formatDate(viewFatura.fatura.emitidoEm.slice(0, 10))}
-                </p>
+                {viewFatura.fatura ? (
+                  <p className="mt-2 text-xs text-[var(--color-muted)]">
+                    Emitida em{" "}
+                    {formatDate(viewFatura.fatura.emitidoEm.slice(0, 10))}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-amber-700">
+                    Ainda sem n.º PROP neste mês. Pode enviar a referência por
+                    e-mail/WhatsApp ou emitir a fatura completa em Matrículas.
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => imprimirFaturaPreview(viewFatura)}>
                   <FileText className="mr-1 size-4" />
                   Abrir documento
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setViewFatura(null);
+                    abrirRascunho(viewFatura, "email", "fatura");
+                  }}
+                >
+                  <Mail className="mr-1 size-4" />
+                  Enviar fatura
                 </Button>
                 <Button variant="outline" asChild>
                   <Link to="/alunos">Ir a Matrículas</Link>

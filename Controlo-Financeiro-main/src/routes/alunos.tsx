@@ -2288,17 +2288,10 @@ function Alunos() {
     // Tipografia Georgia / Times New Roman
     return `
 <div style="font-family:Georgia,'Times New Roman',Times,serif;color:#374151;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;padding:0;">
-  <!-- Faixa de cores no topo (subida) -->
-  <div style="height:5px;display:flex;margin:0;">
-    <div style="flex:1;background:#009543;"></div>
-    <div style="flex:1;background:#fbde4a;"></div>
-    <div style="flex:1;background:#dc241f;"></div>
-  </div>
-
-  <!-- Cabeçalho: logo a cores + lema em cinza -->
-  <div style="background:#ffffff;padding:10px 24px 12px;display:flex;align-items:center;justify-content:center;gap:16px;border-bottom:1px solid #d1d5db;">
-    <img src="${logoSrc}" width="120" height="120" alt="Logo" style="width:120px;height:120px;object-fit:contain;border-radius:10px;" crossorigin="anonymous" />
-    <p style="margin:0;font-size:13px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Apprendre · Grandir · Réussir</p>
+  <!-- Cabeçalho compacto: só logo a cores + lema (sem faixas coloridas) -->
+  <div style="background:#ffffff;padding:6px 20px 8px;display:flex;align-items:center;justify-content:center;gap:12px;border-bottom:1px solid #d1d5db;">
+    <img src="${logoSrc}" width="72" height="72" alt="Logo" style="width:72px;height:72px;object-fit:contain;border-radius:8px;" crossorigin="anonymous" />
+    <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;">Apprendre · Grandir · Réussir</p>
   </div>
 
   <div style="flex:1;padding:18px 28px 12px;display:flex;flex-direction:column;gap:12px;">
@@ -2348,11 +2341,7 @@ function Alunos() {
             ? `Reçu de paiement <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Recibo de pagamento</span>`
             : `Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Fatura / liquidação</span>`
         }</p>
-        <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">${
-          isRecibo
-            ? "Valores já registados em Propinas"
-            : "Itens seleccionados pelo Departamento de Finanças"
-        }</p>
+        ${isRecibo ? `<p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Valores já registados em Propinas</p>` : ""}
         ${linhasHtml}
       </div>
       <div style="min-width:160px;background:#f3f4f6;color:#111827;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:14px 16px;border-left:1px solid #d1d5db;">
@@ -2412,11 +2401,6 @@ function Alunos() {
       <p style="margin:0;">Ref. <strong style="color:#111827;">${numero}</strong></p>
       <p style="margin:2px 0 0;">Emitida em ${emitida}</p>
     </div>
-  </div>
-  <div style="height:4px;display:flex;">
-    <div style="flex:1;background:#009543;"></div>
-    <div style="flex:1;background:#fbde4a;"></div>
-    <div style="flex:1;background:#dc241f;"></div>
   </div>
 </div>
     `;
