@@ -194,8 +194,14 @@ function Dashboard() {
         <Kpi
           label="Alunos inscritos"
           value={String(t.alunos)}
-          hint={t.alunos >= 48 ? "Cadastro completo" : `${t.alunos} de 48 — a repor automaticamente`}
-          tone={t.alunos >= 48 ? "forest" : "amber"}
+          hint={
+            t.alunos > 48
+              ? `${t.alunos} de 48 — duplicados (abrir Rastreio → Sanear)`
+              : t.alunos >= 48
+              ? "Cadastro completo"
+              : `${t.alunos} de 48 — a repor automaticamente`
+          }
+          tone={t.alunos === 48 ? "forest" : "amber"}
         />
         <Kpi label="Proveitos" value={t.proveitos} tone="forest" />
         <Kpi label="Custos" value={t.custosTotais} />

@@ -94,3 +94,12 @@ Após deploy: hard refresh (Ctrl+Shift+R).
 - UI inicial (layout, operator-gate, index) e **todos os PDFs** usam o logo embutido
 - `/public/logo-escola.jpg` optimizado mantido como fallback
 - Migração classes Congo: flag `ecc-classes-congo-v3` (recalcula na nuvem após deploy; ref. 1/out/2026)
+
+## 14. Sanear duplicados 52 → 48 (2026-09-12)
+- **Causa dos 52:** `recuperarAlunosOcultos` ressuscitava IDs antigos após `realinharIdsPorTurma` (idAnterior + lista de apagados + rastos BAI/propinas), criando fichas duplicadas do mesmo aluno.
+- **Correcção:**
+  - Recuperação já não reconstrói a partir de `alunosDeletedIds` e recusa homónimos.
+  - Nova `sanearAlunosDuplicados()`: colapsa por nome normalizado e cadeias `idAnterior`.
+  - Corre no arranque (hydrate) após recuperar.
+  - Rastreio: aviso vermelho + botão «Sanear duplicados» quando contagem > 48.
+- **Classes:** a distribuição incorrecta vinha do realinhamento idade→turma→novo ID sem esconder o ID antigo de forma estável; o saneamento remove o fantasma.

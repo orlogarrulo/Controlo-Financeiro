@@ -34,6 +34,7 @@ function Rastreio() {
   const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
   const restoreAluno = useFinance((s) => s.restoreAluno);
   const recuperarAlunosOcultos = useFinance((s) => s.recuperarAlunosOcultos);
+  const sanearAlunosDuplicados = useFinance((s) => s.sanearAlunosDuplicados);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const canEdit = isCollaborator1(activeOperator, operators);
@@ -102,6 +103,7 @@ function Rastreio() {
   }
 
   const falta = Math.max(0, META_MATRICULADOS - alunos.length);
+  const excesso = Math.max(0, alunos.length - META_MATRICULADOS);
   const apagados = alunosDeletedIds;
 
   return (
@@ -143,11 +145,13 @@ function Rastreio() {
           label="Matriculados neste dispositivo"
           value={String(alunos.length)}
           hint={
-            falta > 0
+            excesso > 0
+              ? `Meta ${META_MATRICULADOS} · ${excesso} a mais (duplicados)`
+              : falta > 0
               ? `Meta ${META_MATRICULADOS} · faltam ${falta} (nuvem ou importar censo)`
               : `Meta ${META_MATRICULADOS} atingida`
           }
-          warn={falta > 0}
+          warn={falta > 0 || excesso > 0}
         />
         <KpiMini
           label="Campus Cidade · mês"
@@ -167,7 +171,31 @@ function Rastreio() {
         />
       </div>
 
-      {falta > 0 && (
+      {excesso > 0 && (
+        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-950">
+          <p>
+            Cadastro com <strong>{alunos.length}</strong> / {META_MATRICULADOS} — há{" "}
+            <strong>{excesso}</strong> ficha(s) a mais (duplicados por realinhamento de IDs ou
+            recuperação de rastos).
+          </p>
+          {canEdit && (
+            <Button
+              type="button"
+              className="mt-2"
+              onClick={() => {
+                const r = sanearAlunosDuplicados();
+                syncPropinasFromMatriculas();
+                if (r.removidos) toast.success(`${r.removidos} duplicado(s) removido(s).`);
+                else toast.message("Nenhum duplicado por nome detectado.");
+              }}
+            >
+              Sanear duplicados (voltar a {META_MATRICULADOS})
+            </Button>
+          )}
+        </div>
+      )}
+
+      {falta > 0 && excesso === 0 && (
         <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p>
             Cadastro com <strong>{alunos.length}</strong> / {META_MATRICULADOS}. O sistema varre

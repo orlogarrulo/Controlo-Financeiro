@@ -161,6 +161,7 @@ type Store = ExtraState & {
   restoreAluno: (id: string) => boolean;
   /** Varre propinas, BAI, overrides e IDs apagados; repõe fichas ocultas. */
   recuperarAlunosOcultos: () => { restaurados: number; detalhes: string[] };
+  sanearAlunosDuplicados: () => { removidos: number; detalhes: string[] };
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   updateReciboSalario: (
@@ -1746,6 +1747,7 @@ export const useFinance = create<Store>()(
         return true;
       },
       recuperarAlunosOcultos: () => recuperarAlunosOcultos(),
+      sanearAlunosDuplicados: () => sanearAlunosDuplicados(),
       importLancamentos: (rows) => {
         requireEdit(get);
         let n = 0;
@@ -2682,26 +2684,154 @@ function stubAlunoFromTrace(
  * Reabre fichas que o realinhamento ou o merge da nuvem esconderam
  * (ID antigo em alunosDeletedIds sem substituto, ou só restava a linha de propinas).
  */
+
+/** Normaliza nome para comparação (sem acentos, minúsculas, espaços colapsados). */
+export function normalizeNomeAluno(n: string): string {
+  return (n || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Colapsa fichas duplicadas (mesmo nome normalizado ou cadeia idAnterior).
+ * Mantém a ficha "melhor" (ID alinhado à turma, mais dados) e esconde as outras.
+ * Resolve o caso 52 → 48 após realinhamentos + recuperação agressiva.
+ */
+export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[] } {
+  const state = useFinance.getState();
+  let extras = [...(state.alunosExtra || [])];
+  let deleted = [...(state.alunosDeletedIds || [])];
+  const overrides = { ...(state.alunosOverrides || {}) };
+  const detalhes: string[] = [];
+
+  const visible = alunosAll(extras, overrides, deleted);
+  const byName = new Map<string, Aluno[]>();
+  for (const a of visible) {
+    const key = normalizeNomeAluno(a.nome);
+    if (!key) continue;
+    const list = byName.get(key) || [];
+    list.push(a);
+    byName.set(key, list);
+  }
+
+  const score = (a: Aluno): number => {
+    let s = 0;
+    const fromId = turmaFromId(a.id);
+    if (fromId && fromId === (a.turma || "").trim()) s += 50;
+    if (a.dataNascimento) s += 20;
+    if (a.idAnterior) s += 10; // já realinhado
+    if ((a.propina || a.mensalidade1 || 0) > 0) s += 5;
+    if ((a.obs || "").length > 0) s += 2;
+    // IDs mais "novos" (maior sufixo numérico) ligeiramente preferidos
+    const m = String(a.id || "").match(/(\d+)$/);
+    if (m) s += Math.min(Number(m[1]), 30);
+    return s;
+  };
+
+  const toDelete = new Set<string>();
+
+  for (const [nome, list] of byName) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => score(b) - score(a));
+    const keep = list[0];
+    for (const dup of list.slice(1)) {
+      toDelete.add(dup.id);
+      detalhes.push(`Duplicado «${nome}»: manter ${keep.id}, esconder ${dup.id}`);
+    }
+  }
+
+  // Cadeias idAnterior: se existe extra com idAnterior=X, X deve ficar apagado
+  for (const a of extras) {
+    if (a.idAnterior && a.idAnterior !== a.id) {
+      toDelete.add(a.idAnterior);
+    }
+  }
+
+  if (toDelete.size === 0) {
+    return { removidos: 0, detalhes: [] };
+  }
+
+  for (const id of toDelete) {
+    if (!deleted.includes(id)) deleted.push(id);
+    // Não remover extras físicos — só esconder via deletedIds (preserva rasto)
+  }
+
+  // Limpar extras que são stubs vazios e estão marcados deleted
+  extras = extras.filter((a) => {
+    if (!toDelete.has(a.id)) return true;
+    // manter se tem idAnterior (é o registo realinhado) — não, se está em toDelete escondemos
+    return false; // remove da lista extra se for o duplicado perdedor
+  });
+
+  // Re-adicionar ao deleted os que removemos dos extras
+  useFinance.setState({
+    alunosExtra: extras,
+    alunosDeletedIds: Array.from(new Set(deleted)),
+  });
+
+  try {
+    useFinance.getState().pushAudit?.(
+      "sanear_duplicados",
+      `${toDelete.size} ficha(s): ${detalhes.slice(0, 8).join(" · ")}`,
+    );
+  } catch {
+    /* optional */
+  }
+
+  return { removidos: toDelete.size, detalhes };
+}
+
 export function recuperarAlunosOcultos(): { restaurados: number; detalhes: string[] } {
   const state = useFinance.getState();
-  const extras = [...(state.alunosExtra || [])];
+  let extras = [...(state.alunosExtra || [])];
   const overrides = { ...(state.alunosOverrides || {}) };
   let deleted = [...(state.alunosDeletedIds || [])];
   const mensalidades = state.mensalidades || [];
   const faturas = state.faturasPropina || [];
   const detalhes: string[] = [];
 
+  /** Há substituto realinhado (novo ID com idAnterior = oldId)? */
   const hasReplacement = (oldId: string) =>
-    extras.some((a) => a.idAnterior === oldId || a.id === oldId);
+    extras.some((a) => a.idAnterior === oldId && a.id !== oldId);
 
+  // Nunca reabrir IDs que já têm substituto — causa dos 52 vs 48
   const keptDeleted: string[] = [];
   for (const id of deleted) {
+    if (hasReplacement(id)) {
+      keptDeleted.push(id);
+      continue;
+    }
     const isSeed = seed.alunos.some((a) => a.id === id);
-    if (isSeed && !extras.some((a) => a.idAnterior === id)) {
+    // Seed apagado sem substituto: só reabrir se não existir ficha extra com o mesmo nome
+    if (isSeed) {
+      const seedNome = normalizeNomeAluno(
+        seed.alunos.find((a) => a.id === id)?.nome || "",
+      );
+      const nomeJaVisivel = alunosAll(extras, overrides, keptDeleted).some(
+        (a) => normalizeNomeAluno(a.nome) === seedNome && a.id !== id,
+      );
+      if (nomeJaVisivel) {
+        keptDeleted.push(id);
+        continue;
+      }
       detalhes.push(`Seed ${id} estava escondido sem substituto — reaberto`);
       continue;
     }
     if (extras.some((a) => a.id === id)) {
+      // extra na lista de apagados: reabrir só se não houver homónimo visível
+      const ex = extras.find((a) => a.id === id)!;
+      const nomeJaVisivel = alunosAll(
+        extras.filter((a) => a.id !== id),
+        overrides,
+        keptDeleted,
+      ).some((a) => normalizeNomeAluno(a.nome) === normalizeNomeAluno(ex.nome));
+      if (nomeJaVisivel) {
+        keptDeleted.push(id);
+        continue;
+      }
       detalhes.push(`Extra ${id} estava na lista de apagados — reaberto`);
       continue;
     }
@@ -2709,9 +2839,14 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
   }
   deleted = keptDeleted;
 
-  const visible = new Set(
-    alunosAll(extras, overrides, deleted).map((a) => a.id),
+  const visibleList = alunosAll(extras, overrides, deleted);
+  const visible = new Set(visibleList.map((a) => a.id));
+  const visibleNames = new Set(
+    visibleList.map((a) => normalizeNomeAluno(a.nome)).filter(Boolean),
   );
+
+  // Traces: NÃO incluir alunosDeletedIds como fonte de reconstrução
+  // (IDs apagados com substituto voltavam como stubs fantasma)
   const traces = collectTraceIds({
     alunosExtra: extras,
     alunosOverrides: overrides,
@@ -2719,19 +2854,24 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     fotos: state.fotos,
     faturasPropina: faturas,
     movimentosBaiExtra: state.movimentosBaiExtra,
-    alunosDeletedIds: state.alunosDeletedIds,
+    alunosDeletedIds: [], // crítico: não ressuscitar a partir da lista de apagados
   });
 
   for (const id of traces) {
     if (visible.has(id)) continue;
+    if (deleted.includes(id) && hasReplacement(id)) continue;
     if (seed.alunos.some((a) => a.id === id) && !deleted.includes(id)) {
       visible.add(id);
       continue;
     }
-    if (deleted.includes(id) && hasReplacement(id)) continue;
     if (extras.some((a) => a.id === id)) {
+      // ficha extra existe mas estava filtered por deleted — só reabrir sem homónimo
+      const ex = extras.find((a) => a.id === id)!;
+      const nn = normalizeNomeAluno(ex.nome);
+      if (nn && visibleNames.has(nn)) continue;
       deleted = deleted.filter((x) => x !== id);
       visible.add(id);
+      if (nn) visibleNames.add(nn);
       detalhes.push(`ID ${id} reaberto (ficha extra ainda existia)`);
       continue;
     }
@@ -2739,10 +2879,21 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     const mens = mensalidades.find((m) => m.id === id);
     const fat = faturas.find((f) => f.alunoId === id);
     if (!ov && !mens && !fat) continue;
+    const stubNome = normalizeNomeAluno(
+      String(ov?.nome || mens?.nome || fat?.alunoNome || ""),
+    );
+    if (stubNome && visibleNames.has(stubNome)) {
+      // Homónimo já visível — não criar stub duplicado
+      if (!deleted.includes(id)) deleted.push(id);
+      continue;
+    }
     extras.push(stubAlunoFromTrace(id, ov, mens, fat?.alunoNome));
     deleted = deleted.filter((x) => x !== id);
     visible.add(id);
-    detalhes.push(`ID ${id} reconstruído (${ov?.nome || mens?.nome || fat?.alunoNome || "sem nome"})`);
+    if (stubNome) visibleNames.add(stubNome);
+    detalhes.push(
+      `ID ${id} reconstruído (${ov?.nome || mens?.nome || fat?.alunoNome || "sem nome"})`,
+    );
   }
 
   if (detalhes.length) {

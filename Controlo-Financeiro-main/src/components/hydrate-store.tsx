@@ -8,7 +8,7 @@ import {
   saveAlunoFoto,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
-import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
+import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos, sanearAlunosDuplicados } from "@/lib/store";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
@@ -66,6 +66,7 @@ export function HydrateStore() {
         }
         try {
           recuperarAlunosOcultos();
+          sanearAlunosDuplicados();
         } catch (e) {
           console.warn("[recuperar-alunos]", e);
         }
@@ -117,6 +118,12 @@ export function HydrateStore() {
         if (rec.restaurados > 0) {
           toast.success(
             `${rec.restaurados} aluno(s) repostos a partir de rastos no sistema.`,
+          );
+        }
+        const san = sanearAlunosDuplicados();
+        if (san.removidos > 0) {
+          toast.message(
+            `${san.removidos} ficha(s) duplicada(s) saneada(s) (meta 48).`,
           );
         }
       } catch (e) {
