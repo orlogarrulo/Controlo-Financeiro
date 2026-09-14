@@ -140,105 +140,8 @@ type Store = ExtraState & {
    * Alunos cujo ID já existe no seed recebem override; os outros vão para alunosExtra.
    * Nunca apaga matrículas que já estejam neste dispositivo.
    */
-  
-      /**
-       * Detecta irmãos (mesmo pai ou mesma mãe) e atribui irmaosNivel:
-       * 2 alunos → 2 (−10%) · 3+ → 3 (−15%).
-       * Transferidos Campus Cidade: sem desconto (nível 0).
-       * Não reduz nível já definido manualmente se for maior.
-       */
-      detectarIrmaosEAplicarDescontos: () => {
-        const alunos = alunosAll(
-          get().alunosExtra || [],
-          get().alunosOverrides || {},
-          get().alunosDeletedIds || [],
-        );
-        const norm = (s?: string) =>
-          (s || "")
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase()
-            .replace(/\s+/g, " ")
-            .trim();
-        const byPai = new Map<string, string[]>();
-        const byMae = new Map<string, string[]>();
-        for (const a of alunos) {
-          const p = norm(a.pai);
-          const m = norm(a.mae);
-          if (p.length > 4) {
-            const list = byPai.get(p) || [];
-            list.push(a.id);
-            byPai.set(p, list);
-          }
-          if (m.length > 4) {
-            const list = byMae.get(m) || [];
-            list.push(a.id);
-            byMae.set(m, list);
-          }
-        }
-        const nivelPorId = new Map<string, 0 | 2 | 3>();
-        const applyGroup = (ids: string[]) => {
-          const uniq = [...new Set(ids)];
-          if (uniq.length < 2) return;
-          const nivel: 0 | 2 | 3 = uniq.length >= 3 ? 3 : 2;
-          for (const id of uniq) {
-            const prev = nivelPorId.get(id) || 0;
-            if (nivel > prev) nivelPorId.set(id, nivel);
-          }
-        };
-        for (const ids of byPai.values()) applyGroup(ids);
-        for (const ids of byMae.values()) applyGroup(ids);
+  importCensoAlunos: (alunos: Aluno[], mensalidades?: Mensalidade[]) => number;
 
-        let updated = 0;
-        const overrides = { ...(get().alunosOverrides || {}) };
-        const extras = [...(get().alunosExtra || [])];
-        for (const a of alunos) {
-          if (a.transferidoCampusCidade) {
-            // Garantir 0 para transferidos
-            if ((a.irmaosNivel || 0) !== 0) {
-              const inExtra = extras.some((e) => e.id === a.id);
-              if (inExtra) {
-                for (let i = 0; i < extras.length; i++) {
-                  if (extras[i].id === a.id) {
-                    extras[i] = { ...extras[i], irmaosNivel: 0 };
-                    updated += 1;
-                  }
-                }
-              } else {
-                overrides[a.id] = { ...(overrides[a.id] || {}), irmaosNivel: 0 };
-                updated += 1;
-              }
-            }
-            continue;
-          }
-          const detected = nivelPorId.get(a.id) || 0;
-          const current = (Number(a.irmaosNivel) || 0) as 0 | 2 | 3;
-          // Só sobe ou preenche se estava 0; não reduz ajuste manual superior
-          if (detected > 0 && current === 0) {
-            const inExtra = extras.some((e) => e.id === a.id);
-            if (inExtra) {
-              for (let i = 0; i < extras.length; i++) {
-                if (extras[i].id === a.id) {
-                  extras[i] = { ...extras[i], irmaosNivel: detected };
-                  updated += 1;
-                }
-              }
-            } else {
-              overrides[a.id] = {
-                ...(overrides[a.id] || {}),
-                irmaosNivel: detected,
-              };
-              updated += 1;
-            }
-          }
-        }
-        if (updated > 0) {
-          set({ alunosOverrides: overrides, alunosExtra: extras });
-          get().pushAudit("irmaos_detect", `${updated} aluno(s) com desconto de irmãos`);
-        }
-        return updated;
-      },
-importCensoAlunos: (alunos: Aluno[], mensalidades?: Mensalidade[]) => number;
   confirmPropinaBai: (id: string, mes: string) => { ok: boolean; message: string };
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
@@ -1360,6 +1263,98 @@ export const useFinance = create<Store>()(
         }
         return added + updated;
       },
+      detectarIrmaosEAplicarDescontos: () => {
+        const alunos = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        );
+        const norm = (s?: string) =>
+          (s || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+        const byPai = new Map<string, string[]>();
+        const byMae = new Map<string, string[]>();
+        for (const a of alunos) {
+          const p = norm(a.pai);
+          const m = norm(a.mae);
+          if (p.length > 4) {
+            const list = byPai.get(p) || [];
+            list.push(a.id);
+            byPai.set(p, list);
+          }
+          if (m.length > 4) {
+            const list = byMae.get(m) || [];
+            list.push(a.id);
+            byMae.set(m, list);
+          }
+        }
+        const nivelPorId = new Map<string, 0 | 2 | 3>();
+        const applyGroup = (ids: string[]) => {
+          const uniq = [...new Set(ids)];
+          if (uniq.length < 2) return;
+          const nivel: 0 | 2 | 3 = uniq.length >= 3 ? 3 : 2;
+          for (const id of uniq) {
+            const prev = nivelPorId.get(id) || 0;
+            if (nivel > prev) nivelPorId.set(id, nivel);
+          }
+        };
+        for (const ids of byPai.values()) applyGroup(ids);
+        for (const ids of byMae.values()) applyGroup(ids);
+
+        let updated = 0;
+        const overrides = { ...(get().alunosOverrides || {}) };
+        const extras = [...(get().alunosExtra || [])];
+        for (const a of alunos) {
+          if (a.transferidoCampusCidade) {
+            // Garantir 0 para transferidos
+            if ((a.irmaosNivel || 0) !== 0) {
+              const inExtra = extras.some((e) => e.id === a.id);
+              if (inExtra) {
+                for (let i = 0; i < extras.length; i++) {
+                  if (extras[i].id === a.id) {
+                    extras[i] = { ...extras[i], irmaosNivel: 0 };
+                    updated += 1;
+                  }
+                }
+              } else {
+                overrides[a.id] = { ...(overrides[a.id] || {}), irmaosNivel: 0 };
+                updated += 1;
+              }
+            }
+            continue;
+          }
+          const detected = nivelPorId.get(a.id) || 0;
+          const current = (Number(a.irmaosNivel) || 0) as 0 | 2 | 3;
+          // Só sobe ou preenche se estava 0; não reduz ajuste manual superior
+          if (detected > 0 && current === 0) {
+            const inExtra = extras.some((e) => e.id === a.id);
+            if (inExtra) {
+              for (let i = 0; i < extras.length; i++) {
+                if (extras[i].id === a.id) {
+                  extras[i] = { ...extras[i], irmaosNivel: detected };
+                  updated += 1;
+                }
+              }
+            } else {
+              overrides[a.id] = {
+                ...(overrides[a.id] || {}),
+                irmaosNivel: detected,
+              };
+              updated += 1;
+            }
+          }
+        }
+        if (updated > 0) {
+          set({ alunosOverrides: overrides, alunosExtra: extras });
+          get().pushAudit("irmaos_detect", `${updated} aluno(s) com desconto de irmãos`);
+        }
+        return updated;
+      },
+
       importCensoAlunos: (incoming, mensIncoming = []) => {
         requireEdit(get);
         const seedIds = new Set(seed.alunos.map((a) => a.id));
