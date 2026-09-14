@@ -22,16 +22,16 @@ export function CarteScolaire({
       className={`carte-scolaire relative overflow-hidden rounded-xl border border-zinc-200 bg-white text-[#1a1a1a] shadow-md ${className}`}
       style={{
         width: 420,
-        minHeight: 270,
+        minHeight: 280,
         fontFamily: "Georgia, 'Times New Roman', serif",
       }}
     >
-      <div className="grid grid-cols-[56px_1fr_88px] items-center gap-2 px-3 pt-3">
+      <div className="grid grid-cols-[64px_1fr_88px] items-center gap-2 px-3 pt-5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={logo}
           alt="Logo"
-          className="h-14 w-14 object-contain rounded-md bg-white"
+          className="h-16 w-16 object-contain rounded-md bg-white"
         />
         <div className="text-center leading-tight">
           <div className="text-[10px] font-bold uppercase tracking-wide text-[#1a4d2e]">

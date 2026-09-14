@@ -150,9 +150,9 @@ export function buildCartesPrintHtml(
   .card {
     border: 1.2px solid #9ca3af;
     border-radius: 3.5mm;
-    padding: 2.5mm 3mm 2mm;
+    padding: 4mm 3mm 2.2mm;
     width: 90mm;
-    height: 60mm;
+    height: 62mm;
     overflow: hidden;
     page-break-inside: avoid;
     background: #fff;
@@ -161,19 +161,19 @@ export function buildCartesPrintHtml(
   }
   header {
     display: grid;
-    grid-template-columns: 12mm 1fr 20mm;
+    grid-template-columns: 15mm 1fr 20mm;
     gap: 1.5mm;
     align-items: center;
   }
   .logo {
-    width: 11mm;
-    height: 11mm;
+    width: 14mm;
+    height: 14mm;
     object-fit: contain;
     border-radius: 1.5mm;
     background: #fff;
   }
   .ph-logo {
-    width: 11mm; height: 11mm;
+    width: 14mm; height: 14mm;
     border: 1px dashed #ccc; border-radius: 1.5mm;
   }
   .titles {

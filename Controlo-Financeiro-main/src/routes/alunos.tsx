@@ -1656,7 +1656,10 @@ function Alunos() {
           (a.propina === CAMPUS_CIDADE_PROPINA || (a.obs || "").includes("75.000"))) ||
           /irm[aã]os|−10%|2\+/i.test(a.obs || ""),
       ),
-      campanhaPromoSetembro: /campanha|−40%|promo/i.test(a.obs || "") || (a.descPct || 0) >= 40,
+      campanhaPromoSetembro:
+        typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean"
+          ? Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro)
+          : /campanha|−40%|promo/i.test(a.obs || "") || (a.descPct || 0) >= 40,
       manuais: String(a.manuais ?? 0),
       cadernos: String(a.cadernos ?? 0),
       uniforme: String(a.uniforme ?? 0),
@@ -1880,6 +1883,7 @@ function Alunos() {
       ...metodosFromForm(form),
       transferidoCampusCidade: form.transferidoCampusCidade,
       irmaosNivel: irmaosNivelFromForm(form),
+      campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
     } as Aluno;
     addAluno(aluno);
     await syncFotoToCloud(id, foto);
@@ -1944,6 +1948,7 @@ function Alunos() {
         ...metodosFromForm(form),
         transferidoCampusCidade: form.transferidoCampusCidade,
         irmaosNivel: irmaosNivelFromForm(form),
+        campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
       } as Partial<Aluno>);
       await syncFotoToCloud(editing.id, foto);
       // Forçar push para a nuvem para o outro PC não sobrescrever com dados antigos
@@ -2230,7 +2235,29 @@ function Alunos() {
 
   type LinhaFat = { key: string; label: string; value: number; on: boolean };
 
+  /** Meses de propina da liquidação — iguais ao diálogo de matrícula. */
+  function mesesPropinaFromAluno(a: Aluno): number {
+    const saved = Number(a.mesesPropina) || 0;
+    if (saved > 0) return Math.min(9, saved);
+    const prop = Number(a.propina) || 0;
+    const mens = Number(a.mensalidade1) || 0;
+    if (prop > 0 && mens > 0) {
+      for (const m of [9, 8, 7, 6, 5, 4, 3, 2, 1]) {
+        for (const camp of [true, false]) {
+          for (const ir of [0, 2, 3] as const) {
+            const pc = calcPropinaComCampanha(prop, m, camp, ir);
+            if (pc.liquidoPropina === mens) return m;
+          }
+        }
+      }
+    }
+    return mens > 0 ? 1 : 0;
+  }
+
   function alunoTemCampanha(a: Aluno): boolean {
+    if (typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean") {
+      return Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro);
+    }
     if ((a.descPct || 0) >= 40) return true;
     const obs = (a.obs || "").toLowerCase();
     return /campanha|−40%|-40%|promo/.test(obs);
@@ -2248,11 +2275,27 @@ function Alunos() {
     return 0;
   }
 
+  /**
+   * Mesmas rubricas e valores que o diálogo de matrícula (calcTotais).
+   * Fonte única: campos gravados na ficha + campanha/irmãos/meses.
+   */
   function linhasMatriculaBase(
     a: Aluno,
     mesesProp = 1,
-    opts?: { campanha?: boolean; irmaos?: boolean },
+    opts?: { campanha?: boolean; irmaos?: boolean | 0 | 2 | 3 },
   ): LinhaFat[] {
+    const meses = Math.min(9, Math.max(0, Math.round(mesesProp) || 0));
+    const campanha =
+      opts?.campanha ??
+      (typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean"
+        ? Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro)
+        : alunoTemCampanha(a));
+    let irmaosNivel: 0 | 2 | 3 = 0;
+    if (opts?.irmaos === true) irmaosNivel = alunoTemIrmaosDesc(a) || 2;
+    else if (opts?.irmaos === false) irmaosNivel = 0;
+    else if (opts?.irmaos === 2 || opts?.irmaos === 3 || opts?.irmaos === 0) irmaosNivel = opts.irmaos;
+    else irmaosNivel = alunoTemIrmaosDesc(a);
+
     let propinaMes = Number(a.propina) || 0;
     if (!(propinaMes > 0)) {
       try {
@@ -2261,46 +2304,59 @@ function Alunos() {
         propinaMes = 0;
       }
     }
-    const meses = Math.min(9, Math.max(0, mesesProp));
-    const campanha = opts?.campanha ?? alunoTemCampanha(a);
-    const irmaos = opts?.irmaos ?? alunoTemIrmaosDesc(a);
-    const pc = calcPropinaComCampanha(propinaMes, meses, campanha, irmaos);
+    const pc = calcPropinaComCampanha(propinaMes, meses, campanha, irmaosNivel);
+    // Preferir mensalidade1 gravada se for a liquidação com estes meses (evita desvio)
+    let propinaLiquida = pc.liquidoPropina;
+    const mensSaved = Number(a.mensalidade1) || 0;
+    const mesesSaved = Number(a.mesesPropina) || 0;
+    if (mensSaved > 0 && mesesSaved === meses && meses > 0) {
+      propinaLiquida = mensSaved;
+    } else if (propinaLiquida <= 0 && mensSaved > 0 && meses > 0) {
+      propinaLiquida = mensSaved;
+    }
+
     const propLabel =
       meses > 1
         ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
-        : `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`;
+        : meses === 1
+          ? `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`
+          : `Propina${pc.detalhe ? " · " + pc.detalhe : ""}`;
+
     const cartaoVal = Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0;
     const inscricaoVal = Number(a.inscricao) || 0;
+    const seguroVal = Number(a.seguro) || 0;
+    const manuaisVal = Number(a.manuais) || 0;
+    const cadernosVal = Number(a.cadernos) || 0;
+    const uniformeVal = Number(a.uniforme) || 0;
+    const atlVal = Number(a.extras) || 0;
+    const transporteVal = Number(a.transporte) || 0;
+    const alimentacaoVal = Number(a.alimentacao) || 0;
+    const cursoVal = Number(a.curso) || 0;
+
     const isPacoteCampus =
       Boolean(a.transferidoCampusCidade) &&
       (CAMPUS_CIDADE_PACOTES as readonly number[]).includes(inscricaoVal);
     const labelInscricao = isPacoteCampus
       ? `Pacote Campus Cidade ${formatKz(inscricaoVal)} (matrícula + seguro escolar + cartão de estudante)`
       : "Inscrição";
+
     return [
       { key: "inscricao", label: labelInscricao, value: inscricaoVal, on: inscricaoVal > 0 },
-      // Seguro/cartão a 0 no pacote transferido — não aparecem como rubricas separadas
-      { key: "seguro", label: "Seguro escolar", value: Number(a.seguro) || 0, on: (Number(a.seguro) || 0) > 0 },
-      { key: "manuais", label: "Manuais", value: Number(a.manuais) || 0, on: (Number(a.manuais) || 0) > 0 },
-      { key: "cadernos", label: "Cadernos", value: Number(a.cadernos) || 0, on: (Number(a.cadernos) || 0) > 0 },
-      { key: "uniforme", label: "Uniforme", value: Number(a.uniforme) || 0, on: (Number(a.uniforme) || 0) > 0 },
-      { key: "atl", label: "ATL", value: Number(a.extras) || 0, on: (Number(a.extras) || 0) > 0 },
-      { key: "transporte", label: "Transporte", value: Number(a.transporte) || 0, on: (Number(a.transporte) || 0) > 0 },
-      { key: "alimentacao", label: "Alimentação", value: Number(a.alimentacao) || 0, on: (Number(a.alimentacao) || 0) > 0 },
-      { key: "curso", label: "Curso intensivo", value: Number(a.curso) || 0, on: (Number(a.curso) || 0) > 0 },
-      {
-        key: "cartaoEstudante",
-        label: "Cartão de estudante",
-        value: cartaoVal,
-        on: cartaoVal > 0,
-      },
+      { key: "seguro", label: "Seguro escolar", value: seguroVal, on: seguroVal > 0 },
+      { key: "manuais", label: "Manuais", value: manuaisVal, on: manuaisVal > 0 },
+      { key: "cadernos", label: "Cadernos", value: cadernosVal, on: cadernosVal > 0 },
+      { key: "uniforme", label: "Uniforme", value: uniformeVal, on: uniformeVal > 0 },
+      { key: "atl", label: "ATL", value: atlVal, on: atlVal > 0 },
+      { key: "transporte", label: "Transporte", value: transporteVal, on: transporteVal > 0 },
+      { key: "alimentacao", label: "Alimentação", value: alimentacaoVal, on: alimentacaoVal > 0 },
+      { key: "curso", label: "Curso intensivo", value: cursoVal, on: cursoVal > 0 },
+      { key: "cartaoEstudante", label: "Cartão de estudante", value: cartaoVal, on: cartaoVal > 0 },
       {
         key: "propinas",
         label: propLabel,
-        value: pc.liquidoPropina > 0 ? pc.liquidoPropina : propinaMes * (meses || 0),
-        on: (pc.liquidoPropina > 0 || propinaMes > 0) && meses > 0,
+        value: propinaLiquida > 0 ? propinaLiquida : 0,
+        on: propinaLiquida > 0 && meses > 0,
       },
-      // Multas (desligadas por defeito — marcar e escolher % / valor)
       {
         key: "multaAtraso",
         label: "Multa por atraso no pagamento",
@@ -2726,8 +2782,10 @@ function Alunos() {
         ? nextFaturaNumero(mesKey)
         : `PROP-${mesKey}-001`;
     const contacto = loadContacto();
-    const mesesProp = a.mesesPropina && a.mesesPropina > 0 ? a.mesesPropina : 1;
-    let linhas = linhasMatriculaBase(a, mesesProp);
+    const mesesProp = mesesPropinaFromAluno(a);
+    const campanha = alunoTemCampanha(a);
+    const irmaos = alunoTemIrmaosDesc(a);
+    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
     // Se só houver propina mensal em Propinas e sem itens de matrícula, marcar propina com valor do mês
     const propLine = linhas.find((l) => l.key === "propinas");
     if (propLine && pagoMes > 0) {
@@ -2779,9 +2837,12 @@ function Alunos() {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { pagoMes } = resolverValorPropina(a, mesLetivo);
     const contacto = loadContacto();
-    const mesesProp = a.mesesPropina && a.mesesPropina > 0 ? a.mesesPropina : 1;
-    let linhas = linhasMatriculaBase(a, mesesProp);
-    // No recibo, permitir todos os itens (mesmo valor 0) para o utilizador preencher
+    // Mesmos meses / campanha / irmãos / rubricas que o diálogo de matrícula
+    const mesesProp = mesesPropinaFromAluno(a);
+    const campanha = alunoTemCampanha(a);
+    const irmaos = alunoTemIrmaosDesc(a);
+    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
+    // Só rubricas com valor > 0 (iguais ao total da ficha)
     linhas = linhas.map((l) => ({
       ...l,
       on: l.value > 0,

@@ -173,6 +173,8 @@ export type Aluno = {
   transferidoCampusCidade?: boolean;
   /** 0 nenhum · 2 (−10%) · 3 (−15%) irmãos. */
   irmaosNivel?: 0 | 2 | 3;
+  /** Campanha promo até 10/set (−40% nas propinas desta liquidação). */
+  campanhaPromoSetembro?: boolean;
   /** Foto do aluno (data URL / base64) para o cadastro. */
   foto?: string;
   /** Alergias a medicamentos. */
