@@ -1118,18 +1118,50 @@ export const useFinance = create<Store>()(
               },
             ],
           });
-        } else if (patch.propina != null || patch.nome != null || patch.turma != null) {
+        } else if (
+          patch.propina != null ||
+          patch.nome != null ||
+          patch.turma != null ||
+          patch.mesesPropina != null ||
+          patch.dataPag != null
+        ) {
+          const src =
+            get().alunosExtra.find((a) => a.id === id) ||
+            (getSeed().alunos || []).find((a) => a.id === id);
+          const merged = {
+            ...(src || {}),
+            ...(get().alunosOverrides[id] || {}),
+            ...patch,
+          } as Aluno;
+          const propMes = Number(merged.propina) || 0;
+          const nMeses = Math.min(
+            Math.max(0, Number(merged.mesesPropina) || 0),
+            MESES_LETIVOS.length,
+          );
           set({
-            mensalidades: mens.map((m) =>
-              m.id === id
-                ? {
-                    ...m,
-                    propina: patch.propina != null ? Number(patch.propina) : m.propina,
-                    nome: patch.nome != null ? String(patch.nome) : m.nome,
-                    turma: patch.turma != null ? String(patch.turma) : m.turma,
+            mensalidades: mens.map((m) => {
+              if (m.id !== id) return m;
+              const pagamentos = { ...(m.pagamentos || {}) };
+              const pagamentosEm = { ...((m as { pagamentosEm?: Record<string, string> }).pagamentosEm || {}) };
+              // Marcar meses já liquidados na matrícula (sem apagar pagamentos posteriores manuais)
+              if (nMeses > 0 && propMes > 0) {
+                for (let i = 0; i < nMeses; i++) {
+                  const mesKey = MESES_LETIVOS[i];
+                  if (!pagamentos[mesKey] || pagamentos[mesKey] <= 0) {
+                    pagamentos[mesKey] = propMes;
+                    if (merged.dataPag) pagamentosEm[mesKey] = String(merged.dataPag);
                   }
-                : m,
-            ),
+                }
+              }
+              return {
+                ...m,
+                propina: patch.propina != null ? Number(patch.propina) : m.propina,
+                nome: patch.nome != null ? String(patch.nome) : m.nome,
+                turma: patch.turma != null ? String(patch.turma) : m.turma,
+                pagamentos,
+                pagamentosEm,
+              };
+            }),
           });
         }
       },
@@ -1143,31 +1175,73 @@ export const useFinance = create<Store>()(
         });
         get().pushAudit("propina", `${id} · ${mes} · ${nextVal}`);
       },
-      /** Cria em Propinas as linhas em falta para alunos já matriculados. */
+      /** Cria em Propinas as linhas em falta e marca meses já pagos na matrícula. */
       syncPropinasFromMatriculas: () => {
         const alunos = alunosAll(
           get().alunosExtra || [],
           get().alunosOverrides || {},
           get().alunosDeletedIds || [],
         );
-        const existing = new Set((get().mensalidades || []).map((m) => m.id));
-        const missing: Mensalidade[] = [];
+        const mens = [...(get().mensalidades || [])];
+        const byId = new Map(mens.map((m) => [m.id, m]));
+        let added = 0;
+        let updated = 0;
         for (const a of alunos) {
-          if (existing.has(a.id)) continue;
-          missing.push({
-            id: a.id,
-            nome: a.nome,
-            turma: a.turma || "",
-            propina: Number(a.propina) || 0,
-            pagamentos: {},
-            obs: a.obs || "",
-          });
+          const propMes = Number(a.propina) || 0;
+          const nMeses = Math.min(
+            Math.max(0, Number(a.mesesPropina) || 0),
+            MESES_LETIVOS.length,
+          );
+          const pagamentos: Record<string, number> = {};
+          const pagamentosEm: Record<string, string> = {};
+          if (nMeses > 0 && propMes > 0) {
+            for (let i = 0; i < nMeses; i++) {
+              const mesKey = MESES_LETIVOS[i];
+              pagamentos[mesKey] = propMes;
+              if (a.dataPag) pagamentosEm[mesKey] = String(a.dataPag);
+            }
+          }
+          const existing = byId.get(a.id);
+          if (!existing) {
+            mens.push({
+              id: a.id,
+              nome: a.nome,
+              turma: a.turma || "",
+              propina: propMes,
+              pagamentos,
+              pagamentosEm,
+              obs: a.obs || "",
+            } as import("@/data/types").Mensalidade);
+            added += 1;
+          } else if (nMeses > 0 && propMes > 0) {
+            // Preencher apenas meses ainda a zero (não sobrescrever pagamentos manuais)
+            const nextPag = { ...(existing.pagamentos || {}) };
+            const nextEm = { ...((existing as { pagamentosEm?: Record<string, string> }).pagamentosEm || {}) };
+            let changed = false;
+            for (const [k, v] of Object.entries(pagamentos)) {
+              if (!nextPag[k] || nextPag[k] <= 0) {
+                nextPag[k] = v;
+                if (pagamentosEm[k]) nextEm[k] = pagamentosEm[k];
+                changed = true;
+              }
+            }
+            if (changed) {
+              const idx = mens.findIndex((m) => m.id === a.id);
+              if (idx >= 0) {
+                mens[idx] = { ...mens[idx], pagamentos: nextPag, pagamentosEm: nextEm, propina: propMes || mens[idx].propina };
+                updated += 1;
+              }
+            }
+          }
         }
-        if (missing.length) {
-          set({ mensalidades: [...(get().mensalidades || []), ...missing] });
-          get().pushAudit("propina_backfill", `${missing.length} aluno(s)`);
+        if (added || updated) {
+          set({ mensalidades: mens });
+          get().pushAudit(
+            "propina_backfill",
+            `${added} criado(s), ${updated} actualizado(s) com meses pagos na matrícula`,
+          );
         }
-        return missing.length;
+        return added + updated;
       },
       importCensoAlunos: (incoming, mensIncoming = []) => {
         requireEdit(get);

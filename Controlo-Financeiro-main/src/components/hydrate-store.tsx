@@ -126,6 +126,17 @@ export function HydrateStore() {
             `${san.removidos} ficha(s) duplicada(s) saneada(s) (meta 48).`,
           );
         }
+        // Marcar em Propinas os meses já liquidados na matrícula (mesesPropina)
+        try {
+          const n = useFinance.getState().syncPropinasFromMatriculas?.() ?? 0;
+          if (n > 0) {
+            toast.message(
+              `Propinas alinhadas: ${n} aluno(s) com meses já pagos na matrícula.`,
+            );
+          }
+        } catch (e) {
+          console.warn("[propinas] sync meses pagos", e);
+        }
       } catch (e) {
         console.warn("[classes-congo] migrate", e);
       }

@@ -187,6 +187,9 @@ type Row = {
   ultimo?: CrmEnvio;
   confirmado: boolean;
   enviado: boolean;
+  /** Já liquidou este mês na matrícula (mesesPropina / pagamentos) — não cobrar de novo */
+  jaPagoNaMatricula: boolean;
+  valorPagoMes: number;
 };
 
 type SendDraft = {
@@ -195,6 +198,28 @@ type SendDraft = {
   mensagem: string;
   tipoDoc: "fatura" | "recibo";
 };
+
+
+/** Verifica se o aluno já tem este mês de propina liquidado (matrícula ou Propinas). */
+function mesJaPagoNaMatricula(
+  aluno: Aluno,
+  mesKey: string,
+  mensalidades: { id: string; nome?: string; pagamentos?: Record<string, number> }[],
+): { pago: boolean; valor: number } {
+  const mesLetivo = mesKeyToLetivo(mesKey);
+  const m = mensalidades.find((x) => x.id === aluno.id || x.nome === aluno.nome);
+  const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
+  if (pagoMes > 0) return { pago: true, valor: pagoMes };
+  // Fallback: mesesPropina na ficha cobre os primeiros N meses lectivos (set→…)
+  const n = Math.max(0, Number(aluno.mesesPropina) || 0);
+  if (n <= 0) return { pago: false, valor: 0 };
+  const ordem = ["set", "out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
+  const idx = ordem.indexOf(mesLetivo);
+  if (idx >= 0 && idx < n) {
+    return { pago: true, valor: Number(aluno.propina) || Number(aluno.mensalidade1) || 0 };
+  }
+  return { pago: false, valor: 0 };
+}
 
 function CrmPage() {
   const escola = getSeed().escola;
@@ -221,7 +246,7 @@ function CrmPage() {
   const [mesKey, setMesKey] = useState(mesKeyAtual);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filtro, setFiltro] = useState<"todos" | "enviados" | "por_enviar">("todos");
+  const [filtro, setFiltro] = useState<"todos" | "enviados" | "por_enviar" | "ja_pagos">("todos");
   const [draft, setDraft] = useState<SendDraft | null>(null);
   const [viewFatura, setViewFatura] = useState<Row | null>(null);
   const [verifyCodigo, setVerifyCodigo] = useState("");
@@ -246,6 +271,11 @@ function CrmPage() {
       envios.sort((x, y) => (y.enviadoEm || "").localeCompare(x.enviadoEm || ""));
       const ultimo = envios[0];
       const fatura = fatByAluno.get(a.id);
+      const { pago: jaPagoNaMatricula, valor: valorPagoMes } = mesJaPagoNaMatricula(
+        a,
+        mesKey,
+        mensalidades,
+      );
       list.push({
         aluno: a,
         fatura,
@@ -253,15 +283,19 @@ function CrmPage() {
         ultimo,
         enviado: envios.length > 0,
         confirmado: envios.some((e) => e.confirmado),
+        jaPagoNaMatricula,
+        valorPagoMes,
       });
     }
     return list;
-  }, [alunos, faturas, crmEnvios, mesKey]);
+  }, [alunos, faturas, crmEnvios, mesKey, mensalidades]);
 
   const filtered = useMemo(() => {
     let list = rows;
     if (filtro === "enviados") list = list.filter((r) => r.enviado);
-    if (filtro === "por_enviar") list = list.filter((r) => !r.enviado);
+    // Por enviar = ainda não enviado E ainda não liquidado na matrícula
+    if (filtro === "por_enviar") list = list.filter((r) => !r.enviado && !r.jaPagoNaMatricula);
+    if (filtro === "ja_pagos") list = list.filter((r) => r.jaPagoNaMatricula);
     const qq = q.trim().toLowerCase();
     if (qq) {
       list = list.filter((r) => {
@@ -281,14 +315,16 @@ function CrmPage() {
   const stats = useMemo(() => {
     const enviados = rows.filter((r) => r.enviado).length;
     const confirmados = rows.filter((r) => r.confirmado).length;
-    const porEnviar = rows.length - enviados;
+    const jaPagos = rows.filter((r) => r.jaPagoNaMatricula).length;
+    // Por enviar = não enviado e ainda não liquidado na matrícula
+    const porEnviar = rows.filter((r) => !r.enviado && !r.jaPagoNaMatricula).length;
     const emails = (crmEnvios as CrmEnvio[]).filter(
       (e) => e.mesKey === mesKey && e.canal === "email",
     ).length;
     const whats = (crmEnvios as CrmEnvio[]).filter(
       (e) => e.mesKey === mesKey && e.canal === "whatsapp",
     ).length;
-    return { enviados, confirmados, porEnviar, emails, whats, total: rows.length };
+    return { enviados, confirmados, porEnviar, jaPagos, emails, whats, total: rows.length };
   }, [rows, crmEnvios, mesKey]);
 
   function valorPropina(a: Aluno, fatura?: FaturaPropina): number | undefined {
@@ -747,11 +783,12 @@ function CrmPage() {
       />
 
       {/* KPIs: contagens inteiras (não valores em Kz) */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <Kpi label="Alunos" value={String(stats.total)} />
         <Kpi label="Enviados" value={String(stats.enviados)} />
         <Kpi label="Confirmados" value={String(stats.confirmados)} tone="forest" />
         <Kpi label="Por enviar" value={String(stats.porEnviar)} tone="clay" />
+        <Kpi label="Já pagos (matrícula)" value={String(stats.jaPagos ?? 0)} tone="forest" />
         <Kpi
           label="E-mail / WhatsApp"
           value={`${stats.emails} / ${stats.whats}`}
@@ -871,6 +908,7 @@ function CrmPage() {
             [
               ["todos", "Todos"],
               ["por_enviar", "Por enviar"],
+              ["ja_pagos", "Já pagos (matrícula)"],
               ["enviados", "Enviados"],
             ] as const
           ).map(([k, lab]) => (
@@ -985,7 +1023,12 @@ function CrmPage() {
                     </td>
                     <td className="px-3 py-2 tabular-nums text-xs">
                       {valor != null ? formatKz(valor) : "—"}
-                      {row.fatura?.numero ? (
+                      {row.jaPagoNaMatricula ? (
+                        <div className="text-emerald-700 text-[10px] font-medium">
+                          pago na matrícula
+                          {row.valorPagoMes > 0 ? ` · ${formatKz(row.valorPagoMes)}` : ""}
+                        </div>
+                      ) : row.fatura?.numero ? (
                         <div className="text-[var(--color-muted)]">
                           {row.fatura.numero}
                         </div>
@@ -994,7 +1037,12 @@ function CrmPage() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      {row.confirmado ? (
+                      {row.jaPagoNaMatricula ? (
+                        <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">
+                          <CheckCircle2 className="mr-1 size-3" />
+                          Já pago (matrícula)
+                        </Badge>
+                      ) : row.confirmado ? (
                         <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
                           <CheckCircle2 className="mr-1 size-3" />
                           Confirmado
@@ -1217,7 +1265,12 @@ function CrmPage() {
                       0,
                   )}
                 </p>
-                {viewFatura.fatura ? (
+                {viewFatura.jaPagoNaMatricula ? (
+                  <p className="mt-2 text-xs text-emerald-700 font-medium">
+                    Já liquidado na matrícula ({viewFatura.aluno.mesesPropina || "—"} mês/meses).
+                    Não gerar fatura de cobrança — enviar apenas recibo se necessário.
+                  </p>
+                ) : viewFatura.fatura ? (
                   <p className="mt-2 text-xs text-[var(--color-muted)]">
                     Emitida em{" "}
                     {formatDate(viewFatura.fatura.emitidoEm.slice(0, 10))}

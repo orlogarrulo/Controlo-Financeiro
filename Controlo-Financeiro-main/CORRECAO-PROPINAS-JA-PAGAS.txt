@@ -1,0 +1,27 @@
+CORRECÇÃO — Alunos que já pagaram meses de propina na matrícula
+===============================================================
+Data: 14/09/2026
+
+Problema:
+  Alunos com mesesPropina = 9 (ex.: irmãos Jamo Janota, desconto 40%+10%)
+  apareciam no CRM em «Por enviar» / «Ainda sem n.º PROP» para Outubro,
+  apesar de já terem liquidado Out→Jun na matrícula.
+
+Correcções:
+1. src/lib/store.ts
+   - updateAluno: sincroniza mesesPropina → mensalidades.pagamentos
+   - syncPropinasFromMatriculas: preenche meses já pagos para todos os alunos
+
+2. src/routes/crm.tsx
+   - Detecta mês já pago (pagamentos[mes] ou mesesPropina)
+   - Badge verde «Já pago (matrícula)»
+   - Filtro «Por enviar» EXCLUI quem já pagou
+   - Novo filtro «Já pagos (matrícula)»
+   - KPI «Já pagos (matrícula)»
+   - Diálogo: nota «Não gerar fatura de cobrança — só recibo»
+
+3. src/components/hydrate-store.tsx
+   - No arranque chama syncPropinasFromMatriculas para alinhar dados existentes
+
+Após deploy: Ctrl+Shift+R. Os alunos com 9 meses pagos deixam de aparecer
+em «Por enviar» e passam a «Já pago (matrícula)».
