@@ -84,10 +84,10 @@ function cardHtml(aluno: Aluno, logoSrc: string) {
       <div><span>Classe:</span> <b>${esc(c.classe)}</b></div>
       <div><span>Matricule:</span> <b>${esc(c.matricule)}</b></div>
       <div><span>Année Scolaire:</span> <b>${esc(c.anneeScolaire)}</b></div>
+      <div><span>Validité:</span> <b>${esc(c.validite)}</b></div>
     </div>
   </div>
   <footer>
-    <span>Validité: ${esc(c.validite)}</span>
     <span class="prov">${esc(ECOLE_CARTE.proviseur)}</span>
   </footer>
 </article>`;
@@ -150,9 +150,9 @@ export function buildCartesPrintHtml(
   .card {
     border: 1.2px solid #9ca3af;
     border-radius: 3.5mm;
-    padding: 2.8mm 3.2mm 2.2mm;
+    padding: 2.5mm 3mm 2mm;
     width: 90mm;
-    height: 58mm;
+    height: 60mm;
     overflow: hidden;
     page-break-inside: avoid;
     background: #fff;
@@ -161,27 +161,27 @@ export function buildCartesPrintHtml(
   }
   header {
     display: grid;
-    grid-template-columns: 14mm 1fr 22mm;
-    gap: 2mm;
+    grid-template-columns: 12mm 1fr 20mm;
+    gap: 1.5mm;
     align-items: center;
   }
   .logo {
-    width: 13mm;
-    height: 13mm;
+    width: 11mm;
+    height: 11mm;
     object-fit: contain;
     border-radius: 1.5mm;
     background: #fff;
   }
   .ph-logo {
-    width: 13mm; height: 13mm;
+    width: 11mm; height: 11mm;
     border: 1px dashed #ccc; border-radius: 1.5mm;
   }
   .titles {
     text-align: center;
-    font-size: 6.8px;
+    font-size: 6.2px;
     font-weight: 700;
     color: #1a4d2e;
-    text-transform: uppercase;
+    text-transform: none;
     line-height: 1.15;
   }
   .titles strong {
@@ -211,21 +211,23 @@ export function buildCartesPrintHtml(
   }
   .body {
     display: grid;
-    grid-template-columns: 20mm 1fr;
+    grid-template-columns: 18mm 1fr;
     gap: 2.5mm;
-    margin-top: 1.8mm;
-    flex: 1;
+    margin-top: 1.5mm;
+    flex: 1 1 auto;
     min-height: 0;
+    overflow: hidden;
   }
   .left {
     display: flex;
     flex-direction: column;
-    gap: 1.2mm;
+    gap: 1mm;
     align-items: center;
+    max-height: 100%;
   }
   .photo {
-    width: 18mm;
-    height: 22mm;
+    width: 17mm;
+    height: 20mm;
     object-fit: cover;
     border: 1px solid #ccc;
     background: #f3f3f3;
@@ -240,28 +242,30 @@ export function buildCartesPrintHtml(
     font-family: system-ui, sans-serif;
   }
   .qr {
-    width: 14mm;
-    height: 14mm;
+    width: 12mm;
+    height: 12mm;
     object-fit: contain;
     flex-shrink: 0;
     border: 0;
     display: block;
   }
   .fields {
-    font-size: 7.8px;
-    line-height: 1.42;
+    font-size: 7.4px;
+    line-height: 1.38;
   }
   .fields span { color: #444; }
   .fields b { font-weight: 700; }
   .red { color: #b42318; text-transform: uppercase; }
   footer {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: flex-end;
     font-size: 7px;
     color: #555;
-    margin-top: 1mm;
+    margin-top: 0.8mm;
+    padding-top: 0.5mm;
     flex-shrink: 0;
+    min-height: 3.5mm;
   }
   footer .prov { text-align: right; }
   @media print {

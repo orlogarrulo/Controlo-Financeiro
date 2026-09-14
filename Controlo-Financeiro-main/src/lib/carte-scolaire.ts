@@ -3,8 +3,10 @@ import type { Aluno } from "@/data/types";
 export const ANO_LECTIF_CARTE = "2026-2027";
 
 export const ECOLE_CARTE = {
-  nom: "ECOLE CONSULAIRE DE LA REPUBLIQUE",
-  nom2: "DU CONGO À LUANDA",
+  /** Linha 1 do cabeçalho impresso */
+  nom: "École Consulaire De La République Du Congo",
+  /** Linha 2 (annexe) */
+  nom2: "annexe Nova Vida",
   titre: "CARTE SCOLAIRE",
   proviseur: "Le Proviseur",
 };

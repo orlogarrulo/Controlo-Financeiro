@@ -82,11 +82,11 @@ export function CarteScolaire({
           <Row label="Classe" value={data.classe} />
           <Row label="Matricule" value={data.matricule} />
           <Row label="Année Scolaire" value={data.anneeScolaire} />
+          <Row label="Validité" value={data.validite} />
         </div>
       </div>
 
-      <div className="flex items-end justify-between px-3 pb-3 pt-1">
-        <div className="text-[10px] text-zinc-600">Validité: {data.validite}</div>
+      <div className="flex items-end justify-end px-3 pb-3 pt-1">
         <div className="text-right text-[10px] text-zinc-600">{ECOLE_CARTE.proviseur}</div>
       </div>
     </article>
