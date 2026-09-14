@@ -350,6 +350,23 @@ export const MESES_LETIVOS = [
   "jun",
 ] as const;
 
+/**
+ * Meses de propina cobráveis / adiantáveis na matrícula (máx. 9).
+ * A 1.ª cobrança do ano lectivo é Outubro — por isso o índice 0 = "out".
+ * mesesPropina=1 → Outubro; mesesPropina=9 → Out→Jun.
+ */
+export const MESES_PROPINA_ADIANTADOS = [
+  "out",
+  "nov",
+  "dez",
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+] as const;
+
 export const MESES_LABEL: Record<string, string> = {
   set: "Set",
   out: "Out",

@@ -101,29 +101,58 @@ function buildMensagemFatura(opts: {
   faturaNumero?: string;
   encarregado?: string;
   tipo?: "fatura" | "recibo";
+  /** Ex.: 2026-10 — activa nota da 1.ª mensalidade (cartão / entrada 1/10) */
+  mesKey?: string;
 }): string {
-  const valorTxt = opts.valor != null ? formatKz(opts.valor) : "conforme tarifário";
+  const valorTxt =
+    opts.valor != null ? formatKz(opts.valor) : "conforme tarifário / selon le tarif";
   const fat = opts.faturaNumero
-    ? `\nN.º ${opts.tipo === "recibo" ? "recibo" : "fatura"}: ${opts.faturaNumero}`
+    ? `\nN.º / N° ${opts.tipo === "recibo" ? "recibo / reçu" : "fatura / facture"}: ${opts.faturaNumero}`
     : "";
-  const saudacao = opts.encarregado
-    ? `Olá ${opts.encarregado},`
-    : "Olá,";
+  const nomeEnc = (opts.encarregado || "").trim();
+  const saudacaoPt = nomeEnc ? `Olá ${nomeEnc},` : "Olá,";
+  const saudacaoFr = nomeEnc ? `Bonjour ${nomeEnc},` : "Bonjour,";
+  const escola =
+    opts.escolaNome ||
+    "École Consulaire du Congo (Brazzaville) — Annexe Nova Vida, Luanda";
+
+  const isOutubro =
+    (opts.mesKey || "").endsWith("-10") ||
+    /outubro|octobre/i.test(opts.mesRef || "");
+  const notaPt = isOutubro
+    ? "A mensalidade de outubro é necessária para a emissão do cartão de estudante. Sem o pagamento, o aluno não poderá entrar no recinto escolar a partir de 1/10/2026.\n\n"
+    : "";
+  const notaFr = isOutubro
+    ? "La mensualité d'octobre est requise pour l'émission de la carte d'étudiant. Sans paiement, l'élève ne pourra pas entrer dans l'enceinte scolaire à partir du 01/10/2026.\n\n"
+    : "";
+
   if (opts.tipo === "recibo") {
     return (
-      `${saudacao}\n\n` +
+      `${saudacaoPt}\n${saudacaoFr}\n\n` +
+      `—— Português ——\n` +
       `Confirmamos o *recibo de pagamento* da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
       `Valor recebido: *${valorTxt}*${fat}\n\n` +
-      `${opts.escolaNome}\n` +
-      `Obrigado.`
+      `—— Français ——\n` +
+      `Nous confirmons le *reçu de paiement* de la scolarité de *${opts.mesRef}* pour *${opts.alunoNome}*.\n` +
+      `Montant reçu : *${valorTxt}*${fat}\n\n` +
+      `${escola}\n` +
+      `Obrigado / Merci.`
     );
   }
+
   return (
-    `${saudacao}\n\n` +
+    `${saudacaoPt}\n${saudacaoFr}\n\n` +
+    `—— Português ——\n` +
     `Segue a referência da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
-    `Valor: *${valorTxt}*${fat}\n\n` +
-    `${opts.escolaNome}\n` +
-    `Por favor confirme o pagamento ou contacte a secretaria.`
+    `Valor: *${valorTxt}*${fat}\n` +
+    `${notaPt}` +
+    `Por favor confirme o pagamento ou contacte a secretaria.\n\n` +
+    `—— Français ——\n` +
+    `Voici la référence de la scolarité de *${opts.mesRef}* concernant *${opts.alunoNome}*.\n` +
+    `Montant : *${valorTxt}*${fat}\n` +
+    `${notaFr}` +
+    `Merci de confirmer le paiement ou de contacter le secrétariat.\n\n` +
+    `${escola}`
   );
 }
 
@@ -190,6 +219,8 @@ type Row = {
   /** Já liquidou este mês na matrícula (mesesPropina / pagamentos) — não cobrar de novo */
   jaPagoNaMatricula: boolean;
   valorPagoMes: number;
+  /** Nº de meses de propina incluídos na liquidação da matrícula (0–9) */
+  mesesAdiantados: number;
 };
 
 type SendDraft = {
@@ -213,7 +244,8 @@ function mesJaPagoNaMatricula(
   // Fallback: mesesPropina na ficha cobre os primeiros N meses lectivos (set→…)
   const n = Math.max(0, Number(aluno.mesesPropina) || 0);
   if (n <= 0) return { pago: false, valor: 0 };
-  const ordem = ["set", "out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
+  // 1.ª cobrança = Outubro → mesesPropina=1 cobre "out", não "set"
+  const ordem = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
   const idx = ordem.indexOf(mesLetivo);
   if (idx >= 0 && idx < n) {
     return { pago: true, valor: Number(aluno.propina) || Number(aluno.mensalidade1) || 0 };
@@ -276,6 +308,7 @@ function CrmPage() {
         mesKey,
         mensalidades,
       );
+      const mesesAdiantados = Math.max(0, Number(a.mesesPropina) || 0);
       list.push({
         aluno: a,
         fatura,
@@ -285,6 +318,7 @@ function CrmPage() {
         confirmado: envios.some((e) => e.confirmado),
         jaPagoNaMatricula,
         valorPagoMes,
+        mesesAdiantados,
       });
     }
     return list;
@@ -340,10 +374,13 @@ function CrmPage() {
       alunoNome: a.nome,
       mesRef: mesLabel(mesKey),
       valor: valorPropina(a, row.fatura),
-      escolaNome: escola.nome || "École Consulaire",
+      escolaNome:
+        escola.nome ||
+        "École Consulaire du Congo (Brazzaville) — Annexe Nova Vida, Luanda",
       faturaNumero: row.fatura?.numero,
       encarregado: a.encarregado || a.pai || a.mae,
       tipo: tipoDoc,
+      mesKey,
     });
   }
 
@@ -460,7 +497,12 @@ function CrmPage() {
     if (selected.size === filtered.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(filtered.map((r) => r.aluno.id)));
+      // Não seleccionar quem já liquidou o mês (não são cobráveis)
+      setSelected(
+        new Set(
+          filtered.filter((r) => !r.jaPagoNaMatricula).map((r) => r.aluno.id),
+        ),
+      );
     }
   }
 
@@ -714,12 +756,18 @@ function CrmPage() {
         return;
       }
       const subject = encodeURIComponent(
-        `Propina ${mesLabel(mesKey)} · ${escola.nomeCurto || "École Consulaire"}`,
+        `Propina / Scolarité ${mesLabel(mesKey)} · ${escola.nomeCurto || "École Consulaire"}`,
       );
       const body = encodeURIComponent(
-        `Olá,\n\nSegue a referência da propina de ${mesLabel(mesKey)}.\n` +
-          `Por favor consulte os valores individuais com a secretaria.\n\n` +
-          `${escola.nome || "École Consulaire"}`,
+        buildMensagemFatura({
+          alunoNome: "(ver destinatários em BCC)",
+          mesRef: mesLabel(mesKey),
+          escolaNome:
+            escola.nome ||
+            "École Consulaire du Congo (Brazzaville) — Annexe Nova Vida, Luanda",
+          mesKey,
+          tipo: "fatura",
+        }),
       );
       window.open(
         `mailto:?bcc=${emails.join(",")}&subject=${subject}&body=${body}`,
@@ -1000,8 +1048,17 @@ function CrmPage() {
                       <input
                         type="checkbox"
                         checked={selected.has(a.id)}
-                        onChange={() => toggleSelect(a.id)}
-                        className="size-4 accent-[var(--color-forest)]"
+                        disabled={row.jaPagoNaMatricula}
+                        title={
+                          row.jaPagoNaMatricula
+                            ? "Mês já liquidado na matrícula — não seleccionável para cobrança"
+                            : undefined
+                        }
+                        onChange={() => {
+                          if (row.jaPagoNaMatricula) return;
+                          toggleSelect(a.id);
+                        }}
+                        className="size-4 accent-[var(--color-forest)] disabled:opacity-40 disabled:cursor-not-allowed"
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -1035,6 +1092,13 @@ function CrmPage() {
                       ) : (
                         <div className="text-[var(--color-muted)]">sem fatura emitida</div>
                       )}
+                      {row.mesesAdiantados > 0 ? (
+                        <div className="text-[10px] text-emerald-800 mt-0.5">
+                          Matrícula: {formatKz(a.liquido || 0)} · {row.mesesAdiantados} mês
+                          {row.mesesAdiantados > 1 ? "es" : ""} adiantado
+                          {row.mesesAdiantados > 1 ? "s" : ""}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">
                       {row.jaPagoNaMatricula ? (
@@ -1060,6 +1124,18 @@ function CrmPage() {
                           Por enviar
                         </Badge>
                       )}
+                      {row.mesesAdiantados > 0 && !row.jaPagoNaMatricula ? (
+                        <div className="mt-1">
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-400 text-emerald-800 text-[10px]"
+                          >
+                            {row.mesesAdiantados} mês
+                            {row.mesesAdiantados > 1 ? "es" : ""} pago
+                            {row.mesesAdiantados > 1 ? "s" : ""} na matrícula
+                          </Badge>
+                        </div>
+                      ) : null}
                       {row.ultimo ? (
                         <div className="mt-1 text-[10px] text-[var(--color-muted)]">
                           {row.ultimo.canal} ·{" "}

@@ -1,27 +1,38 @@
-CORRECÇÃO — Alunos que já pagaram meses de propina na matrícula
-===============================================================
+CORRECÇÕES — Meses pagos na matrícula + recibos + CRM
+======================================================
 Data: 14/09/2026
 
-Problema:
-  Alunos com mesesPropina = 9 (ex.: irmãos Jamo Janota, desconto 40%+10%)
-  apareciam no CRM em «Por enviar» / «Ainda sem n.º PROP» para Outubro,
-  apesar de já terem liquidado Out→Jun na matrícula.
+CASO WENDY (P3-02)
+------------------
+Formulário: Inscrição 150k + Seguro 30k + Manuais 27k + Uniforme 20k
+            + Propina 1 mês (Setembro) 170k = TOTAL 397 000 Kz
+mesesPropina = 1 → só SETEMBRO está liquidado.
 
-Correcções:
-1. src/lib/store.ts
-   - updateAluno: sincroniza mesesPropina → mensalidades.pagamentos
-   - syncPropinasFromMatriculas: preenche meses já pagos para todos os alunos
+No CRM, mês de referência OUTUBRO:
+  - NÃO tem selo verde «Já pago» (Outubro ainda não foi pago) — correcto
+  - TEM badge secundário «1 mês pago na matrícula» + nota do líquido 397 000
+  - Checkbox de selecção DESACTIVADO só quando o mês em vista já está pago
 
-2. src/routes/crm.tsx
-   - Detecta mês já pago (pagamentos[mes] ou mesesPropina)
-   - Badge verde «Já pago (matrícula)»
-   - Filtro «Por enviar» EXCLUI quem já pagou
-   - Novo filtro «Já pagos (matrícula)»
-   - KPI «Já pagos (matrícula)»
-   - Diálogo: nota «Não gerar fatura de cobrança — só recibo»
+Para ver o selo verde da Wendy: mudar o mês de referência para setembro de 2026.
 
-3. src/components/hydrate-store.tsx
-   - No arranque chama syncPropinasFromMatriculas para alinhar dados existentes
+RECIBO (todos os alunos)
+------------------------
+Em Matrículas → Recibo, as rubricas vêm do formulário (linhasMatriculaBase):
+  Inscrição, Seguro, Manuais, Cadernos, Uniforme, ATL, Transporte,
+  Alimentação, Curso, Cartão, Propinas (N meses com descontos).
+Total = soma das rubricas activas (= líquido da matrícula).
 
-Após deploy: Ctrl+Shift+R. Os alunos com 9 meses pagos deixam de aparecer
-em «Por enviar» e passam a «Já pago (matrícula)».
+CRM
+---
+- «Por enviar» exclui quem já liquidou O MÊS em vista
+- Checkbox desactivado para já pagos (não seleccionáveis para cobrança)
+- «Seleccionar visíveis» também salta os já pagos
+- Badge «N mês(es) pago(s) na matrícula» quando há adiantamento
+
+NUVEM / SEED
+------------
+- As alterações de código entram na nuvem no deploy Vercel
+- Dados dos alunos (Wendy, Jamo Janota, etc.) vivem em localStorage + Neon
+  (já sincronizados pelo finance-cloud existente)
+- seed.json só arranca instalações vazias; não sobrescreve dados reais
+- Após deploy: Ctrl+Shift+R; no 1.º arranque corre syncPropinasFromMatriculas

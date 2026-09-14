@@ -16,7 +16,7 @@ import type {
   ReciboSalario,
   Seed,
 } from "@/data/types";
-import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
+import { DEFAULT_OPERATORS, MESES_LETIVOS, MESES_PROPINA_ADIANTADOS } from "@/data/types";
 import { assertCanEdit } from "@/lib/can-edit";
 import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
 import {
@@ -970,16 +970,21 @@ export const useFinance = create<Store>()(
           const propMes = Number(row.propina) || 0;
           const nMeses = Math.min(
             Math.max(0, Number(row.mesesPropina) || 0),
-            MESES_LETIVOS.length,
+            MESES_PROPINA_ADIANTADOS.length,
           );
           const pagamentos: Record<string, number> = {};
           const pagamentosEm: Record<string, string> = {};
           // Meses já liquidados no acto da matrícula → marcados em Propinas (sem novo BAI)
           if (nMeses > 0 && propMes > 0) {
             for (let i = 0; i < nMeses; i++) {
-              const mesKey = MESES_LETIVOS[i];
+              const mesKey = MESES_PROPINA_ADIANTADOS[i];
               pagamentos[mesKey] = propMes;
               if (row.dataPag) pagamentosEm[mesKey] = row.dataPag;
+            }
+            // Legado: mapping antigo começava em "set" — remover se igual à propina adiantada
+            if (pagamentos.set === propMes && !MESES_PROPINA_ADIANTADOS.slice(0, nMeses).includes("set" as never)) {
+              delete pagamentos.set;
+              delete pagamentosEm.set;
             }
           }
           set({
@@ -1136,7 +1141,7 @@ export const useFinance = create<Store>()(
           const propMes = Number(merged.propina) || 0;
           const nMeses = Math.min(
             Math.max(0, Number(merged.mesesPropina) || 0),
-            MESES_LETIVOS.length,
+            MESES_PROPINA_ADIANTADOS.length,
           );
           set({
             mensalidades: mens.map((m) => {
@@ -1146,7 +1151,7 @@ export const useFinance = create<Store>()(
               // Marcar meses já liquidados na matrícula (sem apagar pagamentos posteriores manuais)
               if (nMeses > 0 && propMes > 0) {
                 for (let i = 0; i < nMeses; i++) {
-                  const mesKey = MESES_LETIVOS[i];
+                  const mesKey = MESES_PROPINA_ADIANTADOS[i];
                   if (!pagamentos[mesKey] || pagamentos[mesKey] <= 0) {
                     pagamentos[mesKey] = propMes;
                     if (merged.dataPag) pagamentosEm[mesKey] = String(merged.dataPag);
@@ -1190,13 +1195,13 @@ export const useFinance = create<Store>()(
           const propMes = Number(a.propina) || 0;
           const nMeses = Math.min(
             Math.max(0, Number(a.mesesPropina) || 0),
-            MESES_LETIVOS.length,
+            MESES_PROPINA_ADIANTADOS.length,
           );
           const pagamentos: Record<string, number> = {};
           const pagamentosEm: Record<string, string> = {};
           if (nMeses > 0 && propMes > 0) {
             for (let i = 0; i < nMeses; i++) {
-              const mesKey = MESES_LETIVOS[i];
+              const mesKey = MESES_PROPINA_ADIANTADOS[i];
               pagamentos[mesKey] = propMes;
               if (a.dataPag) pagamentosEm[mesKey] = String(a.dataPag);
             }
@@ -1222,6 +1227,19 @@ export const useFinance = create<Store>()(
               if (!nextPag[k] || nextPag[k] <= 0) {
                 nextPag[k] = v;
                 if (pagamentosEm[k]) nextEm[k] = pagamentosEm[k];
+                changed = true;
+              }
+            }
+            // Corrigir legado: mesesPropina contava a partir de "set"; agora a 1.ª é "out"
+            if (
+              nextPag.set === propMes &&
+              nMeses > 0 &&
+              !(MESES_PROPINA_ADIANTADOS as readonly string[]).slice(0, nMeses).includes("set")
+            ) {
+              // Só remove "set" se "out" ficou (ou vai ficar) marcado pelo adiantamento
+              if (nextPag.out === propMes || pagamentos.out === propMes) {
+                delete nextPag.set;
+                delete nextEm.set;
                 changed = true;
               }
             }
