@@ -28,7 +28,6 @@ import {
   isMobileDevice,
 } from "@/lib/pdf-export";
 import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
-import { MatriculasCartesPanel } from "@/components/matriculas-cartes-panel";
 import { printCartesScolaires } from "@/lib/print-cartes-scolaires";
 import {
   buildInqueritoSaudeWhatsApp,
@@ -3216,10 +3215,6 @@ function Alunos() {
 
   return (
     <div>
-      <MatriculasCartesPanel
-        alunos={filtered}
-        onPatchAluno={(id, patch) => updateAluno(id, patch)}
-      />
       <PageHeader
         kicker="Cadastro de alunos · 2026/2027"
         title="Matrículas"
