@@ -1,10 +1,11 @@
 /**
- * Impressão / PDF da Carte scolaire (face em français).
- * Usa blob URL + openPrintHtml — evita janela em branco
- * (document.write falha com window.open noopener).
+ * Impressão / PDF da Carte scolaire (face en français).
+ * Logotipo oficial (não bandeira) · lema à direita · QR sem corte.
+ * Usa blob URL via openPrintHtml (evita janela em branco).
  */
 import type { Aluno } from "@/data/types";
 import { ANO_LECTIF_CARTE, alunoToCarte, ECOLE_CARTE } from "@/lib/carte-scolaire";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import { openPrintHtml } from "@/lib/pdf-export";
 
 function esc(s: string) {
@@ -15,42 +16,65 @@ function esc(s: string) {
     .replace(/"/g, "&quot;");
 }
 
-/** Bandeira RDC (CSS). */
-const FLAG_CSS = `
-  .flag {
-    width: 16mm; height: 10mm; border-radius: 1px; border: 0.3px solid #999;
-    background:
-      linear-gradient(to bottom right,
-        transparent calc(50% - 3.2mm), #FBDE4A calc(50% - 3.2mm),
-        #FBDE4A calc(50% + 3.2mm), transparent calc(50% + 3.2mm)),
-      linear-gradient(to bottom right, #009543 50%, #DC241F 50%);
-    flex-shrink: 0;
-  }
-`;
+/** Lema da escola (preenche o espaço superior direito). */
+export const LEMA_ECOLE = "Apprendre · Grandir · Réussir";
+export const LEMA_LIEU = "Luanda · Angola";
 
-function cardHtml(aluno: Aluno) {
+const LOGO_PRINT_PATH = "/logo-ecole-consulaire-print.png";
+
+async function resolveLogoDataUrl(): Promise<string> {
+  if (typeof window === "undefined") return escolaLogoSrc();
+  const candidates = [
+    LOGO_PRINT_PATH,
+    "/logo-ecole-consulaire.png",
+    "/logo-escola.jpg",
+  ];
+  for (const path of candidates) {
+    try {
+      const res = await fetch(path, { cache: "force-cache" });
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result || ""));
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(blob);
+      });
+      if (dataUrl.startsWith("data:image")) return dataUrl;
+    } catch {
+      /* next */
+    }
+  }
+  return escolaLogoSrc();
+}
+
+function cardHtml(aluno: Aluno, logoSrc: string) {
   const c = alunoToCarte(aluno, ANO_LECTIF_CARTE);
-  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=4&data=${encodeURIComponent(c.qrPayload)}`;
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=2&data=${encodeURIComponent(c.qrPayload)}`;
   const photo = c.photo
     ? `<img class="photo" src="${esc(c.photo)}" alt="" />`
     : `<div class="photo ph">Photo</div>`;
+  const logo = logoSrc
+    ? `<img class="logo" src="${esc(logoSrc)}" alt="Logo" />`
+    : `<div class="logo ph-logo"></div>`;
 
   return `<article class="card">
   <header>
-    <div class="flag" aria-hidden="true"></div>
+    ${logo}
     <div class="titles">
-      <div>${esc(ECOLE_CARTE.nom)}</div>
-      <div>${esc(ECOLE_CARTE.nom2)}</div>
+      <div class="school">${esc(ECOLE_CARTE.nom)}</div>
+      <div class="school">${esc(ECOLE_CARTE.nom2)}</div>
       <strong>${esc(ECOLE_CARTE.titre)}</strong>
     </div>
-    <div class="arms" aria-hidden="true">
-      <span>Rép.<br/>Congo</span>
+    <div class="motto">
+      <div class="m1">${esc(LEMA_ECOLE)}</div>
+      <div class="m2">${esc(LEMA_LIEU)}</div>
     </div>
   </header>
   <div class="body">
     <div class="left">
       ${photo}
-      <img class="qr" src="${esc(qr)}" alt="" width="64" height="64" />
+      <img class="qr" src="${esc(qr)}" alt="QR" width="56" height="56" />
     </div>
     <div class="fields">
       <div><span>Noms &amp; Prénoms:</span> <b class="red">${esc(c.nomPrenoms)}</b></div>
@@ -69,10 +93,14 @@ function cardHtml(aluno: Aluno) {
 </article>`;
 }
 
-export function buildCartesPrintHtml(alunos: Aluno[], title = "Cartes scolaires") {
+export function buildCartesPrintHtml(
+  alunos: Aluno[],
+  logoSrc: string,
+  title = "Cartes scolaires",
+) {
   const list = (alunos || []).filter(Boolean);
   const single = list.length === 1;
-  const cards = list.map(cardHtml).join("\n");
+  const cards = list.map((a) => cardHtml(a, logoSrc)).join("\n");
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -81,7 +109,7 @@ export function buildCartesPrintHtml(alunos: Aluno[], title = "Cartes scolaires"
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(title)}</title>
 <style>
-  @page { size: A4 portrait; margin: 12mm; }
+  @page { size: A4 portrait; margin: 10mm 12mm 10mm 9mm; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
@@ -92,33 +120,39 @@ export function buildCartesPrintHtml(alunos: Aluno[], title = "Cartes scolaires"
     font-family: system-ui, sans-serif;
     font-size: 13px;
     padding: 10px 14px;
-    background: #f4f4f5;
-    border-bottom: 1px solid #ddd;
+    background: #0b3d2c; color: #fff;
   }
   .toolbar button {
-    margin-left: 8px;
-    padding: 6px 12px;
+    margin-left: 10px;
+    padding: 6px 14px;
     font-size: 13px;
     cursor: pointer;
+    border: 0;
+    border-radius: 6px;
+    background: #fff;
+    color: #0b3d2c;
+    font-weight: 600;
   }
   .sheet {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8mm;
-    padding: 8mm;
+    gap: 7mm 6mm;
+    padding: 6mm 2mm;
     justify-items: center;
+    align-content: start;
   }
   .sheet.single {
     grid-template-columns: 1fr;
-    min-height: 250mm;
+    min-height: 240mm;
     align-content: center;
+    justify-items: center;
   }
   .card {
-    border: 1.2px solid #b0b0b0;
-    border-radius: 3mm;
-    padding: 3mm 3.5mm 2.5mm;
-    width: 88mm;
-    height: 56mm;
+    border: 1.2px solid #9ca3af;
+    border-radius: 3.5mm;
+    padding: 2.8mm 3.2mm 2.2mm;
+    width: 90mm;
+    height: 58mm;
     overflow: hidden;
     page-break-inside: avoid;
     background: #fff;
@@ -126,64 +160,120 @@ export function buildCartesPrintHtml(alunos: Aluno[], title = "Cartes scolaires"
     flex-direction: column;
   }
   header {
-    display: flex;
-    align-items: flex-start;
-    gap: 2.5mm;
+    display: grid;
+    grid-template-columns: 14mm 1fr 22mm;
+    gap: 2mm;
+    align-items: center;
   }
-  ${FLAG_CSS}
-  .arms {
-    width: 12mm; height: 12mm; border-radius: 50%;
-    background: #1a4d2e; border: 1.5px solid #c9a227;
-    color: #f4f1e8; font-size: 5.5px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    text-align: center; line-height: 1.15; flex-shrink: 0;
-    font-family: system-ui, sans-serif;
+  .logo {
+    width: 13mm;
+    height: 13mm;
+    object-fit: contain;
+    border-radius: 1.5mm;
+    background: #fff;
+  }
+  .ph-logo {
+    width: 13mm; height: 13mm;
+    border: 1px dashed #ccc; border-radius: 1.5mm;
   }
   .titles {
-    flex: 1; text-align: center;
-    font-size: 7.5px; font-weight: 700;
-    color: #1a4d2e; text-transform: uppercase; line-height: 1.2;
+    text-align: center;
+    font-size: 6.8px;
+    font-weight: 700;
+    color: #1a4d2e;
+    text-transform: uppercase;
+    line-height: 1.15;
   }
   .titles strong {
-    display: block; margin-top: 1.5px;
-    color: #2e7d32; font-size: 11px; letter-spacing: 0.06em;
+    display: block;
+    margin-top: 1px;
+    color: #2e7d32;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+  }
+  .motto {
+    text-align: right;
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: 1.2;
+  }
+  .motto .m1 {
+    font-size: 6px;
+    font-weight: 700;
+    color: #1e3a5f;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .motto .m2 {
+    font-size: 6.5px;
+    font-weight: 600;
+    color: #c9a227;
+    margin-top: 1px;
   }
   .body {
     display: grid;
-    grid-template-columns: 22mm 1fr;
-    gap: 3mm;
-    margin-top: 2mm;
+    grid-template-columns: 20mm 1fr;
+    gap: 2.5mm;
+    margin-top: 1.8mm;
     flex: 1;
+    min-height: 0;
   }
-  .left { display: flex; flex-direction: column; gap: 1.5mm; align-items: flex-start; }
+  .left {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2mm;
+    align-items: center;
+  }
   .photo {
-    width: 20mm; height: 24mm; object-fit: cover;
-    border: 1px solid #ccc; background: #f3f3f3;
+    width: 18mm;
+    height: 22mm;
+    object-fit: cover;
+    border: 1px solid #ccc;
+    background: #f3f3f3;
+    flex-shrink: 0;
   }
   .photo.ph {
-    display: flex; align-items: center; justify-content: center;
-    font-size: 8px; color: #999; font-family: system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7px;
+    color: #999;
+    font-family: system-ui, sans-serif;
   }
-  .qr { width: 16mm; height: 16mm; border: 1px solid #e5e5e5; }
-  .fields { font-size: 8.2px; line-height: 1.48; }
+  .qr {
+    width: 14mm;
+    height: 14mm;
+    object-fit: contain;
+    flex-shrink: 0;
+    border: 0;
+    display: block;
+  }
+  .fields {
+    font-size: 7.8px;
+    line-height: 1.42;
+  }
   .fields span { color: #444; }
   .fields b { font-weight: 700; }
   .red { color: #b42318; text-transform: uppercase; }
   footer {
-    display: flex; justify-content: space-between; align-items: flex-end;
-    font-size: 7.5px; color: #555; margin-top: 1.5mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 7px;
+    color: #555;
+    margin-top: 1mm;
+    flex-shrink: 0;
   }
   footer .prov { text-align: right; }
   @media print {
     .toolbar { display: none !important; }
     body { background: #fff; }
-    .sheet { padding: 0; }
+    .sheet { padding: 2mm 0; }
   }
 </style>
 </head>
 <body>
   <div class="toolbar no-print">
-    Carte scolaire (FR) · ${list.length} élève(s) · Matricule = ID · ${esc(ANO_LECTIF_CARTE)}
+    Carte scolaire · ${list.length} élève(s) · Matricule = ID · ${esc(ANO_LECTIF_CARTE)}
     <button type="button" onclick="window.print()">Imprimer / Enregistrer en PDF</button>
   </div>
   <div class="sheet${single ? " single" : ""}">${cards}</div>
@@ -191,20 +281,21 @@ export function buildCartesPrintHtml(alunos: Aluno[], title = "Cartes scolaires"
 </html>`;
 }
 
-/**
- * Abre pré-visualização + diálogo de impressão (Guardar como PDF).
- * Aceita 1, vários ou todos os alunos.
- */
-export function printCartesScolaires(alunos: Aluno[], title?: string) {
+/** Abre pré-visualização + impressão (1, vários ou todos). */
+export async function printCartesScolaires(alunos: Aluno[], title?: string) {
   const list = (alunos || []).filter(Boolean);
   if (!list.length) {
     console.warn("[printCartesScolaires] lista vazia");
     return;
   }
+  const logoSrc = await resolveLogoDataUrl();
   const html = buildCartesPrintHtml(
     list,
-    title || (list.length === 1 ? `Carte scolaire — ${list[0].nome || list[0].id}` : "Cartes scolaires"),
+    logoSrc,
+    title ||
+      (list.length === 1
+        ? `Carte scolaire — ${list[0].nome || list[0].id}`
+        : "Cartes scolaires"),
   );
-  // Método fiável da app (blob URL) — não usa document.write
   openPrintHtml(html, { autoPrint: true });
 }

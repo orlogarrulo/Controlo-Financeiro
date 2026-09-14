@@ -29,6 +29,8 @@ import {
 } from "@/lib/pdf-export";
 import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
 import { printCartesScolaires } from "@/lib/print-cartes-scolaires";
+import { CarteScolaire } from "@/components/carte-scolaire";
+import { alunoToCarte, ANO_LECTIF_CARTE } from "@/lib/carte-scolaire";
 import {
   buildInqueritoSaudeWhatsApp,
   buildAgendamentoWhatsApp,
@@ -1567,6 +1569,7 @@ function Alunos() {
   const [regLang, setRegLang] = useState<"pt" | "fr">("pt");
   const [regBusy, setRegBusy] = useState(false);
   const [cadastroAluno, setCadastroAluno] = useState<Aluno | null>(null);
+  const [cartePreview, setCartePreview] = useState<Aluno | null>(null);
   const [cadastroLang, setCadastroLang] = useState<"pt" | "fr">("pt");
   const [cadastroBusy, setCadastroBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -3278,8 +3281,9 @@ function Alunos() {
                   toast.error("Não há alunos para imprimir. Ajuste o filtro ou seleccione na lista.");
                   return;
                 }
-                printCartesScolaires(selected);
-                toast.success(`Cartes scolaires (FR): ${selected.length} élève(s) — Guardar como PDF`);
+                void printCartesScolaires(selected).then(() => {
+                  toast.success(`Cartes scolaires (FR): ${selected.length} élève(s) — Guardar como PDF`);
+                });
               }}
             >
               <Printer className="mr-1 size-4" /> Cartão de estudante
@@ -3501,10 +3505,8 @@ function Alunos() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      title="Cartão de estudante (só este aluno) — PDF centrado"
-                      onClick={() => {
-                        printCartesScolaires([a]);
-                      }}
+                      title="Cartão de estudante — pré-visualização e PDF"
+                      onClick={() => setCartePreview(a)}
                     >
                       <IdCard className="size-3.5" />
                       <span className="ml-1 hidden xl:inline">Cartão</span>
@@ -3657,6 +3659,42 @@ function Alunos() {
               PDF
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Carte scolaire — diálogo (um aluno, sem janela nova) */}
+      <Dialog open={!!cartePreview} onOpenChange={(o) => !o && setCartePreview(null)}>
+        <DialogContent className="max-h-[92vh] max-w-[min(96vw,480px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Carte scolaire</DialogTitle>
+          </DialogHeader>
+          {cartePreview ? (
+            <div className="space-y-4">
+              <p className="text-sm text-[var(--color-muted)]">
+                <strong>{cartePreview.nome}</strong>
+                {cartePreview.turma ? ` · ${cartePreview.turma}` : ""} · Matricule{" "}
+                {cartePreview.id}
+              </p>
+              <div className="flex justify-center overflow-x-auto rounded-lg bg-zinc-50 p-3">
+                <CarteScolaire data={alunoToCarte(cartePreview, ANO_LECTIF_CARTE)} />
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={() => setCartePreview(null)}>
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void printCartesScolaires([cartePreview]).then(() => {
+                      toast.success("Pré-visualização de impressão — Guardar como PDF");
+                    });
+                  }}
+                >
+                  <Printer className="mr-1 size-4" /> PDF / Imprimir
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
