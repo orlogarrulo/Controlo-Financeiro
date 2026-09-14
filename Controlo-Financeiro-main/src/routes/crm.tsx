@@ -40,6 +40,15 @@ export const Route = createFileRoute("/crm")({
   component: CrmPage,
 });
 
+function mesKeyToLetivo(mesKey: string): string {
+  const m = Number((mesKey || "").split("-")[1] || 0);
+  const map: Record<number, string> = {
+    9: "set", 10: "out", 11: "nov", 12: "dez",
+    1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
+  };
+  return map[m] || "out";
+}
+
 function mesKeyAtual(): string {
   const d = new Date();
   let m = d.getMonth(); // 0-11
@@ -197,6 +206,9 @@ function CrmPage() {
   const crmEnvios = useFinance((s) => s.crmEnvios) || [];
   const codigosRecibo = useFinance((s) => s.codigosRecibo) || [];
   const findCodigoRecibo = useFinance((s) => s.findCodigoRecibo);
+  const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
+  const findCodigoReciboAlunoMes = useFinance((s) => s.findCodigoReciboAlunoMes);
+  const incrementCodigoReciboVia = useFinance((s) => s.incrementCodigoReciboVia);
   const addCrmEnvio = useFinance((s) => s.addCrmEnvio);
   const updateCrmEnvio = useFinance((s) => s.updateCrmEnvio);
   const active = useFinance((s) => s.activeOperator);
@@ -502,6 +514,155 @@ function CrmPage() {
     }
   }
 
+  async function descarregarRecibosPasta() {
+    const mesLetivo = mesKeyToLetivo(mesKey);
+    // Alunos com pagamento registado no mês (propinas) ou com liquido/dataPag
+    const comPagamento = filtered.filter((row) => {
+      const a = row.aluno;
+      const m = mensalidades.find((x) => x.id === a.id || x.nome === a.nome);
+      const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
+      if (pagoMes > 0) return true;
+      if (a.statusPag === "pago" && a.liquido > 0) return true;
+      return false;
+    });
+    const lista = selected.size
+      ? comPagamento.filter((r) => selected.has(r.aluno.id))
+      : comPagamento;
+    if (!lista.length) {
+      toast.message(
+        "Nenhum aluno com pagamento registado neste mês (Propinas ou matrícula paga).",
+      );
+      return;
+    }
+    toast.message(`A gerar ${lista.length} recibo(s) PDF…`);
+    try {
+      const w = window as unknown as {
+        JSZip?: new () => {
+          file: (name: string, data: Blob) => void;
+          generateAsync: (opts: { type: string }) => Promise<Blob>;
+        };
+      };
+      if (!w.JSZip) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error("Falha ao carregar JSZip"));
+          document.head.appendChild(s);
+        });
+      }
+      const JSZipCtor = (
+        window as unknown as {
+          JSZip: new () => {
+            file: (name: string, data: Blob) => void;
+            generateAsync: (opts: { type: string }) => Promise<Blob>;
+          };
+        }
+      ).JSZip;
+      const zip = new JSZipCtor();
+      const pasta = `Recibos-${mesKey}`;
+      let ok = 0;
+      for (const row of lista) {
+        const a = row.aluno;
+        const m = mensalidades.find((x) => x.id === a.id || x.nome === a.nome);
+        const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
+        const valor =
+          pagoMes > 0
+            ? pagoMes
+            : a.liquido > 0
+              ? a.liquido
+              : valorPropina(a, row.fatura) || 0;
+
+        let reg = findCodigoReciboAlunoMes?.(a.id, mesKey);
+        let viaNum = 1;
+        if (reg) {
+          const bumped = incrementCodigoReciboVia?.(reg.id);
+          viaNum = bumped?.vias || (reg.vias || 1) + 1;
+          reg = bumped || reg;
+        } else {
+          reg = addCodigoRecibo?.({
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesKey,
+            valor,
+            rubricas: pagoMes > 0 ? `Propina ${mesLabel(mesKey)}` : "Matrícula / liquidação",
+          });
+          viaNum = 1;
+        }
+        const codigo = reg?.codigo || "";
+        const viaLabel =
+          viaNum <= 1
+            ? "1.ª via"
+            : viaNum === 2
+              ? "2.ª via"
+              : viaNum === 3
+                ? "3.ª via"
+                : `${viaNum}.ª via`;
+
+        const html = buildFaturaPreviewHtml({
+          escolaNome: escola.nome || "École Consulaire",
+          subtitulo: escola.subtitulo,
+          aluno: a,
+          fatura: row.fatura
+            ? { ...row.fatura, valor, numero: row.fatura.numero || `REC-${a.id}-${mesKey}` }
+            : {
+                id: `tmp-${a.id}`,
+                numero: `REC-${a.id}-${mesKey}`,
+                alunoId: a.id,
+                alunoNome: a.nome,
+                mesRef: mesLabel(mesKey),
+                mesKey,
+                valor,
+                emitidoEm: new Date().toISOString(),
+              },
+          mesRef: mesLabel(mesKey),
+          valor,
+        });
+        // Inject codigo + via into HTML before PDF
+        const stamped = html.replace(
+          "</table>",
+          `</table>
+  <p style="margin-top:16px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">Código de verificação</p>
+  <p style="margin:4px 0 0;font-size:14px;font-weight:800;font-family:monospace;">${codigo}</p>
+  <p style="margin:6px 0 0;font-size:12px;font-weight:700;color:#374151;">${viaLabel}${viaNum > 1 ? " do mesmo recibo" : ""}</p>
+  <p style="margin:8px 0 0;font-size:12px;color:#111827;"><strong>Recibo</strong> · Valor recebido: ${formatKz(valor)}</p>`,
+        );
+        const safe = (a.nome || a.id || "aluno")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^\w\s-]/g, "")
+          .trim()
+          .replace(/\s+/g, "-")
+          .slice(0, 50);
+        const fname = `REC-${mesKey}_${safe}.pdf`;
+        try {
+          const { blob } = await htmlToPdfBlob(stamped, {
+            filename: fname,
+            forceSinglePage: true,
+          });
+          zip.file(`${pasta}/${fname}`, blob);
+          ok += 1;
+        } catch (err) {
+          console.warn("recibo PDF falhou", a.id, err);
+        }
+      }
+      if (!ok) {
+        toast.error("Nenhum recibo PDF gerado.");
+        return;
+      }
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Recibos-${mesKey}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(`ZIP com ${ok} recibo(s) PDF. Códigos registados para verificação.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao gerar ZIP de recibos");
+    }
+  }
+
   function enviarGrupo(canal: "email" | "whatsapp") {
     const alvos = filtered.filter((r) => selected.has(r.aluno.id));
     if (!alvos.length) {
@@ -735,6 +896,10 @@ function CrmPage() {
         <Button size="sm" variant="outline" onClick={() => void descarregarFaturasPasta()}>
           <FolderDown className="mr-1 size-4" />
           Pasta de faturas (ZIP)
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => void descarregarRecibosPasta()}>
+          <Receipt className="mr-1 size-4" />
+          Pasta de recibos (ZIP)
         </Button>
         <Button
           size="sm"

@@ -233,6 +233,9 @@ export type CodigoRecibo = {
   rubricas?: string;
   emitidoEm: string;
   criadoPor?: string;
+  /** Número de vias impressas / emitidas */
+  vias?: number;
+  lastPrintedAt?: string;
 };
 
 export type Mensalidade = {

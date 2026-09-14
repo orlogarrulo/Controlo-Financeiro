@@ -1486,6 +1486,8 @@ function Alunos() {
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
   const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
   const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
+  const findCodigoReciboAlunoMes = useFinance((s) => s.findCodigoReciboAlunoMes);
+  const incrementCodigoReciboVia = useFinance((s) => s.incrementCodigoReciboVia);
   const faturasPropina = useFinance((s) => s.faturasPropina) || EMPTY_FATURAS;
   const mensalidades = useFinance((s) => s.mensalidades);
   const operators = useFinance((s) => s.operators);
@@ -1595,8 +1597,10 @@ function Alunos() {
       mae: a.mae || "",
       turma: turmaCorrigida,
       dataPag: a.dataPag || todayIso(),
-      inscricao: String(a.inscricao ?? DEFAULT_INSCRICAO),
-      seguro: String(a.seguro === 0 ? DEFAULT_SEGURO_ESCOLA : a.seguro ?? DEFAULT_SEGURO_ESCOLA),
+      // Usar valores reais da ficha (0 incluído). Não injectar tarifário por defeito na edição —
+      // senão obriga a escolher métodos de pagamento só para gravar o telefone.
+      inscricao: String(a.inscricao ?? 0),
+      seguro: String(a.seguro ?? 0),
       seguroExterno: (a.seguro ?? 0) === 0,
       transferidoCampusCidade: Boolean(a.transferidoCampusCidade),
       irmaosNivel: (a as { irmaosNivel?: 0 | 2 | 3 }).irmaosNivel === 3
@@ -1903,9 +1907,20 @@ function Alunos() {
         irmaosNivel: irmaosNivelFromForm(form),
       } as Partial<Aluno>);
       await syncFotoToCloud(editing.id, foto);
+      // Forçar push para a nuvem para o outro PC não sobrescrever com dados antigos
+      try {
+        const { pushFinanceNow } = await import("@/components/hydrate-store");
+        if (typeof pushFinanceNow === "function") await pushFinanceNow();
+      } catch {
+        try {
+          // fallback: evento usado pela app
+          window.dispatchEvent(new CustomEvent("ecc-finance-push"));
+        } catch {
+          /* ignore */
+        }
+      }
       toast.success(`Aluno ${editing.id} actualizado`);
       setEditing(null);
-      clearDeepLink();
       clearDeepLink();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
@@ -2275,11 +2290,13 @@ function Alunos() {
     modo?: "fatura" | "recibo";
     /** Código único anti-falsificação (só recibos) */
     codigoVerificacao?: string;
+    viaLabel?: string;
   }): string {
     const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto, linhas } = opts;
     const modo = opts.modo || "fatura";
     const isRecibo = modo === "recibo";
     const codigoVerificacao = opts.codigoVerificacao || "";
+    const viaLabel = opts.viaLabel || "";
     const linhasAtivas = (linhas || []).filter((l) => l.on && l.value > 0);
     const linhasHtml = linhasAtivas.length
       ? `<table style="width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:12px;">
@@ -2371,7 +2388,7 @@ function Alunos() {
         <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
         <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#111827;">${formatKz(valor)}</p>
         <p style="margin:6px 0 0;font-size:10px;color:#6b7280;">${isRecibo ? "Pago" : `até ${prazo.limite}`}</p>
-        ${isRecibo && codigoVerificacao ? `<p style="margin:10px 0 0;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;font-weight:700;">Código de verificação</p><p style="margin:4px 0 0;font-size:13px;font-weight:800;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.06em;color:#111827;">${codigoVerificacao}</p>` : ""}
+        ${isRecibo && codigoVerificacao ? `<p style="margin:10px 0 0;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;font-weight:700;">Código de verificação</p><p style="margin:4px 0 0;font-size:13px;font-weight:800;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.06em;color:#111827;">${codigoVerificacao}</p>${viaLabel && viaLabel !== "1.ª via" ? `<p style="margin:6px 0 0;font-size:11px;font-weight:700;color:#4b5563;">${viaLabel} do mesmo recibo</p>` : (viaLabel === "1.ª via" ? `<p style="margin:6px 0 0;font-size:10px;color:#6b7280;">1.ª via</p>` : "")}` : ""}
       </div>
     </div>
 
@@ -2731,8 +2748,20 @@ function Alunos() {
     const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
     const rubricas = linhas.filter((l) => l.on && l.value > 0).map((l) => l.label).join(", ");
     let codigoVerificacao = "";
+    let viaNum = 1;
     try {
-      if (typeof addCodigoRecibo === "function") {
+      const existing =
+        typeof findCodigoReciboAlunoMes === "function"
+          ? findCodigoReciboAlunoMes(a.id, mesKey)
+          : undefined;
+      if (existing) {
+        codigoVerificacao = existing.codigo;
+        const bumped =
+          typeof incrementCodigoReciboVia === "function"
+            ? incrementCodigoReciboVia(existing.id)
+            : undefined;
+        viaNum = bumped?.vias || (existing.vias || 1) + 1;
+      } else if (typeof addCodigoRecibo === "function") {
         const reg = addCodigoRecibo({
           alunoId: a.id,
           alunoNome: a.nome,
@@ -2741,10 +2770,13 @@ function Alunos() {
           rubricas,
         });
         codigoVerificacao = reg.codigo;
+        viaNum = 1;
       }
     } catch {
       /* ignore */
     }
+    const viaLabel =
+      viaNum <= 1 ? "1.ª via" : viaNum === 2 ? "2.ª via" : viaNum === 3 ? "3.ª via" : `${viaNum}.ª via`;
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2756,6 +2788,7 @@ function Alunos() {
       linhas,
       modo: "recibo",
       codigoVerificacao,
+      viaLabel,
     });
     setInvoicePreview({
       aluno: a,
@@ -2771,6 +2804,7 @@ function Alunos() {
       mesesProp,
       modo: "recibo",
       codigoVerificacao,
+      viaLabel,
     } as never);
   }
 

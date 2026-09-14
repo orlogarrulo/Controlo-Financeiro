@@ -322,6 +322,10 @@ function applyPayload(p: FinanceCloudPayload) {
 /** Evita spam de toasts se a nuvem falhar várias vezes seguidas. */
 let lastCloudErrorToast = 0;
 
+export async function pushFinanceNow() {
+  return pushCloud();
+}
+
 async function pushCloud() {
   try {
     const { payload } = sliceFromStoreDetailed(useFinance.getState());
@@ -359,16 +363,85 @@ function mergeAlunoOverrides(
 ): Record<string, unknown> {
   const ids = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
   const out: Record<string, unknown> = {};
+  /** Campos de contacto / ficha: nunca deixar string vazia da nuvem apagar valor local (ou vice-versa). */
+  const preserveKeys = [
+    "telefone",
+    "email",
+    "dataNascimento",
+    "pai",
+    "mae",
+    "encarregado",
+    "morada",
+    "bi",
+    "familia",
+    "turma",
+    "obs",
+    "dataPag",
+    "nome",
+  ];
+  const ts = (o: Record<string, unknown>) => {
+    const v = o.updatedAt;
+    if (typeof v === "string" && v) {
+      const n = Date.parse(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+    return 0;
+  };
+  const nonEmpty = (v: unknown) =>
+    v != null && v !== "" && !(typeof v === "number" && Number.isNaN(v));
+
   for (const id of ids) {
     const L = (local?.[id] || {}) as Record<string, unknown>;
     const R = (remote?.[id] || {}) as Record<string, unknown>;
+    const Lt = ts(L);
+    const Rt = ts(R);
+    // Base: o mais recente por updatedAt; se iguais, local por cima
+    const merged: Record<string, unknown> =
+      Rt > Lt ? { ...L, ...R } : { ...R, ...L };
+
+    for (const key of preserveKeys) {
+      if (!nonEmpty(merged[key])) {
+        if (nonEmpty(L[key])) merged[key] = L[key];
+        else if (nonEmpty(R[key])) merged[key] = R[key];
+      }
+    }
+    // Números de matrícula: preferir o lado mais recente se ambos existem
+    for (const key of [
+      "inscricao",
+      "seguro",
+      "propina",
+      "liquido",
+      "bruto",
+      "manuais",
+      "cadernos",
+      "uniforme",
+      "extras",
+      "transporte",
+      "alimentacao",
+      "curso",
+      "cartaoEstudante",
+      "mensalidade1",
+      "mesesPropina",
+      "descPct",
+    ]) {
+      if (merged[key] == null || merged[key] === "") {
+        if (L[key] != null && L[key] !== "") merged[key] = L[key];
+        else if (R[key] != null && R[key] !== "") merged[key] = R[key];
+      }
+    }
+
     const foto =
+      (typeof merged.foto === "string" && merged.foto) ||
       (typeof R.foto === "string" && R.foto) ||
       (typeof L.foto === "string" && L.foto) ||
       undefined;
-    const merged = { ...L, ...R };
     if (foto) merged.foto = foto;
     else delete merged.foto;
+
+    // updatedAt = o mais recente
+    if (Lt || Rt) {
+      merged.updatedAt = Lt >= Rt ? L.updatedAt || R.updatedAt : R.updatedAt || L.updatedAt;
+    }
     out[id] = merged;
   }
   return out;

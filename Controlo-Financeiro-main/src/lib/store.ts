@@ -218,6 +218,8 @@ type Store = ExtraState & {
   removeCrmEnvio: (id: string) => void;
   addCodigoRecibo: (c: Omit<CodigoRecibo, "id" | "codigo" | "emitidoEm"> & { id?: string; codigo?: string; emitidoEm?: string }) => CodigoRecibo;
   findCodigoRecibo: (codigo: string) => CodigoRecibo | undefined;
+  findCodigoReciboAlunoMes: (alunoId: string, mesKey: string) => CodigoRecibo | undefined;
+  incrementCodigoReciboVia: (id: string) => CodigoRecibo | undefined;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -1891,6 +1893,8 @@ export const useFinance = create<Store>()(
           rubricas: c.rubricas,
           emitidoEm: c.emitidoEm || new Date().toISOString(),
           criadoPor: c.criadoPor || get().activeOperator,
+          vias: 1,
+          lastPrintedAt: new Date().toISOString(),
         };
         set({ codigosRecibo: [...(get().codigosRecibo || []), row] });
         get().pushAudit("recibo_codigo", `${row.codigo} · ${row.alunoNome} · ${row.mesKey}`);
@@ -1899,6 +1903,28 @@ export const useFinance = create<Store>()(
       findCodigoRecibo: (codigo) => {
         const k = (codigo || "").trim().toUpperCase();
         return (get().codigosRecibo || []).find((r) => r.codigo.toUpperCase() === k);
+      },
+      findCodigoReciboAlunoMes: (alunoId, mesKey) => {
+        const list = get().codigosRecibo || [];
+        return list
+          .filter((r) => r.alunoId === alunoId && r.mesKey === mesKey)
+          .sort((a, b) => (b.emitidoEm || "").localeCompare(a.emitidoEm || ""))[0];
+      },
+      incrementCodigoReciboVia: (id) => {
+        requireEdit(get);
+        let updated: CodigoRecibo | undefined;
+        set({
+          codigosRecibo: (get().codigosRecibo || []).map((r) => {
+            if (r.id !== id) return r;
+            updated = {
+              ...r,
+              vias: (r.vias || 1) + 1,
+              lastPrintedAt: new Date().toISOString(),
+            };
+            return updated;
+          }),
+        });
+        return updated;
       },
 
       resetLocal: () => {
