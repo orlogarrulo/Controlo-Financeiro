@@ -9,9 +9,11 @@ import {
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
 import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos, sanearAlunosDuplicados } from "@/lib/store";
+import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
+const CARTE_SCOLAIRE_MIGRATE_KEY = "ecc-carte-scolaire-v1"; // sexo + lieu de naissance + cartão FR
 
 /**
  * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):
@@ -147,6 +149,28 @@ export function HydrateStore() {
           }
         } catch (e) {
           console.warn("[irmaos] detectar", e);
+        }
+        try {
+          if (typeof localStorage !== "undefined" && !localStorage.getItem(CARTE_SCOLAIRE_MIGRATE_KEY)) {
+            const st = useFinance.getState() as {
+              alunosExtra?: Record<string, unknown>[];
+              alunosOverrides?: Record<string, Record<string, unknown>>;
+              setState?: (p: unknown) => void;
+            };
+            const extras = (st.alunosExtra || []).map((a) => enrichAlunoCarteFields(a as never));
+            const overrides = { ...(st.alunosOverrides || {}) };
+            for (const [id, ov] of Object.entries(overrides)) {
+              overrides[id] = enrichAlunoCarteFields(ov as never) as Record<string, unknown>;
+            }
+            useFinance.setState({
+              alunosExtra: extras as never,
+              alunosOverrides: overrides as never,
+            });
+            localStorage.setItem(CARTE_SCOLAIRE_MIGRATE_KEY, new Date().toISOString());
+            toast.message("Cartes scolaires: champs Sexe et Lieu de naissance synchronisés.");
+          }
+        } catch (e) {
+          console.warn("[carte-scolaire] migrate", e);
         }
       } catch (e) {
         console.warn("[classes-congo] migrate", e);

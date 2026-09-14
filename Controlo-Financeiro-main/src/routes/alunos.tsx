@@ -28,6 +28,8 @@ import {
   isMobileDevice,
 } from "@/lib/pdf-export";
 import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
+import { MatriculasCartesPanel } from "@/components/matriculas-cartes-panel";
+import { printCartesScolaires } from "@/lib/print-cartes-scolaires";
 import {
   buildInqueritoSaudeWhatsApp,
   buildAgendamentoWhatsApp,
@@ -257,6 +259,8 @@ type FormState = {
   familia: string;
   obs: string;
   dataNascimento: string;
+  lugarNascimento: string;
+  sexo: "Féminin" | "Masculin" | "";
   foto: string;
   alergiasMedicamentos: string;
   alergiasAlimentares: string;
@@ -311,6 +315,8 @@ function emptyForm(): FormState {
     familia: "",
     obs: "",
     dataNascimento: "",
+    lugarNascimento: "",
+    sexo: "",
     foto: "",
     alergiasMedicamentos: "",
     alergiasAlimentares: "",
@@ -702,6 +708,31 @@ function MatriculaForm({
         <p className="text-[11px] text-[var(--color-muted)]">
           Classe automática pelo sistema Congo-Brazzaville (idade em 1/out/2026 — início das aulas): 13 anos → 5ème, não Maternelle. Pode alterar manualmente.
         </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Lieu de naissance (carte scolaire)</Label>
+        <Input
+          value={form.lugarNascimento}
+          onChange={(e) => setForm((prev) => ({ ...prev, lugarNascimento: e.target.value }))}
+          placeholder="Luanda"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Sexe (carte scolaire)</Label>
+        <select
+          className="flex h-10 w-full rounded-md border border-[var(--color-line)] bg-transparent px-3 text-sm"
+          value={form.sexo}
+          onChange={(e) =>
+            setForm((prev) => ({
+              ...prev,
+              sexo: e.target.value as "Féminin" | "Masculin" | "",
+            }))
+          }
+        >
+          <option value="">—</option>
+          <option value="Féminin">Féminin</option>
+          <option value="Masculin">Masculin</option>
+        </select>
       </div>
       <div className="space-y-1.5">
         <Label>Classe / turma *</Label>
@@ -1647,6 +1678,8 @@ function Alunos() {
       familia: a.familia || "",
       obs: a.obs || "",
       dataNascimento: a.dataNascimento || "",
+      lugarNascimento: a.lugarNascimento || "",
+      sexo: a.sexo === "Féminin" || a.sexo === "Masculin" ? a.sexo : "",
       foto: a.foto || "",
       alergiasMedicamentos: a.alergiasMedicamentos || "",
       alergiasAlimentares: a.alergiasAlimentares || "",
@@ -1835,6 +1868,8 @@ function Alunos() {
       propina: num(form.propina),
       statusPag: t.liquido > 0 ? "pago" : "registado",
       dataNascimento: form.dataNascimento.trim() || undefined,
+      lugarNascimento: form.lugarNascimento.trim() || undefined,
+      sexo: form.sexo || undefined,
       foto,
       alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
       alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
@@ -1880,6 +1915,8 @@ function Alunos() {
         familia: form.familia.trim(),
         obs: buildObs(form),
         dataNascimento: form.dataNascimento.trim() || undefined,
+        lugarNascimento: form.lugarNascimento.trim() || undefined,
+        sexo: form.sexo || undefined,
         foto,
         alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
         alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
@@ -3179,6 +3216,10 @@ function Alunos() {
 
   return (
     <div>
+      <MatriculasCartesPanel
+        alunos={filtered}
+        onPatchAluno={(id, patch) => updateAluno(id, patch)}
+      />
       <PageHeader
         kicker="Cadastro de alunos · 2026/2027"
         title="Matrículas"
@@ -3238,40 +3279,12 @@ function Alunos() {
                 const selected = exportIds.size > 0
                   ? pool.filter((a) => exportIds.has(a.id))
                   : pool;
-                // Só cartões com foto disponível
-                const comFoto = selected.filter(
-                  (a) => typeof a.foto === "string" && a.foto.trim().length > 20,
-                );
                 if (selected.length === 0) {
                   toast.error("Não há alunos para imprimir. Ajuste o filtro ou seleccione na lista.");
                   return;
                 }
-                if (comFoto.length === 0) {
-                  toast.error(
-                    "Nenhum dos alunos seleccionados tem foto. Carregue a foto na ficha antes de imprimir o cartão.",
-                  );
-                  return;
-                }
-                const semFoto = selected.length - comFoto.length;
-                const escola = getSeed().escola;
-                const logoUrl =
-                  typeof location !== "undefined"
-                    ? escolaLogoSrc()
-                    : escolaLogoSrc();
-                const html = cartoesEstudanteHtml(comFoto, {
-                  anoEscolar: escola.ano || "2025/2026",
-                  escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
-                  telefoneEscola: "922 637 640",
-                  logoUrl,
-                });
-                openPrintHtml(html);
-                if (semFoto > 0) {
-                  toast.success(
-                    `Cartões: ${comFoto.length} com foto. ${semFoto} sem foto foram ignorados.`,
-                  );
-                } else {
-                  toast.success(`Cartões: ${comFoto.length} aluno(s) — frente e verso`);
-                }
+                printCartesScolaires(selected);
+                toast.success(`Cartes scolaires (FR): ${selected.length} élève(s) — Guardar como PDF`);
               }}
             >
               <Printer className="mr-1 size-4" /> Cartão de estudante
@@ -3495,18 +3508,7 @@ function Alunos() {
                       variant="secondary"
                       title="Cartão de estudante (só este aluno) — PDF centrado"
                       onClick={() => {
-                        const escola = getSeed().escola;
-                        const logoUrl =
-                          typeof location !== "undefined"
-                            ? escolaLogoSrc()
-                            : escolaLogoSrc();
-                        const html = cartoesEstudanteHtml([a], {
-                          anoEscolar: escola.ano || "2025/2026",
-                          escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
-                          telefoneEscola: "922 637 640",
-                          logoUrl,
-                        });
-                        openPrintHtml(html);
+                        printCartesScolaires([a]);
                       }}
                     >
                       <IdCard className="size-3.5" />

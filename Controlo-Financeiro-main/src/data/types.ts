@@ -101,6 +101,10 @@ export type Aluno = {
   nome: string;
   /** Data de nascimento (YYYY-MM-DD). */
   dataNascimento?: string;
+  /** Local de nascimento (ex.: Luanda) — face da Carte Scolaire. */
+  lugarNascimento?: string;
+  /** Sexo no cartão escolar: Féminin | Masculin. */
+  sexo?: "Féminin" | "Masculin" | "";
   turma: string;
   grupo: string;
   inscricao: number;

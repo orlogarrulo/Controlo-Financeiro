@@ -2984,7 +2984,9 @@
       "propina": 250000,
       "statusPag": "pago",
       "metodoPagamento": "Cartão Multicaixa",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Féminin",
+      "lugarNascimento": ""
     },
     {
       "id": "CM2-02",
@@ -3012,7 +3014,9 @@
       "propina": 250000,
       "statusPag": "pago",
       "metodoPagamento": "Cartão Multicaixa",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "4E-01",
@@ -3040,7 +3044,9 @@
       "propina": 260000,
       "statusPag": "pago",
       "metodoPagamento": "Cartão Multicaixa",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "P3-01",
@@ -3068,7 +3074,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Cartão Multicaixa",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "P3-02",
@@ -3096,7 +3104,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Cartão Multicaixa",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Féminin",
+      "lugarNascimento": ""
     },
     {
       "id": "P2-01",
@@ -3124,7 +3134,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Féminin",
+      "lugarNascimento": ""
     },
     {
       "id": "P1-01",
@@ -3152,7 +3164,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "P3-03",
@@ -3180,7 +3194,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "CM2-03",
@@ -3208,7 +3224,9 @@
       "propina": 250000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "P2-02",
@@ -3236,7 +3254,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Féminin",
+      "lugarNascimento": ""
     },
     {
       "id": "P3-04",
@@ -3264,7 +3284,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Féminin",
+      "lugarNascimento": ""
     },
     {
       "id": "P1-02",
@@ -3292,7 +3314,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "CM2-04",
@@ -3320,7 +3344,9 @@
       "propina": 250000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "P3-05",
@@ -3348,7 +3374,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "6E-01",
@@ -3376,7 +3404,9 @@
       "propina": 250000,
       "statusPag": "pago",
       "metodoPagamento": "Dinheiro",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "CM1-01",
@@ -3404,7 +3434,9 @@
       "propina": 250000,
       "statusPag": "pago",
       "metodoPagamento": "Dinheiro",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     },
     {
       "id": "3E-01",
@@ -3432,7 +3464,9 @@
       "propina": 260000,
       "statusPag": "pago",
       "metodoPagamento": "Cartão Multicaixa",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Féminin",
+      "lugarNascimento": ""
     },
     {
       "id": "3E-02",
@@ -3460,7 +3494,9 @@
       "propina": 260000,
       "statusPag": "pago",
       "metodoPagamento": "Transferência",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Féminin",
+      "lugarNascimento": ""
     },
     {
       "id": "P3-06",
@@ -3488,7 +3524,9 @@
       "propina": 170000,
       "statusPag": "pago",
       "metodoPagamento": "Cartão Multicaixa",
-      "dataNascimento": ""
+      "dataNascimento": "",
+      "sexo": "Masculin",
+      "lugarNascimento": ""
     }
   ],
   "mensalidades": [
