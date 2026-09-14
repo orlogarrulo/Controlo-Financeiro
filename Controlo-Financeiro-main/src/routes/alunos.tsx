@@ -2197,13 +2197,16 @@ function Alunos() {
     return /campanha|−40%|-40%|promo/.test(obs);
   }
 
-  function alunoTemIrmaosDesc(a: Aluno): boolean {
-    if (a.transferidoCampusCidade) return false;
+  /** Nível de desconto por irmãos: 0 · 2 (−10%) · 3 (−15%). Transferidos Campus Cidade = 0. */
+  function alunoTemIrmaosDesc(a: Aluno): 0 | 2 | 3 {
+    if (a.transferidoCampusCidade) return 0;
+    const n = Number((a as { irmaosNivel?: number }).irmaosNivel) || 0;
+    if (n === 2 || n === 3) return n as 2 | 3;
     const obs = (a.obs || "").toLowerCase();
-    if (/2\+|irmãos|irmaos|agregado/.test(obs)) return true;
-    // −40% + −10% ≈ 46% de desconto combinado
-    if ((a.descPct || 0) >= 45) return true;
-    return false;
+    if (/3\+|3 ou mais|−15%|-15%/.test(obs)) return 3;
+    if (/2\+|2 irm|−10%|-10%|agregado/.test(obs)) return 2;
+    if ((a.descPct || 0) >= 45) return 2;
+    return 0;
   }
 
   function linhasMatriculaBase(

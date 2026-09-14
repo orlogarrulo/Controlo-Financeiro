@@ -93,6 +93,48 @@ function phoneToWa(raw?: string): string | null {
   return null;
 }
 
+
+/** Inferir tratamento do encarregado: Sr./Sra. (PT) e M./Mme (FR). */
+function tituloEncarregado(
+  encarregado?: string,
+  pai?: string,
+  mae?: string,
+): { pt: string; fr: string } {
+  const enc = (encarregado || "").trim();
+  if (!enc) return { pt: "", fr: "" };
+  const n = (s?: string) =>
+    (s || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  const ne = n(enc);
+  const np = n(pai);
+  const nm = n(mae);
+  if (nm && (ne === nm || ne.includes(nm) || nm.includes(ne))) {
+    return { pt: "Sra.", fr: "Mme" };
+  }
+  if (np && (ne === np || ne.includes(np) || np.includes(ne))) {
+    return { pt: "Sr.", fr: "M." };
+  }
+  // Heurística por primeiro nome (lista curta PT/FR)
+  const first = ne.split(" ")[0] || "";
+  const fem = new Set([
+    "maria", "ana", "rita", "sofia", "ines", "inês", "beatriz", "catarina",
+    "celeste", "joana", "patricia", "patricía", "neusa", "daniela", "nerica",
+    "irina", "antonica", "luzia", "wendy", "eloa", "eloá",
+  ]);
+  const masc = new Set([
+    "antonio", "antónio", "jose", "josé", "joao", "joão", "pedro", "paulo",
+    "carlos", "manuel", "francisco", "martin", "bamba", "silvio", "sílvio",
+    "sandro", "celsio", "célsio", "jean", "ivanilson", "badissadila", "kelvin",
+  ]);
+  if (fem.has(first)) return { pt: "Sra.", fr: "Mme" };
+  if (masc.has(first)) return { pt: "Sr.", fr: "M." };
+  return { pt: "Sr(a).", fr: "M./Mme" };
+}
+
 function buildMensagemFatura(opts: {
   alunoNome: string;
   mesRef: string;
@@ -100,6 +142,8 @@ function buildMensagemFatura(opts: {
   escolaNome: string;
   faturaNumero?: string;
   encarregado?: string;
+  pai?: string;
+  mae?: string;
   tipo?: "fatura" | "recibo";
   /** Ex.: 2026-10 — activa nota da 1.ª mensalidade (cartão / entrada 1/10) */
   mesKey?: string;
@@ -110,8 +154,13 @@ function buildMensagemFatura(opts: {
     ? `\nN.º / N° ${opts.tipo === "recibo" ? "recibo / reçu" : "fatura / facture"}: ${opts.faturaNumero}`
     : "";
   const nomeEnc = (opts.encarregado || "").trim();
-  const saudacaoPt = nomeEnc ? `Olá ${nomeEnc},` : "Olá,";
-  const saudacaoFr = nomeEnc ? `Bonjour ${nomeEnc},` : "Bonjour,";
+  const tit = tituloEncarregado(opts.encarregado, opts.pai, opts.mae);
+  const saudacaoFr = nomeEnc
+    ? `Bonjour ${tit.fr} ${nomeEnc},`
+    : "Bonjour,";
+  const saudacaoPt = nomeEnc
+    ? `Olá ${tit.pt} ${nomeEnc},`
+    : "Olá,";
   const escola =
     opts.escolaNome ||
     "École Consulaire du Congo (Brazzaville) — Annexe Nova Vida, Luanda";
@@ -119,39 +168,39 @@ function buildMensagemFatura(opts: {
   const isOutubro =
     (opts.mesKey || "").endsWith("-10") ||
     /outubro|octobre/i.test(opts.mesRef || "");
-  const notaPt = isOutubro
-    ? "A mensalidade de outubro é necessária para a emissão do cartão de estudante. Sem o pagamento, o aluno não poderá entrar no recinto escolar a partir de 1/10/2026.\n\n"
-    : "";
   const notaFr = isOutubro
     ? "La mensualité d'octobre est requise pour l'émission de la carte d'étudiant. Sans paiement, l'élève ne pourra pas entrer dans l'enceinte scolaire à partir du 01/10/2026.\n\n"
+    : "";
+  const notaPt = isOutubro
+    ? "A mensalidade de outubro é necessária para a emissão do cartão de estudante. Sem o pagamento, o aluno não poderá entrar no recinto escolar a partir de 1/10/2026.\n\n"
     : "";
 
   if (opts.tipo === "recibo") {
     return (
-      `${saudacaoPt}\n${saudacaoFr}\n\n` +
-      `—— Português ——\n` +
-      `Confirmamos o *recibo de pagamento* da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
-      `Valor recebido: *${valorTxt}*${fat}\n\n` +
+      `${saudacaoFr}\n${saudacaoPt}\n\n` +
       `—— Français ——\n` +
       `Nous confirmons le *reçu de paiement* de la scolarité de *${opts.mesRef}* pour *${opts.alunoNome}*.\n` +
       `Montant reçu : *${valorTxt}*${fat}\n\n` +
+      `—— Português ——\n` +
+      `Confirmamos o *recibo de pagamento* da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
+      `Valor recebido: *${valorTxt}*${fat}\n\n` +
       `${escola}\n` +
-      `Obrigado / Merci.`
+      `Merci / Obrigado.`
     );
   }
 
   return (
-    `${saudacaoPt}\n${saudacaoFr}\n\n` +
-    `—— Português ——\n` +
-    `Segue a referência da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
-    `Valor: *${valorTxt}*${fat}\n` +
-    `${notaPt}` +
-    `Por favor confirme o pagamento ou contacte a secretaria.\n\n` +
+    `${saudacaoFr}\n${saudacaoPt}\n\n` +
     `—— Français ——\n` +
     `Voici la référence de la scolarité de *${opts.mesRef}* concernant *${opts.alunoNome}*.\n` +
     `Montant : *${valorTxt}*${fat}\n` +
     `${notaFr}` +
     `Merci de confirmer le paiement ou de contacter le secrétariat.\n\n` +
+    `—— Português ——\n` +
+    `Segue a referência da propina de *${opts.mesRef}* referente a *${opts.alunoNome}*.\n` +
+    `Valor: *${valorTxt}*${fat}\n` +
+    `${notaPt}` +
+    `Por favor confirme o pagamento ou contacte a secretaria.\n\n` +
     `${escola}`
   );
 }
@@ -379,6 +428,8 @@ function CrmPage() {
         "École Consulaire du Congo (Brazzaville) — Annexe Nova Vida, Luanda",
       faturaNumero: row.fatura?.numero,
       encarregado: a.encarregado || a.pai || a.mae,
+      pai: a.pai,
+      mae: a.mae,
       tipo: tipoDoc,
       mesKey,
     });

@@ -137,6 +137,17 @@ export function HydrateStore() {
         } catch (e) {
           console.warn("[propinas] sync meses pagos", e);
         }
+        // Detectar irmãos (mesmo pai/mãe) e aplicar descontos −10% / −15%
+        try {
+          const n = useFinance.getState().detectarIrmaosEAplicarDescontos?.() ?? 0;
+          if (n > 0) {
+            toast.message(
+              `Desconto de irmãos: ${n} aluno(s) actualizado(s) (transferidos sem desconto).`,
+            );
+          }
+        } catch (e) {
+          console.warn("[irmaos] detectar", e);
+        }
       } catch (e) {
         console.warn("[classes-congo] migrate", e);
       }
