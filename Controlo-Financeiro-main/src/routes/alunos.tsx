@@ -2842,10 +2842,12 @@ function Alunos() {
     const campanha = alunoTemCampanha(a);
     const irmaos = alunoTemIrmaosDesc(a);
     let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
-    // Só rubricas com valor > 0 (iguais ao total da ficha)
+    // Rubricas da matrícula com valor > 0.
+    // Multas ficam desligadas por defeito (on: false em linhasMatriculaBase)
+    // — só entram se o utilizador as marcar no diálogo do recibo.
     linhas = linhas.map((l) => ({
       ...l,
-      on: l.value > 0,
+      on: Boolean(l.on) && l.value > 0,
     }));
     const total = totalLinhas(linhas);
     const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
