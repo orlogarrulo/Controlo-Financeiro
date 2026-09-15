@@ -185,8 +185,28 @@ export function mesesPropinaFromAluno(a: Aluno): number {
         }
       }
     }
+    const ratio = Math.round(mens / prop);
+    if (ratio >= 1 && ratio <= 9) return ratio;
   }
-  return mens > 0 ? 1 : 0;
+  const taxas =
+    (Number(a.inscricao) || 0) +
+    (Number(a.seguro) || 0) +
+    (Number(a.manuais) || 0) +
+    (Number(a.cadernos) || 0) +
+    (Number(a.uniforme) || 0) +
+    (Number(a.extras) || 0) +
+    (Number(a.transporte) || 0) +
+    (Number(a.alimentacao) || 0) +
+    (Number(a.curso) || 0) +
+    (Number(a.cartaoEstudante) || 0);
+  const liquido = Number(a.liquido) || 0;
+  if (prop > 0 && liquido > taxas) {
+    const ratio = Math.round((liquido - taxas) / prop);
+    if (ratio >= 1 && ratio <= 9) return ratio;
+  }
+  if (mens > 0) return 1;
+  if ((a.statusPag === "pago" || Boolean(a.dataPag)) && liquido > 0 && prop > 0) return 1;
+  return 0;
 }
 
 export function linhasMatriculaFromAluno(

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
 import { NomeAluno } from "@/components/nome-aluno";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Mail,
   MessageCircle,
@@ -41,6 +41,7 @@ import type { Aluno, CrmEnvio, FaturaPropina } from "@/data/types";
 import {
   documentoOficialFromAluno,
   loadContacto,
+  mesesPropinaFromAluno,
 } from "@/lib/documento-matricula";
 
 export const Route = createFileRoute("/crm")({
@@ -299,14 +300,28 @@ function mesJaPagoNaMatricula(
   mensalidades: { id: string; nome?: string; pagamentos?: Record<string, number> }[],
 ): { pago: boolean; valor: number } {
   const mesLetivo = mesKeyToLetivo(mesKey);
-  const m = mensalidades.find((x) => x.id === aluno.id || x.nome === aluno.nome);
+  const norm = (s?: string) =>
+    (s || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  const m = mensalidades.find(
+    (x) =>
+      x.id === aluno.id ||
+      x.id === aluno.idAnterior ||
+      norm(x.nome) === norm(aluno.nome),
+  );
   const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
   if (pagoMes > 0) return { pago: true, valor: pagoMes };
 
-  const mesesAdiantados = Math.max(0, Math.min(9, Number(aluno.mesesPropina) || 0));
-  const propinaNaLiquidacao = Number(aluno.mensalidade1) || 0;
+  const mesesAdiantados = Math.max(0, Math.min(9, mesesPropinaFromAluno(aluno)));
+  const propinaNaLiquidacao =
+    Number(aluno.mensalidade1) ||
+    (Number(aluno.propina) > 0 ? Number(aluno.propina) * mesesAdiantados : 0);
   // Só taxas de matrícula (inscrição, seguro, manuais…) sem propina adiantada
-  if (mesesAdiantados <= 0 || propinaNaLiquidacao <= 0) {
+  if (mesesAdiantados <= 0) {
     return { pago: false, valor: 0 };
   }
   // 1.ª cobrança = Outubro → mesesPropina=1 cobre "out"
@@ -355,6 +370,7 @@ function CrmPage() {
   const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
   const findCodigoReciboAlunoMes = useFinance((s) => s.findCodigoReciboAlunoMes);
   const incrementCodigoReciboVia = useFinance((s) => s.incrementCodigoReciboVia);
+  const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
   const addCrmEnvio = useFinance((s) => s.addCrmEnvio);
   const updateCrmEnvio = useFinance((s) => s.updateCrmEnvio);
   const active = useFinance((s) => s.activeOperator);
@@ -365,6 +381,14 @@ function CrmPage() {
   );
 
   const [mesKey, setMesKey] = useState(mesKeyAtual);
+
+  useEffect(() => {
+    try {
+      syncPropinasFromMatriculas?.();
+    } catch {
+      /* ignore */
+    }
+  }, [syncPropinasFromMatriculas]);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filtro, setFiltro] = useState<"todos" | "enviados" | "por_enviar" | "ja_pagos">("todos");
@@ -403,10 +427,7 @@ function CrmPage() {
         mesKey,
         mensalidades,
       );
-      // Meses de propina adiantados só contam se mensalidade1 (propina) foi liquidada
-      const mesesRaw = Math.max(0, Number(a.mesesPropina) || 0);
-      const mesesAdiantados =
-        mesesRaw > 0 && (Number(a.mensalidade1) || 0) > 0 ? mesesRaw : 0;
+      const mesesAdiantados = mesesPropinaFromAluno(a);
       list.push({
         aluno: a,
         fatura,
