@@ -628,14 +628,31 @@ function CrmPage() {
   }
 
   async function descarregarFaturasPasta() {
-    const lista = selected.size
+    const base = selected.size
       ? filtered.filter((r) => selected.has(r.aluno.id))
       : filtered;
+    // Só faturas de cobrança: mensalidade deste mês ainda não paga
+    // (matrícula/propinas) e sem recibo já emitido no CRM.
+    const lista = base.filter((r) => {
+      if (r.jaPagoNaMatricula || r.valorPagoMes > 0) return false;
+      const rec = findCodigoReciboAlunoMes?.(r.aluno.id, mesKey);
+      if (rec) return false;
+      return true;
+    });
+    const omitidos = base.length - lista.length;
     if (!lista.length) {
-      toast.message("Nenhum aluno na lista filtrada.");
+      toast.message(
+        omitidos
+          ? "Nenhuma fatura a gerar: a mensalidade deste mês já está paga (recibo no CRM ou liquidação na matrícula)."
+          : "Nenhum aluno na lista filtrada.",
+      );
       return;
     }
-    toast.message(`A gerar ${lista.length} PDF(s)… isto pode demorar alguns minutos.`);
+    toast.message(
+      `A gerar ${lista.length} fatura(s) de mensalidade em atraso` +
+        (omitidos ? ` · ${omitidos} já pagos excluídos` : "") +
+        "…",
+    );
     try {
       const w = window as unknown as {
         JSZip?: new () => {
@@ -1256,7 +1273,7 @@ Cordiais cumprimentos,
         </Button>
         <Button size="sm" variant="outline" onClick={() => void descarregarFaturasPasta()}>
           <FolderDown className="mr-1 size-4" />
-          Pasta de faturas (ZIP)
+          Pasta de faturas em atraso (ZIP)
         </Button>
         <Button size="sm" variant="outline" onClick={() => void descarregarRecibosPasta()}>
           <Receipt className="mr-1 size-4" />
