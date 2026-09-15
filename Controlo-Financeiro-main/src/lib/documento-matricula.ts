@@ -423,7 +423,7 @@ export function buildInvoiceHtml(opts: {
         <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
         <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#111827;">${formatKz(valor)}</p>
         <p style="margin:6px 0 0;font-size:10px;color:#6b7280;">${isRecibo ? "Pago" : `até ${prazo.limite}`}</p>
-        ${isRecibo && codigoVerificacao ? `<p style="margin:10px 0 0;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;font-weight:700;">Código de verificação</p><p style="margin:4px 0 0;font-size:13px;font-weight:800;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.06em;color:#111827;">${codigoVerificacao}</p>${viaLabel && viaLabel !== "1.ª via" ? `<p style="margin:6px 0 0;font-size:11px;font-weight:700;color:#4b5563;">${viaLabel} do mesmo recibo</p>` : viaLabel === "1.ª via" ? `<p style="margin:6px 0 0;font-size:10px;color:#6b7280;">1.ª via</p>` : ""}` : ""}
+        ${isRecibo && codigoVerificacao ? `<p style="margin:10px 0 0;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;font-weight:700;">Código de verificação</p><p style="margin:4px 0 0;font-size:13px;font-weight:800;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.06em;color:#111827;">${codigoVerificacao}</p>` : ""}
       </div>
     </div>
 
@@ -454,13 +454,13 @@ export function buildInvoiceHtml(opts: {
       </div>
     </div>`}
 
-    <div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;">
+    ${isRecibo ? "" : `<div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;">
       <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;font-weight:700;">IBAN · Métodos de pagamento</p>
       <p style="margin:10px 0 0;font-size:14px;font-weight:700;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.04em;word-break:break-all;line-height:1.35;color:#111827;">${iban}</p>
       <p style="margin:12px 0 0;font-size:12px;line-height:1.7;color:#4b5563;">
         1. Transferência bancária &nbsp;·&nbsp; 2. Cartão Multicaixa &nbsp;·&nbsp; 3. Dinheiro (Departamento de Finanças)
       </p>
-    </div>
+    </div>`}
 
     <div style="flex:1;"></div>
   </div>
