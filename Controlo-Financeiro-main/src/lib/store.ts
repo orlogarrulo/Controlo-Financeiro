@@ -136,6 +136,17 @@ type Store = ExtraState & {
   syncPropinasFromMatriculas: () => number;
   detectarIrmaosEAplicarDescontos: () => number;
   /**
+   * Alinha a marca Campus Cidade dentro de cada família (pai, mãe ou campo família).
+   * Se a maioria dos irmãos for Campus Cidade → todos; senão → todos Nova Vida.
+   * Corrige casos como Mutapayi em que só um filho aparecia no filtro «nova vida».
+   */
+  alinharCampusPorFamilia: () => {
+    familiasMistas: number;
+    alunosAlterados: number;
+    campus: number;
+    novaVida: number;
+  };
+  /**
    * Funde um censo (JSON de outro PC / backup) no cadastro local.
    * Alunos cujo ID já existe no seed recebem override; os outros vão para alunosExtra.
    * Nunca apaga matrículas que já estejam neste dispositivo.
@@ -1362,6 +1373,100 @@ export const useFinance = create<Store>()(
           get().pushAudit("irmaos_detect", `${updated} aluno(s) com desconto de irmãos`);
         }
         return updated;
+      },
+
+      alinharCampusPorFamilia: () => {
+        const alunos = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        );
+        const norm = (s?: string) =>
+          (s || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+        const groups = new Map<string, string[]>();
+        const addTo = (key: string, id: string) => {
+          if (!key || key.length < 3) return;
+          const list = groups.get(key) || [];
+          if (!list.includes(id)) list.push(id);
+          groups.set(key, list);
+        };
+        for (const a of alunos) {
+          const fam = norm(a.familia);
+          const pai = norm(a.pai);
+          const mae = norm(a.mae);
+          if (fam) addTo(`fam:${fam}`, a.id);
+          if (pai.length > 4) addTo(`pai:${pai}`, a.id);
+          if (mae.length > 4) addTo(`mae:${mae}`, a.id);
+          const parts = norm(a.nome).split(" ").filter(Boolean);
+          if (parts.length >= 1) {
+            const last = parts[parts.length - 1];
+            if (last.length >= 4) addTo(`sn:${last}`, a.id);
+          }
+          if (parts.length >= 2) {
+            const last2 = `${parts[parts.length - 2]} ${parts[parts.length - 1]}`;
+            if (last2.length >= 6) addTo(`sn2:${last2}`, a.id);
+          }
+        }
+        const byId = new Map(alunos.map((a) => [a.id, a]));
+        const target = new Map<string, boolean>();
+        let familiasMistas = 0;
+        for (const ids of groups.values()) {
+          if (ids.length < 2) continue;
+          let campus = 0;
+          let nova = 0;
+          for (const id of ids) {
+            const a = byId.get(id);
+            if (!a) continue;
+            if (a.transferidoCampusCidade) campus += 1;
+            else nova += 1;
+          }
+          if (campus === 0 || nova === 0) continue;
+          familiasMistas += 1;
+          const wantCampus = campus > nova;
+          for (const id of ids) target.set(id, wantCampus);
+        }
+        let alunosAlterados = 0;
+        const overrides = { ...(get().alunosOverrides || {}) };
+        const extras = [...(get().alunosExtra || [])];
+        for (const [id, want] of target) {
+          const a = byId.get(id);
+          if (!a) continue;
+          if (Boolean(a.transferidoCampusCidade) === want) continue;
+          const inExtra = extras.some((e) => e.id === id);
+          if (inExtra) {
+            for (let i = 0; i < extras.length; i++) {
+              if (extras[i].id === id) {
+                extras[i] = { ...extras[i], transferidoCampusCidade: want };
+              }
+            }
+          } else {
+            overrides[id] = {
+              ...(overrides[id] || {}),
+              transferidoCampusCidade: want,
+            };
+          }
+          alunosAlterados += 1;
+        }
+        if (alunosAlterados > 0) {
+          set({ alunosOverrides: overrides, alunosExtra: extras });
+        }
+        const after = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        );
+        const nCampus = after.filter((a) => a.transferidoCampusCidade).length;
+        return {
+          familiasMistas,
+          alunosAlterados,
+          campus: nCampus,
+          novaVida: after.length - nCampus,
+        };
       },
 
       importCensoAlunos: (incoming, mensIncoming = []) => {

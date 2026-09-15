@@ -1517,6 +1517,7 @@ function Alunos() {
   const overrides = useFinance((s) => s.alunosOverrides);
   const addAluno = useFinance((s) => s.addAluno);
   const updateAluno = useFinance((s) => s.updateAluno);
+  const alinharCampusPorFamilia = useFinance((s) => s.alinharCampusPorFamilia);
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
   const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
   const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
@@ -3395,6 +3396,34 @@ function Alunos() {
                   Realinhar IDs
                 </Button>
               ) : null}
+              {canEdit ? (
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  title="Alinha a marca Campus Cidade entre irmãos (pai/mãe/família/sobrenome). Corrige famílias mistas como Mutapayi."
+                  onClick={() => {
+                    try {
+                      const r = alinharCampusPorFamilia();
+                      if (r.alunosAlterados > 0) {
+                        toast.success(
+                          `${r.alunosAlterados} aluno(s) alinhado(s) · ${r.familiasMistas} família(s) mista(s) · Campus ${r.campus} · Nova Vida ${r.novaVida}`,
+                        );
+                        void import("@/components/hydrate-store").then((m) => m.pushFinanceNow?.());
+                      } else {
+                        toast.message(
+                          r.familiasMistas
+                            ? "Famílias mistas detectadas mas sem alteração necessária."
+                            : `Sem famílias mistas · Campus ${r.campus} · Nova Vida ${r.novaVida}`,
+                        );
+                      }
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Falha ao alinhar famílias");
+                    }
+                  }}
+                >
+                  Alinhar Campus / famílias
+                </Button>
+              ) : null}
               <Button
                 className="shrink-0"
                 variant="secondary"
@@ -3425,7 +3454,7 @@ function Alunos() {
 
       <div className="no-print mb-4 flex flex-col gap-2 sm:flex-row">
         <Input
-          placeholder="Nome, família, ID…"
+          placeholder="Nome, família, ID, cidade, nova vida…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
