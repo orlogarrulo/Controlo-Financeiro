@@ -38,6 +38,10 @@ import { formatKz, formatDate } from "@/lib/format";
 import { htmlToPdfBlob } from "@/lib/pdf-export";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Aluno, CrmEnvio, FaturaPropina } from "@/data/types";
+import {
+  documentoOficialFromAluno,
+  loadContacto,
+} from "@/lib/documento-matricula";
 
 export const Route = createFileRoute("/crm")({
   component: CrmPage,
@@ -560,14 +564,17 @@ function CrmPage() {
   }
 
   function imprimirFaturaPreview(row: Row) {
-    const html = buildFaturaPreviewHtml({
-      escolaNome: escola.nome || "École Consulaire",
-      subtitulo: escola.subtitulo,
-      aluno: row.aluno,
-      fatura: row.fatura,
+    const doc = documentoOficialFromAluno(row.aluno, {
+      modo: "fatura",
+      mesLetivo: mesKeyToLetivo(mesKey),
       mesRef: mesLabel(mesKey),
-      valor: valorPropina(row.aluno, row.fatura),
+      mesKey,
+      numero: row.fatura?.numero || `REF-${row.aluno.id}`,
+      pagoMes: row.valorPagoMes,
+      liquidacaoCompleta: true,
+      contacto: loadContacto(),
     });
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${row.fatura?.numero || row.aluno.id}</title></head><body style="margin:0">${doc.html}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) {
       toast.error("Permita pop-ups para ver a fatura.");
@@ -637,15 +644,18 @@ function CrmPage() {
       let ok = 0;
       for (const row of lista) {
         const a = row.aluno;
-        const valor = valorPropina(a, row.fatura) ?? 0;
-        const html = buildFaturaPreviewHtml({
-          escolaNome: escola.nome || "École Consulaire",
-          subtitulo: escola.subtitulo,
-          aluno: a,
-          fatura: row.fatura,
+        const doc = documentoOficialFromAluno(a, {
+          modo: "fatura",
+          mesLetivo: mesKeyToLetivo(mesKey),
           mesRef: mesLabel(mesKey),
-          valor,
+          mesKey,
+          numero: row.fatura?.numero || `REF-${a.id}`,
+          pagoMes: row.valorPagoMes,
+          liquidacaoCompleta: true,
+          contacto: loadContacto(),
         });
+        const valor = doc.valor;
+        const html = doc.html;
         const safe = (a.nome || a.id || "aluno")
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
@@ -738,12 +748,20 @@ function CrmPage() {
         const a = row.aluno;
         const m = mensalidades.find((x) => x.id === a.id || x.nome === a.nome);
         const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
-        const valor =
-          pagoMes > 0
-            ? pagoMes
-            : a.liquido > 0
-              ? a.liquido
-              : valorPropina(a, row.fatura) || 0;
+        const docBase = documentoOficialFromAluno(a, {
+          modo: "recibo",
+          mesLetivo: mesLetivo,
+          mesRef: mesLabel(mesKey),
+          mesKey,
+          pagoMes,
+          liquidacaoCompleta: true,
+          contacto: loadContacto(),
+        });
+        const valor = docBase.valor || (pagoMes > 0 ? pagoMes : valorPropina(a, row.fatura) || 0);
+        const rubricasTxt = docBase.linhas
+          .filter((l) => l.on && l.value > 0)
+          .map((l) => l.label)
+          .join(", ");
 
         let reg = findCodigoReciboAlunoMes?.(a.id, mesKey);
         let viaNum = 1;
@@ -757,7 +775,7 @@ function CrmPage() {
             alunoNome: nomeComSufixoCampus(a),
             mesKey,
             valor,
-            rubricas: pagoMes > 0 ? `Propina ${mesLabel(mesKey)}` : "Matrícula / liquidação",
+            rubricas: rubricasTxt || "Matrícula / liquidação",
           });
           viaNum = 1;
         }
@@ -771,34 +789,18 @@ function CrmPage() {
                 ? "3.ª via"
                 : `${viaNum}.ª via`;
 
-        const html = buildFaturaPreviewHtml({
-          escolaNome: escola.nome || "École Consulaire",
-          subtitulo: escola.subtitulo,
-          aluno: a,
-          fatura: row.fatura
-            ? { ...row.fatura, valor, numero: row.fatura.numero || `REC-${a.id}-${mesKey}` }
-            : {
-                id: `tmp-${a.id}`,
-                numero: `REC-${a.id}-${mesKey}`,
-                alunoId: a.id,
-                alunoNome: nomeComSufixoCampus(a),
-                mesRef: mesLabel(mesKey),
-                mesKey,
-                valor,
-                emitidoEm: new Date().toISOString(),
-              },
+        const stamped = documentoOficialFromAluno(a, {
+          modo: "recibo",
+          mesLetivo,
           mesRef: mesLabel(mesKey),
-          valor,
-        });
-        // Inject codigo + via into HTML before PDF
-        const stamped = html.replace(
-          "</table>",
-          `</table>
-  <p style="margin-top:16px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">Código de verificação</p>
-  <p style="margin:4px 0 0;font-size:14px;font-weight:800;font-family:monospace;">${codigo}</p>
-  <p style="margin:6px 0 0;font-size:12px;font-weight:700;color:#374151;">${viaLabel}${viaNum > 1 ? " do mesmo recibo" : ""}</p>
-  <p style="margin:8px 0 0;font-size:12px;color:#111827;"><strong>Recibo</strong> · Valor recebido: ${formatKz(valor)}</p>`,
-        );
+          mesKey,
+          numero: row.fatura?.numero || `REC-${a.id}-${mesKey}`,
+          pagoMes,
+          liquidacaoCompleta: true,
+          contacto: loadContacto(),
+          codigoVerificacao: codigo,
+          viaLabel,
+        }).html;
         const safe = (a.nome || a.id || "aluno")
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
@@ -1674,15 +1676,34 @@ Cordiais cumprimentos,
                 </p>
                 <p>{mesLabel(mesKey)}</p>
                 <p className="mt-2 text-xs text-[var(--color-muted)] uppercase tracking-wide">
-                  Valor
+                  Rubricas (iguais a Matrículas)
                 </p>
-                <p className="font-display text-xl text-[var(--color-forest)]">
-                  {formatKz(
-                    viewFatura.fatura?.valor ??
-                      valorPropina(viewFatura.aluno, viewFatura.fatura) ??
-                      0,
-                  )}
-                </p>
+                {(() => {
+                  const d = documentoOficialFromAluno(viewFatura.aluno, {
+                    liquidacaoCompleta: true,
+                    pagoMes: viewFatura.valorPagoMes,
+                  });
+                  return (
+                    <>
+                      <ul className="mt-1 space-y-0.5 text-xs">
+                        {d.linhas
+                          .filter((l) => l.on && l.value > 0)
+                          .map((l) => (
+                            <li key={l.key} className="flex justify-between gap-2">
+                              <span>{l.label}</span>
+                              <span className="font-mono">{formatKz(l.value)}</span>
+                            </li>
+                          ))}
+                      </ul>
+                      <p className="mt-2 text-xs text-[var(--color-muted)] uppercase tracking-wide">
+                        Total
+                      </p>
+                      <p className="font-display text-xl text-[var(--color-forest)]">
+                        {formatKz(d.valor)}
+                      </p>
+                    </>
+                  );
+                })()}
                 {viewFatura.jaPagoNaMatricula ? (
                   <p className="mt-2 text-xs text-emerald-700 font-medium">
                     Propina deste mês já liquidada na matrícula ({viewFatura.aluno.mesesPropina || "—"} mês/meses).

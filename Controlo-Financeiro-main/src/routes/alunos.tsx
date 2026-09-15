@@ -46,6 +46,11 @@ import {
   ALUNO_FOTO_MAX_SYNC,
 } from "@/lib/image";
 import { saveAlunoFoto, deleteAlunoFoto } from "@/lib/finance-cloud";
+import {
+  linhasMatriculaFromAluno,
+  totalLinhas as totalLinhasDoc,
+  buildInvoiceHtml as buildInvoiceHtmlDoc,
+} from "@/lib/documento-matricula";
 
 const EMPTY_FATURAS: FaturaPropina[] = [];
 
@@ -2285,6 +2290,7 @@ function Alunos() {
     mesesProp = 1,
     opts?: { campanha?: boolean; irmaos?: boolean | 0 | 2 | 3 },
   ): LinhaFat[] {
+    return linhasMatriculaFromAluno(a, mesesProp, opts);
     const meses = Math.min(9, Math.max(0, Math.round(mesesProp) || 0));
     const campanha =
       opts?.campanha ??
@@ -2374,7 +2380,15 @@ function Alunos() {
   }
 
   function totalLinhas(linhas: LinhaFat[]) {
-    return linhas.filter((l) => l.on && l.value > 0).reduce((s, l) => s + l.value, 0);
+    return totalLinhasDoc(linhas);
+  }
+
+  function linhasMatriculaSynced(
+    a: Aluno,
+    mesesProp = 1,
+    opts?: { campanha?: boolean; irmaos?: boolean | 0 | 2 | 3 },
+  ): LinhaFat[] {
+    return linhasMatriculaFromAluno(a, mesesProp, opts);
   }
 
   function buildInvoiceHtml(opts: {
@@ -2391,6 +2405,7 @@ function Alunos() {
     codigoVerificacao?: string;
     viaLabel?: string;
   }): string {
+    return buildInvoiceHtmlDoc(opts);
     const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto, linhas } = opts;
     const modo = opts.modo || "fatura";
     const isRecibo = modo === "recibo";
