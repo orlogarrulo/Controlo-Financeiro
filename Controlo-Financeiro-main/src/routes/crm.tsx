@@ -283,7 +283,12 @@ type SendDraft = {
 };
 
 
-/** Verifica se o aluno já tem este mês de propina liquidado (matrícula ou Propinas). */
+/**
+ * Propina do mês já liquidada?
+ * 1) Pagamento registado em Propinas (pagamentos[mês]) — fonte principal
+ * 2) Adiantamento na matrícula: só se mesesPropina > 0 E mensalidade1 > 0
+ *    (taxas de inscrição/seguro/manuais com liquido>0 NÃO contam como propina paga)
+ */
 function mesJaPagoNaMatricula(
   aluno: Aluno,
   mesKey: string,
@@ -293,16 +298,44 @@ function mesJaPagoNaMatricula(
   const m = mensalidades.find((x) => x.id === aluno.id || x.nome === aluno.nome);
   const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
   if (pagoMes > 0) return { pago: true, valor: pagoMes };
-  // Fallback: mesesPropina na ficha cobre os primeiros N meses lectivos (set→…)
-  const n = Math.max(0, Number(aluno.mesesPropina) || 0);
-  if (n <= 0) return { pago: false, valor: 0 };
-  // 1.ª cobrança = Outubro → mesesPropina=1 cobre "out", não "set"
+
+  const mesesAdiantados = Math.max(0, Math.min(9, Number(aluno.mesesPropina) || 0));
+  const propinaNaLiquidacao = Number(aluno.mensalidade1) || 0;
+  // Só taxas de matrícula (inscrição, seguro, manuais…) sem propina adiantada
+  if (mesesAdiantados <= 0 || propinaNaLiquidacao <= 0) {
+    return { pago: false, valor: 0 };
+  }
+  // 1.ª cobrança = Outubro → mesesPropina=1 cobre "out"
   const ordem = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
   const idx = ordem.indexOf(mesLetivo);
-  if (idx >= 0 && idx < n) {
-    return { pago: true, valor: Number(aluno.propina) || Number(aluno.mensalidade1) || 0 };
+  if (idx >= 0 && idx < mesesAdiantados) {
+    const mensal =
+      Number(aluno.propina) > 0
+        ? Number(aluno.propina)
+        : Math.round(propinaNaLiquidacao / mesesAdiantados) || propinaNaLiquidacao;
+    return { pago: true, valor: mensal };
   }
   return { pago: false, valor: 0 };
+}
+
+/** Resumo das taxas na ficha de matrícula (para o CRM não confundir com propina). */
+function resumoTaxasMatricula(a: Aluno): {
+  inscricao: number;
+  seguro: number;
+  manuais: number;
+  propinaAdiantada: number;
+  mesesPropina: number;
+  soTaxasSemPropina: boolean;
+} {
+  const inscricao = Number(a.inscricao) || 0;
+  const seguro = Number(a.seguro) || 0;
+  const manuais = Number(a.manuais) || 0;
+  const mesesPropina = Math.max(0, Number(a.mesesPropina) || 0);
+  const propinaAdiantada = Number(a.mensalidade1) || 0;
+  const soTaxasSemPropina =
+    (inscricao > 0 || seguro > 0 || manuais > 0 || Number(a.liquido) > 0) &&
+    !(mesesPropina > 0 && propinaAdiantada > 0);
+  return { inscricao, seguro, manuais, propinaAdiantada, mesesPropina, soTaxasSemPropina };
 }
 
 function CrmPage() {
@@ -366,7 +399,10 @@ function CrmPage() {
         mesKey,
         mensalidades,
       );
-      const mesesAdiantados = Math.max(0, Number(a.mesesPropina) || 0);
+      // Meses de propina adiantados só contam se mensalidade1 (propina) foi liquidada
+      const mesesRaw = Math.max(0, Number(a.mesesPropina) || 0);
+      const mesesAdiantados =
+        mesesRaw > 0 && (Number(a.mensalidade1) || 0) > 0 ? mesesRaw : 0;
       list.push({
         aluno: a,
         fatura,
@@ -657,7 +693,8 @@ function CrmPage() {
       const m = mensalidades.find((x) => x.id === a.id || x.nome === a.nome);
       const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
       if (pagoMes > 0) return true;
-      if (a.statusPag === "pago" && a.liquido > 0) return true;
+      // Só se a propina deste mês foi adiantada na matrícula (não basta liquido de inscrição)
+      if (row.jaPagoNaMatricula && row.valorPagoMes > 0) return true;
       return false;
     });
     const lista = selected.size
@@ -1307,8 +1344,14 @@ Cordiais cumprimentos,
                       {valor != null ? formatKz(valor) : "—"}
                       {row.jaPagoNaMatricula ? (
                         <div className="text-emerald-700 text-[10px] font-medium">
-                          pago na matrícula
+                          propina paga na matrícula
                           {row.valorPagoMes > 0 ? ` · ${formatKz(row.valorPagoMes)}` : ""}
+                        </div>
+                      ) : resumoTaxasMatricula(a).soTaxasSemPropina ? (
+                        <div className="text-amber-800 text-[10px] font-medium">
+                          matrícula: taxas
+                          {resumoTaxasMatricula(a).inscricao <= 0 ? " · sem inscrição" : ""}
+                          {" · propina a cobrar"}
                         </div>
                       ) : row.fatura?.numero ? (
                         <div className="text-[var(--color-muted)]">
@@ -1642,8 +1685,8 @@ Cordiais cumprimentos,
                 </p>
                 {viewFatura.jaPagoNaMatricula ? (
                   <p className="mt-2 text-xs text-emerald-700 font-medium">
-                    Já liquidado na matrícula ({viewFatura.aluno.mesesPropina || "—"} mês/meses).
-                    Não gerar fatura de cobrança — enviar apenas recibo se necessário.
+                    Propina deste mês já liquidada na matrícula ({viewFatura.aluno.mesesPropina || "—"} mês/meses).
+                    Não gerar fatura de cobrança de propina — enviar apenas recibo se necessário.
                   </p>
                 ) : viewFatura.fatura ? (
                   <p className="mt-2 text-xs text-[var(--color-muted)]">
