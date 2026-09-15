@@ -41,26 +41,7 @@ function inferMesesAdiantados(a: Aluno): number {
   const mens = Number(a.mensalidade1) || 0;
   if (prop > 0 && mens > 0) {
     const ratio = Math.round(mens / prop);
-    if (ratio >= 1 && ratio <= 9) return ratio;
-  }
-  const taxas =
-    (Number(a.inscricao) || 0) +
-    (Number(a.seguro) || 0) +
-    (Number(a.manuais) || 0) +
-    (Number(a.cadernos) || 0) +
-    (Number(a.uniforme) || 0) +
-    (Number(a.extras) || 0) +
-    (Number(a.transporte) || 0) +
-    (Number(a.alimentacao) || 0) +
-    (Number(a.curso) || 0) +
-    (Number(a.cartaoEstudante) || 0);
-  const liquido = Number(a.liquido) || 0;
-  if (prop > 0 && liquido > taxas) {
-    const ratio = Math.round((liquido - taxas) / prop);
-    if (ratio >= 1 && ratio <= 9) return ratio;
-  }
-  if (mens > 0 || ((a.statusPag === "pago" || Boolean(a.dataPag)) && liquido > taxas && prop > 0)) {
-    return 1;
+    if (ratio >= 2 && ratio <= 9 && Math.abs(mens - prop * ratio) <= prop * 0.02) return ratio;
   }
   return 0;
 }
@@ -1272,6 +1253,26 @@ export const useFinance = create<Store>()(
               obs: a.obs || "",
             } as import("@/data/types").Mensalidade);
             added += 1;
+          } else if (nMeses <= 0) {
+            const nextPag = { ...(existing.pagamentos || {}) };
+            const nextEm = { ...((existing as { pagamentosEm?: Record<string, string> }).pagamentosEm || {}) };
+            let changed = false;
+            const dataPag = String(a.dataPag || "");
+            for (const mesKey of MESES_PROPINA_ADIANTADOS) {
+              const em = String(nextEm[mesKey] || "");
+              if (dataPag && em === dataPag) {
+                delete nextPag[mesKey];
+                delete nextEm[mesKey];
+                changed = true;
+              }
+            }
+            if (changed) {
+              const idx = mens.findIndex((row) => row.id === a.id);
+              if (idx >= 0) {
+                mens[idx] = { ...mens[idx], pagamentos: nextPag, pagamentosEm: nextEm };
+                updated += 1;
+              }
+            }
           } else if (nMeses > 0 && propMes > 0) {
             // Preencher apenas meses ainda a zero (não sobrescrever pagamentos manuais)
             const nextPag = { ...(existing.pagamentos || {}) };

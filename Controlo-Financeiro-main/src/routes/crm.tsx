@@ -1464,16 +1464,23 @@ Cordiais cumprimentos,
                         <Button
                           size="sm"
                           variant="outline"
-                          title="Fatura — ver e enviar"
-                          onClick={() => abrirVisualizacaoFatura(row)}
+                          disabled={row.jaPagoNaMatricula}
+                          title={row.jaPagoNaMatricula ? "Mensalidade já paga — fatura de cobrança indisponível" : "Fatura — ver e enviar"}
+                          onClick={() => !row.jaPagoNaMatricula && abrirVisualizacaoFatura(row)}
                         >
                           <FileText className="size-3.5" />
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={!email}
-                          title={email ? `E-mail fatura → ${email}` : "Sem e-mail"}
+                          disabled={!email || row.jaPagoNaMatricula}
+                          title={
+                            row.jaPagoNaMatricula
+                              ? "Mensalidade já paga — não enviar fatura"
+                              : email
+                                ? `E-mail fatura → ${email}`
+                                : "Sem e-mail"
+                          }
                           onClick={() => abrirRascunho(row, "email", "fatura")}
                         >
                           <Mail className="size-3.5" />
@@ -1481,11 +1488,13 @@ Cordiais cumprimentos,
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={!waOk}
+                          disabled={!waOk || row.jaPagoNaMatricula}
                           title={
-                            waOk
-                              ? `WhatsApp → ${phoneToWa(a.telefone)}`
-                              : "Telefone inválido (use 9 dígitos, ex. 923555562)"
+                            row.jaPagoNaMatricula
+                              ? "Mensalidade já paga — não enviar fatura"
+                              : waOk
+                                ? `WhatsApp → ${phoneToWa(a.telefone)}`
+                                : "Telefone inválido (use 9 dígitos, ex. 923555562)"
                           }
                           onClick={() => abrirRascunho(row, "whatsapp", "fatura")}
                         >
