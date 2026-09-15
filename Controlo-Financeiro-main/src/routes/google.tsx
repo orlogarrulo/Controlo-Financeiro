@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";

@@ -37,6 +37,8 @@ import {
   agendamentoPublicUrl,
 } from "@/lib/inquerito-saude-whatsapp";
 import type { Aluno, FaturaPropina } from "@/data/types";
+import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
 import {
   compressStudentPhoto,
@@ -1586,10 +1588,8 @@ function Alunos() {
   const filtered = alunos.filter((a) => {
     if (turmaFiltro !== "todas" && a.turma !== turmaFiltro) return false;
     if (soSemTelefone && temContactoTelefonico(a)) return false;
-    if (!q) return true;
-    return `${a.nome} ${a.id} ${a.familia} ${a.encarregado} ${a.pai || ""} ${a.mae || ""} ${a.telefone || ""}`
-      .toLowerCase()
-      .includes(q.toLowerCase());
+    // "cidade" / "campus" encontra todos os transferidos Campus Cidade
+    return alunoMatchesQuery(a, q);
   });
   /** Ordenado por turma para visualização / impressão por classes. */
   const filteredByClass = useMemo(() => {
@@ -2111,7 +2111,7 @@ function Alunos() {
 
   <h2>${L.s1}</h2>
   <table>
-    ${row(L.nome, fmt(a.nome))}
+    ${row(L.nome, fmt(nomeComSufixoCampus(a)))}
     ${row(L.nasc, a.dataNascimento ? formatDate(a.dataNascimento) : "—")}
     ${row(L.classe, fmt(a.turma))}
     ${row(L.grupo, fmt(a.grupo))}
@@ -2462,7 +2462,7 @@ function Alunos() {
       <div style="border-left:3px solid #9ca3af;padding:10px 12px;background:#f9fafb;border-radius:0 8px 8px 0;">
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Facturado a</p>
         <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${a.nome}</strong></p>
+        <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
         ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#4b5563;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
@@ -2663,7 +2663,7 @@ function Alunos() {
         const bg = i % 2 ? "#f5f5f5" : "#ffffff";
         body += `<tr style="background:${bg}">
           <td>${esc(a.id)}</td>
-          <td>${esc(a.nome || "—")}</td>
+          <td>${esc(nomeComSufixoCampus(a) || "—")}</td>
           <td>${fmtDate(a.dataNascimento)}</td>
           <td>${calcAge(a.dataNascimento)}</td>
           <td>${esc(a.telefone || "—")}</td>
@@ -3197,7 +3197,7 @@ function Alunos() {
             const turmaPdf = resolveTurmaOficial(a) || (a.turma && String(a.turma).trim()) || a.turma;
             return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
               <td class="mono">${a.id}</td>
-              <td>${a.nome}</td>
+              <td>${nomeComSufixoCampus(a)}</td>
               <td>${turmaPdf}</td>
               <td class="num">${formatKz(a.liquido)}</td>
               <td class="mono">${a.recibo}</td>
@@ -3499,10 +3499,7 @@ function Alunos() {
                 <td className="px-3 py-2 font-mono text-xs">{a.id}</td>
                 <td className="px-3 py-2">
                   <span className="inline-flex flex-wrap items-center gap-1.5">
-                    {a.nome}
-                    {a.transferidoCampusCidade ? (
-                      <Badge variant="outline">Campus Cidade</Badge>
-                    ) : null}
+                    <NomeAluno aluno={a} />
                   </span>
                   {a.pai || a.mae ? (
                     <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
@@ -3640,7 +3637,7 @@ function Alunos() {
                   .sort((a, b) => a.nome.localeCompare(b.nome, "pt"))
                   .map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.nome} · {a.id} · {a.turma}
+                      {nomeComSufixoCampus(a)} · {a.id} · {a.turma}
                     </option>
                   ))}
               </select>
@@ -3983,7 +3980,7 @@ function Alunos() {
                   }}
                 />
                 <span className="font-mono text-xs text-[var(--color-muted)]">{a.id}</span>
-                <span className="truncate">{a.nome}</span>
+                <span className="truncate"><NomeAluno aluno={a} /></span>
                 <span className="ml-auto text-xs text-[var(--color-muted)]">{a.turma}</span>
               </label>
             ))}

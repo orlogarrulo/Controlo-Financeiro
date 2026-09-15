@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { alunoMatchesQuery } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
 import { Save } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -68,10 +70,14 @@ function Mensalidades() {
     }
   }, [syncPropinasFromMatriculas]);
 
-  const familiaById = useMemo(() => {
-    const map = new Map<string, string>();
+  const alunoMetaById = useMemo(() => {
+    const map = new Map<string, { familia?: string; transferidoCampusCidade?: boolean; nome?: string }>();
     for (const a of alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds)) {
-      if (a.familia) map.set(a.id, a.familia);
+      map.set(a.id, {
+        familia: a.familia,
+        transferidoCampusCidade: a.transferidoCampusCidade,
+        nome: a.nome,
+      });
     }
     return map;
   }, [alunosExtra, alunosOverrides, alunosDeletedIds]);
@@ -80,12 +86,20 @@ function Mensalidades() {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((r) => {
-      const fam = familiaById.get(r.id) || "";
-      return `${r.nome} ${r.id} ${r.turma} ${fam} ${r.obs || ""}`
-        .toLowerCase()
-        .includes(needle);
+      const meta = alunoMetaById.get(r.id);
+      return alunoMatchesQuery(
+        {
+          nome: r.nome || meta?.nome,
+          id: r.id,
+          turma: r.turma,
+          familia: meta?.familia,
+          obs: r.obs,
+          transferidoCampusCidade: meta?.transferidoCampusCidade,
+        },
+        needle,
+      );
     });
-  }, [rows, q, familiaById]);
+  }, [rows, q, alunoMetaById]);
 
   const monthTotals = MESES_LETIVOS.map((m) =>
     filtered.reduce((s, r) => s + (r.pagamentos[m] || 0), 0),
@@ -208,10 +222,17 @@ function Mensalidades() {
                   return (
                     <tr key={r.id} className="border-t border-[var(--color-line)]">
                       <td className="px-3 py-2">
-                        <p className="font-medium">{r.nome}</p>
+                        <p className="font-medium">
+                          <NomeAluno
+                            aluno={{
+                              nome: r.nome,
+                              transferidoCampusCidade: alunoMetaById.get(r.id)?.transferidoCampusCidade,
+                            }}
+                          />
+                        </p>
                         <p className="text-xs text-[var(--color-muted)]">
                           {r.id} · {r.turma}
-                          {familiaById.get(r.id) ? ` · ${familiaById.get(r.id)}` : ""}
+                          {alunoMetaById.get(r.id)?.familia ? ` · ${alunoMetaById.get(r.id)?.familia}` : ""}
                         </p>
                       </td>
                       <td className="px-3 py-2 tabular-nums text-xs">{formatKz(r.propina)}</td>

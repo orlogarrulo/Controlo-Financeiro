@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from "react";
+import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Download, Upload } from "lucide-react";

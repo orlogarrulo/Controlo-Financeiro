@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
 import { useMemo, useState } from "react";
 import {
   Mail,
@@ -12,6 +14,7 @@ import {
   Eye,
   Receipt,
   FolderDown,
+  Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
@@ -332,6 +335,12 @@ function CrmPage() {
   const [viewFatura, setViewFatura] = useState<Row | null>(null);
   const [verifyCodigo, setVerifyCodigo] = useState("");
   const [verifyResult, setVerifyResult] = useState<string | null>(null);
+  /** Mensagem livre (boas-vindas, avisos, etc.) — não é fatura/recibo */
+  const [msgLivreOpen, setMsgLivreOpen] = useState(false);
+  const [msgModelo, setMsgModelo] = useState<"boas_vindas" | "aviso" | "livre">("boas_vindas");
+  const [msgAssunto, setMsgAssunto] = useState("");
+  const [msgCorpo, setMsgCorpo] = useState("");
+  const [msgAnexoNota, setMsgAnexoNota] = useState("");
 
   const rows: Row[] = useMemo(() => {
     const fatByAluno = new Map<string, FaturaPropina>();
@@ -379,17 +388,14 @@ function CrmPage() {
     // Por enviar = ainda não enviado E ainda não liquidado na matrícula
     if (filtro === "por_enviar") list = list.filter((r) => !r.enviado && !r.jaPagoNaMatricula);
     if (filtro === "ja_pagos") list = list.filter((r) => r.jaPagoNaMatricula);
-    const qq = q.trim().toLowerCase();
+    const qq = q.trim();
     if (qq) {
       list = list.filter((r) => {
         const a = r.aluno;
-        return (
-          a.nome?.toLowerCase().includes(qq) ||
-          a.encarregado?.toLowerCase().includes(qq) ||
-          a.email?.toLowerCase().includes(qq) ||
-          a.telefone?.includes(qq) ||
-          a.id?.toLowerCase().includes(qq)
-        );
+        // "cidade" / "campus" → todos os Campus Cidade
+        if (alunoMatchesQuery(a, qq)) return true;
+        const blob = `${a.encarregado || ""} ${a.email || ""} ${a.telefone || ""}`.toLowerCase();
+        return blob.includes(qq.toLowerCase());
       });
     }
     return list;
@@ -420,7 +426,7 @@ function CrmPage() {
   function mensagemPara(row: Row, tipoDoc: "fatura" | "recibo" = "fatura"): string {
     const a = row.aluno;
     return buildMensagemFatura({
-      alunoNome: a.nome,
+      alunoNome: nomeComSufixoCampus(a),
       mesRef: mesLabel(mesKey),
       valor: valorPropina(a, row.fatura),
       escolaNome:
@@ -467,7 +473,7 @@ function CrmPage() {
     if (canal === "email") {
       const email = (a.email || row.fatura?.email || "").trim();
       const subject = encodeURIComponent(
-        `Propina ${mesLabel(mesKey)} — ${a.nome} · ${escola.nomeCurto || escola.nome || "École Consulaire"}`,
+        `Propina ${mesLabel(mesKey)} — ${nomeComSufixoCampus(a)} · ${escola.nomeCurto || escola.nome || "École Consulaire"}`,
       );
       const body = encodeURIComponent(mensagem);
       window.open(`mailto:${email}?subject=${subject}&body=${body}`, "_blank");
@@ -481,7 +487,7 @@ function CrmPage() {
 
     addCrmEnvio({
       alunoId: a.id,
-      alunoNome: a.nome,
+      alunoNome: nomeComSufixoCampus(a),
       mesKey,
       canal,
       faturaNumero: row.fatura?.numero,
@@ -711,7 +717,7 @@ function CrmPage() {
         } else {
           reg = addCodigoRecibo?.({
             alunoId: a.id,
-            alunoNome: a.nome,
+            alunoNome: nomeComSufixoCampus(a),
             mesKey,
             valor,
             rubricas: pagoMes > 0 ? `Propina ${mesLabel(mesKey)}` : "Matrícula / liquidação",
@@ -738,7 +744,7 @@ function CrmPage() {
                 id: `tmp-${a.id}`,
                 numero: `REC-${a.id}-${mesKey}`,
                 alunoId: a.id,
-                alunoNome: a.nome,
+                alunoNome: nomeComSufixoCampus(a),
                 mesRef: mesLabel(mesKey),
                 mesKey,
                 valor,
@@ -790,6 +796,159 @@ function CrmPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar ZIP de recibos");
     }
+  }
+
+
+  const MODELOS_MSG: Record<
+    "boas_vindas" | "aviso" | "livre",
+    { assunto: string; corpo: string }
+  > = {
+    boas_vindas: {
+      assunto: "Boas-vindas · École Consulaire — Annexe Nova Vida",
+      corpo: `Exmo(a). Sr./Sra. {{encarregado}},
+
+É com grande satisfação que damos as boas-vindas a {{nome}} ({{turma}}) na École Consulaire de la République du Congo — Annexe Nova Vida, Luanda.
+
+Estamos ao dispor para qualquer esclarecimento no início do ano lectivo.
+
+Cordiais cumprimentos,
+Departamento de Comunicação · École Consulaire`,
+    },
+    aviso: {
+      assunto: "Informação da escola · École Consulaire",
+      corpo: `Exmo(a). Sr./Sra. {{encarregado}},
+
+Informamos o seguinte relativamente a {{nome}} ({{turma}}):
+
+[Escreva aqui o aviso]
+
+Cordiais cumprimentos,
+École Consulaire — Annexe Nova Vida`,
+    },
+    livre: {
+      assunto: "Mensagem da École Consulaire",
+      corpo: `Exmo(a). Sr./Sra. {{encarregado}},
+
+[Escreva a sua mensagem sobre {{nome}}]
+
+Cordiais cumprimentos,
+École Consulaire`,
+    },
+  };
+
+  function aplicarModeloMsg(modelo: "boas_vindas" | "aviso" | "livre") {
+    const m = MODELOS_MSG[modelo];
+    setMsgModelo(modelo);
+    setMsgAssunto(m.assunto);
+    setMsgCorpo(m.corpo);
+  }
+
+  function personalizarMsg(texto: string, a: Aluno, generico = false): string {
+    const enc = a.encarregado || a.pai || a.mae || "Encarregado(a) de educação";
+    const nome = generico ? "o(a) seu/sua educando(a)" : nomeComSufixoCampus(a);
+    const turma = generico ? "a respectiva turma" : a.turma || "—";
+    return texto
+      .replace(/\{\{encarregado\}\}/gi, enc)
+      .replace(/\{\{nome\}\}/gi, nome)
+      .replace(/\{\{turma\}\}/gi, turma)
+      .replace(/\{\{id\}\}/gi, a.id || "");
+  }
+
+  function abrirMsgLivre() {
+    if (!selected.size) {
+      toast.message("Seleccione um ou mais alunos (ex.: pesquisa «cidade» + seleccionar visíveis).");
+      return;
+    }
+    if (!msgAssunto || !msgCorpo) aplicarModeloMsg("boas_vindas");
+    setMsgLivreOpen(true);
+  }
+
+  function enviarMsgLivre(canal: "email" | "whatsapp") {
+    const alvos = filtered.filter((r) => selected.has(r.aluno.id));
+    if (!alvos.length) {
+      toast.message("Seleccione pelo menos um aluno.");
+      return;
+    }
+    let corpo = msgCorpo.trim();
+    let assunto = msgAssunto.trim() || "Mensagem da École Consulaire";
+    if (msgAnexoNota.trim()) {
+      corpo += `\n\nDocumento a anexar / à consultar: ${msgAnexoNota.trim()}`;
+    }
+    if (canal === "email") {
+      const emails = alvos
+        .map((r) => (r.aluno.email || r.fatura?.email || "").trim())
+        .filter(Boolean);
+      if (!emails.length) {
+        toast.error("Nenhum dos seleccionados tem e-mail em Matrículas.");
+        return;
+      }
+      // BCC: texto genérico (sem nome individual)
+      const bodyGen = personalizarMsg(corpo, alvos[0].aluno, alvos.length > 1);
+      window.open(
+        `mailto:?bcc=${emails.join(",")}&subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(bodyGen)}`,
+        "_blank",
+      );
+      for (const r of alvos) {
+        if ((r.aluno.email || r.fatura?.email || "").trim()) {
+          addCrmEnvio({
+            alunoId: r.aluno.id,
+            alunoNome: nomeComSufixoCampus(r.aluno),
+            mesKey,
+            canal: "email",
+            criadoPor: active,
+            confirmado: false,
+          });
+        }
+      }
+      toast.success(
+        msgAnexoNota.trim()
+          ? `E-mail aberto (BCC, ${emails.length}). Anexe «${msgAnexoNota.trim()}» no Outlook/Gmail antes de enviar.`
+          : `E-mail aberto (BCC, ${emails.length}). Após enviar, confirme com o botão verde.`,
+      );
+      setMsgLivreOpen(false);
+      return;
+    }
+    // WhatsApp: personalizado; abre o 1.º e copia os restantes
+    let abertos = 0;
+    const restantes: string[] = [];
+    for (const r of alvos) {
+      const wa = phoneToWa(r.aluno.telefone);
+      if (!wa) continue;
+      const text = personalizarMsg(corpo, r.aluno, false);
+      if (abertos === 0) {
+        window.open(`https://wa.me/${wa}?text=${encodeURIComponent(text)}`, "_blank");
+      } else {
+        restantes.push(`${nomeComSufixoCampus(r.aluno)} · ${r.aluno.telefone}`);
+      }
+      addCrmEnvio({
+        alunoId: r.aluno.id,
+        alunoNome: nomeComSufixoCampus(r.aluno),
+        mesKey,
+        canal: "whatsapp",
+        criadoPor: active,
+        confirmado: false,
+      });
+      abertos += 1;
+    }
+    if (abertos === 0) {
+      toast.error("Nenhum telefone válido nos seleccionados.");
+      return;
+    }
+    if (restantes.length) {
+      void navigator.clipboard.writeText(restantes.join("\n")).then(
+        () =>
+          toast.message(
+            `WhatsApp aberto para o 1.º de ${abertos}. Lista dos restantes copiada — use o botão WhatsApp em cada linha.`,
+          ),
+        () =>
+          toast.message(
+            `WhatsApp aberto para o 1.º de ${abertos}. Continue linha a linha para os restantes.`,
+          ),
+      );
+    } else {
+      toast.success("WhatsApp aberto. Após enviar, confirme com o botão verde.");
+    }
+    setMsgLivreOpen(false);
   }
 
   function enviarGrupo(canal: "email" | "whatsapp") {
@@ -976,6 +1135,11 @@ function CrmPage() {
           <code>923555562 / 924170610</code> — a app escolhe o primeiro válido. O botão fica
           inactivo se o número for inválido (não é “WhatsApp offline”).
         </p>
+        <p className="mt-1">
+          <strong>Mensagem livre</strong> — boas-vindas, avisos ou qualquer texto com documento
+          próprio (não fatura). Seleccione alunos → <em>Mensagem livre</em> → escolha modelo →
+          e-mail (BCC) ou WhatsApp. Anexe o PDF no Outlook depois de abrir o e-mail.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-4">
@@ -1056,6 +1220,16 @@ function CrmPage() {
           <MessageCircle className="mr-1 size-4" />
           WhatsApp grupo ({selected.size})
         </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!selected.size}
+          onClick={abrirMsgLivre}
+          title="Boas-vindas, avisos e mensagens com documento próprio (não fatura)"
+        >
+          <Megaphone className="mr-1 size-4" />
+          Mensagem livre ({selected.size})
+        </Button>
         <span className="text-xs text-[var(--color-muted)]">
           Verde = entrega confirmada · Vermelho = por confirmar / por enviar
         </span>
@@ -1113,7 +1287,7 @@ function CrmPage() {
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <div className="font-medium">{a.nome}</div>
+                      <div className="font-medium"><NomeAluno aluno={a} /></div>
                       <div className="text-xs text-[var(--color-muted)]">
                         {a.id} · {a.turma || "—"}
                       </div>
@@ -1353,6 +1527,80 @@ function CrmPage() {
               </div>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Mensagem livre: boas-vindas, avisos, documento próprio */}
+      <Dialog open={msgLivreOpen} onOpenChange={setMsgLivreOpen}>
+        <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Mensagem livre ({selected.size} seleccionado(s))</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-[var(--color-muted)]">
+              Para textos que <strong>não</strong> são fatura nem recibo (boas-vindas, convocatórias,
+              regulamento, etc.). O browser não anexa ficheiros sozinho: indique o nome do documento
+              e anexe-o no Outlook/Gmail após abrir o e-mail.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["boas_vindas", "Boas-vindas"],
+                  ["aviso", "Aviso geral"],
+                  ["livre", "Em branco"],
+                ] as const
+              ).map(([k, label]) => (
+                <Button
+                  key={k}
+                  type="button"
+                  size="sm"
+                  variant={msgModelo === k ? "default" : "outline"}
+                  onClick={() => aplicarModeloMsg(k)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <div className="space-y-1">
+              <Label>Assunto (e-mail)</Label>
+              <Input value={msgAssunto} onChange={(e) => setMsgAssunto(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Mensagem</Label>
+              <Textarea
+                className="min-h-[180px] font-sans text-sm"
+                value={msgCorpo}
+                onChange={(e) => setMsgCorpo(e.target.value)}
+              />
+              <p className="text-[11px] text-[var(--color-muted)]">
+                Variáveis: {"{{nome}}"}, {"{{encarregado}}"}, {"{{turma}}"}, {"{{id}}"} — no
+                WhatsApp são preenchidas por aluno; no e-mail em grupo ficam genéricas.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <Label>Documento a anexar (opcional)</Label>
+              <Input
+                placeholder="ex.: Boas-vindas-2026-2027.pdf ou Regulamento-interno.pdf"
+                value={msgAnexoNota}
+                onChange={(e) => setMsgAnexoNota(e.target.value)}
+              />
+              <p className="text-[11px] text-[var(--color-muted)]">
+                Só referência na mensagem. Anexe o ficheiro manualmente no cliente de e-mail.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setMsgLivreOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" variant="outline" onClick={() => enviarMsgLivre("email")}>
+                <Mail className="mr-1 size-4" /> E-mail grupo
+              </Button>
+              <Button type="button" onClick={() => enviarMsgLivre("whatsapp")}>
+                <MessageCircle className="mr-1 size-4" /> WhatsApp
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
