@@ -48,12 +48,13 @@ async function resolveLogoDataUrl(): Promise<string> {
   return escolaLogoSrc();
 }
 
-function cardHtml(aluno: Aluno, logoSrc: string) {
+function cardHtml(aluno: Aluno, logoSrc: string, withPhotos = true) {
   const c = alunoToCarte(aluno, ANO_LECTIF_CARTE);
   const qr = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=2&data=${encodeURIComponent(c.qrPayload)}`;
-  const photo = c.photo
-    ? `<img class="photo" src="${esc(c.photo)}" alt="" />`
-    : `<div class="photo ph">Photo</div>`;
+  const photo =
+    withPhotos && c.photo
+      ? `<img class="photo" src="${esc(c.photo)}" alt="" />`
+      : `<div class="photo ph">${withPhotos ? "Photo" : ""}</div>`;
   const logo = logoSrc
     ? `<img class="logo" src="${esc(logoSrc)}" alt="Logo" />`
     : `<div class="logo ph-logo"></div>`;
@@ -97,10 +98,11 @@ export function buildCartesPrintHtml(
   alunos: Aluno[],
   logoSrc: string,
   title = "Cartes scolaires",
+  withPhotos = true,
 ) {
   const list = (alunos || []).filter(Boolean);
   const single = list.length === 1;
-  const cards = list.map((a) => cardHtml(a, logoSrc)).join("\n");
+  const cards = list.map((a) => cardHtml(a, logoSrc, withPhotos)).join("\n");
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -150,9 +152,9 @@ export function buildCartesPrintHtml(
   .card {
     border: 1.2px solid #9ca3af;
     border-radius: 3.5mm;
-    padding: 4mm 3mm 2.2mm;
-    width: 90mm;
-    height: 62mm;
+    padding: 3.2mm 3.2mm 2mm;
+    width: 92mm;
+    height: 58mm;
     overflow: hidden;
     page-break-inside: avoid;
     background: #fff;
@@ -164,6 +166,8 @@ export function buildCartesPrintHtml(
     grid-template-columns: 15mm 1fr 20mm;
     gap: 1.5mm;
     align-items: center;
+    padding-top: 1.2mm;
+    margin-bottom: 1.2mm;
   }
   .logo {
     width: 14mm;
@@ -178,18 +182,18 @@ export function buildCartesPrintHtml(
   }
   .titles {
     text-align: center;
-    font-size: 6.2px;
-    font-weight: 700;
+    font-size: 8.2px;
+    font-weight: 800;
     color: #1a4d2e;
     text-transform: none;
-    line-height: 1.15;
+    line-height: 1.18;
   }
   .titles strong {
     display: block;
-    margin-top: 1px;
+    margin-top: 2px;
     color: #2e7d32;
-    font-size: 10.5px;
-    letter-spacing: 0.08em;
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
   }
   .motto {
     text-align: right;
@@ -213,7 +217,7 @@ export function buildCartesPrintHtml(
     display: grid;
     grid-template-columns: 18mm 1fr;
     gap: 2.5mm;
-    margin-top: 1.5mm;
+    margin-top: 2.4mm;
     flex: 1 1 auto;
     min-height: 0;
     overflow: hidden;
@@ -250,8 +254,8 @@ export function buildCartesPrintHtml(
     display: block;
   }
   .fields {
-    font-size: 7.4px;
-    line-height: 1.38;
+    font-size: 8px;
+    line-height: 1.42;
   }
   .fields span { color: #444; }
   .fields b { font-weight: 700; }
@@ -286,12 +290,17 @@ export function buildCartesPrintHtml(
 }
 
 /** Abre pré-visualização + impressão (1, vários ou todos). */
-export async function printCartesScolaires(alunos: Aluno[], title?: string) {
+export async function printCartesScolaires(
+  alunos: Aluno[],
+  title?: string,
+  opts?: { withPhotos?: boolean },
+) {
   const list = (alunos || []).filter(Boolean);
   if (!list.length) {
     console.warn("[printCartesScolaires] lista vazia");
     return;
   }
+  const withPhotos = opts?.withPhotos !== false;
   const logoSrc = await resolveLogoDataUrl();
   const html = buildCartesPrintHtml(
     list,
@@ -299,7 +308,10 @@ export async function printCartesScolaires(alunos: Aluno[], title?: string) {
     title ||
       (list.length === 1
         ? `Carte scolaire — ${list[0].nome || list[0].id}`
-        : "Cartes scolaires"),
+        : withPhotos
+          ? "Cartes scolaires — avec photos"
+          : "Cartes scolaires — sans photos"),
+    withPhotos,
   );
   openPrintHtml(html, { autoPrint: true });
 }

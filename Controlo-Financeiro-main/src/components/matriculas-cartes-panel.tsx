@@ -54,30 +54,66 @@ export function MatriculasCartesPanel({
             Face en français · Matricule = ID · {ANO_LECTIF_CARTE} · {filtered.length} élève(s)
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!active}
-            onClick={() => active && printCartesScolaires([active], `carte-${active.id}`)}
-          >
-            <Printer className="size-4" /> PDF cet élève
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={selectedCount === 0}
-            onClick={() => printCartesScolaires(selectedAlunos, "cartes-selection")}
-          >
-            <Printer className="size-4" /> PDF sélection ({selectedCount})
-          </Button>
-          <Button
-            type="button"
-            onClick={() => printCartesScolaires(filtered, "cartes-toutes")}
-            disabled={filtered.length === 0}
-          >
-            <Printer className="size-4" /> PDF toutes
-          </Button>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!active}
+              onClick={() =>
+                active && printCartesScolaires([active], `carte-foto-${active.id}`, { withPhotos: true })
+              }
+            >
+              <Printer className="size-4" /> PDF com fotos · este
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={selectedCount === 0}
+              onClick={() =>
+                printCartesScolaires(selectedAlunos, "cartes-fotos-selecao", { withPhotos: true })
+              }
+            >
+              <Printer className="size-4" /> PDF com fotos · selecção ({selectedCount})
+            </Button>
+            <Button
+              type="button"
+              onClick={() => printCartesScolaires(filtered, "cartes-fotos-todas", { withPhotos: true })}
+              disabled={filtered.length === 0}
+            >
+              <Printer className="size-4" /> PDF com fotos · todos
+            </Button>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!active}
+              onClick={() =>
+                active && printCartesScolaires([active], `carte-sem-foto-${active.id}`, { withPhotos: false })
+              }
+            >
+              <Printer className="size-4" /> PDF sem fotos · este
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={selectedCount === 0}
+              onClick={() =>
+                printCartesScolaires(selectedAlunos, "cartes-sem-foto-selecao", { withPhotos: false })
+              }
+            >
+              <Printer className="size-4" /> PDF sem fotos · selecção ({selectedCount})
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => printCartesScolaires(filtered, "cartes-sem-foto-todas", { withPhotos: false })}
+              disabled={filtered.length === 0}
+            >
+              <Printer className="size-4" /> PDF sem fotos · todos
+            </Button>
+          </div>
         </div>
       </div>
 

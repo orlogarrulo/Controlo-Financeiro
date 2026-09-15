@@ -26,7 +26,7 @@ export function CarteScolaire({
         fontFamily: "Georgia, 'Times New Roman', serif",
       }}
     >
-      <div className="grid grid-cols-[64px_1fr_88px] items-center gap-2 px-3 pt-5">
+      <div className="grid grid-cols-[64px_1fr_88px] items-center gap-2 px-3 pt-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={logo}
@@ -34,13 +34,13 @@ export function CarteScolaire({
           className="h-16 w-16 object-contain rounded-md bg-white"
         />
         <div className="text-center leading-tight">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-[#1a4d2e]">
+          <div className="text-[12px] font-bold uppercase tracking-wide text-[#1a4d2e]">
             {ECOLE_CARTE.nom}
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-[#1a4d2e]">
+          <div className="text-[12px] font-bold uppercase tracking-wide text-[#1a4d2e]">
             {ECOLE_CARTE.nom2}
           </div>
-          <div className="mt-1 text-[15px] font-extrabold uppercase tracking-wider text-[#2e7d32]">
+          <div className="mt-1.5 text-[16px] font-extrabold uppercase tracking-wider text-[#2e7d32]">
             {ECOLE_CARTE.titre}
           </div>
         </div>
@@ -54,7 +54,7 @@ export function CarteScolaire({
         </div>
       </div>
 
-      <div className="mt-2 grid grid-cols-[88px_1fr] gap-3 px-3 pb-1">
+      <div className="mt-3 grid grid-cols-[88px_1fr] gap-3 px-3 pb-1">
         <div className="flex flex-col items-center gap-1.5">
           <div className="h-[100px] w-[80px] overflow-hidden rounded-sm border border-zinc-300 bg-zinc-100">
             {data.photo ? (
@@ -74,7 +74,7 @@ export function CarteScolaire({
           />
         </div>
 
-        <div className="text-[11px] leading-[1.55]">
+        <div className="text-[12px] leading-[1.55]">
           <Row label="Noms & Prénoms" value={data.nomPrenoms} accent />
           <Row label="Date de Naissance" value={data.dateNaissance} />
           <Row label="Lieu de Naissance" value={data.lieuNaissance} />
