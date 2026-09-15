@@ -179,7 +179,7 @@ function fmtData(d: Date): string {
 
 /**
  * Limite de pagamento:
- * - 1.ª fatura (outubro): até 15 de setembro (antes do início das aulas)
+ * - 1.ª fatura (outubro): até 20 de setembro (antes do início das aulas)
  * - Restantes meses: até dia 10 do mês civil seguinte
  */
 function prazoFatura(mesLetivo: string): {
@@ -197,10 +197,10 @@ function prazoFatura(mesLetivo: string): {
   if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
   if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
 
-  // Excepção: propina de outubro → limite 15 de setembro do mesmo ano lectivo
+  // Excepção: propina de outubro → limite 20 de setembro do mesmo ano lectivo
   if (mesLetivo === "out") {
-    const limite = new Date(y, 8, 15); // 15 set
-    const de11 = new Date(y, 8, 16);
+    const limite = new Date(y, 8, 20); // 20 set
+    const de11 = new Date(y, 8, 21);
     const dia30 = new Date(y, 8, 30);
     const multa40 = new Date(y, 9, 10); // 10 out
     return {

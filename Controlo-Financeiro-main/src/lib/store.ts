@@ -234,8 +234,9 @@ const MES_LETIVO_IDX: Record<string, number> = {
 
 /**
  * Prazo de pagamento da propina do mês lectivo:
- * do dia 30 do mês de referência até ao dia 10 do mês seguinte.
- * Ex.: propina de setembro → 30/09 a 10/10.
+ * - Outubro (1.ª fatura): até 20 de setembro (antes do início das aulas)
+ * - Restantes: do dia 30 do mês de referência até ao dia 10 do mês seguinte
+ *   Ex.: propina de novembro → 30/11 a 10/12
  */
 export function limitePropina(mesLetivo: string, refYear?: number): { inicio: Date; fim: Date } {
   const idx = MES_LETIVO_IDX[mesLetivo] ?? 8;
@@ -244,6 +245,14 @@ export function limitePropina(mesLetivo: string, refYear?: number): { inicio: Da
   // Ajuste ano lectivo
   if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
   if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
+  // 1.ª propina (outubro): limite 20 de setembro
+  if (mesLetivo === "out") {
+    const inicio = new Date(y, 8, 1); // 1 set
+    const fim = new Date(y, 8, 20); // 20 set
+    inicio.setHours(0, 0, 0, 0);
+    fim.setHours(23, 59, 59, 999);
+    return { inicio, fim };
+  }
   // Dia 30 do mês de referência (meses com menos dias usam o último dia)
   const lastDay = new Date(y, idx + 1, 0).getDate();
   const diaInicio = Math.min(30, lastDay);
