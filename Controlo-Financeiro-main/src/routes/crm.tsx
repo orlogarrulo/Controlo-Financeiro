@@ -313,10 +313,19 @@ function mesJaPagoNaMatricula(
       x.id === aluno.idAnterior ||
       norm(x.nome) === norm(aluno.nome),
   );
-  const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
+  const mesesAdiantados = Math.max(0, Math.min(9, mesesPropinaFromAluno(aluno)));
+  const pagoMesRaw = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
+  const propRef = Number(aluno.propina) || 0;
+  // Pagamento em Propinas só conta se houver propina na liquidação
+  // ou se o valor não for o eco automático da tarifa (matrícula ≠ mensalidade).
+  const pagoMes =
+    mesesAdiantados > 0
+      ? pagoMesRaw
+      : pagoMesRaw > 0 && propRef > 0 && pagoMesRaw !== propRef
+        ? pagoMesRaw
+        : 0;
   if (pagoMes > 0) return { pago: true, valor: pagoMes };
 
-  const mesesAdiantados = Math.max(0, Math.min(9, mesesPropinaFromAluno(aluno)));
   const propinaNaLiquidacao =
     Number(aluno.mensalidade1) ||
     (Number(aluno.propina) > 0 ? Number(aluno.propina) * mesesAdiantados : 0);
@@ -592,7 +601,7 @@ function CrmPage() {
       mesKey,
       numero: row.fatura?.numero || `REF-${row.aluno.id}`,
       pagoMes: row.valorPagoMes,
-      liquidacaoCompleta: true,
+      ambito: "mensalidade",
       contacto: loadContacto(),
     });
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${row.fatura?.numero || row.aluno.id}</title></head><body style="margin:0">${doc.html}</body></html>`;
@@ -689,7 +698,7 @@ function CrmPage() {
           mesKey,
           numero: row.fatura?.numero || `REF-${a.id}`,
           pagoMes: row.valorPagoMes,
-          liquidacaoCompleta: true,
+          ambito: "mensalidade",
           contacto: loadContacto(),
         });
         const valor = doc.valor;
@@ -792,7 +801,7 @@ function CrmPage() {
           mesRef: mesLabel(mesKey),
           mesKey,
           pagoMes,
-          liquidacaoCompleta: true,
+          ambito: "mensalidade",
           contacto: loadContacto(),
         });
         const valor = docBase.valor || (pagoMes > 0 ? pagoMes : valorPropina(a, row.fatura) || 0);
@@ -834,7 +843,7 @@ function CrmPage() {
           mesKey,
           numero: row.fatura?.numero || `REC-${a.id}-${mesKey}`,
           pagoMes,
-          liquidacaoCompleta: true,
+          ambito: "mensalidade",
           contacto: loadContacto(),
           codigoVerificacao: codigo,
           viaLabel,
@@ -1727,7 +1736,7 @@ Cordiais cumprimentos,
                 </p>
                 {(() => {
                   const d = documentoOficialFromAluno(viewFatura.aluno, {
-                    liquidacaoCompleta: true,
+                    ambito: "mensalidade",
                     pagoMes: viewFatura.valorPagoMes,
                   });
                   return (

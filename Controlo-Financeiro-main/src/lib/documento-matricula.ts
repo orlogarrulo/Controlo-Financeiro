@@ -172,10 +172,15 @@ export function alunoTemIrmaosDesc(a: Aluno): 0 | 2 | 3 {
 }
 
 export function mesesPropinaFromAluno(a: Aluno): number {
-  const saved = Number(a.mesesPropina) || 0;
-  if (saved > 0) return Math.min(9, saved);
   const prop = Number(a.propina) || 0;
   const mens = Number(a.mensalidade1) || 0;
+  // Inscrição/manuais/seguro NÃO contam como propina.
+  // Só há meses pagos se a liquidação incluir mensalidade1 (propina).
+  if (!(mens > 0)) return 0;
+  const saved = Number(a.mesesPropina) || 0;
+  if (saved > 0 && prop > 0 && mens + 1 >= prop * 0.5) {
+    return Math.min(9, saved);
+  }
   if (prop > 0 && mens > 0) {
     for (const m of [9, 8, 7, 6, 5, 4, 3, 2, 1]) {
       for (const camp of [true, false]) {
@@ -273,6 +278,27 @@ export function totalLinhas(linhas: LinhaFat[]): number {
   return linhas.filter((l) => l.on && l.value > 0).reduce((s, l) => s + l.value, 0);
 }
 
+/** Propina de 1 mês: tarifa da classe + descontos individuais (irmãos / campanha). */
+export function linhaPropinaMensal(a: Aluno, mesLetivo?: string): LinhaFat {
+  const tarifa = Number(a.propina) > 0 ? Number(a.propina) : propinaPorCiclo(a);
+  const campanha = alunoTemCampanha(a);
+  const irmaos = alunoTemIrmaosDesc(a);
+  const pc = calcPropinaComCampanha(tarifa, 1, campanha, irmaos);
+  const ciclo = a.turma?.startsWith("Maternelle")
+    ? "Maternelle"
+    : ["6ème", "5ème", "4ème", "3ème"].includes(a.turma)
+      ? "Collège"
+      : "Primaire";
+  const mesTxt = mesLetivo ? ` · ${mesLetivo}` : "";
+  const desc = pc.detalhe ? ` · ${pc.detalhe}` : "";
+  return {
+    key: "propinas",
+    label: `Propina ${ciclo} (${a.turma || "—"})${mesTxt} · tarifa ${formatKz(tarifa)}${desc}`,
+    value: pc.liquidoPropina > 0 ? pc.liquidoPropina : tarifa,
+    on: (pc.liquidoPropina > 0 ? pc.liquidoPropina : tarifa) > 0,
+  };
+}
+
 /** Documento oficial a partir da ficha — usado em Matrículas e CRM. */
 export function documentoOficialFromAluno(
   a: Aluno,
@@ -286,23 +312,27 @@ export function documentoOficialFromAluno(
     codigoVerificacao?: string;
     viaLabel?: string;
     contacto?: EscolaContacto;
-    /** Se true, só as rubricas da matrícula (não força propina do mês isolada). */
+    /** Se true, rubricas da matrícula (recibo de liquidação). */
     liquidacaoCompleta?: boolean;
+    /** mensalidade = só propina do mês (fatura CRM). */
+    ambito?: "mensalidade" | "liquidacao";
   },
 ): { html: string; linhas: LinhaFat[]; valor: number; mesesProp: number } {
   const modo = opts?.modo || "fatura";
   const mesesProp = mesesPropinaFromAluno(a);
   const campanha = alunoTemCampanha(a);
   const irmaos = alunoTemIrmaosDesc(a);
-  let linhas = linhasMatriculaFromAluno(a, mesesProp, { campanha, irmaos });
+  const ambito =
+    opts?.ambito ||
+    (modo === "fatura" || !opts?.liquidacaoCompleta ? "mensalidade" : "liquidacao");
+  let linhas: LinhaFat[];
   const pagoMes = Number(opts?.pagoMes) || 0;
-  if (!opts?.liquidacaoCompleta && pagoMes > 0) {
-    const propLine = linhas.find((l) => l.key === "propinas");
-    if (propLine) {
-      propLine.value = pagoMes;
-      propLine.on = true;
-      propLine.label = "Propina (mês corrente)";
-    }
+  if (ambito === "mensalidade") {
+    const linha = linhaPropinaMensal(a, opts?.mesLetivo);
+    if (pagoMes > 0) linha.value = pagoMes;
+    linhas = [linha];
+  } else {
+    linhas = linhasMatriculaFromAluno(a, mesesProp, { campanha, irmaos });
   }
   const valor = totalLinhas(linhas);
   const html = buildInvoiceHtml({

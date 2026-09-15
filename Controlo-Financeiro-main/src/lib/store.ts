@@ -35,11 +35,14 @@ function requireEdit(get: () => { activeOperator: string; operators: string[] })
 
 /** Meses de propina já pagos na ficha (campo ou inferência mensalidade1 / líquido). */
 function inferMesesAdiantados(a: Aluno): number {
-  const saved = Number(a.mesesPropina) || 0;
-  if (saved > 0) return Math.min(9, saved);
   const prop = Number(a.propina) || 0;
   const mens = Number(a.mensalidade1) || 0;
-  if (prop > 0 && mens > 0) {
+  if (!(mens > 0)) return 0;
+  const saved = Number(a.mesesPropina) || 0;
+  if (saved > 0 && prop > 0 && mens + 1 >= prop * 0.5) {
+    return Math.min(9, saved);
+  }
+  if (prop > 0) {
     const ratio = Math.round(mens / prop);
     if (ratio >= 2 && ratio <= 9 && Math.abs(mens - prop * ratio) <= prop * 0.02) return ratio;
   }
@@ -1260,7 +1263,9 @@ export const useFinance = create<Store>()(
             const dataPag = String(a.dataPag || "");
             for (const mesKey of MESES_PROPINA_ADIANTADOS) {
               const em = String(nextEm[mesKey] || "");
-              if (dataPag && em === dataPag) {
+              const v = Number(nextPag[mesKey] || 0);
+              const auto = (dataPag && em === dataPag) || (propMes > 0 && v === propMes);
+              if (auto && v > 0) {
                 delete nextPag[mesKey];
                 delete nextEm[mesKey];
                 changed = true;
