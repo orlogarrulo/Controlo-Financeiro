@@ -448,7 +448,6 @@ export function buildInvoiceHtml(opts: {
             ? `Reçu de paiement <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Recibo de pagamento</span>`
             : `Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Fatura / liquidação</span>`
         }</p>
-        ${isRecibo ? `<p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Valores já registados em Propinas</p>` : ""}
         ${linhasHtml}
       </div>
       <div style="min-width:160px;background:#f3f4f6;color:#111827;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:14px 16px;border-left:1px solid #d1d5db;">
@@ -501,6 +500,7 @@ export function buildInvoiceHtml(opts: {
     <div>
       <p style="margin:0;font-size:11px;font-weight:700;color:#374151;">Departamento de Finanças</p>
       <p style="margin:4px 0 0;font-size:10px;color:#6b7280;">Documento elaborado pelo Departamento de Finanças</p>
+      <p style="margin:8px 0 0;font-size:10px;line-height:1.45;color:#4b5563;max-width:420px;">A École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida é uma entidade diplomática e, nessa qualidade, não está sujeita a IVA. / En tant qu’entité diplomatique, l’école n’est pas assujettie à la TVA.</p>
       <p style="margin:10px 0 0;border-top:1px solid #d1d5db;padding-top:4px;width:160px;font-size:10px;color:#6b7280;">Assinatura / carimbo</p>
     </div>
     <div style="text-align:right;font-size:10px;color:#6b7280;">

@@ -48,6 +48,7 @@ import {
 import { saveAlunoFoto, deleteAlunoFoto } from "@/lib/finance-cloud";
 import {
   linhasMatriculaFromAluno,
+  linhaPropinaMensal,
   totalLinhas as totalLinhasDoc,
   buildInvoiceHtml as buildInvoiceHtmlDoc,
 } from "@/lib/documento-matricula";
@@ -2495,8 +2496,7 @@ function Alunos() {
             ? `Reçu de paiement <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Recibo de pagamento</span>`
             : `Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Fatura / liquidação</span>`
         }</p>
-        ${isRecibo ? `<p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Valores já registados em Propinas</p>` : ""}
-        ${linhasHtml}
+                ${linhasHtml}
       </div>
       <div style="min-width:160px;background:#f3f4f6;color:#111827;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:14px 16px;border-left:1px solid #d1d5db;">
         <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
@@ -2799,26 +2799,10 @@ function Alunos() {
         : `PROP-${mesKey}-001`;
     const contacto = loadContacto();
     const mesesProp = mesesPropinaFromAluno(a);
-    const campanha = alunoTemCampanha(a);
-    const irmaos = alunoTemIrmaosDesc(a);
-    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
-    // Se só houver propina mensal em Propinas e sem itens de matrícula, marcar propina com valor do mês
-    const propLine = linhas.find((l) => l.key === "propinas");
-    if (propLine && pagoMes > 0) {
-      propLine.value = pagoMes;
-      propLine.on = true;
-      propLine.label = "Propina (mês corrente)";
-    }
-    const valorFinal = totalLinhas(linhas) || valor || propinaPorCiclo(a);
-    if (valorFinal <= 0) {
-      // ainda assim abrir com propina de referência
-      linhas = linhasMatriculaBase(a, 1).map((l) =>
-        l.key === "propinas"
-          ? { ...l, value: propinaPorCiclo(a), on: propinaPorCiclo(a) > 0 }
-          : { ...l, on: false },
-      );
-    }
-    const total = totalLinhas(linhas) || propinaPorCiclo(a);
+    const linha = linhaPropinaMensal(a, mesLetivo);
+    if (pagoMes > 0) linha.value = pagoMes;
+    const linhas = [linha];
+    const total = totalLinhas(linhas) || linha.value || valor || propinaPorCiclo(a);
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2895,6 +2879,9 @@ function Alunos() {
       }
     } catch {
       /* ignore */
+    }
+    if (!codigoVerificacao) {
+      codigoVerificacao = `RC-${mesKey}-${(a.id || "X").replace(/[^A-Za-z0-9-]/g, "")}`.slice(0, 28);
     }
     const viaLabel =
       viaNum <= 1 ? "1.ª via" : viaNum === 2 ? "2.ª via" : viaNum === 3 ? "3.ª via" : `${viaNum}.ª via`;
