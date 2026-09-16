@@ -744,26 +744,34 @@ function CrmPage() {
 
   async function descarregarRecibosPasta() {
     const mesLetivo = mesKeyToLetivo(mesKey);
-    // Alunos com pagamento registado no mês (propinas) ou com liquido/dataPag
-    const comPagamento = filtered.filter((row) => {
+    /**
+     * Recibos na íntegra (igual ao separador Matrículas): liquidação completa
+     * (inscrição, seguro, manuais, uniforme, propinas adiantadas, etc.).
+     * Inclui todos os alunos matriculados com liquido/recibo — os 48 actuais
+     * e qualquer matrícula futura — não só quem tem propina do mês em vista.
+     */
+    const comReciboMatricula = filtered.filter((row) => {
       const a = row.aluno;
+      const liquido = Number(a.liquido) || 0;
+      const temRecibo = Boolean(a.recibo && String(a.recibo).trim());
+      const temDataPag = Boolean(a.dataPag);
       const m = mensalidades.find((x) => x.id === a.id || x.nome === a.nome);
       const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
+      if (liquido > 0 || temRecibo || temDataPag) return true;
       if (pagoMes > 0) return true;
-      // Só se a propina deste mês foi adiantada na matrícula (não basta liquido de inscrição)
       if (row.jaPagoNaMatricula && row.valorPagoMes > 0) return true;
       return false;
     });
     const lista = selected.size
-      ? comPagamento.filter((r) => selected.has(r.aluno.id))
-      : comPagamento;
+      ? comReciboMatricula.filter((r) => selected.has(r.aluno.id))
+      : comReciboMatricula;
     if (!lista.length) {
       toast.message(
-        "Nenhum aluno com pagamento registado neste mês (Propinas ou matrícula paga).",
+        "Nenhum aluno com matrícula/recibo a incluir (liquido, n.º de recibo ou pagamento no mês).",
       );
       return;
     }
-    toast.message(`A gerar ${lista.length} recibo(s) PDF…`);
+    toast.message(`A gerar ${lista.length} recibo(s) PDF (liquidação completa · Matrículas)…`);
     try {
       const w = window as unknown as {
         JSZip?: new () => {
@@ -789,22 +797,27 @@ function CrmPage() {
         }
       ).JSZip;
       const zip = new JSZipCtor();
-      const pasta = `Recibos-${mesKey}`;
+      const pasta = `Recibos-Matriculas-${mesKey}`;
       let ok = 0;
       for (const row of lista) {
         const a = row.aluno;
         const m = mensalidades.find((x) => x.id === a.id || x.nome === a.nome);
         const pagoMes = m ? Number(m.pagamentos?.[mesLetivo] || 0) : 0;
+        // Mesmo modelo do separador Matrículas: liquidação completa
         const docBase = documentoOficialFromAluno(a, {
           modo: "recibo",
-          mesLetivo: mesLetivo,
+          mesLetivo,
           mesRef: mesLabel(mesKey),
           mesKey,
           pagoMes,
-          ambito: "mensalidade",
+          ambito: "liquidacao",
+          liquidacaoCompleta: true,
           contacto: loadContacto(),
         });
-        const valor = docBase.valor || (pagoMes > 0 ? pagoMes : valorPropina(a, row.fatura) || 0);
+        const valor =
+          docBase.valor ||
+          Number(a.liquido) ||
+          (pagoMes > 0 ? pagoMes : valorPropina(a, row.fatura) || 0);
         const rubricasTxt = docBase.linhas
           .filter((l) => l.on && l.value > 0)
           .map((l) => l.label)
@@ -822,7 +835,7 @@ function CrmPage() {
             alunoNome: nomeComSufixoCampus(a),
             mesKey,
             valor,
-            rubricas: rubricasTxt || "Matrícula / liquidação",
+            rubricas: rubricasTxt || "Matrícula / liquidação completa",
           });
           viaNum = 1;
         }
@@ -836,14 +849,19 @@ function CrmPage() {
                 ? "3.ª via"
                 : `${viaNum}.ª via`;
 
+        const numeroRecibo =
+          (a.recibo && String(a.recibo).trim()) ||
+          row.fatura?.numero ||
+          `REC-${a.id}-${mesKey}`;
         const stamped = documentoOficialFromAluno(a, {
           modo: "recibo",
           mesLetivo,
           mesRef: mesLabel(mesKey),
           mesKey,
-          numero: row.fatura?.numero || `REC-${a.id}-${mesKey}`,
+          numero: numeroRecibo,
           pagoMes,
-          ambito: "mensalidade",
+          ambito: "liquidacao",
+          liquidacaoCompleta: true,
           contacto: loadContacto(),
           codigoVerificacao: codigo,
           viaLabel,
@@ -855,7 +873,7 @@ function CrmPage() {
           .trim()
           .replace(/\s+/g, "-")
           .slice(0, 50);
-        const fname = `REC-${mesKey}_${safe}.pdf`;
+        const fname = `${String(numeroRecibo).replace(/[^\w\-]/g, "_")}_${safe}.pdf`;
         try {
           const { blob } = await htmlToPdfBlob(stamped, {
             filename: fname,
@@ -875,10 +893,12 @@ function CrmPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `Recibos-${mesKey}.zip`;
+      link.download = `Recibos-Matriculas-${mesKey}.zip`;
       link.click();
       URL.revokeObjectURL(url);
-      toast.success(`ZIP com ${ok} recibo(s) PDF. Códigos registados para verificação.`);
+      toast.success(
+        `ZIP com ${ok} recibo(s) de Matrículas (liquidação completa). Códigos registados para verificação.`,
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar ZIP de recibos");
     }
@@ -1213,7 +1233,11 @@ Cordiais cumprimentos,
           (nome = n.º + nome). Extraia para ex.{" "}
           <code>Documentos\Faturas-2026-10</code>. No Outlook, ao anexar, escolha{" "}
           <em>Procurar Neste PC</em> e abra essa pasta: as faturas aparecem por nome. O browser não
-          consegue anexar sozinho.
+          consegue anexar sozinho.{" "}
+          <strong>Pasta de recibos (ZIP)</strong> — gera os recibos na íntegra do separador
+          Matrículas (liquidação completa: inscrição, seguro, manuais, uniforme, propinas
+          adiantadas, etc.) para todos os alunos matriculados (os 48 actuais e os futuros), com
+          código de verificação.
         </p>
         <p className="mt-1">
           WhatsApp: telefone na ficha deve ter <strong>9 dígitos a começar por 9</strong> (ex.:
@@ -1286,7 +1310,7 @@ Cordiais cumprimentos,
         </Button>
         <Button size="sm" variant="outline" onClick={() => void descarregarRecibosPasta()}>
           <Receipt className="mr-1 size-4" />
-          Pasta de recibos (ZIP)
+          Pasta de recibos Matrículas (ZIP)
         </Button>
         <Button
           size="sm"
