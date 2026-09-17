@@ -5,6 +5,8 @@ import type {
   Aluno,
   CrmEnvio,
   CodigoRecibo,
+  DocumentoAluno,
+  DocumentoAlunoEstado,
   FaturaPropina,
   FundoAtm,
   FundoPagamento,
@@ -141,6 +143,8 @@ type ExtraState = {
   crmEnvios: CrmEnvio[];
   /** Códigos únicos de recibos emitidos (anti-falsificação). */
   codigosRecibo: CodigoRecibo[];
+  /** Arquivo do aluno: faturas e recibos emitidos (histórico por aluno). */
+  documentosAluno: DocumentoAluno[];
 };
 
 type Store = ExtraState & {
@@ -249,6 +253,18 @@ type Store = ExtraState & {
   findCodigoRecibo: (codigo: string) => CodigoRecibo | undefined;
   findCodigoReciboAlunoMes: (alunoId: string, mesKey: string) => CodigoRecibo | undefined;
   incrementCodigoReciboVia: (id: string) => CodigoRecibo | undefined;
+  /** Arquivo do aluno */
+  addDocumentoAluno: (
+    d: Omit<DocumentoAluno, "id" | "emitidoEm" | "estado"> & {
+      id?: string;
+      emitidoEm?: string;
+      estado?: DocumentoAlunoEstado;
+    },
+  ) => DocumentoAluno;
+  updateDocumentoAluno: (id: string, patch: Partial<DocumentoAluno>) => void;
+  findDocumentoPorNumero: (numero: string) => DocumentoAluno | undefined;
+  /** Cria recibo a partir do n.º de fatura (Arquivo). */
+  gerarReciboDeFatura: (faturaNumero: string) => DocumentoAluno | undefined;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -351,6 +367,7 @@ export const useFinance = create<Store>()(
       inboxItems: [],
       crmEnvios: [],
       codigosRecibo: [],
+      documentosAluno: [],
       setUiPrefs: (patch) => {
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
       },
@@ -2216,11 +2233,19 @@ export const useFinance = create<Store>()(
         set({ crmEnvios: (get().crmEnvios || []).filter((r) => r.id !== id) });
       },
       addCodigoRecibo: (c) => {
-        requireEdit(get);
-        const mes = (c.mesKey || "").replace(/-/g, "").slice(0, 6) || new Date().toISOString().slice(0, 7).replace(/-/g, "");
+        // Qualquer colaborador pode registar código ao imprimir recibo (não é edição financeira).
+        const mes =
+          (c.mesKey || "").replace(/-/g, "").slice(0, 6) ||
+          new Date().toISOString().slice(0, 7).replace(/-/g, "");
         const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-        const chk = String((rand.charCodeAt(0) + rand.charCodeAt(1) + (c.valor || 0)) % 100).padStart(2, "0");
-        const codigo = c.codigo || `RC-${mes}-${rand}-${chk}`;
+        const chk = String(
+          (rand.charCodeAt(0) + rand.charCodeAt(1) + (c.valor || 0)) % 100,
+        ).padStart(2, "0");
+        const codigo = (c.codigo || `RC-${mes}-${rand}-${chk}`).trim().toUpperCase();
+        const existing = (get().codigosRecibo || []).find(
+          (r) => (r.codigo || "").toUpperCase() === codigo,
+        );
+        if (existing) return existing;
         const row: CodigoRecibo = {
           id: c.id || `RCOD-${Date.now().toString(36)}-${rand}`,
           codigo,
@@ -2239,8 +2264,25 @@ export const useFinance = create<Store>()(
         return row;
       },
       findCodigoRecibo: (codigo) => {
-        const k = (codigo || "").trim().toUpperCase();
-        return (get().codigosRecibo || []).find((r) => r.codigo.toUpperCase() === k);
+        const list = get().codigosRecibo || [];
+        const raw = (codigo || "").trim().toUpperCase();
+        if (!raw) return undefined;
+        // 1) Exacto
+        let found = list.find((r) => (r.codigo || "").toUpperCase() === raw);
+        if (found) return found;
+        // 2) Sem hífens / espaços
+        const compact = (s: string) => s.replace(/[\s\-_.]/g, "").toUpperCase();
+        const want = compact(raw);
+        found = list.find((r) => compact(r.codigo || "") === want);
+        if (found) return found;
+        // 3) Sufixo / inclusão parcial (leitura incompleta do PDF)
+        if (want.length >= 6) {
+          found = list.find((r) => {
+            const c = compact(r.codigo || "");
+            return c.endsWith(want) || want.endsWith(c) || c.includes(want);
+          });
+        }
+        return found;
       },
       findCodigoReciboAlunoMes: (alunoId, mesKey) => {
         const list = get().codigosRecibo || [];
@@ -2249,7 +2291,7 @@ export const useFinance = create<Store>()(
           .sort((a, b) => (b.emitidoEm || "").localeCompare(a.emitidoEm || ""))[0];
       },
       incrementCodigoReciboVia: (id) => {
-        requireEdit(get);
+        // Qualquer colaborador pode imprimir 2.ª via
         let updated: CodigoRecibo | undefined;
         set({
           codigosRecibo: (get().codigosRecibo || []).map((r) => {
@@ -2263,6 +2305,90 @@ export const useFinance = create<Store>()(
           }),
         });
         return updated;
+      },
+
+      addDocumentoAluno: (d) => {
+        const id =
+          d.id ||
+          `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const row: DocumentoAluno = {
+          ...d,
+          id,
+          emitidoEm: d.emitidoEm || new Date().toISOString(),
+          estado: d.estado || "emitido",
+          linhas: d.linhas || [],
+        };
+        set({ documentosAluno: [...(get().documentosAluno || []), row] });
+        get().pushAudit(
+          "documento_aluno",
+          `${row.tipo} ${row.numero} · ${row.alunoNome} · ${row.valor}`,
+        );
+        return row;
+      },
+      updateDocumentoAluno: (id, patch) => {
+        set({
+          documentosAluno: (get().documentosAluno || []).map((r) =>
+            r.id === id ? { ...r, ...patch } : r,
+          ),
+        });
+      },
+      findDocumentoPorNumero: (numero) => {
+        const k = (numero || "").trim().toUpperCase().replace(/\s+/g, "");
+        if (!k) return undefined;
+        return (get().documentosAluno || []).find(
+          (r) => (r.numero || "").toUpperCase().replace(/\s+/g, "") === k,
+        );
+      },
+      gerarReciboDeFatura: (faturaNumero) => {
+        const fat = get().findDocumentoPorNumero(faturaNumero);
+        if (!fat || fat.tipo !== "fatura") return undefined;
+        const ja = (get().documentosAluno || []).find(
+          (r) =>
+            r.tipo === "recibo" &&
+            (r.faturaId === fat.id ||
+              (r.faturaNumero || "").toUpperCase() === fat.numero.toUpperCase()),
+        );
+        if (ja) return ja;
+        const mes =
+          (fat.mesKey || "").replace(/-/g, "").slice(0, 6) ||
+          new Date().toISOString().slice(0, 7).replace(/-/g, "");
+        const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+        const codigo = `RC-${mes}-${rand}-${String((rand.charCodeAt(0) + (fat.valor || 0)) % 100).padStart(2, "0")}`;
+        // Registar código de verificação
+        get().addCodigoRecibo({
+          alunoId: fat.alunoId,
+          alunoNome: fat.alunoNome,
+          mesKey: fat.mesKey || new Date().toISOString().slice(0, 7),
+          valor: fat.valor,
+          rubricas: (fat.linhas || [])
+            .filter((l) => l.on !== false && l.value > 0)
+            .map((l) => l.label)
+            .join(", "),
+          codigo,
+        });
+        const numeroRecibo = `REC-${fat.numero.replace(/[^\w\-]/g, "")}`;
+        const recibo = get().addDocumentoAluno({
+          tipo: "recibo",
+          modelo: fat.modelo,
+          numero: numeroRecibo,
+          alunoId: fat.alunoId,
+          alunoNome: fat.alunoNome,
+          mesKey: fat.mesKey,
+          mesRef: fat.mesRef,
+          valor: fat.valor,
+          linhas: fat.linhas || [],
+          estado: "emitido",
+          faturaId: fat.id,
+          faturaNumero: fat.numero,
+          codigoVerificacao: codigo,
+          pagoEm: new Date().toISOString().slice(0, 10),
+          criadoPor: get().activeOperator,
+        });
+        get().updateDocumentoAluno(fat.id, {
+          estado: fat.estado === "arquivado" ? "arquivado" : "confirmado",
+          pagoEm: recibo.pagoEm,
+        });
+        return recibo;
       },
 
       resetLocal: () => {
@@ -2289,6 +2415,7 @@ export const useFinance = create<Store>()(
           inboxItems: [],
           crmEnvios: [],
           codigosRecibo: [],
+          documentosAluno: [],
         });
       },
       resetLocalStorage: () => {
@@ -2399,6 +2526,7 @@ export const useFinance = create<Store>()(
         inboxItems: s.inboxItems || [],
         crmEnvios: s.crmEnvios || [],
         codigosRecibo: s.codigosRecibo || [],
+        documentosAluno: s.documentosAluno || [],
       }),
     },
   ),

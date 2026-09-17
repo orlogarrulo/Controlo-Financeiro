@@ -244,6 +244,68 @@ export type CodigoRecibo = {
   lastPrintedAt?: string;
 };
 
+/**
+ * Arquivo do aluno — fonte de verdade de faturas e recibos emitidos.
+ * Compatível com faturasPropina (propina) e codigosRecibo (verificação).
+ *
+ * Fluxo de estados:
+ *   emitido → por_enviar → enviado → confirmado → arquivado
+ * (recibo pode nascer já "emitido" após pagamento, sem passar por cobrança)
+ */
+export type DocumentoAlunoTipo = "fatura" | "recibo";
+
+export type DocumentoAlunoModelo =
+  | "propina_mes"
+  | "liquidacao_matricula"
+  | "meio_ano"
+  | "atl_explicacao"
+  | "atl_actividades"
+  | "secretaria"
+  | "outro";
+
+export type DocumentoAlunoEstado =
+  | "emitido"
+  | "por_enviar"
+  | "enviado"
+  | "confirmado"
+  | "arquivado";
+
+export type DocumentoLinha = {
+  key: string;
+  label: string;
+  value: number;
+  on?: boolean;
+};
+
+export type DocumentoAluno = {
+  id: string;
+  tipo: DocumentoAlunoTipo;
+  modelo: DocumentoAlunoModelo;
+  /** Ex.: PROP-2026-11-014 · REC-EF001-2026-11 · EF/012 */
+  numero: string;
+  alunoId: string;
+  alunoNome: string;
+  /** YYYY-MM — propina / referência temporal */
+  mesKey?: string;
+  mesRef?: string;
+  valor: number;
+  linhas: DocumentoLinha[];
+  estado: DocumentoAlunoEstado;
+  /** Recibo gerado a partir desta fatura */
+  faturaId?: string;
+  faturaNumero?: string;
+  /** Código anti-falsificação (só recibos) — alinhado a CodigoRecibo.codigo */
+  codigoVerificacao?: string;
+  emitidoEm: string;
+  /** Data de pagamento (recibo ou fatura marcada paga) */
+  pagoEm?: string;
+  enviadoEm?: string;
+  confirmadoEm?: string;
+  arquivadoEm?: string;
+  criadoPor?: string;
+  notas?: string;
+};
+
 export type Mensalidade = {
   id: string;
   nome: string;

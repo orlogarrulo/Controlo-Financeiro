@@ -375,6 +375,8 @@ function CrmPage() {
   const mensalidades = useFinance((s) => s.mensalidades) || [];
   const crmEnvios = useFinance((s) => s.crmEnvios) || [];
   const codigosRecibo = useFinance((s) => s.codigosRecibo) || [];
+  const documentosAluno = useFinance((s) => s.documentosAluno) || [];
+  const updateDocumentoAluno = useFinance((s) => s.updateDocumentoAluno);
   const findCodigoRecibo = useFinance((s) => s.findCodigoRecibo);
   const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
   const findCodigoReciboAlunoMes = useFinance((s) => s.findCodigoReciboAlunoMes);
@@ -400,7 +402,7 @@ function CrmPage() {
   }, [syncPropinasFromMatriculas]);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filtro, setFiltro] = useState<"todos" | "enviados" | "por_enviar" | "ja_pagos">("todos");
+  const [filtro, setFiltro] = useState<"todos" | "enviados" | "por_enviar" | "ja_pagos" | "docs_arquivo">("todos");
   const [draft, setDraft] = useState<SendDraft | null>(null);
   const [viewFatura, setViewFatura] = useState<Row | null>(null);
   const [verifyCodigo, setVerifyCodigo] = useState("");
@@ -452,24 +454,42 @@ function CrmPage() {
     return list;
   }, [alunos, faturas, crmEnvios, mesKey, mensalidades]);
 
+  const alunoIdsDocsPorEnviar = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of documentosAluno as { alunoId?: string; estado?: string; tipo?: string }[]) {
+      if (d.tipo === "fatura" && (d.estado === "por_enviar" || d.estado === "emitido")) {
+        if (d.alunoId) set.add(d.alunoId);
+      }
+    }
+    return set;
+  }, [documentosAluno]);
+
   const filtered = useMemo(() => {
     let list = rows;
     if (filtro === "enviados") list = list.filter((r) => r.enviado);
-    // Por enviar = ainda não enviado E ainda não liquidado na matrícula
-    if (filtro === "por_enviar") list = list.filter((r) => !r.enviado && !r.jaPagoNaMatricula);
+    // Por enviar = propina por cobrar OU documentos do Arquivo pendentes
+    if (filtro === "por_enviar") {
+      list = list.filter(
+        (r) =>
+          (!r.enviado && !r.jaPagoNaMatricula) ||
+          alunoIdsDocsPorEnviar.has(r.aluno.id),
+      );
+    }
+    if (filtro === "docs_arquivo") {
+      list = list.filter((r) => alunoIdsDocsPorEnviar.has(r.aluno.id));
+    }
     if (filtro === "ja_pagos") list = list.filter((r) => r.jaPagoNaMatricula);
     const qq = q.trim();
     if (qq) {
       list = list.filter((r) => {
         const a = r.aluno;
-        // "cidade" / "campus" → todos os Campus Cidade
         if (alunoMatchesQuery(a, qq)) return true;
         const blob = `${a.encarregado || ""} ${a.email || ""} ${a.telefone || ""}`.toLowerCase();
         return blob.includes(qq.toLowerCase());
       });
     }
     return list;
-  }, [rows, filtro, q]);
+  }, [rows, filtro, q, alunoIdsDocsPorEnviar]);
 
   const stats = useMemo(() => {
     const enviados = rows.filter((r) => r.enviado).length;
@@ -565,6 +585,24 @@ function CrmPage() {
       criadoPor: active,
       confirmado: false,
     });
+    // Marcar documentos do Arquivo deste aluno como enviados
+    try {
+      for (const d of documentosAluno as { id?: string; alunoId?: string; estado?: string; tipo?: string }[]) {
+        if (
+          d.alunoId === a.id &&
+          d.tipo === "fatura" &&
+          (d.estado === "por_enviar" || d.estado === "emitido") &&
+          d.id
+        ) {
+          updateDocumentoAluno?.(d.id, {
+            estado: "enviado",
+            enviadoEm: new Date().toISOString(),
+          });
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     setDraft(null);
     toast.success(
       canal === "email"
@@ -1163,8 +1201,9 @@ Cordiais cumprimentos,
       <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-4">
         <p className="text-sm font-medium">Verificar código de recibo</p>
         <p className="mt-1 text-xs text-[var(--color-muted)]">
-          Cada recibo emitido em Matrículas leva um código único (ex.: RC-202610-K7M2-41).
-          Introduza o código para confirmar autenticidade e ver aluno / mês / valor.
+          Cada recibo emitido em Matrículas ou no ZIP do CRM leva um código único (ex.:
+          RC-202610-K7M2-41). Copie o código do PDF exactamente; a pesquisa ignora hífens e
+          maiúsculas.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <div className="min-w-[200px] flex-1 space-y-1">
@@ -1176,23 +1215,61 @@ Cordiais cumprimentos,
                 setVerifyCodigo(e.target.value);
                 setVerifyResult(null);
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (document.getElementById("btn-verify-codigo") as HTMLButtonElement | null)?.click();
+                }
+              }}
               placeholder="RC-202610-XXXX-00"
               className="font-mono uppercase"
             />
           </div>
           <Button
+            id="btn-verify-codigo"
             size="sm"
             onClick={() => {
-              const found = findCodigoRecibo?.(verifyCodigo.trim());
-              if (!found) {
-                setVerifyResult("Código não encontrado — recibo inválido ou ainda não emitido neste sistema.");
+              const input = verifyCodigo.trim();
+              if (!input) {
+                setVerifyResult("Introduza um código (ex.: RC-202610-K7M2-41).");
                 return;
               }
-              setVerifyResult(
-                `Válido · ${found.alunoNome} (${found.alunoId}) · ${found.mesKey} · ${formatKz(found.valor)}` +
-                  (found.rubricas ? ` · ${found.rubricas}` : "") +
-                  ` · emitido ${formatDate(found.emitidoEm.slice(0, 10))}`,
-              );
+              const found = findCodigoRecibo?.(input);
+              if (found) {
+                setVerifyResult(
+                  `Válido · ${found.alunoNome} (${found.alunoId}) · ${found.mesKey} · ${formatKz(found.valor)}` +
+                    (found.rubricas ? ` · ${found.rubricas}` : "") +
+                    ` · emitido ${formatDate((found.emitidoEm || "").slice(0, 10))}` +
+                    (found.vias && found.vias > 1 ? ` · ${found.vias}.ª via` : ""),
+                );
+                return;
+              }
+              // Sugestões próximas (últimos caracteres)
+              const compact = (s: string) => s.replace(/[\s\-_.]/g, "").toUpperCase();
+              const want = compact(input);
+              const lista = (codigosRecibo as { codigo?: string; alunoNome?: string; alunoId?: string }[]) || [];
+              const parecidos = lista
+                .filter((r) => {
+                  const c = compact(r.codigo || "");
+                  if (!c || want.length < 4) return false;
+                  return (
+                    c.includes(want.slice(-6)) ||
+                    want.includes(c.slice(-6)) ||
+                    c.slice(0, 8) === want.slice(0, 8)
+                  );
+                })
+                .slice(0, 5);
+              if (parecidos.length) {
+                setVerifyResult(
+                  `Código não encontrado exactamente. Parecidos: ${parecidos
+                    .map((p) => `${p.codigo} (${p.alunoNome || p.alunoId})`)
+                    .join(" · ")}`,
+                );
+              } else {
+                setVerifyResult(
+                  `Código não encontrado — recibo inválido, emitido noutro dispositivo sem sincronizar, ou ainda não emitido. Há ${lista.length} código(s) registado(s).`,
+                );
+              }
             }}
           >
             Verificar
@@ -1210,11 +1287,40 @@ Cordiais cumprimentos,
           </p>
         ) : null}
         {(codigosRecibo as { codigo: string }[]).length > 0 ? (
-          <p className="mt-2 text-xs text-[var(--color-muted)]">
-            {(codigosRecibo as unknown[]).length} código(s) registado(s) neste dispositivo /
-            nuvem.
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-[var(--color-muted)] hover:text-[var(--color-ink)]">
+              {(codigosRecibo as unknown[]).length} código(s) registado(s) neste dispositivo /
+              nuvem — clicar para listar
+            </summary>
+            <ul className="mt-2 max-h-40 overflow-y-auto rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-2 text-[11px] font-mono">
+              {([...((codigosRecibo as { codigo?: string; alunoNome?: string; alunoId?: string; mesKey?: string; valor?: number }[]) || [])]
+                .sort((a, b) => (b.mesKey || "").localeCompare(a.mesKey || "") || (a.alunoNome || "").localeCompare(b.alunoNome || ""))
+                .map((r) => (
+                  <li key={r.codigo || r.alunoId}>
+                    <button
+                      type="button"
+                      className="w-full text-left hover:bg-[var(--color-card)] px-1 py-0.5 rounded"
+                      onClick={() => {
+                        setVerifyCodigo(r.codigo || "");
+                        setVerifyResult(null);
+                      }}
+                    >
+                      <span className="font-semibold">{r.codigo}</span>
+                      {" · "}
+                      {r.alunoNome || r.alunoId}
+                      {r.mesKey ? ` · ${r.mesKey}` : ""}
+                      {r.valor != null ? ` · ${formatKz(r.valor)}` : ""}
+                    </button>
+                  </li>
+                )))}
+            </ul>
+          </details>
+        ) : (
+          <p className="mt-2 text-xs text-amber-700">
+            Ainda não há códigos registados. Abra um recibo em Matrículas (botão Recibo) ou
+            gere o ZIP de recibos no CRM para os criar.
           </p>
-        ) : null}
+        )}
       </div>
 
       <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-card)] p-3 text-xs text-[var(--color-muted)] sm:p-4">
@@ -1281,6 +1387,7 @@ Cordiais cumprimentos,
             [
               ["todos", "Todos"],
               ["por_enviar", "Por enviar"],
+              ["docs_arquivo", "Docs Arquivo"],
               ["ja_pagos", "Já pagos (matrícula)"],
               ["enviados", "Enviados"],
             ] as const

@@ -1527,6 +1527,7 @@ function Alunos() {
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
   const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
   const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
+  const addDocumentoAluno = useFinance((s) => s.addDocumentoAluno);
   const findCodigoReciboAlunoMes = useFinance((s) => s.findCodigoReciboAlunoMes);
   const incrementCodigoReciboVia = useFinance((s) => s.incrementCodigoReciboVia);
   const faturasPropina = useFinance((s) => s.faturasPropina) || EMPTY_FATURAS;
@@ -2878,10 +2879,28 @@ function Alunos() {
         viaNum = 1;
       }
     } catch {
-      /* ignore */
+      /* ignore — fallback abaixo */
     }
     if (!codigoVerificacao) {
-      codigoVerificacao = `RC-${mesKey}-${(a.id || "X").replace(/[^A-Za-z0-9-]/g, "")}`.slice(0, 28);
+      // Fallback estável + SEMPRE registar no store (senão a verificação no CRM falha)
+      const mesCompact = (mesKey || "").replace(/-/g, "").slice(0, 6) || "000000";
+      const idPart = (a.id || "X").replace(/[^A-Za-z0-9]/g, "").slice(0, 6).toUpperCase() || "X";
+      codigoVerificacao = `RC-${mesCompact}-${idPart}-00`;
+      try {
+        if (typeof addCodigoRecibo === "function") {
+          const reg = addCodigoRecibo({
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesKey,
+            valor: total || 0,
+            rubricas,
+            codigo: codigoVerificacao,
+          });
+          codigoVerificacao = reg.codigo || codigoVerificacao;
+        }
+      } catch {
+        /* ignore */
+      }
     }
     const viaLabel =
       viaNum <= 1 ? "1.ª via" : viaNum === 2 ? "2.ª via" : viaNum === 3 ? "3.ª via" : `${viaNum}.ª via`;
@@ -3062,6 +3081,33 @@ function Alunos() {
           });
         }
       }
+      // Arquivo do aluno — histórico + fila CRM (por_enviar para faturas)
+      try {
+        const linhasDoc = (invoicePreview.linhas || [])
+          .filter((l) => l.on && l.value > 0)
+          .map((l) => ({
+            key: l.key,
+            label: l.label,
+            value: l.value,
+            on: true,
+          }));
+        addDocumentoAluno?.({
+          tipo: isRecibo ? "recibo" : "fatura",
+          modelo: isRecibo ? "liquidacao_matricula" : "propina_mes",
+          numero,
+          alunoId: a.id,
+          alunoNome: a.nome,
+          mesKey,
+          mesRef,
+          valor,
+          linhas: linhasDoc,
+          estado: isRecibo ? "emitido" : "por_enviar",
+          codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+          criadoPor: activeOperator,
+        });
+      } catch {
+        /* ignore */
+      }
       if (result.delivery === "shared") {
         toast.success("Escolha WhatsApp, Gmail ou outra app");
       } else if (isMobileDevice()) {
@@ -3162,6 +3208,30 @@ function Alunos() {
           } catch {
             /* ignore */
           }
+        }
+        try {
+          addDocumentoAluno?.({
+            tipo: "fatura",
+            modelo: "propina_mes",
+            numero,
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesKey,
+            mesRef,
+            valor: valorFat,
+            linhas: [
+              {
+                key: "propina",
+                label: `Propina ${mesRef}`,
+                value: valorFat,
+                on: true,
+              },
+            ],
+            estado: "por_enviar",
+            criadoPor: activeOperator,
+          });
+        } catch {
+          /* ignore */
         }
       }
 
