@@ -674,31 +674,38 @@ function CrmPage() {
     }
   }
 
-  async function descarregarFaturasPasta() {
+  async function descarregarFaturasPasta(opts?: { soEmAtraso?: boolean }) {
+    const soEmAtraso = opts?.soEmAtraso === true;
     const base = selected.size
       ? filtered.filter((r) => selected.has(r.aluno.id))
       : filtered;
-    // Só faturas de cobrança: mensalidade deste mês ainda não paga
-    // (matrícula/propinas) e sem recibo já emitido no CRM.
-    const lista = base.filter((r) => {
-      if (r.jaPagoNaMatricula || r.valorPagoMes > 0) return false;
-      const rec = findCodigoReciboAlunoMes?.(r.aluno.id, mesKey);
-      if (rec) return false;
-      return true;
-    });
+    // Por defeito: todas as linhas visíveis / seleccionadas (filtro da lista).
+    // soEmAtraso: exclui já pagos na matrícula e quem já tem código de recibo do mês.
+    const lista = soEmAtraso
+      ? base.filter((r) => {
+          if (r.jaPagoNaMatricula || r.valorPagoMes > 0) return false;
+          const rec = findCodigoReciboAlunoMes?.(r.aluno.id, mesKey);
+          if (rec) return false;
+          return true;
+        })
+      : base;
     const omitidos = base.length - lista.length;
     if (!lista.length) {
       toast.message(
-        omitidos
-          ? "Nenhuma fatura a gerar: a mensalidade deste mês já está paga (recibo no CRM ou liquidação na matrícula)."
-          : "Nenhum aluno na lista filtrada.",
+        soEmAtraso && omitidos
+          ? "Nenhuma fatura em atraso: mensalidade já paga ou recibo registado. Use «Pasta de faturas (ZIP)» para gerar todas as visíveis."
+          : "Nenhum aluno na lista. Ajuste o filtro ou seleccione alunos.",
       );
       return;
     }
     toast.message(
-      `A gerar ${lista.length} fatura(s) de mensalidade em atraso` +
-        (omitidos ? ` · ${omitidos} já pagos excluídos` : "") +
-        "…",
+      soEmAtraso
+        ? `A gerar ${lista.length} fatura(s) em atraso` +
+            (omitidos ? ` · ${omitidos} já pagos excluídos` : "") +
+            "…"
+        : `A gerar ${lista.length} fatura(s)` +
+            (selected.size ? " (seleccionados)" : " (lista filtrada)") +
+            "…",
     );
     try {
       const w = window as unknown as {
@@ -1335,7 +1342,7 @@ Cordiais cumprimentos,
         </ol>
         <p className="mt-2">
           <strong>Anexo no Outlook (100 alunos):</strong> use{" "}
-          <strong>Pasta de faturas (ZIP)</strong> — descarrega um ZIP com um ficheiro por aluno
+          <strong>Pasta de faturas (ZIP)</strong> — todas as faturas da lista filtrada ou seleccionadas; «Só em atraso» exclui já pagos
           (nome = n.º + nome). Extraia para ex.{" "}
           <code>Documentos\Faturas-2026-10</code>. No Outlook, ao anexar, escolha{" "}
           <em>Procurar Neste PC</em> e abra essa pasta: as faturas aparecem por nome. O browser não
@@ -1413,7 +1420,16 @@ Cordiais cumprimentos,
         </Button>
         <Button size="sm" variant="outline" onClick={() => void descarregarFaturasPasta()}>
           <FolderDown className="mr-1 size-4" />
-          Pasta de faturas em atraso (ZIP)
+          Pasta de faturas (ZIP)
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void descarregarFaturasPasta({ soEmAtraso: true })}
+          title="Só alunos com mensalidade deste mês ainda não paga"
+        >
+          <FolderDown className="mr-1 size-4" />
+          Só em atraso (ZIP)
         </Button>
         <Button size="sm" variant="outline" onClick={() => void descarregarRecibosPasta()}>
           <Receipt className="mr-1 size-4" />
