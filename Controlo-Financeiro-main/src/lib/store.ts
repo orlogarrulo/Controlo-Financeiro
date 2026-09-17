@@ -2234,14 +2234,22 @@ export const useFinance = create<Store>()(
       },
       addCodigoRecibo: (c) => {
         // Qualquer colaborador pode registar código ao imprimir recibo (não é edição financeira).
-        const mes =
-          (c.mesKey || "").replace(/-/g, "").slice(0, 6) ||
-          new Date().toISOString().slice(0, 7).replace(/-/g, "");
-        const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+        // Formato estável: RC-YYYYMM-XXXX-NN (só A-Z e 0-9 — legível em PDF/OCR).
+        let mes = (c.mesKey || "").replace(/\D/g, "").slice(0, 6);
+        if (mes.length < 6) {
+          mes = new Date().toISOString().slice(0, 7).replace(/-/g, "");
+        }
+        const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem I,O,0,1 (confusão visual)
+        let rand = "";
+        for (let i = 0; i < 4; i++) {
+          rand += alphabet[Math.floor(Math.random() * alphabet.length)];
+        }
         const chk = String(
-          (rand.charCodeAt(0) + rand.charCodeAt(1) + (c.valor || 0)) % 100,
+          (rand.charCodeAt(0) + rand.charCodeAt(1) + Math.round(c.valor || 0)) % 100,
         ).padStart(2, "0");
-        const codigo = (c.codigo || `RC-${mes}-${rand}-${chk}`).trim().toUpperCase();
+        let codigo = (c.codigo || `RC-${mes}-${rand}-${chk}`).trim().toUpperCase();
+        // Sanitizar códigos externos / legados
+        codigo = codigo.replace(/[^A-Z0-9\-]/g, "");
         const existing = (get().codigosRecibo || []).find(
           (r) => (r.codigo || "").toUpperCase() === codigo,
         );
@@ -2352,8 +2360,10 @@ export const useFinance = create<Store>()(
         const mes =
           (fat.mesKey || "").replace(/-/g, "").slice(0, 6) ||
           new Date().toISOString().slice(0, 7).replace(/-/g, "");
-        const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-        const codigo = `RC-${mes}-${rand}-${String((rand.charCodeAt(0) + (fat.valor || 0)) % 100).padStart(2, "0")}`;
+        const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let rand = "";
+        for (let i = 0; i < 4; i++) rand += alphabet[Math.floor(Math.random() * alphabet.length)];
+        const codigo = `RC-${mes}-${rand}-${String((rand.charCodeAt(0) + Math.round(fat.valor || 0)) % 100).padStart(2, "0")}`;
         // Registar código de verificação
         get().addCodigoRecibo({
           alunoId: fat.alunoId,
