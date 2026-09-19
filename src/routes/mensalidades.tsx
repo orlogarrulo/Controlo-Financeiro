@@ -19,7 +19,7 @@ import {
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatKz } from "@/lib/format";
 import {
-  documentoOficialFromAluno,
+  documentoReciboComCodigo,
   loadContacto,
 } from "@/lib/documento-matricula";
 import { htmlToPdfBlob } from "@/lib/pdf-export";
@@ -161,13 +161,13 @@ function Mensalidades() {
       return map[mes] || `2026-${mes}`;
     })();
     try {
-      const doc = documentoOficialFromAluno(aluno, {
+      const doc = documentoReciboComCodigo(aluno, {
         modo: "recibo",
         ambito: "mensalidade",
         mesLetivo: mes,
         mesRef: mesLabel,
         mesKey,
-        numero: `PROP-${id}-${mes.toUpperCase()}`,
+        numero: `REC-PROP-${id}-${mes.toUpperCase()}`,
         pagoMes: valor,
         contacto: loadContacto(),
       });
@@ -177,7 +177,9 @@ function Mensalidades() {
       });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
-      toast.success(`Recibo de propina (${mesLabel}) · ${formatKz(valor)}`);
+      toast.success(
+        `Recibo de propina (${mesLabel}) · ${formatKz(valor)} · ${doc.codigoVerificacao}`,
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar recibo");
     }

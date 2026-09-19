@@ -51,6 +51,7 @@ import {
   linhaPropinaMensal,
   totalLinhas as totalLinhasDoc,
   buildInvoiceHtml as buildInvoiceHtmlDoc,
+  garantirCodigoReciboAluno,
 } from "@/lib/documento-matricula";
 
 const EMPTY_FATURAS: FaturaPropina[] = [];
@@ -2865,56 +2866,20 @@ function Alunos() {
     const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
     const rubricas = linhas.filter((l) => l.on && l.value > 0).map((l) => l.label).join(", ");
     let codigoVerificacao = "";
-    let viaNum = 1;
+    let viaLabel = "1.ª via";
     try {
-      const existing =
-        typeof findCodigoReciboAlunoMes === "function"
-          ? findCodigoReciboAlunoMes(a.id, mesKey)
-          : undefined;
-      if (existing) {
-        codigoVerificacao = existing.codigo;
-        const bumped =
-          typeof incrementCodigoReciboVia === "function"
-            ? incrementCodigoReciboVia(existing.id)
-            : undefined;
-        viaNum = bumped?.vias || (existing.vias || 1) + 1;
-      } else if (typeof addCodigoRecibo === "function") {
-        const reg = addCodigoRecibo({
-          alunoId: a.id,
-          alunoNome: a.nome,
-          mesKey,
-          valor: total || 0,
-          rubricas,
-        });
-        codigoVerificacao = reg.codigo;
-        viaNum = 1;
-      }
+      const stamp = garantirCodigoReciboAluno({
+        alunoId: a.id,
+        alunoNome: a.nome,
+        mesKey,
+        valor: total || 0,
+        rubricas,
+      });
+      codigoVerificacao = stamp.codigo;
+      viaLabel = stamp.viaLabel;
     } catch {
-      /* ignore — fallback abaixo */
+      /* ignore */
     }
-    if (!codigoVerificacao) {
-      // Fallback estável + SEMPRE registar no store (senão a verificação no CRM falha)
-      const mesCompact = (mesKey || "").replace(/-/g, "").slice(0, 6) || "000000";
-      const idPart = (a.id || "X").replace(/[^A-Za-z0-9]/g, "").slice(0, 6).toUpperCase() || "X";
-      codigoVerificacao = `RC-${mesCompact}-${idPart}-00`;
-      try {
-        if (typeof addCodigoRecibo === "function") {
-          const reg = addCodigoRecibo({
-            alunoId: a.id,
-            alunoNome: a.nome,
-            mesKey,
-            valor: total || 0,
-            rubricas,
-            codigo: codigoVerificacao,
-          });
-          codigoVerificacao = reg.codigo || codigoVerificacao;
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    const viaLabel =
-      viaNum <= 1 ? "1.ª via" : viaNum === 2 ? "2.ª via" : viaNum === 3 ? "3.ª via" : `${viaNum}.ª via`;
     const html = buildInvoiceHtml({
       a,
       numero,

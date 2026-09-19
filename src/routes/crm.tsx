@@ -40,6 +40,7 @@ import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Aluno, CrmEnvio, FaturaPropina } from "@/data/types";
 import {
   documentoOficialFromAluno,
+  documentoReciboComCodigo,
   loadContacto,
   mesesPropinaFromAluno,
 } from "@/lib/documento-matricula";
@@ -633,18 +634,27 @@ function CrmPage() {
 
   function imprimirFaturaPreview(row: Row, modoDoc: "fatura" | "recibo" = "fatura") {
     const isRecibo = modoDoc === "recibo";
-    const doc = documentoOficialFromAluno(row.aluno, {
-      modo: modoDoc,
-      mesLetivo: mesKeyToLetivo(mesKey),
-      mesRef: mesLabel(mesKey),
-      mesKey,
-      numero: isRecibo
-        ? `PROP-${row.aluno.id}-${mesKeyToLetivo(mesKey).toUpperCase()}`
-        : row.fatura?.numero || `REF-${row.aluno.id}`,
-      pagoMes: row.valorPagoMes,
-      ambito: "mensalidade",
-      contacto: loadContacto(),
-    });
+    const doc = isRecibo
+      ? documentoReciboComCodigo(row.aluno, {
+          modo: "recibo",
+          mesLetivo: mesKeyToLetivo(mesKey),
+          mesRef: mesLabel(mesKey),
+          mesKey,
+          numero: `REC-PROP-${row.aluno.id}-${mesKeyToLetivo(mesKey).toUpperCase()}`,
+          pagoMes: row.valorPagoMes,
+          ambito: "mensalidade",
+          contacto: loadContacto(),
+        })
+      : documentoOficialFromAluno(row.aluno, {
+          modo: "fatura",
+          mesLetivo: mesKeyToLetivo(mesKey),
+          mesRef: mesLabel(mesKey),
+          mesKey,
+          numero: row.fatura?.numero || `REF-${row.aluno.id}`,
+          pagoMes: row.valorPagoMes,
+          ambito: "mensalidade",
+          contacto: loadContacto(),
+        });
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${isRecibo ? "Recibo" : "Fatura"} ${row.aluno.id}</title></head><body style="margin:0">${doc.html}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) {

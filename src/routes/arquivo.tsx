@@ -43,7 +43,11 @@ import type {
 } from "@/data/types";
 import { formatDate, formatKz } from "@/lib/format";
 import { htmlToPdfBlob } from "@/lib/pdf-export";
-import { documentoOficialFromAluno, loadContacto } from "@/lib/documento-matricula";
+import {
+  documentoOficialFromAluno,
+  documentoReciboComCodigo,
+  loadContacto,
+} from "@/lib/documento-matricula";
 import { EmitirDocumentoAluno } from "@/components/emitir-documento-aluno";
 
 export const Route = createFileRoute("/arquivo")({ component: ArquivoPage });
@@ -212,18 +216,32 @@ function ArquivoPage() {
         "01": "jan", "02": "fev", "03": "mar", "04": "abr", "05": "mai", "06": "jun",
       };
       const mm = (doc.mesKey || "").split("-")[1] || "";
-      const { html } = documentoOficialFromAluno(aluno, {
-        modo: doc.tipo === "recibo" ? "recibo" : "fatura",
-        mesLetivo: mesMap[mm] || "out",
-        mesRef: doc.mesRef || doc.mesKey || "",
-        mesKey: doc.mesKey,
-        numero: doc.numero,
-        pagoMes: doc.tipo === "recibo" ? doc.valor : 0,
-        ambito: ambito as "mensalidade" | "liquidacao",
-        liquidacaoCompleta: ambito === "liquidacao",
-        contacto: loadContacto(),
-        codigoVerificacao: doc.codigoVerificacao,
-      });
+      const stamped =
+        doc.tipo === "recibo"
+          ? documentoReciboComCodigo(aluno, {
+              modo: "recibo",
+              mesLetivo: mesMap[mm] || "out",
+              mesRef: doc.mesRef || doc.mesKey || "",
+              mesKey: doc.mesKey,
+              numero: doc.numero,
+              pagoMes: doc.valor,
+              ambito: ambito as "mensalidade" | "liquidacao",
+              liquidacaoCompleta: ambito === "liquidacao",
+              contacto: loadContacto(),
+              codigoVerificacao: doc.codigoVerificacao,
+            })
+          : documentoOficialFromAluno(aluno, {
+              modo: "fatura",
+              mesLetivo: mesMap[mm] || "out",
+              mesRef: doc.mesRef || doc.mesKey || "",
+              mesKey: doc.mesKey,
+              numero: doc.numero,
+              pagoMes: 0,
+              ambito: ambito as "mensalidade" | "liquidacao",
+              liquidacaoCompleta: ambito === "liquidacao",
+              contacto: loadContacto(),
+            });
+      const html = stamped.html;
       const safe = (doc.alunoNome || doc.alunoId)
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")

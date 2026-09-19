@@ -7,7 +7,7 @@ import { MESES_LABEL } from "@/data/types";
 import { nomeComSufixoCampus } from "@/lib/aluno-display";
 import { formatKz } from "@/lib/format";
 import { escolaLogoSrc } from "@/lib/logo-escola";
-import { getSeed } from "@/lib/store";
+import { getSeed, useFinance } from "@/lib/store";
 
 export type EscolaContacto = {
   morada: string;
@@ -349,6 +349,113 @@ export function documentoOficialFromAluno(
     viaLabel: opts?.viaLabel,
   });
   return { html, linhas, valor, mesesProp };
+}
+
+function viaLabelFromCount(vias: number): string {
+  if (vias <= 1) return "1.ª via";
+  if (vias === 2) return "2.ª via";
+  if (vias === 3) return "3.ª via";
+  return `${vias}.ª via`;
+}
+
+/**
+ * Garante código RC-YYYYMM-XXXX-NN registado no store (reutiliza se já existir no mesmo aluno+mês).
+ * Usar em TODOS os recibos de alunos (Matrículas, Mensalidades, CRM, Arquivo).
+ */
+export function garantirCodigoReciboAluno(opts: {
+  alunoId: string;
+  alunoNome: string;
+  mesKey: string;
+  valor: number;
+  rubricas?: string;
+}): { codigo: string; viaLabel: string; vias: number } {
+  const s = useFinance.getState();
+  const existing =
+    typeof s.findCodigoReciboAlunoMes === "function"
+      ? s.findCodigoReciboAlunoMes(opts.alunoId, opts.mesKey)
+      : undefined;
+  if (existing?.codigo) {
+    const bumped =
+      typeof s.incrementCodigoReciboVia === "function"
+        ? s.incrementCodigoReciboVia(existing.id)
+        : undefined;
+    const vias = bumped?.vias || (existing.vias || 1) + 1;
+    return { codigo: existing.codigo, viaLabel: viaLabelFromCount(vias), vias };
+  }
+  const reg = s.addCodigoRecibo({
+    alunoId: opts.alunoId,
+    alunoNome: opts.alunoNome,
+    mesKey: opts.mesKey,
+    valor: opts.valor || 0,
+    rubricas: opts.rubricas,
+  });
+  return { codigo: reg.codigo, viaLabel: "1.ª via", vias: 1 };
+}
+
+/** Recibo oficial COM código de verificação (padronizado). */
+export function documentoReciboComCodigo(
+  a: Aluno,
+  opts?: Parameters<typeof documentoOficialFromAluno>[1],
+): {
+  html: string;
+  linhas: LinhaFat[];
+  valor: number;
+  mesesProp: number;
+  codigoVerificacao: string;
+  viaLabel: string;
+} {
+  const base = documentoOficialFromAluno(a, { ...opts, modo: "recibo" });
+  const mesKey =
+    opts?.mesKey ||
+    new Date().toISOString().slice(0, 7);
+  const rubricas = base.linhas
+    .filter((l) => l.on && l.value > 0)
+    .map((l) => l.label)
+    .join(", ");
+  const stamp = garantirCodigoReciboAluno({
+    alunoId: a.id,
+    alunoNome: a.nome,
+    mesKey,
+    valor: base.valor,
+    rubricas,
+  });
+  const stamped = documentoOficialFromAluno(a, {
+    ...opts,
+    modo: "recibo",
+    codigoVerificacao: stamp.codigo,
+    viaLabel: stamp.viaLabel,
+  });
+  try {
+    const s = useFinance.getState();
+    if (typeof s.addDocumentoAluno === "function") {
+      const numero = opts?.numero || `REC-${a.id}-${mesKey}`;
+      const ja = s.findDocumentoPorNumero?.(numero);
+      if (!ja) {
+        s.addDocumentoAluno({
+          tipo: "recibo",
+          modelo: opts?.ambito === "liquidacao" ? "liquidacao_matricula" : "propina_mes",
+          numero,
+          alunoId: a.id,
+          alunoNome: a.nome,
+          mesKey,
+          mesRef: opts?.mesRef,
+          valor: stamped.valor,
+          linhas: stamped.linhas,
+          estado: "emitido",
+          codigoVerificacao: stamp.codigo,
+          pagoEm: new Date().toISOString().slice(0, 10),
+          criadoPor: s.activeOperator,
+        });
+      }
+    }
+  } catch {
+    /* arquivo opcional */
+  }
+  return {
+    ...stamped,
+    codigoVerificacao: stamp.codigo,
+    viaLabel: stamp.viaLabel,
+  };
 }
 
 export function buildInvoiceHtml(opts: {
