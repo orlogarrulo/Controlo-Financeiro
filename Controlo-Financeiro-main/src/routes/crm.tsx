@@ -631,21 +631,24 @@ function CrmPage() {
     setViewFatura(row);
   }
 
-  function imprimirFaturaPreview(row: Row) {
+  function imprimirFaturaPreview(row: Row, modoDoc: "fatura" | "recibo" = "fatura") {
+    const isRecibo = modoDoc === "recibo";
     const doc = documentoOficialFromAluno(row.aluno, {
-      modo: "fatura",
+      modo: modoDoc,
       mesLetivo: mesKeyToLetivo(mesKey),
       mesRef: mesLabel(mesKey),
       mesKey,
-      numero: row.fatura?.numero || `REF-${row.aluno.id}`,
+      numero: isRecibo
+        ? `PROP-${row.aluno.id}-${mesKeyToLetivo(mesKey).toUpperCase()}`
+        : row.fatura?.numero || `REF-${row.aluno.id}`,
       pagoMes: row.valorPagoMes,
       ambito: "mensalidade",
       contacto: loadContacto(),
     });
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${row.fatura?.numero || row.aluno.id}</title></head><body style="margin:0">${doc.html}</body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${isRecibo ? "Recibo" : "Fatura"} ${row.aluno.id}</title></head><body style="margin:0">${doc.html}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) {
-      toast.error("Permita pop-ups para ver a fatura.");
+      toast.error("Permita pop-ups para ver o documento.");
       return;
     }
     w.document.write(html);
@@ -1612,7 +1615,7 @@ Cordiais cumprimentos,
                         <Button
                           size="sm"
                           variant="outline"
-                          title="Ver fatura / propina"
+                          title="Ver fatura e recibo da propina deste mês"
                           onClick={() => abrirVisualizacaoFatura(row)}
                         >
                           <Eye className="size-3.5" />
@@ -1925,9 +1928,16 @@ Cordiais cumprimentos,
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => imprimirFaturaPreview(viewFatura)}>
+                <Button onClick={() => imprimirFaturaPreview(viewFatura, "fatura")}>
                   <FileText className="mr-1 size-4" />
-                  Abrir documento
+                  Abrir fatura
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => imprimirFaturaPreview(viewFatura, "recibo")}
+                >
+                  <Receipt className="mr-1 size-4" />
+                  Abrir recibo
                 </Button>
                 <Button
                   variant="outline"
@@ -1938,6 +1948,16 @@ Cordiais cumprimentos,
                 >
                   <Mail className="mr-1 size-4" />
                   Enviar fatura
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setViewFatura(null);
+                    abrirRascunho(viewFatura, "email", "recibo");
+                  }}
+                >
+                  <Receipt className="mr-1 size-4" />
+                  Enviar recibo
                 </Button>
                 <Button variant="outline" asChild>
                   <Link to="/alunos">Ir a Matrículas</Link>
