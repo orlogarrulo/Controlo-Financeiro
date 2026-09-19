@@ -1,0 +1,530 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --font-display: "Fraunces", "Times New Roman", serif;
+  --font-sans: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-bg: #f3efe6;
+  --color-bg-elevated: #fbf8f1;
+  --color-surface: #fffcf6;
+  --color-ink: #1c1914;
+  --color-ink-soft: #4a453c;
+  --color-muted: #7a7368;
+  --color-faint: #a39b8e;
+  --color-line: #e4dccb;
+  --color-line-strong: #cfc4ae;
+  --color-forest: #1f5c4a;
+  --color-forest-fg: #f6f3ee;
+  --color-forest-deep: #143d32;
+  --color-forest-soft: #e4efe9;
+  --color-clay: #8b3a2a;
+  --color-clay-soft: #f4e4de;
+  --color-amber: #8a6a2a;
+  --color-amber-soft: #f3ead4;
+  --color-ring: #1f5c4a;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 28px;
+
+  --shadow-card: 0 1px 0 rgba(28, 25, 20, 0.04), 0 12px 32px -18px rgba(28, 25, 20, 0.18);
+}
+
+/* Modo escuro (acessibilidade) — sobrescreve tokens do tema */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #121714;
+  --color-bg-elevated: #1a211e;
+  --color-surface: #222a26;
+  --color-ink: #eef2ef;
+  --color-ink-soft: #c5cdc8;
+  --color-muted: #9aa59f;
+  --color-faint: #6f7b75;
+  --color-line: #2e3a35;
+  --color-line-strong: #3d4d46;
+  --color-forest: #3d9b7a;
+  --color-forest-fg: #0c1411;
+  --color-forest-deep: #a8e6cf;
+  --color-forest-soft: #1e332c;
+  --color-clay: #e07a66;
+  --color-clay-soft: #3a2420;
+  --color-amber: #e0c070;
+  --color-amber-soft: #3a3420;
+  --color-ring: #3d9b7a;
+  --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.2), 0 12px 32px -12px rgba(0, 0, 0, 0.45);
+}
+html[data-theme="dark"] body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+html[data-theme="dark"] ::selection {
+  background: #2a5c4a;
+  color: #eef2ef;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    font-family: var(--font-display);
+  }
+  p {
+    text-wrap: pretty;
+  }
+  * {
+    border-color: var(--color-line);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ——— Impressão A4 limpa (menus, filtros e botões ocultos) ——— */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm 12mm 14mm 12mm;
+  }
+
+  nav,
+  aside,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Manter cabeçalho print-only (não esconder todos os header) */
+  header:not(.print-only) {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: white !important;
+    color: #000 !important;
+    font-size: 10pt;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Conteúdo a largura total, sem sidebar */
+  .min-h-dvh,
+  .flex.min-h-dvh,
+  .flex.min-w-0.flex-1.flex-col {
+    display: block !important;
+    min-height: 0 !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-sheet {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Tabelas: não cortar linhas no meio da página */
+  table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  th,
+  td {
+    padding: 4px 6px !important;
+    border-bottom: 1px solid #ddd;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  article {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .font-display {
+    font-size: 1.15em;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  [data-sonner-toaster],
+  [data-sonner-toast] {
+    display: none !important;
+  }
+}
+
+
+/* Recibos: exactamente 1 folha A4 com 1 ou 2 meias-páginas */
+@media print {
+  .print-a4-page {
+    /* margens específicas só para recibos via @page no documento isolado */
+  }
+
+  .print-a4-page {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 3mm !important;
+    width: 100% !important;
+    max-height: 285mm !important;
+    overflow: hidden !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-a5-half {
+    flex: 0 0 auto !important;
+    height: 138mm !important;
+    max-height: 138mm !important;
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .print-a5-half + .print-a5-half {
+    margin-top: 0 !important;
+    border-top: 1px dashed #bbb;
+    padding-top: 2mm;
+  }
+
+  .print-sheet {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 3mm !important;
+    border: 1px solid #999 !important;
+    box-shadow: none !important;
+    font-size: 9pt !important;
+  }
+
+  .print-sheet img {
+    max-height: 40px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Evitar páginas em branco extra */
+  .print-a4-page::after {
+    display: none !important;
+  }
+}
+
+
+/* Visível só na impressão */
+.print-only {
+  display: none !important;
+}
+@media print {
+  .print-only {
+    display: block !important;
+  }
+  .print-only.print\:flex,
+  .print-cover {
+    display: flex !important;
+  }
+  .print-cover {
+    page-break-after: always;
+  }
+}
+
+
+/* ——— Modo captura PDF (= layout de impressão A4) ——— */
+html.pdf-export,
+html.pdf-export body {
+  background: white !important;
+  color: black !important;
+  font-size: 10pt;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+html.pdf-export nav,
+html.pdf-export aside,
+html.pdf-export header.no-print,
+html.pdf-export .no-print,
+html.pdf-export [data-sonner-toaster],
+html.pdf-export [data-sonner-toast] {
+  display: none !important;
+}
+
+html.pdf-export .print-only {
+  display: block !important;
+}
+
+html.pdf-export .print-only.print\:flex,
+html.pdf-export .print-cover,
+html.pdf-export .print-only.print-cover {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+html.pdf-export .print-cover {
+  min-height: 260mm !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  page-break-after: always;
+  break-after: page;
+  background: white !important;
+}
+
+html.pdf-export .print-cover.hidden {
+  display: flex !important;
+}
+
+html.pdf-export .print-sheet {
+  box-shadow: none !important;
+  border: 1px solid #ccc !important;
+  background: white !important;
+}
+
+html.pdf-export .print-a4-page {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3mm !important;
+  width: 210mm !important;
+  max-width: 210mm !important;
+  background: white !important;
+}
+
+html.pdf-export .print-a5-half {
+  flex: 0 0 auto !important;
+  min-height: 130mm !important;
+  overflow: hidden !important;
+  background: white !important;
+}
+
+html.pdf-export .overflow-x-auto {
+  overflow: visible !important;
+}
+
+html.pdf-export table {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html.pdf-export main {
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Área de captura isolada */
+html.pdf-export [data-pdf-root="1"] {
+  background: white !important;
+  color: black !important;
+  width: 210mm !important;
+  max-width: 210mm !important;
+  margin: 0 auto !important;
+  padding: 10mm !important;
+  box-sizing: border-box !important;
+}
+
+
+/* ——— Mobile UX ——— */
+@media (max-width: 1023px) {
+  /* Evitar zoom iOS em inputs */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Botões e campos mais fáceis de tocar */
+  button,
+  [role="button"],
+  a.inline-flex {
+    min-height: 2.5rem;
+  }
+
+  /* Tabelas: scroll horizontal claro */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .overflow-x-auto table {
+    font-size: 13px;
+  }
+
+  .overflow-x-auto th,
+  .overflow-x-auto td {
+    padding: 0.5rem 0.6rem !important;
+    white-space: nowrap;
+  }
+
+  /* Cards / diálogos */
+  [data-slot="dialog-content"],
+  [role="dialog"] {
+    max-height: min(92dvh, 920px) !important;
+    width: calc(100vw - 1rem) !important;
+    max-width: calc(100vw - 1rem) !important;
+    margin: 0.5rem !important;
+    border-radius: 1rem !important;
+  }
+
+  /* Print actions em coluna no telemóvel */
+  .no-print.flex.flex-wrap.gap-2 {
+    width: 100%;
+  }
+  .no-print.flex.flex-wrap.gap-2 > button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Filtros em coluna */
+  .mobile-main .flex.flex-wrap.gap-2 {
+    gap: 0.5rem;
+  }
+}
+
+
+/* mobile-ux-2026 — leitura e toque no telemóvel */
+@media (max-width: 1023px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .mobile-main,
+  main {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+  /* Títulos e KPIs mais legíveis */
+  h1, .font-display {
+    line-height: 1.2;
+    word-break: break-word;
+  }
+  /* Botões e controlos: área de toque ≥ 44px */
+  button,
+  [role="button"],
+  a.inline-flex {
+    min-height: 44px;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px !important; /* evita zoom iOS */
+    min-height: 44px;
+  }
+  /* Tabelas: scroll horizontal suave */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    margin-left: -4px;
+    margin-right: -4px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  table {
+    font-size: 13px;
+  }
+  th, td {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  /* Diálogos: quase ecrã inteiro no telemóvel */
+  [data-slot="dialog-content"],
+  [role="dialog"] {
+    max-width: calc(100vw - 16px) !important;
+    max-height: min(92dvh, 92vh) !important;
+    overflow-y: auto;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  /* Grupos de botões: empilhar quando necessário */
+  .flex.flex-wrap.gap-2 {
+    gap: 0.5rem;
+  }
+  .flex.flex-wrap.gap-2 > button {
+    flex: 1 1 auto;
+    min-width: min(100%, 9rem);
+  }
+  /* Cartões KPI: 2 colunas legíveis */
+  .grid.grid-cols-2 {
+    gap: 0.6rem;
+  }
+  /* Nav drawer itens maiores */
+  .fixed.inset-0 nav a,
+  .fixed.inset-0 nav button {
+    min-height: 48px;
+    font-size: 15px;
+  }
+}
+
+
+@media print {
+  /* Listas longas de recibos: não cortar por max-height do ecrã */
+  .max-h-\[min\(70vh\,720px\)\],
+  .max-h-\[70vh\] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
+
+/* Matrículas — impressão lista legível, sem corte, texto preto */
+@media print {
+  [ref], div[class*="print"] {
+    color: #000 !important;
+  }
+  .print-only {
+    color: #000 !important;
+  }
+}

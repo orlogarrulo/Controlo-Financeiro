@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { alunoMatchesQuery } from "@/lib/aluno-display";
-import { NomeAluno } from "@/components/nome-aluno";
-import { Save, Receipt } from "lucide-react";
+import { Save } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,13 +14,7 @@ import {
   useFinance,
   type EstadoPropinaMes,
 } from "@/lib/store";
-import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatKz } from "@/lib/format";
-import {
-  documentoReciboComCodigo,
-  loadContacto,
-} from "@/lib/documento-matricula";
-import { htmlToPdfBlob } from "@/lib/pdf-export";
 import { PrintActions } from "@/components/print-actions";
 import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
 
@@ -75,14 +67,10 @@ function Mensalidades() {
     }
   }, [syncPropinasFromMatriculas]);
 
-  const alunoMetaById = useMemo(() => {
-    const map = new Map<string, { familia?: string; transferidoCampusCidade?: boolean; nome?: string }>();
+  const familiaById = useMemo(() => {
+    const map = new Map<string, string>();
     for (const a of alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds)) {
-      map.set(a.id, {
-        familia: a.familia,
-        transferidoCampusCidade: a.transferidoCampusCidade,
-        nome: a.nome,
-      });
+      if (a.familia) map.set(a.id, a.familia);
     }
     return map;
   }, [alunosExtra, alunosOverrides, alunosDeletedIds]);
@@ -91,20 +79,12 @@ function Mensalidades() {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((r) => {
-      const meta = alunoMetaById.get(r.id);
-      return alunoMatchesQuery(
-        {
-          nome: r.nome || meta?.nome,
-          id: r.id,
-          turma: r.turma,
-          familia: meta?.familia,
-          obs: r.obs,
-          transferidoCampusCidade: meta?.transferidoCampusCidade,
-        },
-        needle,
-      );
+      const fam = familiaById.get(r.id) || "";
+      return `${r.nome} ${r.id} ${r.turma} ${fam} ${r.obs || ""}`
+        .toLowerCase()
+        .includes(needle);
     });
-  }, [rows, q, alunoMetaById]);
+  }, [rows, q, familiaById]);
 
   const monthTotals = MESES_LETIVOS.map((m) =>
     filtered.reduce((s, r) => s + (r.pagamentos[m] || 0), 0),
@@ -127,61 +107,6 @@ function Mensalidades() {
       else toast.error(r.message);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao sincronizar com o BAI");
-    }
-  }
-
-  /** Recibo PDF da propina de um mês (só se valor > 0). */
-  async function abrirReciboPropina(id: string, mes: string, valor: number) {
-    if (!(valor > 0)) {
-      toast.message("Introduza e confirme o valor do mês (BAI) antes de emitir o recibo.");
-      return;
-    }
-    const meta = alunoMetaById.get(id);
-    const row = rows.find((r) => r.id === id);
-    const alunoBase = {
-      id,
-      nome: row?.nome || meta?.nome || id,
-      turma: row?.turma || meta?.turma || "",
-      propina: row?.propina || 0,
-      liquido: valor,
-      recibo: "",
-      statusPag: "pago" as const,
-    };
-    // Prefer full aluno from alunosAll if available
-    const all = alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds);
-    const aluno = all.find((a) => a.id === id) || (alunoBase as import("@/data/types").Aluno);
-    const mesLabel =
-      (MESES_LABEL as Record<string, string>)[mes] || mes;
-    const mesKey = (() => {
-      const map: Record<string, string> = {
-        set: "2026-09", out: "2026-10", nov: "2026-11", dez: "2026-12",
-        jan: "2027-01", fev: "2027-02", mar: "2027-03", abr: "2027-04",
-        mai: "2027-05", jun: "2027-06",
-      };
-      return map[mes] || `2026-${mes}`;
-    })();
-    try {
-      const doc = documentoReciboComCodigo(aluno, {
-        modo: "recibo",
-        ambito: "mensalidade",
-        mesLetivo: mes,
-        mesRef: mesLabel,
-        mesKey,
-        numero: `REC-PROP-${id}-${mes.toUpperCase()}`,
-        pagoMes: valor,
-        contacto: loadContacto(),
-      });
-      const { blob } = await htmlToPdfBlob(doc.html, {
-        filename: `Recibo-Propina-${id}-${mes}.pdf`,
-        forceSinglePage: true,
-      });
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      toast.success(
-        `Recibo de propina (${mesLabel}) · ${formatKz(valor)} · ${doc.codigoVerificacao}`,
-      );
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao gerar recibo");
     }
   }
 
@@ -221,7 +146,7 @@ function Mensalidades() {
       <div ref={printRef}>
         <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
           <img
-            src={escolaLogoSrc()}
+            src="/logo-escola.jpg"
             alt=""
             className="h-16 w-16 object-contain"
             width={64}
@@ -282,17 +207,10 @@ function Mensalidades() {
                   return (
                     <tr key={r.id} className="border-t border-[var(--color-line)]">
                       <td className="px-3 py-2">
-                        <p className="font-medium">
-                          <NomeAluno
-                            aluno={{
-                              nome: r.nome,
-                              transferidoCampusCidade: alunoMetaById.get(r.id)?.transferidoCampusCidade,
-                            }}
-                          />
-                        </p>
+                        <p className="font-medium">{r.nome}</p>
                         <p className="text-xs text-[var(--color-muted)]">
                           {r.id} · {r.turma}
-                          {alunoMetaById.get(r.id)?.familia ? ` · ${alunoMetaById.get(r.id)?.familia}` : ""}
+                          {familiaById.get(r.id) ? ` · ${familiaById.get(r.id)}` : ""}
                         </p>
                       </td>
                       <td className="px-3 py-2 tabular-nums text-xs">{formatKz(r.propina)}</td>
@@ -339,37 +257,22 @@ function Mensalidades() {
                               >
                                 {lab.text}
                               </span>
-                              {val > 0 ? (
-                                <div className="flex flex-wrap gap-0.5 justify-center">
-                                  {canEdit ? (
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant={synced ? "secondary" : "default"}
-                                      className="h-7 px-1 text-[10px]"
-                                      title={
-                                        synced
-                                          ? "Já no BAI — clicar para actualizar"
-                                          : "Salvar / sincronizar no Banco BAI"
-                                      }
-                                      onClick={() => salvarBai(r.id, m)}
-                                    >
-                                      <Save className="mr-0.5 size-3" />
-                                      {synced ? "BAI ✓" : "BAI"}
-                                    </Button>
-                                  ) : null}
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 px-1 text-[10px]"
-                                    title="Emitir / ver recibo desta propina"
-                                    onClick={() => void abrirReciboPropina(r.id, m, val)}
-                                  >
-                                    <Receipt className="mr-0.5 size-3" />
-                                    Recibo
-                                  </Button>
-                                </div>
+                              {canEdit && val > 0 ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={synced ? "secondary" : "default"}
+                                  className="h-7 px-1 text-[10px]"
+                                  title={
+                                    synced
+                                      ? "Já no BAI — clicar para actualizar"
+                                      : "Salvar / sincronizar no Banco BAI"
+                                  }
+                                  onClick={() => salvarBai(r.id, m)}
+                                >
+                                  <Save className="mr-0.5 size-3" />
+                                  {synced ? "BAI ✓" : "BAI"}
+                                </Button>
                               ) : null}
                             </div>
                             <span className="hidden print:inline text-xs tabular-nums">

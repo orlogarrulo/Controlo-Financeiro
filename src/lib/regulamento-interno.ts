@@ -1,4 +1,3 @@
-import { escolaLogoSrc } from "@/lib/logo-escola";
 /**
  * Règlement intérieur / Regulamento interno — École Consulaire du Congo (Brazzaville) de Luanda
  * Versions FR et PT pour remise / signature des parents.
@@ -97,7 +96,7 @@ function headBlock(
   lang: RegulamentoLang,
 ): string {
   const logo =
-    escolaLogoSrc();
+    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
   const nome = esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda");
   return `
   <div class="head">

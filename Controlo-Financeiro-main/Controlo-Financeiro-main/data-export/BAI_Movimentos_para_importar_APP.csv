@@ -1,0 +1,63 @@
+Data;Banco;Descrição;Entrada;Saída;Saldo;Observações
+24-07-2026;Juros vencidos;Juros vencidos;;9,45;68102,80;
+24-07-2026;Imposto s/Juros;Imposto sobre juros;;0,02;68102,78;
+24-07-2026;Comissao_gest_M;Comissão de gestão mensal;;3200,00;64902,78;
+24-07-2026;IVA sobre comis;IVA sobre comissão;;448,00;64454,78;
+27-07-2026;Fecho TPA 00004;Fecho de terminal de pagamento (TPA);564000,00;;628454,78;Matrícula(s)
+27-07-2026;Comissao-Fecho;Comissão de fecho TPA;;6429,60;622025,18;
+27-07-2026;Fecho TPA 00004;Fecho de terminal de pagamento (TPA);220000,00;;842025,18;Matrícula(s)
+27-07-2026;Comissao-Fecho;Comissão de fecho TPA;;2508,00;839517,18;
+30-07-2026;Transf. pelo NI;Transferência recebida (NI);350000,00;;1189517,18;Matrícula(s)
+31-07-2026;Comissao_gest_M;Comissão de gestão mensal;;4500,00;1185017,18;
+31-07-2026;IVA sobre comis;IVA sobre comissão;;630,00;1184387,18;
+31-07-2026;Comissao Alug T;Comissão aluguer TPA;;10000,00;1174387,18;
+31-07-2026;IVA Comissao Al;IVA comissão aluguer;;1400,00;1172987,18;
+31-07-2026;Imposto de Selo;Imposto de selo;;8,05;1172979,13;
+31-07-2026;Juros devedores;Juros devedores;;207,93;1172771,20;
+31-07-2026;Imposto de Selo;Imposto de selo;;0,21;1172770,99;
+02-08-2026;Transf. pelo NI;Transferência recebida (NI);360000,00;;1532770,99;Matrícula(s)
+03-08-2026;TRF KWiK de MAN;Transferência KWiK recebida;180000,00;;1712770,99;Matrícula(s)
+06-08-2026;Fecho TPA 00004;Fecho de terminal de pagamento (TPA);150000,00;;1862770,99;Matrícula(s)
+06-08-2026;Comissao-Fecho;Comissão de fecho TPA;;1710,00;1861060,99;
+06-08-2026;ATM-MCX504808*2;Levantamento ATM;;46000,00;1815060,99;
+06-08-2026;TPA-MCX504808**;Pagamento com cartão;;100000,00;1715060,99;Gráfica Tamaco - panfletos
+07-08-2026;ATM-MCX504808*2;Levantamento ATM;;10000,00;1705060,99;
+08-08-2026;ATM-MCX504808*3;Levantamento p/ pagamento em dinheiro;;20000,00;1685060,99;
+09-08-2026;TPA-MCX504808**;Pagamento com cartão;;12251,00;1672809,99;Maxi - Produtos de higiene
+09-08-2026;TPA-MCX504808**;Pagamento com cartão;;162493,43;1510316,56;Sistec - Cartuchos Impressora
+09-08-2026;TPA-MCX504808**;Pagamento com cartão;;18000,00;1492316,56;Compra saco de gesso e lixas
+09-08-2026;ATM-MCX504808*2;Levantamento ATM;;20000,00;1472316,56;
+11-08-2026;ATM-MCX504808*3;Levantamento ATM;;50000,00;1422316,56;
+11-08-2026;TPA-MCX504808**;Pagamento com cartão;;2250,00;1420066,56;Compra Rolos p/ multicaixa
+12-08-2026;Transf. pelo NI;Transferência recebida (NI);150000,00;;1570066,56;Matrícula(s)
+13-08-2026;Transf. pelo NI;Transferência recebida (NI);2000,00;;1572066,56;Caderno(s) Escolar(s)
+13-08-2026;Fecho TPA 00004;Fecho de terminal de pagamento (TPA);610000,00;;2182066,56;Matrícula(s) + 100mil ATL
+13-08-2026;Comissao-Fecho;Comissão de fecho TPA;;6954,00;2175112,56;
+13-08-2026;TPA-MCX504808**;Pagamento com cartão;;21198,00;2153914,56;Sonangol Combustível Viatura
+14-08-2026;TPA-MCX504808**;Pagamento com cartão;;28750,00;2125164,56;A reembolsar
+14-08-2026;TPA-MCX504808**;Pagamento com cartão;;2000,00;2123164,56;A reembolsar
+17-08-2026;Serviço Especial;Pagamento com cartão;;34590,00;2088574,56;Pagmto ZAP Fibra - internet
+2026-08-17;ATM-MCX504808**3;Levantamento ATM;;20000,00;2068574,56;
+2026-08-17;TPA-MCX504808**;Pagamento com cartão;;17500,00;2051074,56;FNK - Peixe p/ funcionários
+2026-08-17;ATM-MCX504808*3;Levantamento ATM;;10000,00;2041074,56;
+2026-08-17;TPA-MCX504808**;Pagamento com cartão;;19040,00;2022034,56;Kero - Compra funcionários
+2026-08-20;Transf. pelo NI;Transferência recebida – Matrícula Késane;150000,00;;2172034,56;Matrícula Késane Aimé Teixeira Correia de Azevedo – Maternelle P2 (seguro próprio)
+2026-08-21;Transf. pelo NI;Transferência recebida – Matrícula Belangela;150000,00;;2322034,56;Matrícula Belangela Nito Daniel Kanvadioko – Troisième / 3ème (seguro próprio)
+2026-08-21;Transf. pelo NI;Transferência recebida – Curso Intensivo Belangela;40000,00;;2362034,56;Curso intensivo francês – Belangela Nito Daniel Kanvadioko
+2026-08-21;MB-Transf.p/NI;Transferência efectuada - Curso Intensivo;;80000,00;2282034,56;Pagamento Curso Intensivo Francês - Inês Passi
+2026-08-21;ATM-MCX504808*3;Levantamento ATM - Fundo Maneio Evento 50 anos;;60000,00;2222034,56;Fundo maneio Evento 50 anos
+2026-08-21;ATM-MCX504808*4;Levantamento ATM - Fundo Maneio Evento 50 anos;;60000,00;2162034,56;Fundo maneio Evento 50 anos
+2026-08-21;TPA-MCX504808**;Pagamento com cartão;;52500,00;2109534,56;CM S22026/18259 - Evento 50 anos
+2026-08-21;TPA-MCX504808**;Pagamento com cartão;;31100,00;2078434,56;FRS22026/9376 - Evento 50 anos
+2026-08-21;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;100000,00;1978434,56;Compras Evento 50 anos - Rosária Perdigão (reforço)
+2026-08-21;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;20000,00;1958434,56;Compras Evento 50 anos
+2026-08-21;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;200000,00;1758434,56;Compras Evento 50 anos - Rosária Perdigão
+2026-08-21;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;135000,00;1623434,56;Compras Evento 50 anos - Mabouana Pierette
+2026-08-21;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;59400,00;1564034,56;Compras Evento 50 anos - Sabores do Oriente
+2026-08-21;ATM-MCX504808*;Levantamento ATM - Fundo Maneio Evento 50 anos;;120000,00;1444034,56;Fundo maneio Evento 50 anos (gasóleo e restantes)
+2026-08-22;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;300000,00;1144034,56;Pgmto DJ e Diversos - Evento 50 anos
+2026-08-22;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;80000,00;1064034,56;Pgmto Funcionários via outra conta empresa (sobram 6 000 nessa conta)
+2026-08-22;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;50000,00;1014034,56;Pgmto Funcionários via outra conta empresa (sobram 34 000 nessa conta)
+2026-08-22;Transf. pelo NI / Fecho TPA;Vendas do dia do Evento 50 anos;30666,00;;1044700,56;Vendas Evento 50 anos – 30 666 Kz
+2026-08-22;MB-Transf.p/NI;Transferência efectuada - Evento 50 anos;;20000,00;1024700,56;Compras Evento 50 anos - Inês Passi
+2026-08-22;Transf. / crédito a id.;Entrada a identificar;40000,00;;1064700,56;ENTRADA DESCONHECIDA – a identificar mais tarde (fecha saldo 1 064 700,56)

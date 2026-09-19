@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getSeed, movimentosAll, useFinance } from "@/lib/store";
-import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Origem } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
 import type { MovimentoBai } from "@/data/types";
@@ -31,28 +30,12 @@ function Banco() {
   const active = useFinance((s) => s.activeOperator);
   const canEdit = isCollaborator1(active, operators);
   const [filtroTipo, setFiltroTipo] = useState<"todas" | "entradas" | "saidas">("todas");
-  const [filtroMes, setFiltroMes] = useState<string>("todos"); // "todos" | "YYYY-MM"
   const movs = movimentosAll(baiExtra, baiOverride, baiDeletedIds);
   const last = movs[movs.length - 1];
   const [editM, setEditM] = useState<MovimentoBai | null>(null);
-
-  /** Meses disponíveis no extrato (YYYY-MM), do mais recente ao mais antigo. */
-  const mesesDisponiveis = (() => {
-    const set = new Set<string>();
-    for (const m of movs) {
-      const d = String(m.data || "").slice(0, 7);
-      if (/^\d{4}-\d{2}$/.test(d)) set.add(d);
-    }
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
-  })();
-
   const movsFiltrados = movs.filter((m) => {
-    if (filtroTipo === "entradas" && !(m.entrada > 0)) return false;
-    if (filtroTipo === "saidas" && !(m.saida > 0)) return false;
-    if (filtroMes !== "todos") {
-      const d = String(m.data || "").slice(0, 7);
-      if (d !== filtroMes) return false;
-    }
+    if (filtroTipo === "entradas") return (m.entrada || 0) > 0;
+    if (filtroTipo === "saidas") return (m.saida || 0) > 0;
     return true;
   });
   const entradas = movs.reduce((s, m) => s + m.entrada, 0);
@@ -175,11 +158,7 @@ function Banco() {
             ) : null}
             <PrintActions
               targetRef={printRef}
-              filename={
-                filtroMes === "todos"
-                  ? "extrato-bai.pdf"
-                  : `extrato-bai-${filtroMes}.pdf`
-              }
+              filename="extrato-bai.pdf"
               landscape
               shareTitle="Extrato BAI · École Consulaire"
               shareText="Extrato bancário gerado pelo Departamento de Finanças."
@@ -213,8 +192,6 @@ function Banco() {
         <Kpi label="Saídas" value={saidas} />
       </div>
 
-      
-
       <p className="mb-4 text-sm text-[var(--color-muted)]">
         As <strong>faturas TPA</strong> (cartão) e os IDs internos estão no separador <strong>Arquivo</strong> — sem duplicar aqui.
       </p>
@@ -239,37 +216,14 @@ function Banco() {
             {label}
           </Button>
         ))}
-        <label className="ml-1 flex items-center gap-1.5 text-sm text-[var(--color-muted)]">
-          Mês:
-          <select
-            className="h-9 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-fg)]"
-            value={filtroMes}
-            onChange={(e) => setFiltroMes(e.target.value)}
-            title="Filtrar movimentos por mês"
-          >
-            <option value="todos">Todos os meses</option>
-            {mesesDisponiveis.map((ym) => {
-              const [y, m] = ym.split("-");
-              const label = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("pt-PT", {
-                month: "long",
-                year: "numeric",
-              });
-              return (
-                <option key={ym} value={ym}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-        </label>
         <span className="text-xs text-[var(--color-muted)]">
-          {movsFiltrados.length} de {movs.length} · PDF / impressão usam o filtro activo
+          {movsFiltrados.length} de {movs.length} · impressão usa o filtro activo
         </span>
       </div>
       
       <div ref={printRef}>
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
-        <img src={escolaLogoSrc()} alt="" className="h-16 w-16 object-contain" width={64} height={64} />
+        <img src="/logo-escola.jpg" alt="" className="h-16 w-16 object-contain" width={64} height={64} />
         <div>
           <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-forest)] uppercase">
             {escola.nomeCurto}
@@ -277,14 +231,11 @@ function Banco() {
           <p className="font-display text-lg leading-tight">Cartão Multicaixa BAI</p>
           <p className="text-[11px] text-[var(--color-muted)]">
             {new Date().toLocaleDateString("pt-PT")} · {escola.ano}
-            {filtroMes !== "todos"
-              ? ` · ${new Date(Number(filtroMes.slice(0, 4)), Number(filtroMes.slice(5, 7)) - 1, 1).toLocaleDateString("pt-PT", { month: "long", year: "numeric" })}`
-              : " · todos os meses"}
           </p>
         </div>
       </header>
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
-        <table className="w-full min-w-0 text-sm print:min-w-0">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
               <th className="px-3 py-2 text-left">Data</th>

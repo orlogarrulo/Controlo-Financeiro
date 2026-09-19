@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Inbox, RefreshCw, Trash2, Camera, Landmark } from "lucide-react";
+import { Inbox, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,6 @@ import { isCollaborator1 } from "@/lib/can-edit";
 import { formatKz, todayIso } from "@/lib/format";
 import { useFinance } from "@/lib/store";
 import type { InboxMovimento, InboxTipo } from "@/data/types";
-import { ocrImage, parseBaiExtratoText } from "@/lib/ocr";
-import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
 
 
 /** Comprime imagem para JPEG (max lado 1280px, qualidade 0.55). PDF/outros: lê até 80KB. */
@@ -80,16 +78,12 @@ export const Route = createFileRoute("/inbox")({ component: InboxPage });
 
 const TIPOS: { value: InboxTipo; label: string }[] = [
   { value: "desconhecido", label: "Desconhecido" },
-  { value: "abatimento_socio", label: "Abatimento dívida sócia (uso do cartão)" },
   { value: "salario", label: "Salário / honorários" },
   { value: "propina", label: "Propina" },
   { value: "despesa", label: "Despesa" },
   { value: "tpa", label: "TPA / cartão" },
   { value: "transferencia", label: "Transferência" },
   { value: "deposito", label: "Depósito" },
-  { value: "comissao_transferencia", label: "Comissão de transferência" },
-  { value: "comissao_fecho_tpa", label: "Comissão de fecho TPA" },
-  { value: "taxa_aluguer_tpa", label: "Taxa aluguer de TPA" },
 ];
 
 function parseLinhas(text: string): Omit<InboxMovimento, "id" | "criadoEm" | "status" | "tipo">[] {
@@ -135,7 +129,6 @@ function InboxPage() {
   const removeInboxItem = useFinance((s) => s.removeInboxItem);
   const clearInboxReconciliados = useFinance((s) => s.clearInboxReconciliados);
   const processarInbox = useFinance((s) => s.processarInbox);
-  const syncInboxParaBai = useFinance((s) => s.syncInboxParaBai);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators || []);
   const canEdit = isCollaborator1(activeOperator || "", operators);
@@ -152,14 +145,6 @@ function InboxPage() {
     dataUrl: string;
     syncOk: boolean;
   } | null>(null);
-  const [ocrBusy, setOcrBusy] = useState(false);
-  const [ocrPreview, setOcrPreview] = useState("");
-  const shotInputRef = useRef<HTMLInputElement>(null);
-
-  function limparFicheiroScreenshot() {
-    setOcrPreview("");
-    if (shotInputRef.current) shotInputRef.current.value = "";
-  }
 
   const filtrados = useMemo(() => {
     let list = [...inboxItems].sort((a, b) => (a.data || "").localeCompare(b.data || ""));
@@ -177,38 +162,16 @@ function InboxPage() {
       toast.error("Indique a descrição.");
       return;
     }
-    if (v <= 0) {
-      toast.error("Indique o valor em Kz (maior que zero).");
-      return;
-    }
-    const rawDesc = desc.trim();
-    const looksAbat =
-      tipo === "abatimento_socio" ||
-      /a\s*reembolsar|abatimento|d[ií]vida\s*(da\s*)?s[oó]ci/i.test(rawDesc);
-    const tipoFinal: InboxTipo = looksAbat ? "abatimento_socio" : tipo;
-    const descFinal =
-      looksAbat && !/a\s*reembolsar/i.test(rawDesc)
-        ? `${rawDesc} · A reembolsar`
-        : rawDesc;
-    let sent = aplicarSentido(tipoFinal, descFinal, v);
-    if (v > 0 && sent.entrada <= 0 && sent.saida <= 0) {
-      sent = looksAbat || tipoFinal !== "deposito"
-        ? { entrada: 0, saida: v, valor: -v }
-        : { entrada: v, saida: 0, valor: v };
-    }
     const id = `INB-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     addInboxItems([
       {
         id,
         data: data || todayIso(),
-        valor: sent.valor,
-        entrada: sent.entrada,
-        saida: sent.saida,
-        descricao: descFinal,
-        tipo: tipoFinal,
-        status: tipoFinal === "desconhecido" ? "por_classificar" : "classificado",
+        valor: v,
+        descricao: desc.trim(),
+        tipo,
+        status: tipo === "desconhecido" ? "por_classificar" : "classificado",
         criadoEm: new Date().toISOString(),
-        observacoes: looksAbat ? "A reembolsar · não é despesa da escola" : undefined,
         anexoNome: pendingAnexo?.nome,
         anexoMime: pendingAnexo?.mime,
         anexoDataUrl: pendingAnexo?.dataUrl,
@@ -218,21 +181,6 @@ function InboxPage() {
     setDesc("");
     setValor("");
     setPendingAnexo(null);
-    if (looksAbat) {
-      const r = syncInboxParaBai([id]);
-      if (r.criados) {
-        toast.success(
-          "Abatimento gravado no extrato BAI. Abra Banco BAI — a linha «A reembolsar» já deve estar lá. O Quadro reduz o devido à sócia.",
-        );
-      } else if (r.duplicados) {
-        toast.success("Já existia no extrato BAI. O Quadro usa essa linha para abater a dívida.");
-      } else {
-        toast.error(
-          "A linha ficou na Inbox mas não entrou no BAI. Confirme o valor (> 0) e clique «Sincronizar com Banco BAI».",
-        );
-      }
-      return;
-    }
     toast.success(
       pendingAnexo
         ? pendingAnexo.syncOk
@@ -242,125 +190,28 @@ function InboxPage() {
     );
   }
 
-  function rowsFromParsed(
-    parsed: { data: string; valor: number; descricao: string; entrada?: number; saida?: number }[],
-    prefix: string,
-    obs?: string,
-  ): InboxMovimento[] {
-    return parsed.map((p, i) => {
-      const sent = aplicarSentido("desconhecido", p.descricao, montanteAbs(p), p);
-      return {
-        id: `${prefix}${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-        data: p.data,
-        valor: sent.valor,
-        entrada: sent.entrada,
-        saida: sent.saida,
-        descricao: p.descricao,
-        tipo: "desconhecido" as InboxTipo,
-        status: "por_classificar" as const,
-        criadoEm: new Date().toISOString(),
-        observacoes: obs,
-      };
-    });
-  }
-
   function importPaste() {
     if (!canEdit) {
       toast.error("Apenas o Colaborador 1 pode editar.");
       return;
     }
-    const fromBai = parseBaiExtratoText(paste);
-    const parsed =
-      fromBai.length > 0
-        ? fromBai
-        : parseLinhas(paste);
+    const parsed = parseLinhas(paste);
     if (!parsed.length) {
-      toast.error("Cole linhas no formato: data;valor;descrição (ou o texto do extrato BAI).");
+      toast.error("Cole linhas no formato: data;valor;descrição");
       return;
     }
-    addInboxItems(rowsFromParsed(parsed, "INB-"));
+    const rows: InboxMovimento[] = parsed.map((p, i) => ({
+      id: `INB-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      data: p.data,
+      valor: p.valor,
+      descricao: p.descricao,
+      tipo: "desconhecido" as InboxTipo,
+      status: "por_classificar" as const,
+      criadoEm: new Date().toISOString(),
+    }));
+    addInboxItems(rows);
     setPaste("");
-    toast.success(`${parsed.length} movimento(s) importado(s).`);
-  }
-
-  async function onLerExtrato(file: File) {
-    if (!canEdit) {
-      toast.error("Apenas o Colaborador 1 pode editar.");
-      return;
-    }
-    setOcrBusy(true);
-    try {
-      const c = await compressAnexo(file);
-      setOcrPreview(c.dataUrl);
-      if (!file.type.startsWith("image/")) {
-        toast.error("Envie um screenshot (imagem) do extrato BAI.");
-        return;
-      }
-      toast.message("A ler o extrato… isto pode demorar uns segundos.");
-      const text = await ocrImage(c.dataUrl);
-      const parsed = parseBaiExtratoText(text);
-      if (!parsed.length) {
-        toast.error("Não foi possível ler movimentos. Confirme que o screenshot está nítido ou cole as linhas.");
-        setPaste((p) => p || text.slice(0, 2000));
-        return;
-      }
-      const rows: InboxMovimento[] = parsed.map((p, i) => {
-        const tipo: InboxTipo = /sal[aá]rio|honor/i.test(p.descricao)
-          ? "salario"
-          : /propina|mensalidade/i.test(p.descricao)
-            ? "propina"
-            : /comiss[aã]o.*fecho|fecho.*comiss/i.test(p.descricao)
-              ? "comissao_fecho_tpa"
-              : /alug(?:uer)?\s*tpa|comiss[aã]o\s*alug/i.test(p.descricao)
-                ? "taxa_aluguer_tpa"
-                : /comiss[aã]o.*transf|iva\s*sobre\s*comis/i.test(p.descricao)
-                  ? "comissao_transferencia"
-                  : /fecho\s*tpa|tpa-mcx|multicaixa/i.test(p.descricao)
-                    ? "tpa"
-                    : /transf|kwik/i.test(p.descricao)
-                      ? "transferencia"
-                      : p.entrada > 0
-                        ? "deposito"
-                        : "despesa";
-        const sent = aplicarSentido(tipo, p.descricao, montanteAbs(p), p);
-        return {
-          id: `INB-OCR-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-          data: p.data,
-          valor: sent.valor,
-          entrada: sent.entrada,
-          saida: sent.saida,
-          descricao: p.descricao,
-          tipo,
-          status: "classificado",
-          criadoEm: new Date().toISOString(),
-          observacoes: "OCR extrato BAI",
-        };
-      });
-      addInboxItems(rows);
-      const proc = processarInbox();
-      limparFicheiroScreenshot();
-      toast.success(
-        `${rows.length} movimento(s) lido(s) · ficheiro removido · ${proc.duplicados} duplicado(s) · ${proc.ligados} já no BAI. Reveja e sincronize.`,
-      );
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha no OCR do extrato.");
-      limparFicheiroScreenshot();
-    } finally {
-      setOcrBusy(false);
-      limparFicheiroScreenshot();
-    }
-  }
-
-  function onSyncBai() {
-    if (!canEdit) {
-      toast.error("Apenas o Colaborador 1 pode editar.");
-      return;
-    }
-    const r = syncInboxParaBai();
-    toast.success(
-      `Sincronizado: ${r.criados} novo(s) no BAI · ${r.duplicados} já estavam no extrato · ${r.removidos} saíram da Inbox.` +
-        (r.pendentes ? ` Ficam ${r.pendentes} por tratar.` : " Inbox limpa."),
-    );
+    toast.success(`${rows.length} movimento(s) importado(s).`);
   }
 
   function onProcessar() {
@@ -390,38 +241,10 @@ function InboxPage() {
       <PageHeader
         kicker="Reconciliação"
         title="Inbox"
-        description="Screenshot → rever linhas → Sincronizar com Banco BAI. Uso autorizado do cartão pela sócia: tipo «Abatimento dívida sócia» — sai no extrato BAI e no Quadro, sem criar despesa da escola."
+        description="Adicione aqui todas as faturas e movimentos atrasados. O sistema ordena, detecta duplicados, avisa semelhanças e reconcilia com Banco BAI, Lista de despesas, salários e propinas (auditoria)."
       />
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <div className="space-y-3 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Camera className="h-4 w-4" />
-            Screenshot do extrato BAI
-          </h2>
-          <p className="text-[11px] text-[var(--color-muted)]">
-            Foto ou captura do extrato (BAI Directo / app). OCR no browser (português), sem enviar a imagem para um servidor de terceiros além da CDN do Tesseract.
-          </p>
-          <Input
-            ref={shotInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            disabled={!canEdit || ocrBusy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void onLerExtrato(f);
-            }}
-          />
-          {ocrBusy ? (
-            <div className="space-y-1">
-              <p className="text-xs">A ler caracteres do extrato…</p>
-              {ocrPreview ? (
-                <img src={ocrPreview} alt="" className="max-h-20 rounded border object-contain opacity-60" />
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
         <div className="space-y-3 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
           <h2 className="text-sm font-semibold">Adicionar manualmente</h2>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -435,7 +258,7 @@ function InboxPage() {
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Descrição</Label>
-              <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Ex.: Uso do cartão pela sócia" />
+              <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Ex.: Honorários agosto Massamba" />
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Tipo</Label>
@@ -450,12 +273,6 @@ function InboxPage() {
                   </option>
                 ))}
               </select>
-              {tipo === "abatimento_socio" ? (
-                <p className="text-[11px] text-amber-800 dark:text-amber-300">
-                  Uso autorizado do cartão pela sócia (pode não ser compra da escola). Ao gravar,
-                  a linha sai no extrato BAI e o Quadro reduz o saldo devido — sem despesa escolar.
-                </p>
-              ) : null}
             </div>
           </div>
           <div className="space-y-1 sm:col-span-2">
@@ -508,8 +325,8 @@ function InboxPage() {
         <div className="space-y-3 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
           <h2 className="text-sm font-semibold">Importar lista (colar)</h2>
           <p className="text-[11px] text-[var(--color-muted)]">
-            Uma linha por movimento. Aceita o CSV BAI (<code>data;banco;descrição;entrada;saída;saldo</code>)
-            ou <code>data;valor;descrição</code>. Depois: Processar → Sincronizar com Banco BAI.
+            Uma linha por movimento. Formato: <code>data;valor;descrição</code> (ex.{" "}
+            <code>2026-08-30;90000;Honorários Kativa</code>). Também aceita tab ou vírgula.
           </p>
           <textarea
             className="min-h-[120px] w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-bg)] p-2 text-sm"
@@ -526,11 +343,7 @@ function InboxPage() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button type="button" disabled={!canEdit} onClick={onProcessar}>
           <RefreshCw className="mr-1 h-4 w-4" />
-          Processar / duplicados
-        </Button>
-        <Button type="button" disabled={!canEdit} onClick={onSyncBai}>
-          <Landmark className="mr-1 h-4 w-4" />
-          Sincronizar com Banco BAI
+          Processar
         </Button>
         <Button
           type="button"
@@ -581,8 +394,7 @@ function InboxPage() {
             <tr>
               <th className="px-3 py-2">Data</th>
               <th className="px-3 py-2">Descrição</th>
-              <th className="px-3 py-2 text-right">Entrada</th>
-              <th className="px-3 py-2 text-right">Saída</th>
+              <th className="px-3 py-2 text-right">Valor</th>
               <th className="px-3 py-2">Tipo</th>
               <th className="px-3 py-2">Estado</th>
               <th className="px-3 py-2">Ligação</th>
@@ -593,7 +405,7 @@ function InboxPage() {
           <tbody>
             {filtrados.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-[var(--color-muted)]">
+                <td colSpan={8} className="px-3 py-8 text-center text-[var(--color-muted)]">
                   Inbox vazia. Adicione movimentos atrasados e pressione Processar.
                 </td>
               </tr>
@@ -602,34 +414,18 @@ function InboxPage() {
                 <tr key={r.id} className="border-t border-[var(--color-line)]">
                   <td className="px-3 py-2 whitespace-nowrap">{r.data}</td>
                   <td className="px-3 py-2">{r.descricao}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[var(--color-forest)]">
-                    {(() => {
-                      const s = aplicarSentido(r.tipo, r.descricao, montanteAbs(r), r);
-                      return s.entrada > 0 ? formatKz(s.entrada) : "—";
-                    })()}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-red-700">
-                    {(() => {
-                      const s = aplicarSentido(r.tipo, r.descricao, montanteAbs(r), r);
-                      return s.saida > 0 ? formatKz(s.saida) : "—";
-                    })()}
-                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatKz(r.valor)}</td>
                   <td className="px-3 py-2">
                     <select
                       className="h-8 max-w-[10rem] rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-xs"
                       value={r.tipo}
                       disabled={!canEdit}
-                      onChange={(e) => {
-                        const next = e.target.value as InboxTipo;
-                        const s = aplicarSentido(next, r.descricao, montanteAbs(r), r);
+                      onChange={(e) =>
                         updateInboxItem(r.id, {
-                          tipo: next,
-                          status: next === "desconhecido" ? "por_classificar" : "classificado",
-                          entrada: s.entrada,
-                          saida: s.saida,
-                          valor: s.valor,
-                        });
-                      }}
+                          tipo: e.target.value as InboxTipo,
+                          status: e.target.value === "desconhecido" ? "por_classificar" : "classificado",
+                        })
+                      }
                     >
                       {TIPOS.map((t) => (
                         <option key={t.value} value={t.value}>

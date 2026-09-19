@@ -17,14 +17,12 @@ import { Route as FundoRouteImport } from './routes/fundo'
 import { Route as GoogleRouteImport } from './routes/google'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as MensalidadesRouteImport } from './routes/mensalidades'
-import { Route as CrmRouteImport } from './routes/crm'
 import { Route as RecibosRouteImport } from './routes/recibos'
 import { Route as SalariosRouteImport } from './routes/salarios'
 import { Route as PendenciasRouteImport } from './routes/pendencias'
 import { Route as AuditoriaRouteImport } from './routes/auditoria'
 import { Route as ArquivoRouteImport } from './routes/arquivo'
 import { Route as InboxRouteImport } from './routes/inbox'
-import { Route as RastreioRouteImport } from './routes/rastreio'
 import { Route as RegulamentoRouteImport } from './routes/regulamento'
 import { Route as AgendamentoRouteImport } from './routes/agendamento'
 import { Route as InqueritoSaudeRouteImport } from './routes/inquerito-saude'
@@ -102,11 +100,6 @@ const MensalidadesRoute = MensalidadesRouteImport.update({
   path: '/mensalidades',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CrmRoute = CrmRouteImport.update({
-  id: '/crm',
-  path: '/crm',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const RecibosRoute = RecibosRouteImport.update({
   id: '/recibos',
   path: '/recibos',
@@ -137,11 +130,6 @@ const InboxRoute = InboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RastreioRoute = RastreioRouteImport.update({
-  id: '/rastreio',
-  path: '/rastreio',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -158,14 +146,12 @@ export interface FileRoutesByFullPath {
   '/google': typeof GoogleRoute
   '/lancamentos': typeof LancamentosRoute
   '/mensalidades': typeof MensalidadesRoute
-  '/crm': typeof CrmRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
   '/pendencias': typeof PendenciasRoute
   '/auditoria': typeof AuditoriaRoute
   '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
-  '/rastreio': typeof RastreioRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -182,14 +168,12 @@ export interface FileRoutesByTo {
   '/google': typeof GoogleRoute
   '/lancamentos': typeof LancamentosRoute
   '/mensalidades': typeof MensalidadesRoute
-  '/crm': typeof CrmRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
   '/pendencias': typeof PendenciasRoute
   '/auditoria': typeof AuditoriaRoute
   '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
-  '/rastreio': typeof RastreioRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -207,14 +191,12 @@ export interface FileRoutesById {
   '/google': typeof GoogleRoute
   '/lancamentos': typeof LancamentosRoute
   '/mensalidades': typeof MensalidadesRoute
-  '/crm': typeof CrmRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
   '/pendencias': typeof PendenciasRoute
   '/auditoria': typeof AuditoriaRoute
   '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
-  '/rastreio': typeof RastreioRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -233,14 +215,12 @@ export interface FileRouteTypes {
     | '/google'
     | '/lancamentos'
     | '/mensalidades'
-    | '/crm'
     | '/recibos'
     | '/salarios'
     | '/pendencias'
     | '/auditoria'
     | '/arquivo'
     | '/inbox'
-    | '/rastreio'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -257,14 +237,12 @@ export interface FileRouteTypes {
     | '/google'
     | '/lancamentos'
     | '/mensalidades'
-    | '/crm'
     | '/recibos'
     | '/salarios'
     | '/pendencias'
     | '/auditoria'
     | '/arquivo'
     | '/inbox'
-    | '/rastreio'
   id:
     | '__root__'
     | '/'
@@ -281,14 +259,12 @@ export interface FileRouteTypes {
     | '/google'
     | '/lancamentos'
     | '/mensalidades'
-    | '/crm'
     | '/recibos'
     | '/salarios'
     | '/pendencias'
     | '/auditoria'
     | '/arquivo'
     | '/inbox'
-    | '/rastreio'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -306,14 +282,12 @@ export interface RootRouteChildren {
   GoogleRoute: typeof GoogleRoute
   LancamentosRoute: typeof LancamentosRoute
   MensalidadesRoute: typeof MensalidadesRoute
-  CrmRoute: typeof CrmRoute
   RecibosRoute: typeof RecibosRoute
   SalariosRoute: typeof SalariosRoute
   PendenciasRoute: typeof PendenciasRoute
   AuditoriaRoute: typeof AuditoriaRoute
   ArquivoRoute: typeof ArquivoRoute
   InboxRoute: typeof InboxRoute
-  RastreioRoute: typeof RastreioRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -416,13 +390,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MensalidadesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/crm': {
-      id: '/crm'
-      path: '/crm'
-      fullPath: '/crm'
-      preLoaderRoute: typeof CrmRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/recibos': {
       id: '/recibos'
       path: '/recibos'
@@ -465,13 +432,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/rastreio': {
-      id: '/rastreio'
-      path: '/rastreio'
-      fullPath: '/rastreio'
-      preLoaderRoute: typeof RastreioRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -490,14 +450,12 @@ const rootRouteChildren: RootRouteChildren = {
   GoogleRoute: GoogleRoute,
   LancamentosRoute: LancamentosRoute,
   MensalidadesRoute: MensalidadesRoute,
-  CrmRoute: CrmRoute,
   RecibosRoute: RecibosRoute,
   SalariosRoute: SalariosRoute,
   PendenciasRoute: PendenciasRoute,
   AuditoriaRoute: AuditoriaRoute,
   ArquivoRoute: ArquivoRoute,
   InboxRoute: InboxRoute,
-  RastreioRoute: RastreioRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isCollaborator1 } from "@/lib/can-edit";
-import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { getSeed, salariosAll, useFinance } from "@/lib/store";
 import { deliverOfficialHtml, isMobileDevice } from "@/lib/pdf-export";
@@ -21,7 +20,7 @@ function listaRecibosCompletaHtml(
   filterRec: string,
   filterMes: string,
 ): string {
-  const logo = escolaLogoSrc();
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   const titulo =
     filterRec === "pagos"
       ? "Lista de recibos PAGOS"
@@ -647,7 +646,7 @@ function autorizacaoPagamentoHtml(
   recibos: ReciboSalario[],
   _socios?: [string, string],
 ) {
-  const logo = escolaLogoSrc();
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   const dataDoc = dataDocFinancas(todayIso());
   const mes = recibos[0]?.mes || "—";
   const total = recibos.reduce((s, r) => s + (r.liquido || 0), 0);
@@ -704,7 +703,7 @@ function reciboHonorarioHtml(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
-  const logo = escolaLogoSrc();
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   const descricao = descricaoPrestacaoPorFuncao(r.funcao);
   const { ini, fim } = periodoPrestacaoMes(r.mesKey, r.mes);
   const dataDoc = dataDocFinancas(r.dataPag || todayIso());
@@ -758,7 +757,7 @@ function listaFuncionariosHtml(
 ) {
   const mode = opts?.mode || "completo";
   const mostrarTotal = opts?.mostrarTotal !== false;
-  const logo = escolaLogoSrc();
+  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   const total = rows.reduce((s, r) => s + (Number(r.salario) || 0), 0);
   const body = rows
     .map(
@@ -1359,17 +1358,6 @@ function Salarios() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
-  /** Pesquisa por nome / função / IBAN no cadastro de funcionários. */
-  const [searchNome, setSearchNome] = useState("");
-
-  const rowsFiltrados = useMemo(() => {
-    const q = searchNome.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => {
-      const blob = `${r.nome || ""} ${r.funcao || ""} ${r.iban || ""} ${r.telefone || ""} ${r.documento || ""}`.toLowerCase();
-      return blob.includes(q);
-    });
-  }, [rows, searchNome]);
   /** Por defeito: mês de competência (janela 28→10), não «todos» nem o mês civil cego. */
   const [filterMes, setFilterMes] = useState<string>(
     () => competenciaDefault.key,
@@ -1848,25 +1836,12 @@ function Salarios() {
         );
       })()}
 
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <Input
-          className="max-w-md"
-          type="search"
-          placeholder="Pesquisar funcionário por nome, função, IBAN…"
-          value={searchNome}
-          onChange={(e) => setSearchNome(e.target.value)}
-          aria-label="Pesquisar funcionários por nome"
-        />
-        <p className="text-sm text-[var(--color-muted)]">
-          {searchNome.trim()
-            ? `${rowsFiltrados.length} de ${rows.length} funcionário(s)`
-            : `${rows.length} funcionário(s)`}
-          {" · "}Folha de referência {formatKz(totalFolha)}
-          {porPagarMes > 0
-            ? ` · ${porPagarMes} por pagar em ${mesActivoLabel}`
-            : ` · ${mesActivoLabel}: ${pagosMes} pago(s)`}
-        </p>
-      </div>
+      <p className="mb-3 text-sm text-[var(--color-muted)]">
+        {rows.length} funcionário(s) · Folha de referência {formatKz(totalFolha)}
+        {porPagarMes > 0
+          ? ` · ${porPagarMes} por pagar em ${mesActivoLabel}`
+          : ` · ${mesActivoLabel}: ${pagosMes} pago(s)`}
+      </p>
 
       <div ref={printRef} className="overflow-x-auto rounded-[var(--radius)] border border-[var(--color-line)]">
         <table className="w-full min-w-[720px] text-left text-sm">
@@ -1881,16 +1856,7 @@ function Salarios() {
             </tr>
           </thead>
           <tbody>
-            {rowsFiltrados.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-sm text-[var(--color-muted)]">
-                  {searchNome.trim()
-                    ? `Nenhum funcionário encontrado para «${searchNome.trim()}».`
-                    : "Sem funcionários cadastrados."}
-                </td>
-              </tr>
-            ) : null}
-            {rowsFiltrados.map((r) => (
+            {rows.map((r) => (
               <tr key={r.id} className="border-t border-[var(--color-line)]">
                 <td className="px-3 py-2 font-medium">
                   <button type="button" className="text-left hover:underline" onClick={() => setViewing(r)}>

@@ -6,7 +6,6 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
-import { escolaLogoSrc } from "@/lib/logo-escola";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AppShell } from "@/components/layout";
 import { OperatorGate } from "@/components/operator-gate";
@@ -80,11 +79,11 @@ export const Route = createRootRoute({
       { name: "robots", content: "noindex, nofollow" },
     ],
     links: [
-      { rel: "icon", type: "image/jpeg", href: escolaLogoSrc() },
+      { rel: "icon", type: "image/jpeg", href: "/logo-escola.jpg" },
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: escolaLogoSrc() },
+      { rel: "apple-touch-icon", href: "/logo-escola.jpg" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
         rel: "preconnect",

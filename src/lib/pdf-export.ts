@@ -1,4 +1,3 @@
-import { LOGO_ESCOLA_DATA_URL, escolaLogoSrc } from "@/lib/logo-escola";
 /** PDF em layout A4 de impressão — capa numa página, conteúdo nas seguintes. */
 
 type Html2CanvasFn = (
@@ -37,41 +36,6 @@ function loadScript(src: string): Promise<void> {
     s.onerror = () => reject(new Error(`Falha ao carregar ${src}`));
     document.head.appendChild(s);
   });
-}
-
-let _logoDataUrlCache: string | null = null;
-async function resolveLogoDataUrl(): Promise<string> {
-  if (_logoDataUrlCache) return _logoDataUrlCache;
-  // 1) Embutido no bundle — sempre disponível
-  if (LOGO_ESCOLA_DATA_URL && LOGO_ESCOLA_DATA_URL.startsWith("data:image")) {
-    _logoDataUrlCache = LOGO_ESCOLA_DATA_URL;
-    return _logoDataUrlCache;
-  }
-  // 2) Fallback fetch do ficheiro público
-  const candidates = [
-    escolaLogoSrc(),
-    escolaLogoSrc(),
-  ].filter(Boolean);
-  for (const src of candidates) {
-    try {
-      const res = await fetch(src, { cache: "force-cache" });
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(String(fr.result || ""));
-        fr.onerror = () => reject(fr.error);
-        fr.readAsDataURL(blob);
-      });
-      if (dataUrl.startsWith("data:image")) {
-        _logoDataUrlCache = dataUrl;
-        return dataUrl;
-      }
-    } catch {
-      /* next */
-    }
-  }
-  return escolaLogoSrc();
 }
 
 async function ensureLibs(): Promise<{ html2canvas: Html2CanvasFn; jsPDF: JsPdfCtor }> {
@@ -117,8 +81,6 @@ const STAGE_CSS = `
     line-height: 1.4 !important;
     opacity: 1 !important;
     visibility: visible !important;
-    padding: 8px 10px !important;
-    box-sizing: border-box !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     box-sizing: border-box !important;
@@ -410,20 +372,12 @@ function makeStage(landscape = false): HTMLElement {
 
 
 /** Garante logotipo no topo de qualquer PDF (se a página não tiver). */
-function ensureLogoHeader(root: HTMLElement, title?: string, logoDataUrl?: string): void {
+function ensureLogoHeader(root: HTMLElement, title?: string): void {
   const hasLogo = root.querySelector('img[src*="logo"], img[src*="escola"]');
-  if (hasLogo) {
-    // Substitui URL relativa/absoluta por data-URL se disponível (evita logo em branco)
-    if (logoDataUrl) {
-      root.querySelectorAll('img[src*="logo"], img[src*="escola"]').forEach((img) => {
-        (img as HTMLImageElement).src = logoDataUrl;
-      });
-    }
-    return;
-  }
+  if (hasLogo) return;
   const header = document.createElement("div");
   header.setAttribute("data-pdf-logo-header", "1");
-  const logoSrc = logoDataUrl || escolaLogoSrc();
+  const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
   header.innerHTML = `
     <img src="${logoSrc}" alt="" width="72" height="72" crossorigin="anonymous" />
     <div>
@@ -604,7 +558,7 @@ function addCoverPage(
 
 
 /** Margem única em todos os PDFs oficiais (mm). 12 mm evita corte nas laterais. */
-const PDF_MARGIN_MM = 18;
+const PDF_MARGIN_MM = 12;
 
 /**
  * Desenha o canvas no PDF A4 com regras FIXAS:
@@ -694,7 +648,7 @@ function addCanvasToPdf(
  * Motor único: HTML → canvas → PDF A4 (retrato ou paisagem).
  * Todos os separadores devem usar este caminho para tamanho padronizado.
  */
-export async function htmlToPdfBlob(
+async function htmlToPdfBlob(
   html: string,
   opts?: {
     filename?: string;
@@ -735,22 +689,6 @@ export async function htmlToPdfBlob(
       wrap.appendChild(box);
     }
     stage.appendChild(wrap);
-
-    // Logotipo embutido (data-URL) — evita PDF sem logo por CORS / caminho relativo
-    try {
-      const logoData = await resolveLogoDataUrl();
-      wrap.querySelectorAll("img").forEach((img) => {
-        const el = img as HTMLImageElement;
-        const s = (el.getAttribute("src") || el.src || "").toLowerCase();
-        if (s.includes("logo") || s.includes("escola") || !s || s.endsWith("/")) {
-          el.src = logoData;
-        }
-      });
-      ensureLogoHeader(wrap, opts?.filename || "Documento", logoData);
-    } catch {
-      /* logo opcional */
-    }
-
     await waitImages(stage);
     await wait(100);
 
@@ -855,7 +793,7 @@ export async function htmlFragmentsToMultiPageA4Pdf(
 
   const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 portrait; margin: 16mm 16mm; }
+  @page { size: A4 portrait; margin: 8mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
     font-family: Georgia, "Times New Roman", Times, serif;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -900,13 +838,7 @@ export async function elementToPdfBlob(
   const wantStamp = opts?.stamp !== false;
 
   const clone = prepareClone(el);
-  const logoData = await resolveLogoDataUrl().catch(() => undefined);
-  ensureLogoHeader(clone, undefined, logoData);
-  if (logoData) {
-    clone.querySelectorAll('img[src*="logo"], img[src*="escola"]').forEach((img) => {
-      (img as HTMLImageElement).src = logoData;
-    });
-  }
+  ensureLogoHeader(clone);
   const covers = Array.from(clone.querySelectorAll<HTMLElement>(".print-cover"));
 
   const coverNodes: HTMLElement[] = [];
@@ -1157,7 +1089,8 @@ export function buildOfficialListHtml(opts: {
   const escola = escHtml(opts.escola || "École Consulaire");
   const title = escHtml(opts.title);
   const subtitle = escHtml(opts.subtitle || "");
-  const logoSrc = escolaLogoSrc();
+  const logoSrc =
+    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
   const emitido = new Date().toLocaleDateString("pt-PT", {
     day: "2-digit",
     month: "long",
@@ -1191,7 +1124,7 @@ export function buildOfficialListHtml(opts: {
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 16mm 16mm; }
+  @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm 8mm; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #0f172a;
@@ -1467,7 +1400,8 @@ export function buildBaiExtratoHtml(rows: BaiRow[], opts?: BaiPdfOpts): string {
   const escola = escHtml(opts?.escola || "École Consulaire du Congo");
   const title = escHtml(opts?.title || "Extrato Banco BAI");
   const filtro = escHtml(opts?.filterLabel || "Todas as movimentações");
-  const logoSrc = escolaLogoSrc();
+  const logoSrc =
+    typeof location !== "undefined" ? `${location.origin}/logo-escola.jpg` : "/logo-escola.jpg";
   const emitido = new Date().toLocaleDateString("pt-PT", {
     day: "2-digit",
     month: "long",

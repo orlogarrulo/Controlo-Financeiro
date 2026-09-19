@@ -13,7 +13,6 @@ import { formatKz } from "@/lib/format";
 import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
 import { alunosAll, getSeed, useFinance } from "@/lib/store";
 import {
-  META_MATRICULADOS,
   downloadTextFile,
   linhasAlunos,
   linhasDivida,
@@ -214,7 +213,7 @@ function Rastreio() {
           <p>
             {falta > 0 ? (
               <>
-                Cadastro com <strong>{alunos.length}</strong> / {META_MATRICULADOS}. O sistema varre
+                Cadastro com <strong>{alunos.length}</strong> aluno(s). O sistema varre
                 propinas, BAI, fotos e IDs antigos para repor o aluno em falta.
               </>
             ) : (
