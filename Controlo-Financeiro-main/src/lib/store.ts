@@ -3220,16 +3220,53 @@ function collectTraceIds(state: {
   return Array.from(ids);
 }
 
+function parseBaiMatricula(id: string, movimentos: MovimentoBai[]): {
+  nome?: string;
+  liquido?: number;
+  dataPag?: string;
+  recibo?: string;
+  metodo?: string;
+} {
+  const idUp = id.toUpperCase();
+  // "Matrícula Nome Completo (P2-03)" + obs "Método: … · recibo EF/051"
+  const re = new RegExp(
+    `Matr[ií]cula\\s+(.+?)\\s*\\(${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`,
+    "i",
+  );
+  for (const m of movimentos) {
+    const blob = `${m.descricao || ""} ${m.observacoes || ""}`;
+    if (!blob.toUpperCase().includes(idUp) && !(m.id || "").toUpperCase().includes(idUp)) {
+      continue;
+    }
+    const mm = (m.descricao || "").match(re) || blob.match(re);
+    const rec = blob.match(/recibo\s+(EF\/\d+)/i);
+    const met = blob.match(/M[eé]todo:\s*([^·\n]+)/i);
+    const entrada = Number(m.entrada) || 0;
+    if (mm || entrada > 0) {
+      return {
+        nome: mm?.[1]?.trim(),
+        liquido: entrada > 0 ? entrada : undefined,
+        dataPag: m.data || undefined,
+        recibo: rec?.[1],
+        metodo: met?.[1]?.trim(),
+      };
+    }
+  }
+  return {};
+}
+
 function stubAlunoFromTrace(
   id: string,
   ov: Partial<Aluno> | undefined,
   mens: Mensalidade | undefined,
   faturaNome?: string,
+  bai?: { nome?: string; liquido?: number; dataPag?: string; recibo?: string; metodo?: string },
 ): Aluno {
   const turma = String(ov?.turma || mens?.turma || turmaFromId(id) || "");
+  const liquido = Number(ov?.liquido || bai?.liquido || 0);
   return {
     id,
-    nome: String(ov?.nome || mens?.nome || faturaNome || `Aluno ${id}`),
+    nome: String(ov?.nome || mens?.nome || faturaNome || bai?.nome || `Aluno ${id}`),
     turma,
     grupo: String(ov?.grupo || grupoFromTurma(turma)),
     inscricao: Number(ov?.inscricao || 0),
@@ -3239,18 +3276,23 @@ function stubAlunoFromTrace(
     extras: Number(ov?.extras || 0),
     curso: Number(ov?.curso || 0),
     mensalidade1: Number(ov?.mensalidade1 || mens?.propina || 0),
-    dataPag: String(ov?.dataPag || ""),
-    bruto: Number(ov?.bruto || 0),
+    dataPag: String(ov?.dataPag || bai?.dataPag || ""),
+    bruto: Number(ov?.bruto || liquido || 0),
     descPct: Number(ov?.descPct || 0),
-    liquido: Number(ov?.liquido || 0),
+    liquido,
     encarregado: String(ov?.encarregado || ""),
     telefone: String(ov?.telefone || ""),
     bi: String(ov?.bi || ""),
     familia: String(ov?.familia || ""),
-    recibo: String(ov?.recibo || ""),
-    obs: ov?.obs || "Reposto a partir de rasto (propinas / BAI / ID antigo)",
+    recibo: String(ov?.recibo || bai?.recibo || ""),
+    metodoPagamento: String(ov?.metodoPagamento || bai?.metodo || ""),
+    obs:
+      ov?.obs ||
+      (bai?.nome
+        ? `Reposto a partir do extrato BAI (matrícula ${id}${bai.recibo ? ` · ${bai.recibo}` : ""})`
+        : "Reposto a partir de rasto (propinas / BAI / ID antigo)"),
     propina: Number(ov?.propina || mens?.propina || 0),
-    statusPag: (ov?.statusPag as Aluno["statusPag"]) || "registado",
+    statusPag: (ov?.statusPag as Aluno["statusPag"]) || (liquido > 0 ? "pago" : "registado"),
     dataNascimento: ov?.dataNascimento,
     idAnterior: ov?.idAnterior,
     transferidoCampusCidade: ov?.transferidoCampusCidade,
@@ -3455,21 +3497,32 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     const ov = overrides[id];
     const mens = mensalidades.find((m) => m.id === id);
     const fat = faturas.find((f) => f.alunoId === id);
-    if (!ov && !mens && !fat) continue;
+    const baiAll = [
+      ...(seed.movimentosBai || []),
+      ...(state.movimentosBaiExtra || []),
+    ];
+    const baiInfo = parseBaiMatricula(id, baiAll);
+    if (!ov && !mens && !fat && !baiInfo.nome && !(baiInfo.liquido && baiInfo.liquido > 0)) {
+      continue;
+    }
     const stubNome = normalizeNomeAluno(
-      String(ov?.nome || mens?.nome || fat?.alunoNome || ""),
+      String(ov?.nome || mens?.nome || fat?.alunoNome || baiInfo.nome || ""),
     );
     if (stubNome && visibleNames.has(stubNome)) {
       // Homónimo já visível — não criar stub duplicado
       if (!deleted.includes(id)) deleted.push(id);
       continue;
     }
-    extras.push(stubAlunoFromTrace(id, ov, mens, fat?.alunoNome));
+    extras.push(stubAlunoFromTrace(id, ov, mens, fat?.alunoNome, baiInfo));
     deleted = deleted.filter((x) => x !== id);
     visible.add(id);
     if (stubNome) visibleNames.add(stubNome);
+    const label =
+      ov?.nome || mens?.nome || fat?.alunoNome || baiInfo.nome || "sem nome";
     detalhes.push(
-      `ID ${id} reconstruído (${ov?.nome || mens?.nome || fat?.alunoNome || "sem nome"})`,
+      baiInfo.nome && !ov && !mens
+        ? `ID ${id} reconstruído a partir do BAI (${label})`
+        : `ID ${id} reconstruído (${label})`,
     );
   }
 

@@ -180,28 +180,54 @@ function Rastreio() {
             <strong>{excesso}</strong> ficha(s) a mais (duplicados por realinhamento de IDs ou
             recuperação de rastos).
           </p>
+          <p className="mt-1 text-xs opacity-90">
+            Se um aluno pago no BAI não aparece em Matrículas (ex. Otchaly P2-03), use primeiro{" "}
+            <strong>Repor a partir do BAI / rastos</strong> — não saneie antes, senão pode perder a ficha certa.
+          </p>
           {canEdit && (
-            <Button
-              type="button"
-              className="mt-2"
-              onClick={() => {
-                const r = sanearAlunosDuplicados();
-                syncPropinasFromMatriculas();
-                if (r.removidos) toast.success(`${r.removidos} duplicado(s) removido(s).`);
-                else toast.message("Nenhum duplicado por nome detectado.");
-              }}
-            >
-              Sanear duplicados (voltar a {META_MATRICULADOS})
-            </Button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const r = recuperarAlunosOcultos();
+                  syncPropinasFromMatriculas();
+                  if (r.restaurados) toast.success(`${r.restaurados} ficha(s) reposta(s). Pesquise o nome em Matrículas.`);
+                  else toast.message("Nenhum rasto extra neste dispositivo (BAI / propinas / IDs).");
+                }}
+              >
+                Repor a partir do BAI / rastos
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  const r = sanearAlunosDuplicados();
+                  syncPropinasFromMatriculas();
+                  if (r.removidos) toast.success(`${r.removidos} duplicado(s) removido(s).`);
+                  else toast.message("Nenhum duplicado por nome detectado.");
+                }}
+              >
+                Sanear duplicados (voltar a {META_MATRICULADOS})
+              </Button>
+            </div>
           )}
         </div>
       )}
 
-      {falta > 0 && excesso === 0 && (
+      {(falta > 0 || excesso === 0) && (
         <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p>
-            Cadastro com <strong>{alunos.length}</strong> / {META_MATRICULADOS}. O sistema varre
-            propinas, BAI, fotos e IDs antigos para repor o aluno em falta.
+            {falta > 0 ? (
+              <>
+                Cadastro com <strong>{alunos.length}</strong> / {META_MATRICULADOS}. O sistema varre
+                propinas, BAI, fotos e IDs antigos para repor o aluno em falta.
+              </>
+            ) : (
+              <>
+                Repor fichas em falta a partir do extrato BAI (ex. matrícula paga cujo nome não
+                aparece na lista). Não cria novo lançamento no BAI.
+              </>
+            )}
           </p>
           {canEdit && (
             <Button

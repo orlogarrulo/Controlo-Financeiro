@@ -1898,6 +1898,17 @@ function Alunos() {
     toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
     setCreating(false);
     setForm(emptyForm());
+    // Garantir que a ficha fica visível e o recibo pode ser impresso de imediato
+    setQ("");
+    setTurmaFiltro("todas");
+    setSoSemTelefone(false);
+    // Abrir recibo de liquidação (mesmo fluxo do botão Recibo na lista)
+    try {
+      abrirRecibo(aluno);
+    } catch (e) {
+      console.warn("[saveNew] abrirRecibo", e);
+      toast.message(`Aluna gravada: ${id}. Pesquise «${aluno.nome.split(" ")[0]}» na lista para abrir o recibo.`);
+    }
   }
 
   async function saveEdit() {
