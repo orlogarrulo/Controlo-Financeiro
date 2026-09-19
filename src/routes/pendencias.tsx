@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
 import { PageHeader } from "@/components/kpi";

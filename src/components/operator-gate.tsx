@@ -11,6 +11,7 @@ import {
   writeSession,
   type OperatorSession,
 } from "@/lib/can-edit";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 
 /**
  * Bloqueia a app até escolher colaborador.
@@ -89,7 +90,7 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
       <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-card)]">
         <div className="mb-4 flex justify-center">
           <img
-            src="/logo-escola.jpg"
+            src={escolaLogoSrc()}
             alt=""
             className="h-20 w-20 object-contain"
             width={80}

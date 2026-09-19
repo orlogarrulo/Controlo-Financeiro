@@ -8,9 +8,12 @@ import {
   saveAlunoFoto,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
-import { useFinance } from "@/lib/store";
+import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
+import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
+const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
+const CARTE_SCOLAIRE_MIGRATE_KEY = "ecc-carte-scolaire-v1"; // sexo + lieu de naissance + cartão FR
 
 /**
  * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):
@@ -43,6 +46,7 @@ export function HydrateStore() {
         const hasRemote =
           remoteTs > 0 &&
           (remote.payload.alunosExtra?.length ||
+            remote.payload.alunosCenso?.length ||
             remote.payload.extras?.length ||
             remote.payload.mensalidades?.length ||
             remote.payload.salariosExtra?.length ||
@@ -61,6 +65,13 @@ export function HydrateStore() {
         // Fotos na tabela dedicada — aplicar sempre (mesmo sem outros dados remotos)
         if (remoteFotos && Object.keys(remoteFotos).length > 0) {
           applyAlunoFotos(remoteFotos);
+        }
+        try {
+          // Só repor fichas em falta (ex. matrícula no BAI sem linha na lista).
+          // NÃO sanear automaticamente — a meta 48 escondia alunos novos legítimos (ex. Otchaly).
+          recuperarAlunosOcultos();
+        } catch (e) {
+          console.warn("[recuperar-alunos]", e);
         }
         applyingRemote.current = false;
         lastPull.current = Date.now();
@@ -94,6 +105,72 @@ export function HydrateStore() {
 
       await pullAndMerge("boot");
       ready.current = true;
+
+      // Migração única: recalcular classes Congo-Brazzaville e persistir na nuvem
+      try {
+        if (typeof localStorage !== "undefined" && !localStorage.getItem(CLASSES_MIGRATE_KEY)) {
+          const n = recalcularClassesMatriculas();
+          localStorage.setItem(CLASSES_MIGRATE_KEY, new Date().toISOString());
+          if (n > 0) {
+            toast.success(
+              `Classes e IDs actualizados: ${n} matrícula(s). A sincronizar com a nuvem…`,
+            );
+          }
+        }
+        const rec = recuperarAlunosOcultos();
+        if (rec.restaurados > 0) {
+          toast.success(
+            `${rec.restaurados} aluno(s) repostos a partir de rastos no sistema.`,
+          );
+        }
+        // Meta 48 desactivada: não correr sanearAlunosDuplicados no arranque.
+        // Marcar em Propinas os meses já liquidados na matrícula (mesesPropina)
+        try {
+          const n = useFinance.getState().syncPropinasFromMatriculas?.() ?? 0;
+          if (n > 0) {
+            toast.message(
+              `Propinas alinhadas: ${n} aluno(s) com meses já pagos na matrícula.`,
+            );
+          }
+        } catch (e) {
+          console.warn("[propinas] sync meses pagos", e);
+        }
+        // Detectar irmãos (mesmo pai/mãe) e aplicar descontos −10% / −15%
+        try {
+          const n = useFinance.getState().detectarIrmaosEAplicarDescontos?.() ?? 0;
+          if (n > 0) {
+            toast.message(
+              `Desconto de irmãos: ${n} aluno(s) actualizado(s) (transferidos sem desconto).`,
+            );
+          }
+        } catch (e) {
+          console.warn("[irmaos] detectar", e);
+        }
+        try {
+          if (typeof localStorage !== "undefined" && !localStorage.getItem(CARTE_SCOLAIRE_MIGRATE_KEY)) {
+            const st = useFinance.getState() as {
+              alunosExtra?: Record<string, unknown>[];
+              alunosOverrides?: Record<string, Record<string, unknown>>;
+              setState?: (p: unknown) => void;
+            };
+            const extras = (st.alunosExtra || []).map((a) => enrichAlunoCarteFields(a as never));
+            const overrides = { ...(st.alunosOverrides || {}) };
+            for (const [id, ov] of Object.entries(overrides)) {
+              overrides[id] = enrichAlunoCarteFields(ov as never) as Record<string, unknown>;
+            }
+            useFinance.setState({
+              alunosExtra: extras as never,
+              alunosOverrides: overrides as never,
+            });
+            localStorage.setItem(CARTE_SCOLAIRE_MIGRATE_KEY, new Date().toISOString());
+            toast.message("Cartes scolaires: champs Sexe et Lieu de naissance synchronisés.");
+          }
+        } catch (e) {
+          console.warn("[carte-scolaire] migrate", e);
+        }
+      } catch (e) {
+        console.warn("[classes-congo] migrate", e);
+      }
 
       unsub = useFinance.subscribe(() => {
         if (!ready.current || applyingRemote.current) return;
@@ -144,7 +221,7 @@ function hasLocalData(): boolean {
 }
 
 
-/** Mantém só movimentos gerados na app (salários, propinas, ATM manual) — não congela extrato antigo. */
+/** Mantém movimentos gerados na app — não congela extrato BAI antigo importado. */
 function sanitizeBaiExtra(extra: unknown[]): unknown[] {
   return (extra || []).filter((row) => {
     const m = row as { id?: string; banco?: string };
@@ -153,8 +230,11 @@ function sanitizeBaiExtra(extra: unknown[]): unknown[] {
     return (
       id.startsWith("APP-") ||
       id.startsWith("ATM-MAN-") ||
+      id.startsWith("INB-BAI-") ||
+      id.startsWith("APP-INB-") ||
       banco === "SALARIO-APP" ||
-      banco === "PROPINA-APP"
+      banco === "PROPINA-APP" ||
+      banco.startsWith("INBOX-")
     );
   });
 }
@@ -183,7 +263,10 @@ function mergeById(local: unknown[], remote: unknown[]): never[] {
 function applyPayload(p: FinanceCloudPayload) {
   const local = useFinance.getState();
   // Fundir por id: nuvem + local (telemóvel e PC passam a ver os mesmos registos)
-  const remoteAlunos = (p.alunosExtra as never[]) || [];
+  const remoteAlunos = mergeById(
+    (p.alunosCenso as never[]) || [],
+    (p.alunosExtra as never[]) || [],
+  );
   const localAlunos = local.alunosExtra || [];
   const alunosMerged = mergeById(localAlunos, remoteAlunos);
   const deletedAlunos = new Set([
@@ -261,6 +344,18 @@ function applyPayload(p: FinanceCloudPayload) {
       (local.inboxItems as never[]) || [],
       (p.inboxItems as never[]) || [],
     ) as never[],
+    crmEnvios: mergeById(
+      (local.crmEnvios as never[]) || [],
+      (p.crmEnvios as never[]) || [],
+    ) as never[],
+    codigosRecibo: mergeById(
+      (local.codigosRecibo as never[]) || [],
+      (p.codigosRecibo as never[]) || [],
+    ) as never[],
+    documentosAluno: mergeById(
+      (local.documentosAluno as never[]) || [],
+      (p.documentosAluno as never[]) || [],
+    ) as never[],
   });
   // Alinha botões com extrato após aplicar nuvem
   try {
@@ -272,6 +367,10 @@ function applyPayload(p: FinanceCloudPayload) {
 
 /** Evita spam de toasts se a nuvem falhar várias vezes seguidas. */
 let lastCloudErrorToast = 0;
+
+export async function pushFinanceNow() {
+  return pushCloud();
+}
 
 async function pushCloud() {
   try {
@@ -310,16 +409,85 @@ function mergeAlunoOverrides(
 ): Record<string, unknown> {
   const ids = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
   const out: Record<string, unknown> = {};
+  /** Campos de contacto / ficha: nunca deixar string vazia da nuvem apagar valor local (ou vice-versa). */
+  const preserveKeys = [
+    "telefone",
+    "email",
+    "dataNascimento",
+    "pai",
+    "mae",
+    "encarregado",
+    "morada",
+    "bi",
+    "familia",
+    "turma",
+    "obs",
+    "dataPag",
+    "nome",
+  ];
+  const ts = (o: Record<string, unknown>) => {
+    const v = o.updatedAt;
+    if (typeof v === "string" && v) {
+      const n = Date.parse(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+    return 0;
+  };
+  const nonEmpty = (v: unknown) =>
+    v != null && v !== "" && !(typeof v === "number" && Number.isNaN(v));
+
   for (const id of ids) {
     const L = (local?.[id] || {}) as Record<string, unknown>;
     const R = (remote?.[id] || {}) as Record<string, unknown>;
+    const Lt = ts(L);
+    const Rt = ts(R);
+    // Base: o mais recente por updatedAt; se iguais, local por cima
+    const merged: Record<string, unknown> =
+      Rt > Lt ? { ...L, ...R } : { ...R, ...L };
+
+    for (const key of preserveKeys) {
+      if (!nonEmpty(merged[key])) {
+        if (nonEmpty(L[key])) merged[key] = L[key];
+        else if (nonEmpty(R[key])) merged[key] = R[key];
+      }
+    }
+    // Números de matrícula: preferir o lado mais recente se ambos existem
+    for (const key of [
+      "inscricao",
+      "seguro",
+      "propina",
+      "liquido",
+      "bruto",
+      "manuais",
+      "cadernos",
+      "uniforme",
+      "extras",
+      "transporte",
+      "alimentacao",
+      "curso",
+      "cartaoEstudante",
+      "mensalidade1",
+      "mesesPropina",
+      "descPct",
+    ]) {
+      if (merged[key] == null || merged[key] === "") {
+        if (L[key] != null && L[key] !== "") merged[key] = L[key];
+        else if (R[key] != null && R[key] !== "") merged[key] = R[key];
+      }
+    }
+
     const foto =
+      (typeof merged.foto === "string" && merged.foto) ||
       (typeof R.foto === "string" && R.foto) ||
       (typeof L.foto === "string" && L.foto) ||
       undefined;
-    const merged = { ...L, ...R };
     if (foto) merged.foto = foto;
     else delete merged.foto;
+
+    // updatedAt = o mais recente
+    if (Lt || Rt) {
+      merged.updatedAt = Lt >= Rt ? L.updatedAt || R.updatedAt : R.updatedAt || L.updatedAt;
+    }
     out[id] = merged;
   }
   return out;

@@ -151,6 +151,16 @@ export function AgendamentoPage() {
 
   const saturdays = useMemo(() => nextSaturdays(16), []);
 
+  /** Slots já marcados para o dia seleccionado (nuvem + local). */
+  const slotsOcupados = useMemo(() => {
+    if (!dia) return new Set<string>();
+    return new Set(
+      rows
+        .filter((r) => r.dia === dia && r.hora)
+        .map((r) => r.hora),
+    );
+  }, [rows, dia]);
+
   const formUrl = useMemo(() => {
     if (typeof window === "undefined") {
       return "https://controlo-financeiro-tau.vercel.app/marca";
@@ -171,6 +181,13 @@ export function AgendamentoPage() {
       });
   }, []);
 
+  // Ao mudar o dia, limpar hora se o slot ficou ocupado
+  useEffect(() => {
+    if (hora && slotsOcupados.has(hora)) {
+      setHora("");
+    }
+  }, [dia, slotsOcupados, hora]);
+
   function t(pt: string, fr: string) {
     return lang === "fr" ? fr : pt;
   }
@@ -190,6 +207,17 @@ export function AgendamentoPage() {
           `Champs manquants : ${missing.join("; ")}.`,
         ),
       );
+      return;
+    }
+    // Revalidar ocupação (evitar corrida entre dois encarregados)
+    if (slotsOcupados.has(hora)) {
+      toast.error(
+        t(
+          "Este horário já está ocupado. Escolha outro slot.",
+          "Ce créneau est déjà occupé. Choisissez un autre horaire.",
+        ),
+      );
+      setHora("");
       return;
     }
     setBusy(true);
@@ -380,7 +408,10 @@ export function AgendamentoPage() {
                 <select
                   className="flex h-10 w-full rounded-md border border-[var(--color-line,#d5ddd8)] bg-white px-3 text-sm"
                   value={dia}
-                  onChange={(e) => setDia(e.target.value)}
+                  onChange={(e) => {
+                    setDia(e.target.value);
+                    setHora("");
+                  }}
                 >
                   <option value="">
                     {t("— Seleccione a data —", "— Choisir la date —")}
@@ -394,20 +425,47 @@ export function AgendamentoPage() {
               </div>
               <div className="space-y-1">
                 <Label>{t("Hora (20 min) *", "Heure (20 min) *")}</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-[var(--color-line,#d5ddd8)] bg-white px-3 text-sm"
-                  value={hora}
-                  onChange={(e) => setHora(e.target.value)}
-                >
-                  <option value="">
-                    {t("— Seleccione —", "— Choisir —")}
-                  </option>
-                  {SLOTS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                  {SLOTS.map((s) => {
+                    const ocupado = slotsOcupados.has(s);
+                    const selected = hora === s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={ocupado}
+                        onClick={() => setHora(s)}
+                        className={
+                          ocupado
+                            ? "rounded-md border border-red-300 bg-red-50 px-2 py-2 text-center text-sm font-medium text-red-700 line-through opacity-90 cursor-not-allowed"
+                            : selected
+                              ? "rounded-md border-2 border-[var(--color-forest,#1a5c3a)] bg-[var(--color-forest,#1a5c3a)] px-2 py-2 text-center text-sm font-semibold text-white"
+                              : "rounded-md border border-[var(--color-line,#d5ddd8)] bg-white px-2 py-2 text-center text-sm hover:border-[var(--color-forest,#1a5c3a)]"
+                        }
+                        title={
+                          ocupado
+                            ? t("Ocupado", "Occupé")
+                            : t("Disponível", "Disponible")
+                        }
+                      >
+                        {s}
+                        {ocupado ? (
+                          <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-wide">
+                            {t("Ocupado", "Occupé")}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {dia && slotsOcupados.size > 0 ? (
+                  <p className="text-[11px] text-red-700">
+                    {t(
+                      `${slotsOcupados.size} horário(s) já ocupado(s) neste sábado.`,
+                      `${slotsOcupados.size} créneau(x) déjà occupé(s) ce samedi.`,
+                    )}
+                  </p>
+                ) : null}
               </div>
             </div>
             <Button

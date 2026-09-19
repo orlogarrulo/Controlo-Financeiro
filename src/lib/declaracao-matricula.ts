@@ -1,3 +1,4 @@
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Aluno } from "@/data/types";
 
 export function descricaoClasse(turma: string): { fr: string; pt: string } {
@@ -36,7 +37,7 @@ export function declaracaoMatriculaHtml(
   a: Aluno,
   extras: { biEmitido?: string; biLocal?: string } = {},
 ): string {
-  const logo = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+  const logo = escolaLogoSrc();
   const classe = descricaoClasse(a.turma);
   const pai = (a.pai || "").trim() || "—";
   const mae = (a.mae || "").trim() || "—";

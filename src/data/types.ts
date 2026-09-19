@@ -96,9 +96,15 @@ export type FundoPagamento = {
 
 export type Aluno = {
   id: string;
+  /** ID anterior quando a matrícula foi realinhada à turma correcta. */
+  idAnterior?: string;
   nome: string;
   /** Data de nascimento (YYYY-MM-DD). */
   dataNascimento?: string;
+  /** Local de nascimento (ex.: Luanda) — face da Carte Scolaire. */
+  lugarNascimento?: string;
+  /** Sexo no cartão escolar: Féminin | Masculin. */
+  sexo?: "Féminin" | "Masculin" | "";
   turma: string;
   grupo: string;
   inscricao: number;
@@ -167,6 +173,8 @@ export type Aluno = {
   transferidoCampusCidade?: boolean;
   /** 0 nenhum · 2 (−10%) · 3 (−15%) irmãos. */
   irmaosNivel?: 0 | 2 | 3;
+  /** Campanha promo até 10/set (−40% nas propinas desta liquidação). */
+  campanhaPromoSetembro?: boolean;
   /** Foto do aluno (data URL / base64) para o cadastro. */
   foto?: string;
   /** Alergias a medicamentos. */
@@ -196,6 +204,106 @@ export type FaturaPropina = {
   valor: number;
   email?: string;
   emitidoEm: string;
+};
+
+/** Registo de envio de fatura/propina ao encarregado (CRM). */
+export type CrmEnvio = {
+  id: string;
+  alunoId: string;
+  alunoNome: string;
+  /** YYYY-MM */
+  mesKey: string;
+  canal: "email" | "whatsapp";
+  /** ISO timestamp do clique em enviar */
+  enviadoEm: string;
+  /** Utilizador confirmou entrega (botão verde) */
+  confirmado: boolean;
+  /** Número da fatura se existir */
+  faturaNumero?: string;
+  valor?: number;
+  criadoPor?: string;
+};
+
+
+/** Código único de recibo (anti-falsificação + reconciliação). */
+export type CodigoRecibo = {
+  id: string;
+  /** Ex.: RC-202610-K7M2-41 — impresso no recibo */
+  codigo: string;
+  alunoId: string;
+  alunoNome: string;
+  /** YYYY-MM */
+  mesKey: string;
+  valor: number;
+  /** Rubricas pagas (opcional) */
+  rubricas?: string;
+  emitidoEm: string;
+  criadoPor?: string;
+  /** Número de vias impressas / emitidas */
+  vias?: number;
+  lastPrintedAt?: string;
+};
+
+/**
+ * Arquivo do aluno — fonte de verdade de faturas e recibos emitidos.
+ * Compatível com faturasPropina (propina) e codigosRecibo (verificação).
+ *
+ * Fluxo de estados:
+ *   emitido → por_enviar → enviado → confirmado → arquivado
+ * (recibo pode nascer já "emitido" após pagamento, sem passar por cobrança)
+ */
+export type DocumentoAlunoTipo = "fatura" | "recibo";
+
+export type DocumentoAlunoModelo =
+  | "propina_mes"
+  | "liquidacao_matricula"
+  | "meio_ano"
+  | "atl_explicacao"
+  | "atl_actividades"
+  | "secretaria"
+  | "outro";
+
+export type DocumentoAlunoEstado =
+  | "emitido"
+  | "por_enviar"
+  | "enviado"
+  | "confirmado"
+  | "arquivado";
+
+export type DocumentoLinha = {
+  key: string;
+  label: string;
+  value: number;
+  on?: boolean;
+};
+
+export type DocumentoAluno = {
+  id: string;
+  tipo: DocumentoAlunoTipo;
+  modelo: DocumentoAlunoModelo;
+  /** Ex.: PROP-2026-11-014 · REC-EF001-2026-11 · EF/012 */
+  numero: string;
+  alunoId: string;
+  alunoNome: string;
+  /** YYYY-MM — propina / referência temporal */
+  mesKey?: string;
+  mesRef?: string;
+  valor: number;
+  linhas: DocumentoLinha[];
+  estado: DocumentoAlunoEstado;
+  /** Recibo gerado a partir desta fatura */
+  faturaId?: string;
+  faturaNumero?: string;
+  /** Código anti-falsificação (só recibos) — alinhado a CodigoRecibo.codigo */
+  codigoVerificacao?: string;
+  emitidoEm: string;
+  /** Data de pagamento (recibo ou fatura marcada paga) */
+  pagoEm?: string;
+  enviadoEm?: string;
+  confirmadoEm?: string;
+  arquivadoEm?: string;
+  criadoPor?: string;
+  notas?: string;
 };
 
 export type Mensalidade = {
@@ -310,6 +418,23 @@ export const MESES_LETIVOS = [
   "jun",
 ] as const;
 
+/**
+ * Meses de propina cobráveis / adiantáveis na matrícula (máx. 9).
+ * A 1.ª cobrança do ano lectivo é Outubro — por isso o índice 0 = "out".
+ * mesesPropina=1 → Outubro; mesesPropina=9 → Out→Jun.
+ */
+export const MESES_PROPINA_ADIANTADOS = [
+  "out",
+  "nov",
+  "dez",
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+] as const;
+
 export const MESES_LABEL: Record<string, string> = {
   set: "Set",
   out: "Out",
@@ -332,7 +457,11 @@ export type InboxTipo =
   | "despesa"
   | "tpa"
   | "transferencia"
-  | "deposito";
+  | "deposito"
+  | "comissao_transferencia"
+  | "comissao_fecho_tpa"
+  | "taxa_aluguer_tpa"
+  | "abatimento_socio";
 
 export type InboxStatus = "por_classificar" | "classificado" | "reconciliado" | "duplicado" | "ignorado";
 

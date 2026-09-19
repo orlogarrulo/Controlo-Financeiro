@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
-import { alunosAll, getSeed, useFinance } from "@/lib/store";
+import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
+import { resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
 import {
@@ -26,12 +28,17 @@ import {
   isMobileDevice,
 } from "@/lib/pdf-export";
 import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
+import { printCartesScolaires } from "@/lib/print-cartes-scolaires";
+import { CarteScolaire } from "@/components/carte-scolaire";
+import { alunoToCarte, ANO_LECTIF_CARTE } from "@/lib/carte-scolaire";
 import {
   buildInqueritoSaudeWhatsApp,
   buildAgendamentoWhatsApp,
   agendamentoPublicUrl,
 } from "@/lib/inquerito-saude-whatsapp";
 import type { Aluno, FaturaPropina } from "@/data/types";
+import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
 import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
 import {
   compressStudentPhoto,
@@ -39,6 +46,13 @@ import {
   ALUNO_FOTO_MAX_SYNC,
 } from "@/lib/image";
 import { saveAlunoFoto, deleteAlunoFoto } from "@/lib/finance-cloud";
+import {
+  linhasMatriculaFromAluno,
+  linhaPropinaMensal,
+  totalLinhas as totalLinhasDoc,
+  buildInvoiceHtml as buildInvoiceHtmlDoc,
+  garantirCodigoReciboAluno,
+} from "@/lib/documento-matricula";
 
 const EMPTY_FATURAS: FaturaPropina[] = [];
 
@@ -170,7 +184,11 @@ function fmtData(d: Date): string {
   return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
-/** Limite de pagamento: dia 10 do mês civil seguinte ao mês da fatura. */
+/**
+ * Limite de pagamento:
+ * - 1.ª fatura (outubro): até 20 de setembro (antes do início das aulas)
+ * - Restantes meses: até dia 10 do mês civil seguinte
+ */
 function prazoFatura(mesLetivo: string): {
   limite: string;
   de11a30: string;
@@ -185,6 +203,21 @@ function prazoFatura(mesLetivo: string): {
   let y = now.getFullYear();
   if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
   if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
+
+  // Excepção: propina de outubro → limite 20 de setembro do mesmo ano lectivo
+  if (mesLetivo === "out") {
+    const limite = new Date(y, 8, 20); // 20 set
+    const de11 = new Date(y, 8, 21);
+    const dia30 = new Date(y, 8, 30);
+    const multa40 = new Date(y, 9, 10); // 10 out
+    return {
+      limite: fmtData(limite),
+      de11a30: `${fmtData(de11)} a ${fmtData(dia30)}`,
+      multa40: fmtData(multa40),
+      suspensao: fmtData(multa40),
+    };
+  }
+
   const limite = new Date(y, baseMonth + 1, 10);
   const dia30 = new Date(y, baseMonth + 1, 30);
   const dia10Seguinte = new Date(y, baseMonth + 2, 10);
@@ -236,6 +269,8 @@ type FormState = {
   familia: string;
   obs: string;
   dataNascimento: string;
+  lugarNascimento: string;
+  sexo: "Féminin" | "Masculin" | "";
   foto: string;
   alergiasMedicamentos: string;
   alergiasAlimentares: string;
@@ -270,7 +305,7 @@ function emptyForm(): FormState {
     transferidoCampusCidade: false,
     agregadoIrmaos: false,
     irmaosNivel: 0,
-    cartaoEstudante: String(CARTAO_ESTUDANTE_PRECO),
+    cartaoEstudante: "0",
     incluirCartaoEstudante: false,
     campanhaPromoSetembro: false,
     manuais: "0",
@@ -290,6 +325,8 @@ function emptyForm(): FormState {
     familia: "",
     obs: "",
     dataNascimento: "",
+    lugarNascimento: "",
+    sexo: "",
     foto: "",
     alergiasMedicamentos: "",
     alergiasAlimentares: "",
@@ -352,10 +389,72 @@ function num(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Telefone preenchido na matrícula (ignora traços / n/d). */
+function temContactoTelefonico(a: { telefone?: string }): boolean {
+  const t = String(a.telefone || "")
+    .replace(/[\s./()-]/g, "")
+    .toLowerCase();
+  if (!t) return false;
+  if (/^(—|-|n\/?a|n\/?d|nd|sem|s\/n|nenhum|none|null|undefined)$/i.test(t)) return false;
+  return /\d{6,}/.test(t);
+}
+
 function grupoFromTurma(turma: string): string {
   if (turma.startsWith("Maternelle")) return "Maternelle";
   if (["CP1", "CP2", "CE1", "CE2", "CM1", "CM2"].includes(turma)) return "Primaire";
   return "Collège";
+}
+
+/**
+ * Sugere a classe/turma a partir da data de nascimento.
+ * Referência: idade completa em 1 de outubro do ano lectivo 2026-2027
+ * (início das aulas). Sistema educativo República do Congo (Brazzaville):
+ *   Maternelle P1 ≤3 · P2 =4 · P3 =5
+ *   CP1=6 · CP2=7 · CE1=8 · CE2=9 · CM1=10 · CM2=11
+ *   6ème=12 · 5ème=13 · 4ème=14 · 3ème≥15
+ * Um aluno de 13 anos NUNCA fica em Maternelle — vai para 5ème.
+ * Pode ser sempre sobrescrita manualmente no formulário.
+ */
+function turmaFromDataNascimento(dataNascimento: string): string | null {
+  if (!dataNascimento || dataNascimento.length < 8) return null;
+  const parts = dataNascimento.slice(0, 10).split("-").map(Number);
+  if (parts.length < 3 || !parts[0] || !Number.isFinite(parts[0])) return null;
+  const y = parts[0];
+  const m = parts[1] || 1;
+  const day = parts[2] || 1;
+  if (y < 1995 || y > 2026) return null;
+  const born = new Date(y, m - 1, day);
+  if (Number.isNaN(born.getTime())) return null;
+
+  // Idade de referência: 1 de outubro de 2026 (início das aulas / ano lectivo 2026-2027)
+  const ref = new Date(2026, 9, 1); // mês 9 = outubro
+  let age = ref.getFullYear() - born.getFullYear();
+  const md = ref.getMonth() - born.getMonth();
+  if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
+  if (age < 0 || age > 25) return null;
+
+  // Faixas etárias oficiais — Congo-Brazzaville (não misturar ciclos)
+  if (age <= 3) return "Maternelle P1";
+  if (age === 4) return "Maternelle P2";
+  if (age === 5) return "Maternelle P3";
+  if (age === 6) return "CP1";
+  if (age === 7) return "CP2";
+  if (age === 8) return "CE1";
+  if (age === 9) return "CE2";
+  if (age === 10) return "CM1";
+  if (age === 11) return "CM2";
+  if (age === 12) return "6ème";
+  if (age === 13) return "5ème";
+  if (age === 14) return "4ème";
+  if (age >= 15) return "3ème";
+  return null;
+}
+
+/** Propina mensal de referência pelo ciclo da turma (não transferidos). */
+function propinaDefaultFromTurma(turma: string): number {
+  if (turma.startsWith("Maternelle")) return PROPINA_MATERNELLE;
+  if (["6ème", "5ème", "4ème", "3ème"].includes(turma)) return PROPINA_COLLEGE;
+  return PROPINA_PRIMAIRE;
 }
 
 /** ID automático: PREFIXO-NN a partir da turma. */
@@ -394,6 +493,11 @@ function nextRecibo(existing: Aluno[]): string {
     if (m) max = Math.max(max, Number(m[1]));
   }
   return `EF/${String(max + 1).padStart(3, "0")}`;
+}
+
+/** Logotipo oficial — usa data-URL embutido no bundle. */
+async function loadEscolaLogoDataUrl(): Promise<string> {
+  return loadLogoShared();
 }
 
 function isMaternelleTurma(turma: string): boolean {
@@ -482,7 +586,7 @@ function calcTotais(f: FormState) {
   const transporte = num(f.transporte);
   const alimentacao = num(f.alimentacao);
   const curso = num(f.curso);
-  const cartaoEst = f.incluirCartaoEstudante ? num(f.cartaoEstudante) || CARTAO_ESTUDANTE_PRECO : 0;
+  const cartaoEst = num(f.cartaoEstudante);
   const propCalc = calcPropinaComCampanha(
     num(f.propina),
     num(f.mesesPropina),
@@ -589,11 +693,71 @@ function MatriculaForm({
         <Input data-focus="mae" value={form.mae} onChange={(e) => setForm({ ...form, mae: e.target.value })} />
       </div>
       <div className="space-y-1.5">
+        <Label>Data de nascimento</Label>
+        <Input
+          type="date"
+          value={form.dataNascimento}
+          onChange={(e) => {
+            const dataNascimento = e.target.value;
+            const suggested = turmaFromDataNascimento(dataNascimento);
+            setForm((prev) => {
+              if (!suggested) return { ...prev, dataNascimento };
+              // Recalcula classe + propina de referência do ciclo (Congo-Brazzaville)
+              const propinaRef = prev.transferidoCampusCidade
+                ? prev.propina
+                : String(propinaDefaultFromTurma(suggested));
+              return {
+                ...prev,
+                dataNascimento,
+                turma: suggested,
+                propina: propinaRef,
+              };
+            });
+          }}
+        />
+        <p className="text-[11px] text-[var(--color-muted)]">
+          Classe automática pelo sistema Congo-Brazzaville (idade em 1/out/2026 — início das aulas): 13 anos → 5ème, não Maternelle. Pode alterar manualmente.
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Lieu de naissance (carte scolaire)</Label>
+        <Input
+          value={form.lugarNascimento}
+          onChange={(e) => setForm((prev) => ({ ...prev, lugarNascimento: e.target.value }))}
+          placeholder="Luanda"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Sexe (carte scolaire)</Label>
+        <select
+          className="flex h-10 w-full rounded-md border border-[var(--color-line)] bg-transparent px-3 text-sm"
+          value={form.sexo}
+          onChange={(e) =>
+            setForm((prev) => ({
+              ...prev,
+              sexo: e.target.value as "Féminin" | "Masculin" | "",
+            }))
+          }
+        >
+          <option value="">—</option>
+          <option value="Féminin">Féminin</option>
+          <option value="Masculin">Masculin</option>
+        </select>
+      </div>
+      <div className="space-y-1.5">
         <Label>Classe / turma *</Label>
         <select
           className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
           value={form.turma}
-          onChange={(e) => setForm({ ...form, turma: e.target.value })}
+          onChange={(e) => {
+            const turma = e.target.value;
+            setForm((prev) => {
+              const propina = prev.transferidoCampusCidade
+                ? prev.propina
+                : String(propinaDefaultFromTurma(turma));
+              return { ...prev, turma, propina };
+            });
+          }}
         >
           {TURMAS.map((t) => (
             <option key={t} value={t}>
@@ -601,14 +765,6 @@ function MatriculaForm({
             </option>
           ))}
         </select>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Data da inscrição</Label>
-        <Input
-          type="date"
-          data-focus="dataPag" value={form.dataPag}
-          onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
-        />
       </div>
       <div className="space-y-2 sm:col-span-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)]/50 p-3">
         <Label className="text-sm font-semibold">Métodos de pagamento (por rubrica)</Label>
@@ -704,11 +860,12 @@ function MatriculaForm({
         <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
       </div>
       <div className="space-y-1.5">
-        <Label>Data de nascimento</Label>
+        <Label>Data da inscrição</Label>
         <Input
           type="date"
-          value={form.dataNascimento}
-          onChange={(e) => setForm({ ...form, dataNascimento: e.target.value })}
+          data-focus="dataPag"
+          value={form.dataPag}
+          onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
         />
       </div>
 
@@ -1087,38 +1244,23 @@ function MatriculaForm({
             <Label>Curso intensivo</Label>
             <Input value={form.curso} onChange={(e) => setForm({ ...form, curso: e.target.value })} />
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1 size-4 shrink-0"
-                checked={form.incluirCartaoEstudante}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    incluirCartaoEstudante: e.target.checked,
-                    cartaoEstudante: e.target.checked
-                      ? form.cartaoEstudante || String(CARTAO_ESTUDANTE_PRECO)
-                      : form.cartaoEstudante,
-                  })
-                }
-              />
-              <span>
-                <strong>Cartão de estudante</strong>
-                <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-                  {formatKz(CARTAO_ESTUDANTE_PRECO)} — pode incluir já na inscrição ou acrescentar depois na edição.
-                </span>
-              </span>
-            </label>
-            {form.incluirCartaoEstudante ? (
-              <Input
-                className="mt-2"
-                value={form.cartaoEstudante}
-                onChange={(e) => setForm({ ...form, cartaoEstudante: e.target.value })}
-                inputMode="decimal"
-                placeholder={String(CARTAO_ESTUDANTE_PRECO)}
-              />
-            ) : null}
+          <div className="space-y-1.5">
+            <Label>Cartão de estudante</Label>
+            <Input
+              value={form.cartaoEstudante}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  cartaoEstudante: e.target.value,
+                  incluirCartaoEstudante: num(e.target.value) > 0,
+                })
+              }
+              inputMode="decimal"
+              placeholder={String(CARTAO_ESTUDANTE_PRECO)}
+            />
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Valor habitual {formatKz(CARTAO_ESTUDANTE_PRECO)}. Deixe 0 se não aplicar.
+            </p>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
@@ -1382,8 +1524,13 @@ function Alunos() {
   const overrides = useFinance((s) => s.alunosOverrides);
   const addAluno = useFinance((s) => s.addAluno);
   const updateAluno = useFinance((s) => s.updateAluno);
+  const alinharCampusPorFamilia = useFinance((s) => s.alinharCampusPorFamilia);
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
   const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
+  const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
+  const addDocumentoAluno = useFinance((s) => s.addDocumentoAluno);
+  const findCodigoReciboAlunoMes = useFinance((s) => s.findCodigoReciboAlunoMes);
+  const incrementCodigoReciboVia = useFinance((s) => s.incrementCodigoReciboVia);
   const faturasPropina = useFinance((s) => s.faturasPropina) || EMPTY_FATURAS;
   const mensalidades = useFinance((s) => s.mensalidades);
   const operators = useFinance((s) => s.operators);
@@ -1404,6 +1551,7 @@ function Alunos() {
 
   const [q, setQ] = useState("");
   const [turmaFiltro, setTurmaFiltro] = useState("todas");
+  const [soSemTelefone, setSoSemTelefone] = useState(false);
   const [editing, setEditing] = useState<Aluno | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -1432,6 +1580,7 @@ function Alunos() {
   const [regLang, setRegLang] = useState<"pt" | "fr">("pt");
   const [regBusy, setRegBusy] = useState(false);
   const [cadastroAluno, setCadastroAluno] = useState<Aluno | null>(null);
+  const [cartePreview, setCartePreview] = useState<Aluno | null>(null);
   const [cadastroLang, setCadastroLang] = useState<"pt" | "fr">("pt");
   const [cadastroBusy, setCadastroBusy] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -1444,12 +1593,12 @@ function Alunos() {
     () => ["todas", ...TURMAS.filter((t) => alunos.some((a) => a.turma === t))],
     [alunos],
   );
+  const semTelefoneCount = alunos.filter((a) => !temContactoTelefonico(a)).length;
   const filtered = alunos.filter((a) => {
     if (turmaFiltro !== "todas" && a.turma !== turmaFiltro) return false;
-    if (!q) return true;
-    return `${a.nome} ${a.id} ${a.familia} ${a.encarregado} ${a.pai || ""} ${a.mae || ""}`
-      .toLowerCase()
-      .includes(q.toLowerCase());
+    if (soSemTelefone && temContactoTelefonico(a)) return false;
+    // "cidade" / "campus" encontra todos os transferidos Campus Cidade
+    return alunoMatchesQuery(a, q);
   });
   /** Ordenado por turma para visualização / impressão por classes. */
   const filteredByClass = useMemo(() => {
@@ -1478,14 +1627,22 @@ function Alunos() {
       return;
     }
     setEditing(a);
+    // Turma oficial: idade prevalece se o ID (ex. P1-07) for incompatível.
+    const suggestedTurma = a.dataNascimento
+      ? turmaFromDataNascimento(a.dataNascimento)
+      : null;
+    const turmaCorrigida =
+      resolveTurmaOficial(a) || a.turma || suggestedTurma || TURMAS[0];
     setForm({
       nome: a.nome || "",
       pai: a.pai || "",
       mae: a.mae || "",
-      turma: a.turma || TURMAS[0],
+      turma: turmaCorrigida,
       dataPag: a.dataPag || todayIso(),
-      inscricao: String(a.inscricao ?? DEFAULT_INSCRICAO),
-      seguro: String(a.seguro === 0 ? DEFAULT_SEGURO_ESCOLA : a.seguro ?? DEFAULT_SEGURO_ESCOLA),
+      // Usar valores reais da ficha (0 incluído). Não injectar tarifário por defeito na edição —
+      // senão obriga a escolher métodos de pagamento só para gravar o telefone.
+      inscricao: String(a.inscricao ?? 0),
+      seguro: String(a.seguro ?? 0),
       seguroExterno: (a.seguro ?? 0) === 0,
       transferidoCampusCidade: Boolean(a.transferidoCampusCidade),
       irmaosNivel: (a as { irmaosNivel?: 0 | 2 | 3 }).irmaosNivel === 3
@@ -1498,18 +1655,20 @@ function Alunos() {
             ? 3
             : 0,
       cartaoEstudante: String(
-        (a as { cartaoEstudante?: number }).cartaoEstudante || CARTAO_ESTUDANTE_PRECO,
+        Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0,
       ),
       incluirCartaoEstudante: Boolean(
-        (a as { cartaoEstudante?: number }).cartaoEstudante &&
-          Number((a as { cartaoEstudante?: number }).cartaoEstudante) > 0,
+        Number((a as { cartaoEstudante?: number }).cartaoEstudante) > 0,
       ),
       agregadoIrmaos: Boolean(
         (a.transferidoCampusCidade &&
           (a.propina === CAMPUS_CIDADE_PROPINA || (a.obs || "").includes("75.000"))) ||
           /irm[aã]os|−10%|2\+/i.test(a.obs || ""),
       ),
-      campanhaPromoSetembro: /campanha|−40%|promo/i.test(a.obs || "") || (a.descPct || 0) >= 40,
+      campanhaPromoSetembro:
+        typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean"
+          ? Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro)
+          : /campanha|−40%|promo/i.test(a.obs || "") || (a.descPct || 0) >= 40,
       manuais: String(a.manuais ?? 0),
       cadernos: String(a.cadernos ?? 0),
       uniforme: String(a.uniforme ?? 0),
@@ -1521,7 +1680,11 @@ function Alunos() {
       mesesPropina: String(
         a.mesesPropina ?? (a.mensalidade1 && a.mensalidade1 > 0 ? 1 : 0),
       ),
-      propina: String(a.propina ?? 0),
+      propina: String(
+        a.transferidoCampusCidade
+          ? (a.propina ?? CAMPUS_CIDADE_PROPINA)
+          : (a.propina ?? propinaDefaultFromTurma(turmaCorrigida)),
+      ),
       telefone: a.telefone || "",
       email: a.email || "",
       morada: a.morada || "",
@@ -1529,6 +1692,8 @@ function Alunos() {
       familia: a.familia || "",
       obs: a.obs || "",
       dataNascimento: a.dataNascimento || "",
+      lugarNascimento: a.lugarNascimento || "",
+      sexo: a.sexo === "Féminin" || a.sexo === "Masculin" ? a.sexo : "",
       foto: a.foto || "",
       alergiasMedicamentos: a.alergiasMedicamentos || "",
       alergiasAlimentares: a.alergiasAlimentares || "",
@@ -1663,6 +1828,17 @@ function Alunos() {
     }
   }
 
+
+/** Normaliza nome para comparação (ignora acentos, maiúsculas e espaços extra). */
+function normalizeNomeAluno(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
   async function saveNew() {
     if (!canEdit) return;
     if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
@@ -1672,6 +1848,26 @@ function Alunos() {
     if (!form.nome.trim()) {
       toast.error("Indique o nome do aluno.");
       return;
+    }
+    // Impedir matrícula duplicada (mesmo nome já na base)
+    const nomeNorm = normalizeNomeAluno(form.nome);
+    const existente = alunos.find((a) => normalizeNomeAluno(a.nome) === nomeNorm);
+    if (existente) {
+      toast.error(
+        `Aluno já existe na base de dados (${existente.id} · ${existente.turma}). Não é possível gravar matrícula duplicada.`,
+      );
+      return;
+    }
+    // BI igual (se preenchido)
+    const biNorm = form.bi.trim().toLowerCase();
+    if (biNorm) {
+      const mesmoBi = alunos.find((a) => (a.bi || "").trim().toLowerCase() === biNorm);
+      if (mesmoBi) {
+        toast.error(
+          `Já existe aluno com este BI/documento (${mesmoBi.id} · ${mesmoBi.nome}). Aluno já existe.`,
+        );
+        return;
+      }
     }
     const faltaMetodo = validarMetodosObrigatorios(form);
     if (faltaMetodo) {
@@ -1717,6 +1913,8 @@ function Alunos() {
       propina: num(form.propina),
       statusPag: t.liquido > 0 ? "pago" : "registado",
       dataNascimento: form.dataNascimento.trim() || undefined,
+      lugarNascimento: form.lugarNascimento.trim() || undefined,
+      sexo: form.sexo || undefined,
       foto,
       alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
       alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
@@ -1725,12 +1923,24 @@ function Alunos() {
       ...metodosFromForm(form),
       transferidoCampusCidade: form.transferidoCampusCidade,
       irmaosNivel: irmaosNivelFromForm(form),
+      campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
     } as Aluno;
     addAluno(aluno);
     await syncFotoToCloud(id, foto);
     toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
     setCreating(false);
     setForm(emptyForm());
+    // Garantir que a ficha fica visível e o recibo pode ser impresso de imediato
+    setQ("");
+    setTurmaFiltro("todas");
+    setSoSemTelefone(false);
+    // Abrir recibo de liquidação (mesmo fluxo do botão Recibo na lista)
+    try {
+      abrirRecibo(aluno);
+    } catch (e) {
+      console.warn("[saveNew] abrirRecibo", e);
+      toast.message(`Aluna gravada: ${id}. Pesquise «${aluno.nome.split(" ")[0]}» na lista para abrir o recibo.`);
+    }
   }
 
   async function saveEdit() {
@@ -1762,6 +1972,8 @@ function Alunos() {
         familia: form.familia.trim(),
         obs: buildObs(form),
         dataNascimento: form.dataNascimento.trim() || undefined,
+        lugarNascimento: form.lugarNascimento.trim() || undefined,
+        sexo: form.sexo || undefined,
         foto,
         alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
         alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
@@ -1787,11 +1999,23 @@ function Alunos() {
         ...metodosFromForm(form),
         transferidoCampusCidade: form.transferidoCampusCidade,
         irmaosNivel: irmaosNivelFromForm(form),
+        campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
       } as Partial<Aluno>);
       await syncFotoToCloud(editing.id, foto);
+      // Forçar push para a nuvem para o outro PC não sobrescrever com dados antigos
+      try {
+        const { pushFinanceNow } = await import("@/components/hydrate-store");
+        if (typeof pushFinanceNow === "function") await pushFinanceNow();
+      } catch {
+        try {
+          // fallback: evento usado pela app
+          window.dispatchEvent(new CustomEvent("ecc-finance-push"));
+        } catch {
+          /* ignore */
+        }
+      }
       toast.success(`Aluno ${editing.id} actualizado`);
       setEditing(null);
-      clearDeepLink();
       clearDeepLink();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
@@ -1808,7 +2032,7 @@ function Alunos() {
       year: "numeric",
     });
     const fmt = (v?: string) => (v && String(v).trim() ? String(v).trim() : "—");
-    const logoSrc = `${typeof location !== "undefined" ? location.origin : ""}/logo-escola.jpg`;
+    const logoSrc = escolaLogoSrc();
     const semFoto = fr ? "Sans photo" : "Sem foto";
     const fotoBlock = a.foto
       ? `<img src="${a.foto}" alt="" style="width:120px;height:150px;object-fit:contain;object-position:center top;border:1.5px solid #1a4d3e;border-radius:4px;background:#fff;" />`
@@ -1938,7 +2162,7 @@ function Alunos() {
 
   <h2>${L.s1}</h2>
   <table>
-    ${row(L.nome, fmt(a.nome))}
+    ${row(L.nome, fmt(nomeComSufixoCampus(a)))}
     ${row(L.nasc, a.dataNascimento ? formatDate(a.dataNascimento) : "—")}
     ${row(L.classe, fmt(a.turma))}
     ${row(L.grupo, fmt(a.grupo))}
@@ -2021,16 +2245,22 @@ function Alunos() {
   /** Mês lectivo actual (set–jun). */
   function mesLetivoAtual(): { key: string; mesRef: string; mesKey: string } {
     const now = new Date();
-    const m = now.getMonth();
+    let m = now.getMonth(); // 0-11
+    let y = now.getFullYear();
+    // Aulas começam a 1 de outubro: em agosto/setembro a 1.ª cobrança é OUTUBRO
+    if (m === 7 || m === 8) {
+      m = 9; // outubro
+    }
     const map: Record<number, string> = {
       8: "set", 9: "out", 10: "nov", 11: "dez",
       0: "jan", 1: "fev", 2: "mar", 3: "abr", 4: "mai", 5: "jun",
     };
-    const key = map[m] || "set";
+    const key = map[m] || "out";
+    const refDate = new Date(y, m, 1);
     return {
       key,
-      mesRef: now.toLocaleDateString("pt-PT", { month: "long", year: "numeric" }),
-      mesKey: `${now.getFullYear()}-${String(m + 1).padStart(2, "0")}`,
+      mesRef: refDate.toLocaleDateString("pt-PT", { month: "long", year: "numeric" }),
+      mesKey: `${y}-${String(m + 1).padStart(2, "0")}`,
     };
   }
 
@@ -2056,26 +2286,68 @@ function Alunos() {
 
   type LinhaFat = { key: string; label: string; value: number; on: boolean };
 
+  /** Meses de propina da liquidação — iguais ao diálogo de matrícula. */
+  function mesesPropinaFromAluno(a: Aluno): number {
+    const saved = Number(a.mesesPropina) || 0;
+    if (saved > 0) return Math.min(9, saved);
+    const prop = Number(a.propina) || 0;
+    const mens = Number(a.mensalidade1) || 0;
+    if (prop > 0 && mens > 0) {
+      for (const m of [9, 8, 7, 6, 5, 4, 3, 2, 1]) {
+        for (const camp of [true, false]) {
+          for (const ir of [0, 2, 3] as const) {
+            const pc = calcPropinaComCampanha(prop, m, camp, ir);
+            if (pc.liquidoPropina === mens) return m;
+          }
+        }
+      }
+    }
+    return mens > 0 ? 1 : 0;
+  }
+
   function alunoTemCampanha(a: Aluno): boolean {
+    if (typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean") {
+      return Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro);
+    }
     if ((a.descPct || 0) >= 40) return true;
     const obs = (a.obs || "").toLowerCase();
     return /campanha|−40%|-40%|promo/.test(obs);
   }
 
-  function alunoTemIrmaosDesc(a: Aluno): boolean {
-    if (a.transferidoCampusCidade) return false;
+  /** Nível de desconto por irmãos: 0 · 2 (−10%) · 3 (−15%). Transferidos Campus Cidade = 0. */
+  function alunoTemIrmaosDesc(a: Aluno): 0 | 2 | 3 {
+    if (a.transferidoCampusCidade) return 0;
+    const n = Number((a as { irmaosNivel?: number }).irmaosNivel) || 0;
+    if (n === 2 || n === 3) return n as 2 | 3;
     const obs = (a.obs || "").toLowerCase();
-    if (/2\+|irmãos|irmaos|agregado/.test(obs)) return true;
-    // −40% + −10% ≈ 46% de desconto combinado
-    if ((a.descPct || 0) >= 45) return true;
-    return false;
+    if (/3\+|3 ou mais|−15%|-15%/.test(obs)) return 3;
+    if (/2\+|2 irm|−10%|-10%|agregado/.test(obs)) return 2;
+    if ((a.descPct || 0) >= 45) return 2;
+    return 0;
   }
 
+  /**
+   * Mesmas rubricas e valores que o diálogo de matrícula (calcTotais).
+   * Fonte única: campos gravados na ficha + campanha/irmãos/meses.
+   */
   function linhasMatriculaBase(
     a: Aluno,
     mesesProp = 1,
-    opts?: { campanha?: boolean; irmaos?: boolean },
+    opts?: { campanha?: boolean; irmaos?: boolean | 0 | 2 | 3 },
   ): LinhaFat[] {
+    return linhasMatriculaFromAluno(a, mesesProp, opts);
+    const meses = Math.min(9, Math.max(0, Math.round(mesesProp) || 0));
+    const campanha =
+      opts?.campanha ??
+      (typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean"
+        ? Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro)
+        : alunoTemCampanha(a));
+    let irmaosNivel: 0 | 2 | 3 = 0;
+    if (opts?.irmaos === true) irmaosNivel = alunoTemIrmaosDesc(a) || 2;
+    else if (opts?.irmaos === false) irmaosNivel = 0;
+    else if (opts?.irmaos === 2 || opts?.irmaos === 3 || opts?.irmaos === 0) irmaosNivel = opts.irmaos;
+    else irmaosNivel = alunoTemIrmaosDesc(a);
+
     let propinaMes = Number(a.propina) || 0;
     if (!(propinaMes > 0)) {
       try {
@@ -2084,50 +2356,84 @@ function Alunos() {
         propinaMes = 0;
       }
     }
-    const meses = Math.min(9, Math.max(0, mesesProp));
-    const campanha = opts?.campanha ?? alunoTemCampanha(a);
-    const irmaos = opts?.irmaos ?? alunoTemIrmaosDesc(a);
-    const pc = calcPropinaComCampanha(propinaMes, meses, campanha, irmaos);
+    const pc = calcPropinaComCampanha(propinaMes, meses, campanha, irmaosNivel);
+    // Preferir mensalidade1 gravada se for a liquidação com estes meses (evita desvio)
+    let propinaLiquida = pc.liquidoPropina;
+    const mensSaved = Number(a.mensalidade1) || 0;
+    const mesesSaved = Number(a.mesesPropina) || 0;
+    if (mensSaved > 0 && mesesSaved === meses && meses > 0) {
+      propinaLiquida = mensSaved;
+    } else if (propinaLiquida <= 0 && mensSaved > 0 && meses > 0) {
+      propinaLiquida = mensSaved;
+    }
+
     const propLabel =
       meses > 1
         ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
-        : `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`;
+        : meses === 1
+          ? `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`
+          : `Propina${pc.detalhe ? " · " + pc.detalhe : ""}`;
+
     const cartaoVal = Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0;
     const inscricaoVal = Number(a.inscricao) || 0;
+    const seguroVal = Number(a.seguro) || 0;
+    const manuaisVal = Number(a.manuais) || 0;
+    const cadernosVal = Number(a.cadernos) || 0;
+    const uniformeVal = Number(a.uniforme) || 0;
+    const atlVal = Number(a.extras) || 0;
+    const transporteVal = Number(a.transporte) || 0;
+    const alimentacaoVal = Number(a.alimentacao) || 0;
+    const cursoVal = Number(a.curso) || 0;
+
     const isPacoteCampus =
       Boolean(a.transferidoCampusCidade) &&
       (CAMPUS_CIDADE_PACOTES as readonly number[]).includes(inscricaoVal);
     const labelInscricao = isPacoteCampus
       ? `Pacote Campus Cidade ${formatKz(inscricaoVal)} (matrícula + seguro escolar + cartão de estudante)`
       : "Inscrição";
+
     return [
       { key: "inscricao", label: labelInscricao, value: inscricaoVal, on: inscricaoVal > 0 },
-      // Seguro/cartão a 0 no pacote transferido — não aparecem como rubricas separadas
-      { key: "seguro", label: "Seguro escolar", value: Number(a.seguro) || 0, on: (Number(a.seguro) || 0) > 0 },
-      { key: "manuais", label: "Manuais", value: Number(a.manuais) || 0, on: (Number(a.manuais) || 0) > 0 },
-      { key: "cadernos", label: "Cadernos", value: Number(a.cadernos) || 0, on: (Number(a.cadernos) || 0) > 0 },
-      { key: "uniforme", label: "Uniforme", value: Number(a.uniforme) || 0, on: (Number(a.uniforme) || 0) > 0 },
-      { key: "atl", label: "ATL", value: Number(a.extras) || 0, on: (Number(a.extras) || 0) > 0 },
-      { key: "transporte", label: "Transporte", value: Number(a.transporte) || 0, on: (Number(a.transporte) || 0) > 0 },
-      { key: "alimentacao", label: "Alimentação", value: Number(a.alimentacao) || 0, on: (Number(a.alimentacao) || 0) > 0 },
-      { key: "curso", label: "Curso intensivo", value: Number(a.curso) || 0, on: (Number(a.curso) || 0) > 0 },
-      {
-        key: "cartaoEstudante",
-        label: "Cartão de estudante",
-        value: cartaoVal,
-        on: cartaoVal > 0,
-      },
+      { key: "seguro", label: "Seguro escolar", value: seguroVal, on: seguroVal > 0 },
+      { key: "manuais", label: "Manuais", value: manuaisVal, on: manuaisVal > 0 },
+      { key: "cadernos", label: "Cadernos", value: cadernosVal, on: cadernosVal > 0 },
+      { key: "uniforme", label: "Uniforme", value: uniformeVal, on: uniformeVal > 0 },
+      { key: "atl", label: "ATL", value: atlVal, on: atlVal > 0 },
+      { key: "transporte", label: "Transporte", value: transporteVal, on: transporteVal > 0 },
+      { key: "alimentacao", label: "Alimentação", value: alimentacaoVal, on: alimentacaoVal > 0 },
+      { key: "curso", label: "Curso intensivo", value: cursoVal, on: cursoVal > 0 },
+      { key: "cartaoEstudante", label: "Cartão de estudante", value: cartaoVal, on: cartaoVal > 0 },
       {
         key: "propinas",
         label: propLabel,
-        value: pc.liquidoPropina > 0 ? pc.liquidoPropina : propinaMes * (meses || 0),
-        on: (pc.liquidoPropina > 0 || propinaMes > 0) && meses > 0,
+        value: propinaLiquida > 0 ? propinaLiquida : 0,
+        on: propinaLiquida > 0 && meses > 0,
+      },
+      {
+        key: "multaAtraso",
+        label: "Multa por atraso no pagamento",
+        value: 0,
+        on: false,
+      },
+      {
+        key: "multaRecolha",
+        label: "Multa atraso recolha aluno(a) após 18:00",
+        value: 15000,
+        on: false,
       },
     ];
   }
 
   function totalLinhas(linhas: LinhaFat[]) {
-    return linhas.filter((l) => l.on && l.value > 0).reduce((s, l) => s + l.value, 0);
+    return totalLinhasDoc(linhas);
+  }
+
+  function linhasMatriculaSynced(
+    a: Aluno,
+    mesesProp = 1,
+    opts?: { campanha?: boolean; irmaos?: boolean | 0 | 2 | 3 },
+  ): LinhaFat[] {
+    return linhasMatriculaFromAluno(a, mesesProp, opts);
   }
 
   function buildInvoiceHtml(opts: {
@@ -2140,10 +2446,16 @@ function Alunos() {
     contacto: EscolaContacto;
     linhas?: LinhaFat[];
     modo?: "fatura" | "recibo";
+    /** Código único anti-falsificação (só recibos) */
+    codigoVerificacao?: string;
+    viaLabel?: string;
   }): string {
+    return buildInvoiceHtmlDoc(opts);
     const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto, linhas } = opts;
     const modo = opts.modo || "fatura";
     const isRecibo = modo === "recibo";
+    const codigoVerificacao = opts.codigoVerificacao || "";
+    const viaLabel = opts.viaLabel || "";
     const linhasAtivas = (linhas || []).filter((l) => l.on && l.value > 0);
     const linhasHtml = linhasAtivas.length
       ? `<table style="width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:12px;">
@@ -2164,160 +2476,130 @@ function Alunos() {
     const { morada, telefones, email: emailEscola, iban } = contacto;
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     const email = (a.email || "").trim();
-    const logoSrc = `${location.origin}/logo-escola.jpg`;
+    const logoSrc = escolaLogoSrc();
     const prazo = prazoFatura(mesLetivo);
     const multa35v = formatKz(Math.round(valor * 0.35));
     const multa40v = formatKz(Math.round(valor * 0.4));
     const total35 = formatKz(Math.round(valor * 1.35));
     const total40 = formatKz(Math.round(valor * 1.4));
     const emitida = fmtData(new Date());
-    // Cores da bandeira da República do Congo: verde · amarelo · vermelho
-    // Tipografia padronizada com Salários / Banco (Georgia / Times New Roman)
+    // Design: logo a cores; resto em cinzentos. IBAN + métodos numa só caixa.
+    // Tipografia Georgia / Times New Roman
     return `
-<div style="font-family:Georgia,'Times New Roman',Times,serif;color:#0f172a;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;padding:0 8px;">
-  <!-- Cabeçalho: só logo + cores Congo + lema -->
-  <div style="background:#ffffff;padding:0;overflow:hidden;border-bottom:1px solid #e2e8f0;">
-    <div style="height:6px;display:flex;">
-      <div style="flex:1;background:#009543;"></div>
-      <div style="flex:1;background:#fbde4a;"></div>
-      <div style="flex:1;background:#dc241f;"></div>
-    </div>
-    <div style="padding:18px 28px;display:flex;align-items:center;justify-content:center;gap:18px;">
-      <img src="${logoSrc}" width="144" height="144" alt="Logo" style="width:144px;height:144px;object-fit:contain;border-radius:12px;padding:4px;" crossorigin="anonymous" />
-      <p style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#009543;">Apprendre · Grandir · Réussir</p>
-    </div>
-    <div style="height:4px;display:flex;">
-      <div style="flex:1;background:#009543;"></div>
-      <div style="flex:1;background:#fbde4a;"></div>
-      <div style="flex:1;background:#dc241f;"></div>
-    </div>
+<div style="font-family:Georgia,'Times New Roman',Times,serif;color:#374151;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;padding:0;">
+  <!-- Cabeçalho compacto à esquerda (alinhado com Facture) -->
+  <div style="background:#ffffff;padding:6px 28px 8px;display:flex;align-items:center;justify-content:flex-start;gap:12px;border-bottom:1px solid #d1d5db;">
+    <img src="${logoSrc}" width="64" height="64" alt="Logo" style="width:64px;height:64px;object-fit:contain;border-radius:8px;flex-shrink:0;" crossorigin="anonymous" />
+    <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;">Apprendre · Grandir · Réussir</p>
   </div>
 
-  <div style="flex:1;padding:22px 28px 12px;display:flex;flex-direction:column;gap:14px;">
+  <div style="flex:1;padding:18px 28px 12px;display:flex;flex-direction:column;gap:12px;">
     <!-- Título + ref -->
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #009543;padding-bottom:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #9ca3af;padding-bottom:10px;">
       <div>
-        <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:${isRecibo ? "#009543" : "#dc241f"};">${
+        <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#4b5563;">${
           isRecibo
-            ? `Reçu <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Recibo / Comprovativo</span>`
-            : `Facture <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Fatura</span>`
+            ? `Reçu <span style="opacity:0.45;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Recibo / Comprovativo</span>`
+            : `Facture <span style="opacity:0.45;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Fatura</span>`
         }</p>
-        <p style="margin:6px 0 0;font-size:12px;color:#475569;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
+        <p style="margin:6px 0 0;font-size:12px;color:#6b7280;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
       </div>
-      <div style="text-align:right;background:#e6f4ec;color:#0b3d2c;padding:12px 16px;border-radius:8px;min-width:140px;border:1px solid #b7dfc8;">
-        <p style="margin:0;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#009543;font-weight:700;">Referência</p>
-        <p style="margin:6px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;color:#0b3d2c;">${numero}</p>
-        <p style="margin:6px 0 0;font-size:11px;color:#3d6b56;">${emitida}</p>
+      <div style="text-align:right;background:#f3f4f6;color:#374151;padding:10px 14px;border-radius:8px;min-width:140px;border:1px solid #d1d5db;">
+        <p style="margin:0;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;font-weight:700;">Referência</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;color:#111827;">${numero}</p>
+        <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">${emitida}</p>
       </div>
     </div>
 
     <!-- Escola + cliente -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="border-left:4px solid #009543;padding:10px 12px;background:#f8fafc;border-radius:0 8px 8px 0;">
-        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Emissor</p>
-        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b3d2c;">${NOME_ESCOLA_FATURA}</p>
-        <p style="margin:4px 0 0;font-size:11px;color:#475569;line-height:1.4;">${morada}</p>
-        <p style="margin:4px 0 0;font-size:11px;color:#475569;">${telefones}</p>
-        <p style="margin:2px 0 0;font-size:11px;color:#475569;">${emailEscola}</p>
+      <div style="border-left:3px solid #9ca3af;padding:10px 12px;background:#f9fafb;border-radius:0 8px 8px 0;">
+        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Emissor</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${NOME_ESCOLA_FATURA}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#6b7280;line-height:1.4;">${morada}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#6b7280;">${telefones}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${emailEscola}</p>
       </div>
-      <div style="border-left:4px solid #dc241f;padding:10px 12px;background:#f8fafc;border-radius:0 8px 8px 0;">
-        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;">Facturado a</p>
-        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#0b3d2c;">${encarregado}</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#334155;">Aluno: <strong>${a.nome}</strong></p>
-        <p style="margin:2px 0 0;font-size:11px;color:#64748b;">${a.id} · ${a.turma}</p>
-        <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
-        ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#b45309;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
-        <p style="margin:4px 0 0;font-size:10px;color:#92400e;line-height:1.35;">Pacotes: 82.000 · 99.000 · 127.000 Kz (cada um inclui matrícula + seguro escolar + cartão de estudante). Propina mensal 75.000 Kz.</p>` : ""}
+      <div style="border-left:3px solid #9ca3af;padding:10px 12px;background:#f9fafb;border-radius:0 8px 8px 0;">
+        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Facturado a</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
+        ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#4b5563;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
+        <p style="margin:4px 0 0;font-size:10px;color:#6b7280;line-height:1.35;">Pacotes: 82.000 · 99.000 · 127.000 Kz (cada um inclui matrícula + seguro escolar + cartão de estudante). Propina mensal 75.000 Kz.</p>` : ""}
       </div>
     </div>
 
-    <!-- Valor em destaque -->
-    <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
-      <div style="flex:1;padding:16px 18px;background:#fff;">
-        <p style="margin:0;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;"><span style="font-weight:700;color:#0b3d2c;">Description</span> <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Descrição</span></p>
-        <p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#0b3d2c;">${
+    <!-- Descrição + Total (mesmo fundo cinza) -->
+    <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #d1d5db;">
+      <div style="flex:1;padding:14px 16px;background:#f3f4f6;">
+        <p style="margin:0;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;"><span style="font-weight:700;color:#4b5563;">Description</span> <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Descrição</span></p>
+        <p style="margin:8px 0 0;font-size:14px;font-weight:700;color:#111827;">${
           isRecibo
-            ? `Reçu de paiement <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Comprovativo de pagamento</span>`
-            : `Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#64748b;">Fatura / liquidação</span>`
-        } — ${mesRef}</p>
-        <p style="margin:4px 0 0;font-size:11px;color:#64748b;">${
-          isRecibo
-            ? "Documento comprovativo dos itens seleccionados (pagamento efectuado)"
-            : pagoMes > 0
-              ? "Inclui valores já registados em Propinas"
-              : "Itens seleccionados pelo Departamento de Finanças"
+            ? `Reçu de paiement <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Recibo de pagamento</span>`
+            : `Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Fatura / liquidação</span>`
         }</p>
-        ${linhasHtml}
+                ${linhasHtml}
       </div>
-      <div style="min-width:160px;background:#e6f4ec;color:#0b3d2c;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:16px 18px;border-left:1px solid #b7dfc8;">
-        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#009543;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
-        <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#0b3d2c;">${formatKz(valor)}</p>
-        <p style="margin:6px 0 0;font-size:10px;color:#3d6b56;">${isRecibo ? "Pago" : `até ${prazo.limite}`}</p>
+      <div style="min-width:160px;background:#f3f4f6;color:#111827;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:14px 16px;border-left:1px solid #d1d5db;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
+        <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#111827;">${formatKz(valor)}</p>
+        <p style="margin:6px 0 0;font-size:10px;color:#6b7280;">${isRecibo ? "Pago" : `até ${prazo.limite}`}</p>
+        ${isRecibo && codigoVerificacao ? `<p style="margin:10px 0 0;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;font-weight:700;">Código de verificação</p><p style="margin:4px 0 0;font-size:13px;font-weight:800;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.06em;color:#111827;">${codigoVerificacao}</p>${viaLabel && viaLabel !== "1.ª via" ? `<p style="margin:6px 0 0;font-size:11px;font-weight:700;color:#4b5563;">${viaLabel} do mesmo recibo</p>` : (viaLabel === "1.ª via" ? `<p style="margin:6px 0 0;font-size:10px;color:#6b7280;">1.ª via</p>` : "")}` : ""}
       </div>
     </div>
 
-    ${isRecibo ? "" : `<!-- Prazos: só na FATURA (cobrança), não no recibo -->
-    <div style="background:linear-gradient(180deg,#fffbeb 0%,#fff 100%);border:1px solid #fcd34d;border-radius:10px;padding:14px 16px;">
-      <p style="margin:0 0 12px;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#b45309;">Délais <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Prazos</span></p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
-          <p style="margin:0;font-size:10px;color:#16a34a;font-weight:700;">SEM MULTA</p>
-          <p style="margin:4px 0 0;font-size:13px;font-weight:700;">Até ${prazo.limite}</p>
-          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Pagar ${formatKz(valor)}</p>
+    ${isRecibo ? "" : `<!-- Prazos -->
+    <div style="background:#f9fafb;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;">
+      <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#4b5563;">Délais <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Prazos</span></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">SEM MULTA</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">Até ${prazo.limite}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Pagar ${formatKz(valor)}</p>
         </div>
-        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
-          <p style="margin:0;font-size:10px;color:#d97706;font-weight:700;">MULTA 35%</p>
-          <p style="margin:4px 0 0;font-size:12px;font-weight:600;">${prazo.de11a30}</p>
-          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">+${multa35v} · total ${total35}</p>
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">MULTA 35%</p>
+          <p style="margin:4px 0 0;font-size:12px;font-weight:600;color:#111827;">${prazo.de11a30}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">+${multa35v} · total ${total35}</p>
         </div>
-        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0;">
-          <p style="margin:0;font-size:10px;color:#ea580c;font-weight:700;">MULTA 40%</p>
-          <p style="margin:4px 0 0;font-size:13px;font-weight:700;">Até ${prazo.multa40}</p>
-          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">+${multa40v} · total ${total40}</p>
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">MULTA 40%</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">Até ${prazo.multa40}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">+${multa40v} · total ${total40}</p>
         </div>
-        <div style="background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #fecaca;">
-          <p style="margin:0;font-size:10px;color:#dc2626;font-weight:700;">SUSPENSÃO</p>
-          <p style="margin:4px 0 0;font-size:13px;font-weight:700;">Após ${prazo.suspensao}</p>
-          <p style="margin:2px 0 0;font-size:11px;color:#64748b;">Sem pagamento · aluno suspenso</p>
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">SUSPENSÃO</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">Após ${prazo.suspensao}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Sem pagamento · aluno suspenso</p>
         </div>
       </div>
     </div>`}
 
-    <!-- Pagamento -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div style="background:#e6f4ec;color:#0b3d2c;border-radius:10px;padding:14px 16px;border:1px solid #b7dfc8;">
-        <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#009543;font-weight:700;">IBAN</p>
-        <p style="margin:10px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.04em;word-break:break-all;line-height:1.35;color:#0b3d2c;">${iban}</p>
-      </div>
-      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;background:#f8fafc;">
-        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#64748b;font-weight:700;">Métodos de pagamento</p>
-        <p style="margin:10px 0 0;font-size:12px;line-height:1.7;color:#0f172a;">
-          1. Transferência bancária<br/>
-          2. Cartão Multicaixa<br/>
-          3. Dinheiro (Departamento de Finanças)
-        </p>
-      </div>
+    <!-- IBAN + métodos numa só caixa -->
+    <div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;">
+      <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;font-weight:700;">IBAN · Métodos de pagamento</p>
+      <p style="margin:10px 0 0;font-size:14px;font-weight:700;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.04em;word-break:break-all;line-height:1.35;color:#111827;">${iban}</p>
+      <p style="margin:12px 0 0;font-size:12px;line-height:1.7;color:#4b5563;">
+        1. Transferência bancária &nbsp;·&nbsp; 2. Cartão Multicaixa &nbsp;·&nbsp; 3. Dinheiro (Departamento de Finanças)
+      </p>
     </div>
 
     <div style="flex:1;"></div>
   </div>
 
   <!-- Rodapé -->
-  <div style="border-top:1px solid #e2e8f0;padding:12px 24px 16px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;background:#f8fafc;">
+  <div style="border-top:1px solid #d1d5db;padding:12px 24px 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;background:#f9fafb;">
     <div>
-      <p style="margin:0;font-size:11px;font-weight:700;color:#0b3d2c;">Departamento de Finanças</p>
-      <p style="margin:4px 0 0;font-size:10px;color:#64748b;">Documento elaborado pelo Departamento de Finanças</p>
-      <p style="margin:10px 0 0;border-top:1px solid #cbd5e1;padding-top:4px;width:160px;font-size:10px;color:#475569;">Assinatura / carimbo</p>
+      <p style="margin:0;font-size:11px;font-weight:700;color:#374151;">Departamento de Finanças</p>
+      <p style="margin:4px 0 0;font-size:10px;color:#6b7280;">Documento elaborado pelo Departamento de Finanças</p>
+      <p style="margin:10px 0 0;border-top:1px solid #d1d5db;padding-top:4px;width:160px;font-size:10px;color:#6b7280;">Assinatura / carimbo</p>
     </div>
-    <div style="text-align:right;font-size:10px;color:#64748b;">
-      <p style="margin:0;">Ref. <strong style="color:#0b3d2c;">${numero}</strong></p>
+    <div style="text-align:right;font-size:10px;color:#6b7280;">
+      <p style="margin:0;">Ref. <strong style="color:#111827;">${numero}</strong></p>
       <p style="margin:2px 0 0;">Emitida em ${emitida}</p>
     </div>
-  </div>
-  <div style="height:5px;display:flex;">
-    <div style="flex:1;background:#009543;"></div>
-    <div style="flex:1;background:#fbde4a;"></div>
-    <div style="flex:1;background:#dc241f;"></div>
   </div>
 </div>
     `;
@@ -2330,13 +2612,22 @@ function Alunos() {
       toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
       return;
     }
+    // REGRA: secção do PDF = turma oficial (idade se o ID for incompatível).
+    // P1-07 com 11 anos vai para CM2, não para Maternelle P1.
     const byClass = new Map<string, typeof lista>();
     for (const a of lista) {
-      const k = a.turma || (lang === "fr" ? "Sans classe" : "Sem classe");
+      const official = resolveTurmaOficial(a);
+      const stored = a.turma && String(a.turma).trim();
+      const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
+      const k =
+        official ||
+        stored ||
+        suggested ||
+        (lang === "fr" ? "Sans classe" : "Sem classe");
       if (!byClass.has(k)) byClass.set(k, []);
       byClass.get(k)!.push(a);
     }
-    const logoSrc = `${location.origin}/logo-escola.jpg`;
+    const logoSrc = await loadEscolaLogoDataUrl();
     const locale = lang === "fr" ? "fr-FR" : "pt-PT";
     const fmtDate = (s?: string) => {
       if (!s) return "—";
@@ -2353,10 +2644,11 @@ function Alunos() {
       const [y, m, day] = parts;
       const born = new Date(y, (m || 1) - 1, day || 1);
       if (Number.isNaN(born.getTime())) return "—";
-      const now = new Date();
-      let age = now.getFullYear() - born.getFullYear();
-      const md = now.getMonth() - born.getMonth();
-      if (md < 0 || (md === 0 && now.getDate() < born.getDate())) age -= 1;
+      // Idade de referência: 1 out 2026 (início das aulas / ano lectivo) — alinhado com classe Congo-Brazzaville
+      const ref = new Date(2026, 9, 1);
+      let age = ref.getFullYear() - born.getFullYear();
+      const md = ref.getMonth() - born.getMonth();
+      if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
       return age >= 0 && age < 120 ? String(age) : "—";
     };
     const esc = (v: unknown) =>
@@ -2369,9 +2661,9 @@ function Alunos() {
     const L =
       lang === "fr"
         ? {
-            title: "Liste des élèves",
+            title: soSemTelefone ? "Élèves sans contact téléphonique" : "Liste des élèves",
             year: "Année scolaire",
-            all: "Toutes les classes",
+            all: soSemTelefone ? "Sans téléphone à l'inscription" : "Toutes les classes",
             classPref: "Classe",
             pupils: "élève(s)",
             colId: "ID",
@@ -2386,9 +2678,9 @@ function Alunos() {
             saveHint: "utilisez « Enregistrer au format PDF » si besoin",
           }
         : {
-            title: "Lista de alunos",
+            title: soSemTelefone ? "Alunos sem contacto telefónico" : "Lista de alunos",
             year: "Ano lectivo",
-            all: "Todas as classes",
+            all: soSemTelefone ? "Sem telefone na matrícula" : "Todas as classes",
             classPref: "Classe",
             pupils: "aluno(s)",
             colId: "ID",
@@ -2403,8 +2695,18 @@ function Alunos() {
             saveHint: "use «Guardar como PDF» se precisar",
           };
 
+    // Ordem cronológica do ciclo escolar Congo-Brazzaville (P1 → 3ème)
+    const ordemTurmas = [
+      ...TURMAS,
+      ...[...byClass.keys()].filter((t) => !(TURMAS as readonly string[]).includes(t)),
+    ];
+    const turmasOrdenadas = ordemTurmas.filter((t) => byClass.has(t));
+
     let body = "";
-    for (const [turma, rows] of byClass) {
+    for (const turma of turmasOrdenadas) {
+      const rows = byClass.get(turma)!;
+      // Alunos por nome dentro de cada classe
+      rows.sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt"));
       body += `<h2>${esc(turma)} <span class="count">(${rows.length})</span></h2>`;
       body += `<table>
         <thead>
@@ -2421,7 +2723,7 @@ function Alunos() {
         const bg = i % 2 ? "#f5f5f5" : "#ffffff";
         body += `<tr style="background:${bg}">
           <td>${esc(a.id)}</td>
-          <td>${esc(a.nome || "—")}</td>
+          <td>${esc(nomeComSufixoCampus(a) || "—")}</td>
           <td>${fmtDate(a.dataNascimento)}</td>
           <td>${calcAge(a.dataNascimento)}</td>
           <td>${esc(a.telefone || "—")}</td>
@@ -2438,7 +2740,7 @@ function Alunos() {
     const inner = `
 <div class="sheet">
   <div class="head">
-    <img src="${logoSrc}" width="56" height="56" alt="" />
+    <img src="${logoSrc}" width="72" height="72" alt="Logo École Consulaire" />
     <div>
       <p class="kicker">${esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda")}</p>
       <p class="title">${L.title}</p>
@@ -2455,7 +2757,8 @@ function Alunos() {
 <meta charset="utf-8"/>
 <title>${L.title}</title>
 <style>
-  @page { size: A4 portrait; margin: 14mm 12mm 14mm 12mm; }
+  /* Margem esquerda 3× a base (16mm→48mm) para a impressão não cortar a coluna ID */
+  @page { size: A4 portrait; margin: 14mm 12mm 14mm 48mm; } /* top right bottom left */
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
@@ -2463,10 +2766,23 @@ function Alunos() {
     font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  .sheet { max-width: 100%; margin: 0 auto; padding: 0; color: #000; }
-  .head { display: flex; gap: 12px; align-items: center;
-    border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
-  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .sheet {
+    max-width: 100%; width: 100%; margin: 0;
+    padding: 2mm 0 4mm 0; color: #000;
+    overflow: visible; box-sizing: border-box;
+  }
+  @media print {
+    html, body { margin: 0 !important; padding: 0 !important; }
+    .sheet { margin: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+  }
+  .head { display: flex; gap: 14px; align-items: center;
+    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 16px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .head img {
+    width: 72px; height: 72px; object-fit: contain; flex-shrink: 0;
+    display: block; background: #fff;
+  }
   .kicker { margin: 0; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
     color: #000; font-weight: 700; }
   .title { margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #000; }
@@ -2484,14 +2800,14 @@ function Alunos() {
   }
   td {
     padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
-    color: #000;
+    color: #000; word-break: break-word; overflow-wrap: anywhere;
   }
   tr { page-break-inside: avoid; break-inside: avoid; }
   .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #000;
     border-top: 1px solid #999; padding-top: 6px; }
   @media screen {
     body { padding: 16px; background: #e8ece9; }
-    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px 20px;
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px 18px;
       box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   }
 </style>
@@ -2526,25 +2842,11 @@ function Alunos() {
         ? nextFaturaNumero(mesKey)
         : `PROP-${mesKey}-001`;
     const contacto = loadContacto();
-    const mesesProp = a.mesesPropina && a.mesesPropina > 0 ? a.mesesPropina : 1;
-    let linhas = linhasMatriculaBase(a, mesesProp);
-    // Se só houver propina mensal em Propinas e sem itens de matrícula, marcar propina com valor do mês
-    const propLine = linhas.find((l) => l.key === "propinas");
-    if (propLine && pagoMes > 0) {
-      propLine.value = pagoMes;
-      propLine.on = true;
-      propLine.label = "Propina (mês corrente)";
-    }
-    const valorFinal = totalLinhas(linhas) || valor || propinaPorCiclo(a);
-    if (valorFinal <= 0) {
-      // ainda assim abrir com propina de referência
-      linhas = linhasMatriculaBase(a, 1).map((l) =>
-        l.key === "propinas"
-          ? { ...l, value: propinaPorCiclo(a), on: propinaPorCiclo(a) > 0 }
-          : { ...l, on: false },
-      );
-    }
-    const total = totalLinhas(linhas) || propinaPorCiclo(a);
+    const mesesProp = mesesPropinaFromAluno(a);
+    const linha = linhaPropinaMensal(a, mesLetivo);
+    if (pagoMes > 0) linha.value = pagoMes;
+    const linhas = [linha];
+    const total = totalLinhas(linhas) || linha.value || valor || propinaPorCiclo(a);
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2579,15 +2881,36 @@ function Alunos() {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { pagoMes } = resolverValorPropina(a, mesLetivo);
     const contacto = loadContacto();
-    const mesesProp = a.mesesPropina && a.mesesPropina > 0 ? a.mesesPropina : 1;
-    let linhas = linhasMatriculaBase(a, mesesProp);
-    // No recibo, permitir todos os itens (mesmo valor 0) para o utilizador preencher
+    // Mesmos meses / campanha / irmãos / rubricas que o diálogo de matrícula
+    const mesesProp = mesesPropinaFromAluno(a);
+    const campanha = alunoTemCampanha(a);
+    const irmaos = alunoTemIrmaosDesc(a);
+    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
+    // Rubricas da matrícula com valor > 0.
+    // Multas ficam desligadas por defeito (on: false em linhasMatriculaBase)
+    // — só entram se o utilizador as marcar no diálogo do recibo.
     linhas = linhas.map((l) => ({
       ...l,
-      on: l.value > 0,
+      on: Boolean(l.on) && l.value > 0,
     }));
     const total = totalLinhas(linhas);
     const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
+    const rubricas = linhas.filter((l) => l.on && l.value > 0).map((l) => l.label).join(", ");
+    let codigoVerificacao = "";
+    let viaLabel = "1.ª via";
+    try {
+      const stamp = garantirCodigoReciboAluno({
+        alunoId: a.id,
+        alunoNome: a.nome,
+        mesKey,
+        valor: total || 0,
+        rubricas,
+      });
+      codigoVerificacao = stamp.codigo;
+      viaLabel = stamp.viaLabel;
+    } catch {
+      /* ignore */
+    }
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2598,6 +2921,8 @@ function Alunos() {
       contacto,
       linhas,
       modo: "recibo",
+      codigoVerificacao,
+      viaLabel,
     });
     setInvoicePreview({
       aluno: a,
@@ -2612,7 +2937,9 @@ function Alunos() {
       linhas,
       mesesProp,
       modo: "recibo",
-    });
+      codigoVerificacao,
+      viaLabel,
+    } as never);
   }
 
   function refrescarFatura(patch: {
@@ -2761,6 +3088,33 @@ function Alunos() {
           });
         }
       }
+      // Arquivo do aluno — histórico + fila CRM (por_enviar para faturas)
+      try {
+        const linhasDoc = (invoicePreview.linhas || [])
+          .filter((l) => l.on && l.value > 0)
+          .map((l) => ({
+            key: l.key,
+            label: l.label,
+            value: l.value,
+            on: true,
+          }));
+        addDocumentoAluno?.({
+          tipo: isRecibo ? "recibo" : "fatura",
+          modelo: isRecibo ? "liquidacao_matricula" : "propina_mes",
+          numero,
+          alunoId: a.id,
+          alunoNome: a.nome,
+          mesKey,
+          mesRef,
+          valor,
+          linhas: linhasDoc,
+          estado: isRecibo ? "emitido" : "por_enviar",
+          codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+          criadoPor: activeOperator,
+        });
+      } catch {
+        /* ignore */
+      }
       if (result.delivery === "shared") {
         toast.success("Escolha WhatsApp, Gmail ou outra app");
       } else if (isMobileDevice()) {
@@ -2862,6 +3216,30 @@ function Alunos() {
             /* ignore */
           }
         }
+        try {
+          addDocumentoAluno?.({
+            tipo: "fatura",
+            modelo: "propina_mes",
+            numero,
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesKey,
+            mesRef,
+            valor: valorFat,
+            linhas: [
+              {
+                key: "propina",
+                label: `Propina ${mesRef}`,
+                value: valorFat,
+                on: true,
+              },
+            ],
+            estado: "por_enviar",
+            criadoPor: activeOperator,
+          });
+        } catch {
+          /* ignore */
+        }
       }
 
       if (fragments.length === 0) {
@@ -2892,23 +3270,25 @@ function Alunos() {
     }
     setExportBusy(true);
     try {
-      const logoSrc = `${location.origin}/logo-escola.jpg`;
+      const logoSrc = await loadEscolaLogoDataUrl();
       const rows = selected
         .map(
-          (a, i) =>
-            `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
+          (a, i) => {
+            const turmaPdf = resolveTurmaOficial(a) || (a.turma && String(a.turma).trim()) || a.turma;
+            return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
               <td class="mono">${a.id}</td>
-              <td>${a.nome}</td>
-              <td>${a.turma}</td>
+              <td>${nomeComSufixoCampus(a)}</td>
+              <td>${turmaPdf}</td>
               <td class="num">${formatKz(a.liquido)}</td>
               <td class="mono">${a.recibo}</td>
-            </tr>`,
+            </tr>`;
+          },
         )
         .join("");
       const inner = `
 <div class="sheet">
   <div class="head">
-    <img src="${logoSrc}" width="56" height="56" alt="" />
+    <img src="${logoSrc}" width="72" height="72" alt="Logo École Consulaire" />
     <div>
       <p class="kicker">${escola.nome || "École Consulaire"}</p>
       <p class="title">Lista de matrículas</p>
@@ -2931,15 +3311,15 @@ function Alunos() {
 </div>`;
       const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>
-  @page { size: A4 portrait; margin: 12mm 10mm; }
+  @page { size: A4 portrait; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
     font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .sheet { padding: 0 2mm; }
+  .sheet { padding: 4mm 2mm 6mm 2mm; overflow: visible; }
   .head { display: flex; align-items: center; gap: 14px; border-bottom: 2.5px solid #1f5c4a;
-    padding-bottom: 10px; margin-bottom: 12px; }
-  .head img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+    padding-bottom: 12px; margin-bottom: 14px; page-break-inside: avoid; }
+  .head img { width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; display: block; }
   .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
     color: #1f5c4a; font-weight: 700; }
   .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
@@ -3040,40 +3420,13 @@ function Alunos() {
                 const selected = exportIds.size > 0
                   ? pool.filter((a) => exportIds.has(a.id))
                   : pool;
-                // Só cartões com foto disponível
-                const comFoto = selected.filter(
-                  (a) => typeof a.foto === "string" && a.foto.trim().length > 20,
-                );
                 if (selected.length === 0) {
                   toast.error("Não há alunos para imprimir. Ajuste o filtro ou seleccione na lista.");
                   return;
                 }
-                if (comFoto.length === 0) {
-                  toast.error(
-                    "Nenhum dos alunos seleccionados tem foto. Carregue a foto na ficha antes de imprimir o cartão.",
-                  );
-                  return;
-                }
-                const semFoto = selected.length - comFoto.length;
-                const escola = getSeed().escola;
-                const logoUrl =
-                  typeof location !== "undefined"
-                    ? `${location.origin}/logo-escola.jpg`
-                    : "/logo-escola.jpg";
-                const html = cartoesEstudanteHtml(comFoto, {
-                  anoEscolar: escola.ano || "2025/2026",
-                  escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
-                  telefoneEscola: "922 637 640",
-                  logoUrl,
+                void printCartesScolaires(selected).then(() => {
+                  toast.success(`Cartes scolaires (FR): ${selected.length} élève(s) — Guardar como PDF`);
                 });
-                openPrintHtml(html);
-                if (semFoto > 0) {
-                  toast.success(
-                    `Cartões: ${comFoto.length} com foto. ${semFoto} sem foto foram ignorados.`,
-                  );
-                } else {
-                  toast.success(`Cartões: ${comFoto.length} aluno(s) — frente e verso`);
-                }
               }}
             >
               <Printer className="mr-1 size-4" /> Cartão de estudante
@@ -3105,6 +3458,51 @@ function Alunos() {
                 <option value="fr">FR</option>
                 <option value="pt">PT</option>
               </select>
+              {canEdit ? (
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  title="Corrige turma pela idade e muda o ID (P1-07 com 11 anos → CM2-xx)"
+                  onClick={() => {
+                    const n = recalcularClassesMatriculas();
+                    if (n > 0) {
+                      toast.success(`${n} matrícula(s) realinhada(s). Volte a gerar o PDF.`);
+                    } else {
+                      toast.message("Nada a corrigir — IDs já correspondem à turma.");
+                    }
+                  }}
+                >
+                  Realinhar IDs
+                </Button>
+              ) : null}
+              {canEdit ? (
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  title="Alinha a marca Campus Cidade entre irmãos (pai/mãe/família/sobrenome). Corrige famílias mistas como Mutapayi."
+                  onClick={() => {
+                    try {
+                      const r = alinharCampusPorFamilia();
+                      if (r.alunosAlterados > 0) {
+                        toast.success(
+                          `${r.alunosAlterados} aluno(s) alinhado(s) · ${r.familiasMistas} família(s) mista(s) · Campus ${r.campus} · Nova Vida ${r.novaVida}`,
+                        );
+                        void import("@/components/hydrate-store").then((m) => m.pushFinanceNow?.());
+                      } else {
+                        toast.message(
+                          r.familiasMistas
+                            ? "Famílias mistas detectadas mas sem alteração necessária."
+                            : `Sem famílias mistas · Campus ${r.campus} · Nova Vida ${r.novaVida}`,
+                        );
+                      }
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Falha ao alinhar famílias");
+                    }
+                  }}
+                >
+                  Alinhar Campus / famílias
+                </Button>
+              ) : null}
               <Button
                 className="shrink-0"
                 variant="secondary"
@@ -3135,7 +3533,7 @@ function Alunos() {
 
       <div className="no-print mb-4 flex flex-col gap-2 sm:flex-row">
         <Input
-          placeholder="Nome, família, ID…"
+          placeholder="Nome, família, ID, cidade, nova vida…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -3151,16 +3549,63 @@ function Alunos() {
             </option>
           ))}
         </select>
+        <Button
+          type="button"
+          variant={soSemTelefone ? "default" : "outline"}
+          className="shrink-0"
+          title="Mostrar só matrículas sem número de telefone"
+          onClick={() => setSoSemTelefone((v) => !v)}
+        >
+          Sem telefone{semTelefoneCount ? ` (${semTelefoneCount})` : ""}
+        </Button>
+        {canEdit ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            title="Recria fichas em falta a partir do extrato BAI (ex. Otchaly P2-03) sem novo lançamento"
+            onClick={() => {
+              const r = recuperarAlunosOcultos();
+              if (r.restaurados) {
+                toast.success(
+                  `${r.restaurados} ficha(s) reposta(s): ${r.detalhes.slice(0, 3).join(" · ")}`,
+                );
+                setTurmaFiltro("todas");
+                setSoSemTelefone(false);
+              } else {
+                toast.message(
+                  "Nenhuma ficha em falta encontrada no BAI deste dispositivo. Confirme o movimento no extrato BAI.",
+                );
+              }
+            }}
+          >
+            Repor do BAI
+          </Button>
+        ) : null}
       </div>
+
+      {q.trim() && filtered.length === 0 ? (
+        <div className="no-print mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>
+            Nenhum aluno com «{q.trim()}». Se o pagamento está no BAI (ex. Matrícula … (P2-03)), use{" "}
+            <strong>Repor do BAI</strong> — recria a ficha sem duplicar o extrato.
+          </p>
+        </div>
+      ) : null}
 
       <p className="mb-2 text-sm text-[var(--color-muted)]">
         {filtered.length} alunos · Total liquidado {formatKz(total)} · {escola.ano}
+        {semTelefoneCount > 0 ? (
+          <span className="ml-2 text-amber-800 dark:text-amber-300">
+            · {semTelefoneCount} sem contacto telefónico na matrícula
+          </span>
+        ) : null}
       </p>
 
       <div ref={printRef}>
       {/* Cabeçalho de impressão com logotipo */}
       <header className="print-only mb-4 hidden items-center gap-3 border-b border-black pb-3 print:flex print:text-black">
-        <img src="/logo-escola.jpg" alt="" className="h-14 w-14 object-contain" width={56} height={56} />
+        <img src={escolaLogoSrc()} alt="" className="h-14 w-14 object-contain" width={56} height={56} />
         <div>
           <p className="text-[10px] font-medium tracking-[0.14em] text-black uppercase">
             {escola.nome}
@@ -3180,6 +3625,7 @@ function Alunos() {
               <th className="px-3 py-2 text-left">ID</th>
               <th className="px-3 py-2 text-left">Nome</th>
               <th className="px-3 py-2 text-left">Turma</th>
+              <th className="px-3 py-2 text-left">Telefone</th>
               <th className="px-3 py-2 text-left">Data</th>
               <th className="px-3 py-2 text-right">Líquido</th>
               <th className="px-3 py-2 text-left">Seguro</th>
@@ -3194,10 +3640,7 @@ function Alunos() {
                 <td className="px-3 py-2 font-mono text-xs">{a.id}</td>
                 <td className="px-3 py-2">
                   <span className="inline-flex flex-wrap items-center gap-1.5">
-                    {a.nome}
-                    {a.transferidoCampusCidade ? (
-                      <Badge variant="outline">Campus Cidade</Badge>
-                    ) : null}
+                    <NomeAluno aluno={a} />
                   </span>
                   {a.pai || a.mae ? (
                     <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
@@ -3208,6 +3651,13 @@ function Alunos() {
                   ) : null}
                 </td>
                 <td className="px-3 py-2">{a.turma}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs">
+                  {temContactoTelefonico(a) ? (
+                    a.telefone
+                  ) : (
+                    <span className="text-amber-800 dark:text-amber-300">Sem contacto</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   {a.dataPag ? formatDate(a.dataPag) : "—"}
                 </td>
@@ -3256,21 +3706,8 @@ function Alunos() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      title="Cartão de estudante (só este aluno) — PDF centrado"
-                      onClick={() => {
-                        const escola = getSeed().escola;
-                        const logoUrl =
-                          typeof location !== "undefined"
-                            ? `${location.origin}/logo-escola.jpg`
-                            : "/logo-escola.jpg";
-                        const html = cartoesEstudanteHtml([a], {
-                          anoEscolar: escola.ano || "2025/2026",
-                          escolaCurto: escola.nomeCurto || "École Consulaire – Nova Vida",
-                          telefoneEscola: "922 637 640",
-                          logoUrl,
-                        });
-                        openPrintHtml(html);
-                      }}
+                      title="Cartão de estudante — pré-visualização e PDF"
+                      onClick={() => setCartePreview(a)}
                     >
                       <IdCard className="size-3.5" />
                       <span className="ml-1 hidden xl:inline">Cartão</span>
@@ -3304,12 +3741,17 @@ function Alunos() {
         </DialogContent>
       </Dialog>
 
-      {/* Editar */}
+      {/* Editar — mesmo formulário e campos que «Nova matrícula» */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); clearDeepLink(); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Editar {editing?.id}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              Editar matrícula {editing?.id}
+            </DialogTitle>
           </DialogHeader>
+          <p className="text-xs text-[var(--color-muted)]">
+            Mesmos campos que a nova matrícula. A classe é recalculada pela data de nascimento (sistema Congo-Brazzaville: 13 anos → 5ème). Pode alterar manualmente. ID e recibo mantêm-se.
+          </p>
           <MatriculaForm form={form} setForm={setForm} onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
         </DialogContent>
       </Dialog>
@@ -3336,7 +3778,7 @@ function Alunos() {
                   .sort((a, b) => a.nome.localeCompare(b.nome, "pt"))
                   .map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.nome} · {a.id} · {a.turma}
+                      {nomeComSufixoCampus(a)} · {a.id} · {a.turma}
                     </option>
                   ))}
               </select>
@@ -3418,6 +3860,42 @@ function Alunos() {
               PDF
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Carte scolaire — diálogo (um aluno, sem janela nova) */}
+      <Dialog open={!!cartePreview} onOpenChange={(o) => !o && setCartePreview(null)}>
+        <DialogContent className="max-h-[92vh] max-w-[min(96vw,480px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Carte scolaire</DialogTitle>
+          </DialogHeader>
+          {cartePreview ? (
+            <div className="space-y-4">
+              <p className="text-sm text-[var(--color-muted)]">
+                <strong>{cartePreview.nome}</strong>
+                {cartePreview.turma ? ` · ${cartePreview.turma}` : ""} · Matricule{" "}
+                {cartePreview.id}
+              </p>
+              <div className="flex justify-center overflow-x-auto rounded-lg bg-zinc-50 p-3">
+                <CarteScolaire data={alunoToCarte(cartePreview, ANO_LECTIF_CARTE)} />
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={() => setCartePreview(null)}>
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void printCartesScolaires([cartePreview]).then(() => {
+                      toast.success("Pré-visualização de impressão — Guardar como PDF");
+                    });
+                  }}
+                >
+                  <Printer className="mr-1 size-4" /> PDF / Imprimir
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -3643,7 +4121,7 @@ function Alunos() {
                   }}
                 />
                 <span className="font-mono text-xs text-[var(--color-muted)]">{a.id}</span>
-                <span className="truncate">{a.nome}</span>
+                <span className="truncate"><NomeAluno aluno={a} /></span>
                 <span className="ml-auto text-xs text-[var(--color-muted)]">{a.turma}</span>
               </label>
             ))}
@@ -3795,26 +4273,79 @@ function Alunos() {
                     </label>
                   </div>
                   <ul className="space-y-1.5">
-                    {invoicePreview.linhas.map((l) => (
-                      <li key={l.key} className="flex flex-wrap items-center gap-2 text-sm">
+                    {invoicePreview.linhas.map((l) => {
+                      const isMultaAtraso = l.key === "multaAtraso";
+                      const isMultaRecolha = l.key === "multaRecolha";
+                      const basePropina =
+                        invoicePreview.linhas.find((x) => x.key === "propinas" && x.on)?.value ||
+                        invoicePreview.linhas.find((x) => x.key === "propinas")?.value ||
+                        0;
+                      return (
+                      <li
+                        key={l.key}
+                        className={
+                          isMultaAtraso || isMultaRecolha
+                            ? "flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50/60 p-2 text-sm"
+                            : "flex flex-wrap items-center gap-2 text-sm"
+                        }
+                      >
                         <input
                           type="checkbox"
                           checked={l.on}
                           onChange={(e) => {
+                            const on = e.target.checked;
+                            let value = l.value;
+                            if (isMultaAtraso && on && !(value > 0) && basePropina > 0) {
+                              // por defeito 10% da propina marcada
+                              value = Math.round(basePropina * 0.1);
+                            }
+                            if (isMultaRecolha && on && !(value > 0)) {
+                              value = 15000;
+                            }
                             const linhas = invoicePreview.linhas.map((x) =>
-                              x.key === l.key ? { ...x, on: e.target.checked } : x,
+                              x.key === l.key ? { ...x, on, value } : x,
                             );
                             refrescarFatura({ linhas });
                           }}
                         />
                         <span className="min-w-[7rem] flex-1">{l.label}</span>
+                        {isMultaAtraso ? (
+                          <select
+                            className="h-8 rounded border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
+                            value={
+                              basePropina > 0 && l.value > 0
+                                ? String(Math.round((l.value / basePropina) * 100))
+                                : "10"
+                            }
+                            disabled={!l.on}
+                            title="Percentagem sobre a propina marcada"
+                            onChange={(e) => {
+                              const pct = Number(e.target.value) || 0;
+                              const value = Math.round(basePropina * (pct / 100));
+                              const linhas = invoicePreview.linhas.map((x) =>
+                                x.key === l.key ? { ...x, value, on: true } : x,
+                              );
+                              refrescarFatura({ linhas });
+                            }}
+                          >
+                            {[5, 10, 15, 20, 25, 30, 35, 40, 50].map((p) => (
+                              <option key={p} value={p}>
+                                {p}%
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
                         <Input
                           type="number"
                           min={0}
                           step="1"
                           className="h-8 w-28 text-right tabular-nums"
                           value={l.value || ""}
-                          title="Valor editável (mesmo se o cadastro estiver a zero)"
+                          title={
+                            isMultaRecolha
+                              ? "Valor editável (predefinição 15.000 Kz)"
+                              : "Valor editável (mesmo se o cadastro estiver a zero)"
+                          }
                           onChange={(e) => {
                             const v = Number(e.target.value) || 0;
                             const linhas = invoicePreview.linhas.map((x) =>
@@ -3826,11 +4357,12 @@ function Alunos() {
                           }}
                         />
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                   <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                    Pode marcar qualquer item e alterar o valor. Itens a zero no cadastro deixam de
-                    bloquear o check.
+                    Pode marcar qualquer item e alterar o valor. Multas: escolha a % de atraso no
+                    pagamento (sobre a propina) ou a multa de recolha após 18:00 (15.000 Kz, editável).
                   </p>
                   <p className="mt-2 text-sm font-semibold text-[var(--color-forest)]">
                     Total fatura: {formatKz(invoicePreview.valor)}

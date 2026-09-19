@@ -3,6 +3,11 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import seedJson from "@/data/seed.json";
 import type {
   Aluno,
+  CrmEnvio,
+  CodigoRecibo,
+  DocumentoAluno,
+  DocumentoAlunoEstado,
+  FaturaPropina,
   FundoAtm,
   FundoPagamento,
   Lancamento,
@@ -13,14 +18,37 @@ import type {
   ReciboSalario,
   Seed,
 } from "@/data/types";
-import { DEFAULT_OPERATORS, MESES_LETIVOS } from "@/data/types";
+import { DEFAULT_OPERATORS, MESES_LETIVOS, MESES_PROPINA_ADIANTADOS } from "@/data/types";
 import { assertCanEdit } from "@/lib/can-edit";
+import { aplicarSentido, montanteAbs } from "@/lib/inbox-sentido";
+import {
+  grupoFromTurma,
+  resolveTurmaOficial,
+  turmaFromId,
+  nextIdForTurma,
+} from "@/lib/classe-congo";
 
 const seed = seedJson as Seed;
 
 /** Bloqueia mutações para Colaboradores 2–5 (só C1 edita). */
 function requireEdit(get: () => { activeOperator: string; operators: string[] }) {
   assertCanEdit(get().activeOperator || "", get().operators || []);
+}
+
+/** Meses de propina já pagos na ficha (campo ou inferência mensalidade1 / líquido). */
+function inferMesesAdiantados(a: Aluno): number {
+  const prop = Number(a.propina) || 0;
+  const mens = Number(a.mensalidade1) || 0;
+  if (!(mens > 0)) return 0;
+  const saved = Number(a.mesesPropina) || 0;
+  if (saved > 0 && prop > 0 && mens + 1 >= prop * 0.5) {
+    return Math.min(9, saved);
+  }
+  if (prop > 0) {
+    const ratio = Math.round(mens / prop);
+    if (ratio >= 2 && ratio <= 9 && Math.abs(mens - prop * ratio) <= prop * 0.02) return ratio;
+  }
+  return 0;
 }
 
 /** Numeração interna mensal: PREFIXO-AAAA-MM-001 (reinicia cada mês). */
@@ -111,6 +139,12 @@ type ExtraState = {
   };
   /** Caixa de entrada de reconciliação (atrasados). */
   inboxItems: import("@/data/types").InboxMovimento[];
+  /** Histórico de envios de faturas/propinas aos encarregados (CRM). */
+  crmEnvios: CrmEnvio[];
+  /** Códigos únicos de recibos emitidos (anti-falsificação). */
+  codigosRecibo: CodigoRecibo[];
+  /** Arquivo do aluno: faturas e recibos emitidos (histórico por aluno). */
+  documentosAluno: DocumentoAluno[];
 };
 
 type Store = ExtraState & {
@@ -120,6 +154,25 @@ type Store = ExtraState & {
   setMensalidade: (id: string, mes: string, valor: number) => void;
   /** Garante que todos os alunos activos têm linha em Propinas (backfill). */
   syncPropinasFromMatriculas: () => number;
+  detectarIrmaosEAplicarDescontos: () => number;
+  /**
+   * Alinha a marca Campus Cidade dentro de cada família (pai, mãe ou campo família).
+   * Se a maioria dos irmãos for Campus Cidade → todos; senão → todos Nova Vida.
+   * Corrige casos como Mutapayi em que só um filho aparecia no filtro «nova vida».
+   */
+  alinharCampusPorFamilia: () => {
+    familiasMistas: number;
+    alunosAlterados: number;
+    campus: number;
+    novaVida: number;
+  };
+  /**
+   * Funde um censo (JSON de outro PC / backup) no cadastro local.
+   * Alunos cujo ID já existe no seed recebem override; os outros vão para alunosExtra.
+   * Nunca apaga matrículas que já estejam neste dispositivo.
+   */
+  importCensoAlunos: (alunos: Aluno[], mensalidades?: Mensalidade[]) => number;
+
   confirmPropinaBai: (id: string, mes: string) => { ok: boolean; message: string };
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
@@ -143,6 +196,11 @@ type Store = ExtraState & {
   /** Apaga um movimento do extrato BAI e recalcula saldos em cadeia. */
   deleteBaiMovimento: (id: string) => void;
   removeAluno: (id: string) => void;
+  /** Tira o ID da lista de apagados e reconstroi a ficha se ainda houver rasto. */
+  restoreAluno: (id: string) => boolean;
+  /** Varre propinas, BAI, overrides e IDs apagados; repõe fichas ocultas. */
+  recuperarAlunosOcultos: () => { restaurados: number; detalhes: string[] };
+  sanearAlunosDuplicados: () => { removidos: number; detalhes: string[] };
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   updateReciboSalario: (
@@ -162,6 +220,14 @@ type Store = ExtraState & {
   removeInboxItem: (id: string) => void;
   clearInboxReconciliados: () => void;
   processarInbox: () => { ordenados: number; duplicados: number; ligados: number; avisos: number };
+  /** Envia itens Inbox para o extrato BAI, recalcula saldo e limpa da Inbox os já tratados. */
+  syncInboxParaBai: (ids?: string[]) => {
+    criados: number;
+    duplicados: number;
+    ignorados: number;
+    removidos: number;
+    pendentes: number;
+  };
   /** Recria recibos do mês como pagos a partir da lista de funcionários. */
   restaurarRecibosPagos: (staff: { id: string; nome: string; funcao?: string; salario: number; diasUteis?: number; diasTrab?: number; outrosDesc?: number; iban?: string }[], mes: string, mesKey: string, dataPag?: string) => number;
   removeReciboSalario: (id: string) => void;
@@ -179,6 +245,26 @@ type Store = ExtraState & {
   addSalario: (s: Salario) => void;
   updateSalario: (id: string, patch: Partial<Salario>) => void;
   removeSalario: (id: string) => void;
+  /** Regista envio de fatura/propina ao encarregado (CRM). */
+  addCrmEnvio: (e: Omit<CrmEnvio, "id" | "enviadoEm" | "confirmado"> & { id?: string; enviadoEm?: string; confirmado?: boolean }) => void;
+  updateCrmEnvio: (id: string, patch: Partial<CrmEnvio>) => void;
+  removeCrmEnvio: (id: string) => void;
+  addCodigoRecibo: (c: Omit<CodigoRecibo, "id" | "codigo" | "emitidoEm"> & { id?: string; codigo?: string; emitidoEm?: string }) => CodigoRecibo;
+  findCodigoRecibo: (codigo: string) => CodigoRecibo | undefined;
+  findCodigoReciboAlunoMes: (alunoId: string, mesKey: string) => CodigoRecibo | undefined;
+  incrementCodigoReciboVia: (id: string) => CodigoRecibo | undefined;
+  /** Arquivo do aluno */
+  addDocumentoAluno: (
+    d: Omit<DocumentoAluno, "id" | "emitidoEm" | "estado"> & {
+      id?: string;
+      emitidoEm?: string;
+      estado?: DocumentoAlunoEstado;
+    },
+  ) => DocumentoAluno;
+  updateDocumentoAluno: (id: string, patch: Partial<DocumentoAluno>) => void;
+  findDocumentoPorNumero: (numero: string) => DocumentoAluno | undefined;
+  /** Cria recibo a partir do n.º de fatura (Arquivo). */
+  gerarReciboDeFatura: (faturaNumero: string) => DocumentoAluno | undefined;
 };
 
 const initialMensalidades: Mensalidade[] = seed.mensalidades;
@@ -191,8 +277,9 @@ const MES_LETIVO_IDX: Record<string, number> = {
 
 /**
  * Prazo de pagamento da propina do mês lectivo:
- * do dia 30 do mês de referência até ao dia 10 do mês seguinte.
- * Ex.: propina de setembro → 30/09 a 10/10.
+ * - Outubro (1.ª fatura): até 20 de setembro (antes do início das aulas)
+ * - Restantes: do dia 30 do mês de referência até ao dia 10 do mês seguinte
+ *   Ex.: propina de novembro → 30/11 a 10/12
  */
 export function limitePropina(mesLetivo: string, refYear?: number): { inicio: Date; fim: Date } {
   const idx = MES_LETIVO_IDX[mesLetivo] ?? 8;
@@ -201,6 +288,14 @@ export function limitePropina(mesLetivo: string, refYear?: number): { inicio: Da
   // Ajuste ano lectivo
   if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
   if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
+  // 1.ª propina (outubro): limite 20 de setembro
+  if (mesLetivo === "out") {
+    const inicio = new Date(y, 8, 1); // 1 set
+    const fim = new Date(y, 8, 20); // 20 set
+    inicio.setHours(0, 0, 0, 0);
+    fim.setHours(23, 59, 59, 999);
+    return { inicio, fim };
+  }
   // Dia 30 do mês de referência (meses com menos dias usam o último dia)
   const lastDay = new Date(y, idx + 1, 0).getDate();
   const diaInicio = Math.min(30, lastDay);
@@ -270,6 +365,9 @@ export const useFinance = create<Store>()(
       salariosOverrides: {},
       uiPrefs: {},
       inboxItems: [],
+      crmEnvios: [],
+      codigosRecibo: [],
+      documentosAluno: [],
       setUiPrefs: (patch) => {
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
       },
@@ -336,7 +434,10 @@ export const useFinance = create<Store>()(
             const ti = norm(items[i].descricao);
             const tj = norm(items[j].descricao);
             const textClose =
-              ti && tj && (ti === tj || ti.includes(tj) || tj.includes(ti));
+              ti &&
+              tj &&
+              (ti === tj ||
+                (ti.length >= 8 && tj.length >= 8 && (ti.includes(tj) || tj.includes(ti))));
             if (sameDay && sameVal && textClose) {
               items[j] = {
                 ...items[j],
@@ -362,7 +463,11 @@ export const useFinance = create<Store>()(
         const suggestTipo = (desc: string, valor: number): import("@/data/types").InboxTipo => {
           const d = (desc || "").toLowerCase();
           if (/sal[aá]rio|honor[aá]rio|rh-20|app-sal/i.test(d)) return "salario";
+          if (/a\s*reembolsar|abatimento\s*(à|a)?\s*d[ií]vida|acerto\s*s[oó]ci/i.test(d)) return "abatimento_socio";
           if (/propina|mensalidade|prop-|frais|scolarit/i.test(d)) return "propina";
+          if (/comiss[aã]o.*fecho|fecho.*comiss/i.test(d)) return "comissao_fecho_tpa";
+          if (/alug(?:uer)?\s*tpa|comiss[aã]o\s*alug/i.test(d)) return "taxa_aluguer_tpa";
+          if (/comiss[aã]o.*transf|iva\s*sobre\s*comis/i.test(d)) return "comissao_transferencia";
           if (/tpa|multicaixa|cart[aã]o/i.test(d)) return "tpa";
           if (/transf|transfer/i.test(d)) return "transferencia";
           if (/dep[oó]sito|deposito/i.test(d)) return "deposito";
@@ -394,13 +499,11 @@ export const useFinance = create<Store>()(
           // 3a) Extrato BAI — data ±1 dia + valor (entrada ou saída)
           if (!linkId && valor > 0) {
             const matchBai = baiMovs.find((m) => {
-              if (!nearDay(it.data, m.data)) return false;
+              if (it.data && m.data && it.data !== m.data) return false;
               const me = Number(m.entrada) || 0;
               const ms = Number(m.saida) || 0;
-              if (saidaInbox > 0 && Math.abs(ms - saidaInbox) < 1) return true;
-              if (entradaInbox > 0 && Math.abs(me - entradaInbox) < 1) return true;
-              // valor absoluto genérico
-              if (Math.abs(me - valor) < 1 || Math.abs(ms - valor) < 1) return true;
+              if (saidaInbox > 0 && Math.abs(ms - saidaInbox) < 0.02) return true;
+              if (entradaInbox > 0 && Math.abs(me - entradaInbox) < 0.02) return true;
               return false;
             });
             if (matchBai) {
@@ -468,9 +571,13 @@ export const useFinance = create<Store>()(
             }
           }
 
+          const sent = aplicarSentido(tipo, it.descricao, valor, it);
           return {
             ...it,
             tipo,
+            entrada: sent.entrada,
+            saida: sent.saida,
+            valor: sent.valor,
             status:
               status === "por_classificar" && tipo !== "desconhecido"
                 ? "classificado"
@@ -543,6 +650,112 @@ export const useFinance = create<Store>()(
           `${ordenados} ordenados · ${duplicados} duplicados · ${ligados} ligados · ${avisos} avisos`,
         );
         return { ordenados, duplicados, ligados, avisos };
+      },
+      syncInboxParaBai: (ids) => {
+        requireEdit(get);
+        const items = (get().inboxItems || []).filter((it) => {
+          if (it.status === "ignorado") return false;
+          if (ids && ids.length && !ids.includes(it.id)) return false;
+          const v = Math.abs(Number(it.valor) || Number(it.entrada) || Number(it.saida) || 0);
+          return v > 0;
+        });
+        const existing = movimentosAll(
+          get().movimentosBaiExtra || [],
+          get().baiOverride,
+          get().movimentosBaiDeletedIds || [],
+        );
+        const fp = (data: string, entrada: number, saida: number, desc: string) =>
+          `${data}|${Math.round(entrada * 100)}|${Math.round(saida * 100)}|${(desc || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9à-ú]+/gi, " ")
+            .trim()
+            .slice(0, 16)}`;
+        const fps = new Set(existing.map((m) => fp(m.data, Number(m.entrada) || 0, Number(m.saida) || 0, m.descricao || "")));
+        const idsExist = new Set(existing.map((m) => m.id));
+        let criados = 0;
+        let duplicados = 0;
+        let ignorados = 0;
+        const patched = [...(get().inboxItems || [])];
+        const limpar = new Set<string>();
+        for (const it of items) {
+          const sent0 = aplicarSentido(it.tipo, it.descricao, montanteAbs(it), it);
+          let entrada = sent0.entrada;
+          let saida = sent0.saida;
+          if (entrada <= 0 && saida <= 0) {
+            const n = montanteAbs(it);
+            if (n > 0) {
+              const credit =
+                it.tipo === "deposito" ||
+                it.tipo === "propina" ||
+                /dep[oó]sito|entrada|recebid|fecho\s*tpa/i.test(it.descricao || "");
+              if (credit) entrada = n;
+              else saida = n;
+            }
+          }
+          if (entrada <= 0 && saida <= 0) {
+            ignorados += 1;
+            continue;
+          }
+          const key = fp(it.data, entrada, saida, it.descricao);
+          if (fps.has(key) || (it.linkId && idsExist.has(it.linkId))) {
+            duplicados += 1;
+            limpar.add(it.id);
+            continue;
+          }
+          const movId = `APP-INB-${it.id}`.replace(/\s+/g, "").slice(0, 48);
+          const abatSocio =
+            it.tipo === "abatimento_socio" ||
+            isAbatimentoDividaSocio({
+              descricao: it.descricao,
+              observacoes: it.observacoes,
+            });
+          const descBai = abatSocio && !/a\s*reembolsar/i.test(it.descricao || "")
+            ? `${it.descricao || "Uso do cartão"} · A reembolsar`
+            : it.descricao || "Movimento Inbox → BAI";
+          const ok = pushBaiMovimento(get, set, {
+            id: movId,
+            data: it.data,
+            entrada,
+            saida,
+            banco: entrada > 0 ? "INBOX-ENTRADA" : abatSocio ? "INBOX-SOCIO" : "INBOX-SAIDA",
+            descricao: descBai,
+            observacoes: [
+              `Sync Inbox ${it.id}`,
+              abatSocio ? "A reembolsar" : "",
+              it.observacoes || "",
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          });
+          if (!ok) {
+            duplicados += 1;
+            limpar.add(it.id);
+            continue;
+          }
+          fps.add(key);
+          idsExist.add(movId);
+          criados += 1;
+          limpar.add(it.id);
+        }
+        for (const it of get().inboxItems || []) {
+          if (it.status === "reconciliado" || it.status === "duplicado") limpar.add(it.id);
+        }
+        const kept = patched.filter((r) => !limpar.has(r.id));
+        set({
+          inboxItems: kept,
+          movimentosBaiExtra: sortAndRecalcBai(get().movimentosBaiExtra || []),
+        });
+        get().pushAudit(
+          "inbox_sync_bai",
+          `${criados} criados no BAI · ${duplicados} já existiam · ${limpar.size} saíram da Inbox · ${kept.length} pendente(s)`,
+        );
+        return {
+          criados,
+          duplicados,
+          ignorados,
+          removidos: limpar.size,
+          pendentes: kept.length,
+        };
       },
       setActiveOperator: (name) => set({ activeOperator: name }),
       setOperatorName: (index, name) => {
@@ -729,23 +942,38 @@ export const useFinance = create<Store>()(
             : input.origem === "banco"
               ? "TRANSF"
               : "CARTAO";
+          const abatimento = isAbatimentoDividaSocio({
+            descricao: input.descricao,
+            observacoes: input.observacoes,
+            categoria: input.categoria,
+          });
+          const descBase =
+            input.descricao ||
+            input.categoria ||
+            (isLevantamento
+              ? "Levantamento ATM BAI"
+              : input.origem === "banco"
+                ? "Transferência conta BAI"
+                : "Despesa cartão BAI");
           const mov: MovimentoBai = {
             id: `APP-${id}`,
             linha: (last?.linha ?? 0) + 1,
             data: input.data,
             banco: `${tipoBai}-APP`,
-            descricao:
-              input.descricao ||
-              input.categoria ||
-              (isLevantamento
-                ? "Levantamento ATM BAI"
-                : input.origem === "banco"
-                  ? "Transferência conta BAI"
-                  : "Despesa cartão BAI"),
+            descricao: abatimento && !/a\s*reembolsar/i.test(descBase)
+              ? `${descBase} · A reembolsar`
+              : descBase,
             entrada: 0,
             saida,
             saldo: prevSaldo - saida,
-            observacoes: `Lançamento ${id}${input.fornecedor ? ` · ${input.fornecedor}` : ""}`,
+            observacoes: [
+              `Lançamento ${id}`,
+              input.fornecedor ? String(input.fornecedor) : "",
+              abatimento ? "A reembolsar" : "",
+              input.observacoes && !abatimento ? String(input.observacoes).slice(0, 120) : "",
+            ]
+              .filter(Boolean)
+              .join(" · "),
           };
           set({ movimentosBaiExtra: [...get().movimentosBaiExtra, mov] });
           get().pushAudit("bai_saida_app", `${mov.id} · -${saida} · ${tipoBai}`);
@@ -797,16 +1025,21 @@ export const useFinance = create<Store>()(
           const propMes = Number(row.propina) || 0;
           const nMeses = Math.min(
             Math.max(0, Number(row.mesesPropina) || 0),
-            MESES_LETIVOS.length,
+            MESES_PROPINA_ADIANTADOS.length,
           );
           const pagamentos: Record<string, number> = {};
           const pagamentosEm: Record<string, string> = {};
           // Meses já liquidados no acto da matrícula → marcados em Propinas (sem novo BAI)
           if (nMeses > 0 && propMes > 0) {
             for (let i = 0; i < nMeses; i++) {
-              const mesKey = MESES_LETIVOS[i];
+              const mesKey = MESES_PROPINA_ADIANTADOS[i];
               pagamentos[mesKey] = propMes;
               if (row.dataPag) pagamentosEm[mesKey] = row.dataPag;
+            }
+            // Legado: mapping antigo começava em "set" — remover se igual à propina adiantada
+            if (pagamentos.set === propMes && !MESES_PROPINA_ADIANTADOS.slice(0, nMeses).includes("set" as never)) {
+              delete pagamentos.set;
+              delete pagamentosEm.set;
             }
           }
           set({
@@ -859,6 +1092,12 @@ export const useFinance = create<Store>()(
           { key: "TRP", label: "Transporte", valor: Number(row.transporte) || 0, met: m("transporte") },
           { key: "ALI", label: "Alimentação", valor: Number(row.alimentacao) || 0, met: m("alimentacao") },
           { key: "CUR", label: "Curso", valor: Number(row.curso) || 0, met: m("curso") },
+          {
+            key: "CAR",
+            label: "Cartão de estudante",
+            valor: Number(row.cartaoEstudante) || 0,
+            met: m("cartaoEstudante"),
+          },
         ];
         // Se não há split e método único via BAI, um só movimento (compatibilidade)
         const mets = new Set(parcelas.filter((p) => p.valor > 0).map((p) => p.met));
@@ -939,18 +1178,50 @@ export const useFinance = create<Store>()(
               },
             ],
           });
-        } else if (patch.propina != null || patch.nome != null || patch.turma != null) {
+        } else if (
+          patch.propina != null ||
+          patch.nome != null ||
+          patch.turma != null ||
+          patch.mesesPropina != null ||
+          patch.dataPag != null
+        ) {
+          const src =
+            get().alunosExtra.find((a) => a.id === id) ||
+            (getSeed().alunos || []).find((a) => a.id === id);
+          const merged = {
+            ...(src || {}),
+            ...(get().alunosOverrides[id] || {}),
+            ...patch,
+          } as Aluno;
+          const propMes = Number(merged.propina) || 0;
+          const nMeses = Math.min(
+            Math.max(0, Number(merged.mesesPropina) || 0),
+            MESES_PROPINA_ADIANTADOS.length,
+          );
           set({
-            mensalidades: mens.map((m) =>
-              m.id === id
-                ? {
-                    ...m,
-                    propina: patch.propina != null ? Number(patch.propina) : m.propina,
-                    nome: patch.nome != null ? String(patch.nome) : m.nome,
-                    turma: patch.turma != null ? String(patch.turma) : m.turma,
+            mensalidades: mens.map((m) => {
+              if (m.id !== id) return m;
+              const pagamentos = { ...(m.pagamentos || {}) };
+              const pagamentosEm = { ...((m as { pagamentosEm?: Record<string, string> }).pagamentosEm || {}) };
+              // Marcar meses já liquidados na matrícula (sem apagar pagamentos posteriores manuais)
+              if (nMeses > 0 && propMes > 0) {
+                for (let i = 0; i < nMeses; i++) {
+                  const mesKey = MESES_PROPINA_ADIANTADOS[i];
+                  if (!pagamentos[mesKey] || pagamentos[mesKey] <= 0) {
+                    pagamentos[mesKey] = propMes;
+                    if (merged.dataPag) pagamentosEm[mesKey] = String(merged.dataPag);
                   }
-                : m,
-            ),
+                }
+              }
+              return {
+                ...m,
+                propina: patch.propina != null ? Number(patch.propina) : m.propina,
+                nome: patch.nome != null ? String(patch.nome) : m.nome,
+                turma: patch.turma != null ? String(patch.turma) : m.turma,
+                pagamentos,
+                pagamentosEm,
+              };
+            }),
           });
         }
       },
@@ -964,31 +1235,366 @@ export const useFinance = create<Store>()(
         });
         get().pushAudit("propina", `${id} · ${mes} · ${nextVal}`);
       },
-      /** Cria em Propinas as linhas em falta para alunos já matriculados. */
+      /** Cria em Propinas as linhas em falta e marca meses já pagos na matrícula. */
       syncPropinasFromMatriculas: () => {
         const alunos = alunosAll(
           get().alunosExtra || [],
           get().alunosOverrides || {},
           get().alunosDeletedIds || [],
         );
-        const existing = new Set((get().mensalidades || []).map((m) => m.id));
-        const missing: Mensalidade[] = [];
+        const mens = [...(get().mensalidades || [])];
+        const byId = new Map(mens.map((m) => [m.id, m]));
+        let added = 0;
+        let updated = 0;
         for (const a of alunos) {
-          if (existing.has(a.id)) continue;
-          missing.push({
-            id: a.id,
-            nome: a.nome,
-            turma: a.turma || "",
-            propina: Number(a.propina) || 0,
-            pagamentos: {},
-            obs: a.obs || "",
-          });
+          const propMes = Number(a.propina) || 0;
+          const nMeses = Math.min(
+            Math.max(0, inferMesesAdiantados(a)),
+            MESES_PROPINA_ADIANTADOS.length,
+          );
+          const pagamentos: Record<string, number> = {};
+          const pagamentosEm: Record<string, string> = {};
+          if (nMeses > 0 && propMes > 0) {
+            for (let i = 0; i < nMeses; i++) {
+              const mesKey = MESES_PROPINA_ADIANTADOS[i];
+              pagamentos[mesKey] = propMes;
+              if (a.dataPag) pagamentosEm[mesKey] = String(a.dataPag);
+            }
+          }
+          const existing = byId.get(a.id);
+          if (!existing) {
+            mens.push({
+              id: a.id,
+              nome: a.nome,
+              turma: a.turma || "",
+              propina: propMes,
+              pagamentos,
+              pagamentosEm,
+              obs: a.obs || "",
+            } as import("@/data/types").Mensalidade);
+            added += 1;
+          } else if (nMeses <= 0) {
+            const nextPag = { ...(existing.pagamentos || {}) };
+            const nextEm = { ...((existing as { pagamentosEm?: Record<string, string> }).pagamentosEm || {}) };
+            let changed = false;
+            const dataPag = String(a.dataPag || "");
+            for (const mesKey of MESES_PROPINA_ADIANTADOS) {
+              const em = String(nextEm[mesKey] || "");
+              const v = Number(nextPag[mesKey] || 0);
+              const auto = (dataPag && em === dataPag) || (propMes > 0 && v === propMes);
+              if (auto && v > 0) {
+                delete nextPag[mesKey];
+                delete nextEm[mesKey];
+                changed = true;
+              }
+            }
+            if (changed) {
+              const idx = mens.findIndex((row) => row.id === a.id);
+              if (idx >= 0) {
+                mens[idx] = { ...mens[idx], pagamentos: nextPag, pagamentosEm: nextEm };
+                updated += 1;
+              }
+            }
+          } else if (nMeses > 0 && propMes > 0) {
+            // Preencher apenas meses ainda a zero (não sobrescrever pagamentos manuais)
+            const nextPag = { ...(existing.pagamentos || {}) };
+            const nextEm = { ...((existing as { pagamentosEm?: Record<string, string> }).pagamentosEm || {}) };
+            let changed = false;
+            for (const [k, v] of Object.entries(pagamentos)) {
+              if (!nextPag[k] || nextPag[k] <= 0) {
+                nextPag[k] = v;
+                if (pagamentosEm[k]) nextEm[k] = pagamentosEm[k];
+                changed = true;
+              }
+            }
+            // Corrigir legado: mesesPropina contava a partir de "set"; agora a 1.ª é "out"
+            if (
+              nextPag.set === propMes &&
+              nMeses > 0 &&
+              !(MESES_PROPINA_ADIANTADOS as readonly string[]).slice(0, nMeses).includes("set")
+            ) {
+              // Só remove "set" se "out" ficou (ou vai ficar) marcado pelo adiantamento
+              if (nextPag.out === propMes || pagamentos.out === propMes) {
+                delete nextPag.set;
+                delete nextEm.set;
+                changed = true;
+              }
+            }
+            if (changed) {
+              const idx = mens.findIndex((m) => m.id === a.id);
+              if (idx >= 0) {
+                mens[idx] = { ...mens[idx], pagamentos: nextPag, pagamentosEm: nextEm, propina: propMes || mens[idx].propina };
+                updated += 1;
+              }
+            }
+          }
         }
-        if (missing.length) {
-          set({ mensalidades: [...(get().mensalidades || []), ...missing] });
-          get().pushAudit("propina_backfill", `${missing.length} aluno(s)`);
+        if (added || updated) {
+          set({ mensalidades: mens });
+          get().pushAudit(
+            "propina_backfill",
+            `${added} criado(s), ${updated} actualizado(s) com meses pagos na matrícula`,
+          );
         }
-        return missing.length;
+        return added + updated;
+      },
+      detectarIrmaosEAplicarDescontos: () => {
+        const alunos = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        );
+        const norm = (s?: string) =>
+          (s || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+        const byPai = new Map<string, string[]>();
+        const byMae = new Map<string, string[]>();
+        for (const a of alunos) {
+          const p = norm(a.pai);
+          const m = norm(a.mae);
+          if (p.length > 4) {
+            const list = byPai.get(p) || [];
+            list.push(a.id);
+            byPai.set(p, list);
+          }
+          if (m.length > 4) {
+            const list = byMae.get(m) || [];
+            list.push(a.id);
+            byMae.set(m, list);
+          }
+        }
+        const nivelPorId = new Map<string, 0 | 2 | 3>();
+        const applyGroup = (ids: string[]) => {
+          const uniq = [...new Set(ids)];
+          if (uniq.length < 2) return;
+          const nivel: 0 | 2 | 3 = uniq.length >= 3 ? 3 : 2;
+          for (const id of uniq) {
+            const prev = nivelPorId.get(id) || 0;
+            if (nivel > prev) nivelPorId.set(id, nivel);
+          }
+        };
+        for (const ids of byPai.values()) applyGroup(ids);
+        for (const ids of byMae.values()) applyGroup(ids);
+
+        let updated = 0;
+        const overrides = { ...(get().alunosOverrides || {}) };
+        const extras = [...(get().alunosExtra || [])];
+        for (const a of alunos) {
+          if (a.transferidoCampusCidade) {
+            // Garantir 0 para transferidos
+            if ((a.irmaosNivel || 0) !== 0) {
+              const inExtra = extras.some((e) => e.id === a.id);
+              if (inExtra) {
+                for (let i = 0; i < extras.length; i++) {
+                  if (extras[i].id === a.id) {
+                    extras[i] = { ...extras[i], irmaosNivel: 0 };
+                    updated += 1;
+                  }
+                }
+              } else {
+                overrides[a.id] = { ...(overrides[a.id] || {}), irmaosNivel: 0 };
+                updated += 1;
+              }
+            }
+            continue;
+          }
+          const detected = nivelPorId.get(a.id) || 0;
+          const current = (Number(a.irmaosNivel) || 0) as 0 | 2 | 3;
+          // Só sobe ou preenche se estava 0; não reduz ajuste manual superior
+          if (detected > 0 && current === 0) {
+            const inExtra = extras.some((e) => e.id === a.id);
+            if (inExtra) {
+              for (let i = 0; i < extras.length; i++) {
+                if (extras[i].id === a.id) {
+                  extras[i] = { ...extras[i], irmaosNivel: detected };
+                  updated += 1;
+                }
+              }
+            } else {
+              overrides[a.id] = {
+                ...(overrides[a.id] || {}),
+                irmaosNivel: detected,
+              };
+              updated += 1;
+            }
+          }
+        }
+        if (updated > 0) {
+          set({ alunosOverrides: overrides, alunosExtra: extras });
+          get().pushAudit("irmaos_detect", `${updated} aluno(s) com desconto de irmãos`);
+        }
+        return updated;
+      },
+
+      alinharCampusPorFamilia: () => {
+        const alunos = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        );
+        const norm = (s?: string) =>
+          (s || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+        const groups = new Map<string, string[]>();
+        const addTo = (key: string, id: string) => {
+          if (!key || key.length < 3) return;
+          const list = groups.get(key) || [];
+          if (!list.includes(id)) list.push(id);
+          groups.set(key, list);
+        };
+        for (const a of alunos) {
+          const fam = norm(a.familia);
+          const pai = norm(a.pai);
+          const mae = norm(a.mae);
+          if (fam) addTo(`fam:${fam}`, a.id);
+          if (pai.length > 4) addTo(`pai:${pai}`, a.id);
+          if (mae.length > 4) addTo(`mae:${mae}`, a.id);
+          const parts = norm(a.nome).split(" ").filter(Boolean);
+          if (parts.length >= 1) {
+            const last = parts[parts.length - 1];
+            if (last.length >= 4) addTo(`sn:${last}`, a.id);
+          }
+          if (parts.length >= 2) {
+            const last2 = `${parts[parts.length - 2]} ${parts[parts.length - 1]}`;
+            if (last2.length >= 6) addTo(`sn2:${last2}`, a.id);
+          }
+        }
+        const byId = new Map(alunos.map((a) => [a.id, a]));
+        const target = new Map<string, boolean>();
+        let familiasMistas = 0;
+        for (const ids of groups.values()) {
+          if (ids.length < 2) continue;
+          let campus = 0;
+          let nova = 0;
+          for (const id of ids) {
+            const a = byId.get(id);
+            if (!a) continue;
+            if (a.transferidoCampusCidade) campus += 1;
+            else nova += 1;
+          }
+          if (campus === 0 || nova === 0) continue;
+          familiasMistas += 1;
+          const wantCampus = campus > nova;
+          for (const id of ids) target.set(id, wantCampus);
+        }
+        let alunosAlterados = 0;
+        const overrides = { ...(get().alunosOverrides || {}) };
+        const extras = [...(get().alunosExtra || [])];
+        for (const [id, want] of target) {
+          const a = byId.get(id);
+          if (!a) continue;
+          if (Boolean(a.transferidoCampusCidade) === want) continue;
+          const inExtra = extras.some((e) => e.id === id);
+          if (inExtra) {
+            for (let i = 0; i < extras.length; i++) {
+              if (extras[i].id === id) {
+                extras[i] = { ...extras[i], transferidoCampusCidade: want };
+              }
+            }
+          } else {
+            overrides[id] = {
+              ...(overrides[id] || {}),
+              transferidoCampusCidade: want,
+            };
+          }
+          alunosAlterados += 1;
+        }
+        if (alunosAlterados > 0) {
+          set({ alunosOverrides: overrides, alunosExtra: extras });
+        }
+        const after = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        );
+        const nCampus = after.filter((a) => a.transferidoCampusCidade).length;
+        return {
+          familiasMistas,
+          alunosAlterados,
+          campus: nCampus,
+          novaVida: after.length - nCampus,
+        };
+      },
+
+      importCensoAlunos: (incoming, mensIncoming = []) => {
+        requireEdit(get);
+        const seedIds = new Set(seed.alunos.map((a) => a.id));
+        const deleted = new Set(get().alunosDeletedIds || []);
+        const extras = [...(get().alunosExtra || [])];
+        const extraIds = new Set(extras.map((a) => a.id));
+        const overrides = { ...(get().alunosOverrides || {}) };
+        let fused = 0;
+
+        const norm = (n: string) =>
+          (n || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+        const extraNames = new Set(extras.map((a) => norm(a.nome)));
+        for (const a of seed.alunos) extraNames.add(norm(a.nome));
+
+        for (const raw of incoming || []) {
+          if (!raw?.id || !raw?.nome) continue;
+          if (deleted.has(raw.id)) continue;
+          const clean: Aluno = { ...raw };
+          delete (clean as { foto?: string }).foto;
+          if (seedIds.has(clean.id)) {
+            const prev = overrides[clean.id] || {};
+            overrides[clean.id] = { ...prev, ...clean, id: clean.id };
+            fused += 1;
+            continue;
+          }
+          const idx = extras.findIndex((x) => x.id === clean.id);
+          if (idx >= 0) {
+            extras[idx] = { ...extras[idx], ...clean, id: clean.id };
+            fused += 1;
+            continue;
+          }
+          if (extraNames.has(norm(clean.nome))) {
+            fused += 1;
+            continue;
+          }
+          extras.push(clean);
+          extraIds.add(clean.id);
+          extraNames.add(norm(clean.nome));
+          fused += 1;
+        }
+
+        const mens = [...(get().mensalidades || [])];
+        const mensIds = new Set(mens.map((m) => m.id));
+        for (const m of mensIncoming || []) {
+          if (!m?.id) continue;
+          const i = mens.findIndex((x) => x.id === m.id);
+          if (i >= 0) {
+            mens[i] = {
+              ...mens[i],
+              ...m,
+              pagamentos: { ...(mens[i].pagamentos || {}), ...(m.pagamentos || {}) },
+              pagamentosEm: { ...(mens[i].pagamentosEm || {}), ...(m.pagamentosEm || {}) },
+            };
+          } else if (!mensIds.has(m.id)) {
+            mens.push(m);
+            mensIds.add(m.id);
+          }
+        }
+
+        set({
+          alunosExtra: extras,
+          alunosOverrides: overrides,
+          mensalidades: mens,
+        });
+        get().pushAudit("import_censo", `${fused} aluno(s) · ${incoming.length} no ficheiro`);
+        return fused;
       },
       /** Confirma o valor da propina no mês e regista entrada no Banco BAI (id estável por aluno+mês). */
       confirmPropinaBai: (id, mes) => {
@@ -1469,6 +2075,50 @@ export const useFinance = create<Store>()(
         set({ alunosOverrides: ov });
         get().pushAudit("apagar_aluno", id);
       },
+      restoreAluno: (id) => {
+        requireEdit(get);
+        if (!id) return false;
+        const deleted = (get().alunosDeletedIds || []).filter((x) => x !== id);
+        const extras = [...(get().alunosExtra || [])];
+        const ov = { ...(get().alunosOverrides || {}) };
+        const mens = get().mensalidades || [];
+        const seedHit = seed.alunos.find((a) => a.id === id);
+        const extraHit = extras.find((a) => a.id === id);
+        if (!extraHit && !seedHit) {
+          const m = mens.find((x) => x.id === id);
+          const patch = ov[id] || {};
+          extras.push({
+            id,
+            nome: String(patch.nome || m?.nome || id),
+            turma: String(patch.turma || m?.turma || turmaFromId(id) || ""),
+            grupo: String(patch.grupo || ""),
+            inscricao: Number(patch.inscricao || 0),
+            manuais: Number(patch.manuais || 0),
+            uniforme: Number(patch.uniforme || 0),
+            seguro: Number(patch.seguro || 0),
+            extras: Number(patch.extras || 0),
+            curso: Number(patch.curso || 0),
+            mensalidade1: Number(patch.mensalidade1 || m?.propina || 0),
+            dataPag: String(patch.dataPag || ""),
+            bruto: Number(patch.bruto || 0),
+            descPct: Number(patch.descPct || 0),
+            liquido: Number(patch.liquido || 0),
+            encarregado: String(patch.encarregado || ""),
+            telefone: String(patch.telefone || ""),
+            bi: String(patch.bi || ""),
+            familia: String(patch.familia || ""),
+            recibo: String(patch.recibo || ""),
+            obs: "Reposto automaticamente (rasto no sistema)",
+            propina: Number(patch.propina || m?.propina || 0),
+            statusPag: (patch.statusPag as Aluno["statusPag"]) || "registado",
+          });
+        }
+        set({ alunosDeletedIds: deleted, alunosExtra: extras });
+        get().pushAudit("restaurar_aluno", id);
+        return true;
+      },
+      recuperarAlunosOcultos: () => recuperarAlunosOcultos(),
+      sanearAlunosDuplicados: () => sanearAlunosDuplicados(),
       importLancamentos: (rows) => {
         requireEdit(get);
         let n = 0;
@@ -1552,6 +2202,205 @@ export const useFinance = create<Store>()(
         set({ faturasPropina: [...(get().faturasPropina || []), f] });
         get().pushAudit("emitir_fatura_propina", `${f.numero} · ${f.alunoNome} · ${f.mesRef}`);
       },
+      addCrmEnvio: (e) => {
+        requireEdit(get);
+        const id = e.id || `CRM-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const row: CrmEnvio = {
+          id,
+          alunoId: e.alunoId,
+          alunoNome: e.alunoNome,
+          mesKey: e.mesKey,
+          canal: e.canal,
+          enviadoEm: e.enviadoEm || new Date().toISOString(),
+          confirmado: e.confirmado ?? false,
+          faturaNumero: e.faturaNumero,
+          valor: e.valor,
+          criadoPor: e.criadoPor || get().activeOperator,
+        };
+        set({ crmEnvios: [...(get().crmEnvios || []), row] });
+        get().pushAudit("crm_envio", `${row.canal} · ${row.alunoNome} · ${row.mesKey}`);
+      },
+      updateCrmEnvio: (id, patch) => {
+        requireEdit(get);
+        set({
+          crmEnvios: (get().crmEnvios || []).map((r) =>
+            r.id === id ? { ...r, ...patch } : r,
+          ),
+        });
+      },
+      removeCrmEnvio: (id) => {
+        requireEdit(get);
+        set({ crmEnvios: (get().crmEnvios || []).filter((r) => r.id !== id) });
+      },
+      addCodigoRecibo: (c) => {
+        // Qualquer colaborador pode registar código ao imprimir recibo (não é edição financeira).
+        // Formato estável: RC-YYYYMM-XXXX-NN (só A-Z e 0-9 — legível em PDF/OCR).
+        let mes = (c.mesKey || "").replace(/\D/g, "").slice(0, 6);
+        if (mes.length < 6) {
+          mes = new Date().toISOString().slice(0, 7).replace(/-/g, "");
+        }
+        const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem I,O,0,1 (confusão visual)
+        let rand = "";
+        for (let i = 0; i < 4; i++) {
+          rand += alphabet[Math.floor(Math.random() * alphabet.length)];
+        }
+        const chk = String(
+          (rand.charCodeAt(0) + rand.charCodeAt(1) + Math.round(c.valor || 0)) % 100,
+        ).padStart(2, "0");
+        let codigo = (c.codigo || `RC-${mes}-${rand}-${chk}`).trim().toUpperCase();
+        // Sanitizar códigos externos / legados
+        codigo = codigo.replace(/[^A-Z0-9\-]/g, "");
+        const existing = (get().codigosRecibo || []).find(
+          (r) => (r.codigo || "").toUpperCase() === codigo,
+        );
+        if (existing) return existing;
+        const row: CodigoRecibo = {
+          id: c.id || `RCOD-${Date.now().toString(36)}-${rand}`,
+          codigo,
+          alunoId: c.alunoId,
+          alunoNome: c.alunoNome,
+          mesKey: c.mesKey,
+          valor: c.valor,
+          rubricas: c.rubricas,
+          emitidoEm: c.emitidoEm || new Date().toISOString(),
+          criadoPor: c.criadoPor || get().activeOperator,
+          vias: 1,
+          lastPrintedAt: new Date().toISOString(),
+        };
+        set({ codigosRecibo: [...(get().codigosRecibo || []), row] });
+        get().pushAudit("recibo_codigo", `${row.codigo} · ${row.alunoNome} · ${row.mesKey}`);
+        return row;
+      },
+      findCodigoRecibo: (codigo) => {
+        const list = get().codigosRecibo || [];
+        const raw = (codigo || "").trim().toUpperCase();
+        if (!raw) return undefined;
+        // 1) Exacto
+        let found = list.find((r) => (r.codigo || "").toUpperCase() === raw);
+        if (found) return found;
+        // 2) Sem hífens / espaços
+        const compact = (s: string) => s.replace(/[\s\-_.]/g, "").toUpperCase();
+        const want = compact(raw);
+        found = list.find((r) => compact(r.codigo || "") === want);
+        if (found) return found;
+        // 3) Sufixo / inclusão parcial (leitura incompleta do PDF)
+        if (want.length >= 6) {
+          found = list.find((r) => {
+            const c = compact(r.codigo || "");
+            return c.endsWith(want) || want.endsWith(c) || c.includes(want);
+          });
+        }
+        return found;
+      },
+      findCodigoReciboAlunoMes: (alunoId, mesKey) => {
+        const list = get().codigosRecibo || [];
+        return list
+          .filter((r) => r.alunoId === alunoId && r.mesKey === mesKey)
+          .sort((a, b) => (b.emitidoEm || "").localeCompare(a.emitidoEm || ""))[0];
+      },
+      incrementCodigoReciboVia: (id) => {
+        // Qualquer colaborador pode imprimir 2.ª via
+        let updated: CodigoRecibo | undefined;
+        set({
+          codigosRecibo: (get().codigosRecibo || []).map((r) => {
+            if (r.id !== id) return r;
+            updated = {
+              ...r,
+              vias: (r.vias || 1) + 1,
+              lastPrintedAt: new Date().toISOString(),
+            };
+            return updated;
+          }),
+        });
+        return updated;
+      },
+
+      addDocumentoAluno: (d) => {
+        const id =
+          d.id ||
+          `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const row: DocumentoAluno = {
+          ...d,
+          id,
+          emitidoEm: d.emitidoEm || new Date().toISOString(),
+          estado: d.estado || "emitido",
+          linhas: d.linhas || [],
+        };
+        set({ documentosAluno: [...(get().documentosAluno || []), row] });
+        get().pushAudit(
+          "documento_aluno",
+          `${row.tipo} ${row.numero} · ${row.alunoNome} · ${row.valor}`,
+        );
+        return row;
+      },
+      updateDocumentoAluno: (id, patch) => {
+        set({
+          documentosAluno: (get().documentosAluno || []).map((r) =>
+            r.id === id ? { ...r, ...patch } : r,
+          ),
+        });
+      },
+      findDocumentoPorNumero: (numero) => {
+        const k = (numero || "").trim().toUpperCase().replace(/\s+/g, "");
+        if (!k) return undefined;
+        return (get().documentosAluno || []).find(
+          (r) => (r.numero || "").toUpperCase().replace(/\s+/g, "") === k,
+        );
+      },
+      gerarReciboDeFatura: (faturaNumero) => {
+        const fat = get().findDocumentoPorNumero(faturaNumero);
+        if (!fat || fat.tipo !== "fatura") return undefined;
+        const ja = (get().documentosAluno || []).find(
+          (r) =>
+            r.tipo === "recibo" &&
+            (r.faturaId === fat.id ||
+              (r.faturaNumero || "").toUpperCase() === fat.numero.toUpperCase()),
+        );
+        if (ja) return ja;
+        const mes =
+          (fat.mesKey || "").replace(/-/g, "").slice(0, 6) ||
+          new Date().toISOString().slice(0, 7).replace(/-/g, "");
+        const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let rand = "";
+        for (let i = 0; i < 4; i++) rand += alphabet[Math.floor(Math.random() * alphabet.length)];
+        const codigo = `RC-${mes}-${rand}-${String((rand.charCodeAt(0) + Math.round(fat.valor || 0)) % 100).padStart(2, "0")}`;
+        // Registar código de verificação
+        get().addCodigoRecibo({
+          alunoId: fat.alunoId,
+          alunoNome: fat.alunoNome,
+          mesKey: fat.mesKey || new Date().toISOString().slice(0, 7),
+          valor: fat.valor,
+          rubricas: (fat.linhas || [])
+            .filter((l) => l.on !== false && l.value > 0)
+            .map((l) => l.label)
+            .join(", "),
+          codigo,
+        });
+        const numeroRecibo = `REC-${fat.numero.replace(/[^\w\-]/g, "")}`;
+        const recibo = get().addDocumentoAluno({
+          tipo: "recibo",
+          modelo: fat.modelo,
+          numero: numeroRecibo,
+          alunoId: fat.alunoId,
+          alunoNome: fat.alunoNome,
+          mesKey: fat.mesKey,
+          mesRef: fat.mesRef,
+          valor: fat.valor,
+          linhas: fat.linhas || [],
+          estado: "emitido",
+          faturaId: fat.id,
+          faturaNumero: fat.numero,
+          codigoVerificacao: codigo,
+          pagoEm: new Date().toISOString().slice(0, 10),
+          criadoPor: get().activeOperator,
+        });
+        get().updateDocumentoAluno(fat.id, {
+          estado: fat.estado === "arquivado" ? "arquivado" : "confirmado",
+          pagoEm: recibo.pagoEm,
+        });
+        return recibo;
+      },
+
       resetLocal: () => {
         requireEdit(get);
         set({
@@ -1573,6 +2422,10 @@ export const useFinance = create<Store>()(
           salariosDeletedIds: [],
           recibosSalario: [],
           faturasPropina: [],
+          inboxItems: [],
+          crmEnvios: [],
+          codigosRecibo: [],
+          documentosAluno: [],
         });
       },
       resetLocalStorage: () => {
@@ -1609,7 +2462,7 @@ export const useFinance = create<Store>()(
 ,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      version: 3,
+      version: 4,
       migrate: (persisted: unknown) => {
         // Seed manda: limpa override BAI, extras de alunos (duplicados) e volta ao cadastro do seed
         const s = (persisted || {}) as Record<string, unknown>;
@@ -1624,15 +2477,38 @@ export const useFinance = create<Store>()(
           if (id.startsWith("ATM-MAN-")) return true;
           return false;
         });
+        let extras = Array.isArray(s.alunosExtra) ? [...(s.alunosExtra as unknown[])] : [];
+        let overrides =
+          s.alunosOverrides && typeof s.alunosOverrides === "object"
+            ? (s.alunosOverrides as Record<string, unknown>)
+            : {};
+        // Recuperar censo de chaves antigas (v1/v2) se o v3 as tiver esvaziado
+        if (extras.length === 0 && typeof localStorage !== "undefined") {
+          for (const key of ["ecc-financeiro-v2", "ecc-financeiro-v1"]) {
+            try {
+              const raw = localStorage.getItem(key);
+              if (!raw) continue;
+              const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
+              const st = (parsed.state || parsed) as Record<string, unknown>;
+              const oldExtra = Array.isArray(st.alunosExtra) ? (st.alunosExtra as unknown[]) : [];
+              if (oldExtra.length > extras.length) extras = oldExtra;
+              const oldOv = st.alunosOverrides;
+              if (oldOv && typeof oldOv === "object" && Object.keys(overrides).length === 0) {
+                overrides = oldOv as Record<string, unknown>;
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        }
         return {
           ...s,
           movimentosBaiExtra: keepExtra,
           baiOverride: false,
           movimentosBaiDeletedIds: [],
-          // Evita alunos repetidos vindos de sessões / nuvem antigas
-          alunosExtra: [],
-          alunosOverrides: {},
-          alunosDeletedIds: [],
+          alunosExtra: extras,
+          alunosOverrides: overrides,
+          alunosDeletedIds: Array.isArray(s.alunosDeletedIds) ? s.alunosDeletedIds : [],
         };
       },
       partialize: (s) => ({
@@ -1658,6 +2534,9 @@ export const useFinance = create<Store>()(
         faturasPropina: s.faturasPropina,
         uiPrefs: s.uiPrefs || {},
         inboxItems: s.inboxItems || [],
+        crmEnvios: s.crmEnvios || [],
+        codigosRecibo: s.codigosRecibo || [],
+        documentosAluno: s.documentosAluno || [],
       }),
     },
   ),
@@ -1799,6 +2678,160 @@ function guessCategoria(desc: string): string {
   return "Outras Despesas";
 }
 
+
+/** Gastos extraordinários autorizados (cartão/conta) a favor da sócia — abatem a dívida. */
+export function isAbatimentoDividaSocio(blob: {
+  descricao?: string;
+  observacoes?: string;
+  categoria?: string;
+  fonte?: string;
+}): boolean {
+  const t = `${blob.descricao || ""} ${blob.observacoes || ""} ${blob.categoria || ""} ${blob.fonte || ""}`.toLowerCase();
+  return /a\s*reembolsar|abatimento\s*(à|a)?\s*d[ií]vida|acerto\s*s[oó]ci/.test(t);
+}
+
+/**
+ * Controlo da dívida à sócia:
+ * - Base = entradas do sócio (empréstimo / adiantamento)
+ * - Abatimentos = gastos no cartão/conta marcados «A reembolsar» (uso autorizado)
+ * - Ainda devido = base − abatimentos
+ */
+export function computeDividaSocio(
+  extras: Lancamento[] = [],
+  movimentosBaiExtra: MovimentoBai[] = [],
+  baiOverride = false,
+  movimentosBaiDeletedIds: string[] = [],
+): {
+  base: number;
+  abatimentos: number;
+  aindaDevido: number;
+  linhasAbatimento: { id: string; data: string; descricao: string; valor: number; origem: string }[];
+} {
+  const base = seed.lancamentosSocio
+    .filter((l) => l.tipo === "entrada")
+    .reduce((s, l) => s + l.valor, 0);
+
+  const linhas: { id: string; data: string; descricao: string; valor: number; origem: string }[] = [];
+  const seenIds = new Set<string>();
+  const seenFp = new Set<string>(); // data|valor — evita contar CX e BAI em duplicado
+
+  /** Preferir descrição específica; «A reembolsar» sozinho vira detalhe disponível. */
+  const labelAbatimento = (parts: {
+    descricao?: string;
+    observacoes?: string;
+    categoria?: string;
+    fornecedor?: string;
+  }): string => {
+    const d = (parts.descricao || "").trim();
+    const o = (parts.observacoes || "").trim();
+    const cat = (parts.categoria || "").trim();
+    const forn = (parts.fornecedor || "").trim();
+    const onlyReemb = (s: string) => /^a\s*reembolsar\b/i.test(s) && s.replace(/a\s*reembolsar/ig, "").replace(/[·\-–|,;]/g, "").trim().length < 2;
+    const clean = (s: string) =>
+      s
+        .replace(/\s*[·|]\s*A\s*reembolsar\s*/gi, " ")
+        .replace(/^A\s*reembolsar\s*[·|\-–]?\s*/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    const specific =
+      (d && !onlyReemb(d) ? clean(d) : "") ||
+      (o && !onlyReemb(o) ? clean(o) : "") ||
+      (cat && !/^outras/i.test(cat) ? cat : "") ||
+      forn;
+    if (specific) {
+      return /a\s*reembolsar/i.test(specific) ? specific : `${specific} · A reembolsar`;
+    }
+    return "A reembolsar";
+  };
+
+  const push = (id: string, data: string, descricao: string, valor: number, origem: string) => {
+    if (!id || valor <= 0 || seenIds.has(id)) return;
+    const fp = `${(data || "").slice(0, 10)}|${Number(valor).toFixed(2)}`;
+    if (seenFp.has(fp)) return;
+    seenIds.add(id);
+    seenFp.add(fp);
+    linhas.push({ id, data, descricao, valor, origem });
+  };
+
+  // 1) Movimentos BAI (fonte de verdade da saída do cartão/conta)
+  const bai = movimentosAll(movimentosBaiExtra, baiOverride, movimentosBaiDeletedIds);
+  for (const m of bai) {
+    const sai = Number(m.saida) || 0;
+    if (sai <= 0) continue;
+    if (isAbatimentoDividaSocio({ descricao: m.descricao, observacoes: m.observacoes })) {
+      push(
+        m.id,
+        m.data,
+        labelAbatimento({ descricao: m.descricao, observacoes: m.observacoes }),
+        sai,
+        "banco",
+      );
+    }
+  }
+
+  // 2) Faturas cartão seed (só se não houver já linha BAI na mesma data/valor)
+  for (const c of seed.faturasCartao || []) {
+    if (isAbatimentoDividaSocio(c)) {
+      push(
+        c.id,
+        c.data,
+        labelAbatimento({
+          descricao: c.descricao,
+          observacoes: c.observacoes,
+          fornecedor: c.fornecedor,
+        }),
+        Number(c.valor) || 0,
+        "cartao",
+      );
+    }
+  }
+
+  // 3) Lançamentos extras da app (Nova despesa) marcados
+  for (const l of extras) {
+    if (l.tipo !== "despesa") continue;
+    if (!isAbatimentoDividaSocio(l)) continue;
+    push(
+      l.id,
+      l.data,
+      labelAbatimento({
+        descricao: l.descricao,
+        observacoes: l.observacoes,
+        categoria: l.categoria,
+        fornecedor: l.fornecedor,
+      }),
+      Number(l.valor) || 0,
+      l.origem || "cartao",
+    );
+  }
+
+  // 4) Lançamentos socio seed explicitamente abatimento (raro)
+  for (const l of seed.lancamentosSocio || []) {
+    if (l.tipo !== "despesa") continue;
+    if (!isAbatimentoDividaSocio(l)) continue;
+    push(
+      l.id,
+      l.data,
+      labelAbatimento({
+        descricao: l.descricao,
+        observacoes: l.observacoes,
+        categoria: l.categoria,
+        fornecedor: l.fornecedor,
+      }),
+      Number(l.valor) || 0,
+      "socio",
+    );
+  }
+
+  linhas.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  const abatimentos = linhas.reduce((s, r) => s + r.valor, 0);
+  return {
+    base,
+    abatimentos,
+    aindaDevido: Math.max(0, base - abatimentos),
+    linhasAbatimento: linhas,
+  };
+}
+
 export type Totals = {
   alunos: number;
   inscricoesLiquido: number;
@@ -1807,6 +2840,10 @@ export type Totals = {
   descontos: number;
   socioEntradas: number;
   socioDespesas: number;
+  /** Gastos cartão/conta marcados «A reembolsar» — abatem a dívida à sócia */
+  socioAbatimentos: number;
+  /** Ainda devido à sócia = entradas − abatimentos */
+  socioAindaDevido: number;
   custosOperacionais: number;
   custosTotais: number;
   proveitos: number;
@@ -1849,6 +2886,14 @@ export function computeTotals(
   const socioDespesas = seed.lancamentosSocio
     .filter((l) => l.tipo === "despesa")
     .reduce((s, l) => s + l.valor, 0);
+  const divSocio = computeDividaSocio(
+    extras,
+    movimentosBaiExtra,
+    baiOverride,
+    movimentosBaiDeletedIds,
+  );
+  const socioAbatimentos = divSocio.abatimentos;
+  const socioAindaDevido = divSocio.aindaDevido;
 
   const ledger = buildLedger(extras);
   const custosOperacionais = ledger
@@ -1857,6 +2902,8 @@ export function computeTotals(
       // Levantamento ATM = mudança de forma de dinheiro, não custo
       const blob = `${l.pagamento} ${l.categoria} ${l.descricao}`;
       if (/levantamento\s*atm/i.test(blob)) return false;
+      // Abatimento à dívida da sócia ≠ custo operacional da escola
+      if (isAbatimentoDividaSocio(l)) return false;
       return true;
     })
     .reduce((s, l) => s + l.valor, 0);
@@ -1895,6 +2942,8 @@ export function computeTotals(
     descontos,
     socioEntradas,
     socioDespesas,
+    socioAbatimentos,
+    socioAindaDevido,
     custosOperacionais,
     custosTotais,
     proveitos,
@@ -1909,6 +2958,687 @@ export function computeTotals(
   };
 }
 
+
+/**
+ * Alinha turma + grupo das matrículas.
+ *
+ * REGRA DE OURO: a turma da tabela segue a idade (sistema Congo) quando
+ * o prefixo do ID é incompatível (P1-07 nascido em 2015 ≠ Maternelle P1).
+ * Se a turma gravada for compatível com a idade (±1 ano), mantém-se.
+ *
+ * Esta função:
+ * 1) Corrige turmas incompatíveis com a data de nascimento.
+ * 2) Só preenche turma vazia com a sugestão por data de nascimento.
+ * 3) Normaliza o campo grupo.
+ *
+ * @returns número de alunos corrigidos
+ */
+export function recalcularClassesMatriculas(): number {
+  const state = useFinance.getState();
+  const extras = [...(state.alunosExtra || [])];
+  const overrides = { ...(state.alunosOverrides || {}) } as Record<string, Partial<Aluno>>;
+  let changed = 0;
+
+  const applyPatch = (id: string, patch: Partial<Aluno>, isExtra: boolean, idx: number) => {
+    if (isExtra) {
+      extras[idx] = { ...extras[idx], ...patch };
+    } else {
+      overrides[id] = { ...(overrides[id] || {}), ...patch };
+    }
+    changed += 1;
+  };
+
+  /** Decide a turma correcta. Idade incompatível com o ID (ex. 13 anos em P1) manda. */
+  const resolveTurma = (a: { id?: string; turma?: string; dataNascimento?: string }): string | null => {
+    const resolved = resolveTurmaOficial(a);
+    return resolved || null;
+  };
+
+  // 1) Alunos extra (criados na app)
+  extras.forEach((a, idx) => {
+    if (!a?.id) return;
+    const resolved = resolveTurma(a);
+    if (!resolved) {
+      const g = grupoFromTurma(a.turma || "");
+      if (a.grupo !== g) {
+        applyPatch(a.id, { grupo: g }, true, idx);
+      }
+      return;
+    }
+    const g = grupoFromTurma(resolved);
+    const needTurma = a.turma !== resolved;
+    const needGrupo = a.grupo !== g;
+    if (!needTurma && !needGrupo) return;
+    const patch: Partial<Aluno> = {};
+    if (needTurma) {
+      patch.turma = resolved;
+      // Não alterar propina automaticamente ao restaurar do ID —
+      // o valor cobrado pode ter sido negociado.
+    }
+    if (needGrupo || needTurma) patch.grupo = g;
+    applyPatch(a.id, patch, true, idx);
+  });
+
+  // 2) Seed + overrides
+  for (const a of seed.alunos || []) {
+    if (!a?.id) continue;
+    const merged = { ...a, ...(overrides[a.id] || {}) } as Aluno;
+    const resolved = resolveTurma(merged);
+    if (!resolved) {
+      const g = grupoFromTurma(merged.turma || "");
+      if (merged.grupo !== g) {
+        overrides[a.id] = { ...(overrides[a.id] || {}), grupo: g };
+        changed += 1;
+      }
+      continue;
+    }
+    const g = grupoFromTurma(resolved);
+    const needTurma = merged.turma !== resolved;
+    const needGrupo = merged.grupo !== g;
+    if (!needTurma && !needGrupo) continue;
+    const patch: Partial<Aluno> = { ...(overrides[a.id] || {}) };
+    if (needTurma) patch.turma = resolved;
+    patch.grupo = g;
+    overrides[a.id] = patch;
+    changed += 1;
+  }
+
+  if (changed > 0) {
+    useFinance.setState({
+      alunosExtra: extras,
+      alunosOverrides: overrides,
+    });
+    try {
+      useFinance.getState().pushAudit?.(
+        "recalcular_classes",
+        `${changed} matrícula(s) · turma da matrícula preservada (Congo-Brazzaville)`,
+      );
+    } catch {
+      /* audit opcional */
+    }
+  }
+  changed += realinharIdsPorTurma();
+  return changed;
+}
+
+/**
+ * Quando a turma oficial já não corresponde ao prefixo do ID
+ * (P1-07 em CM2, 4E-02 com 5 anos em P3), emite um ID novo da turma
+ * e actualiza propinas, extrato BAI, fotos e overrides.
+ */
+export function realinharIdsPorTurma(): number {
+  const state = useFinance.getState();
+  let extras = [...(state.alunosExtra || [])];
+  let overrides = { ...(state.alunosOverrides || {}) } as Record<string, Partial<Aluno>>;
+  let deleted = [...(state.alunosDeletedIds || [])];
+  let mensalidades = [...(state.mensalidades || [])];
+  let faturas = [...(state.faturasPropina || [])];
+  let fotos = { ...(state.fotos || {}) } as Record<string, string>;
+  let baiExtra = [...(state.movimentosBaiExtra || [])];
+  let baiDeleted = [...(state.movimentosBaiDeletedIds || [])];
+
+  const seedIds = new Set((seed.alunos || []).map((a) => a.id));
+  const taken = new Set<string>([
+    ...(seed.alunos || []).map((a) => a.id),
+    ...extras.map((a) => a.id),
+    ...deleted,
+  ]);
+
+  const rewriteBlob = (s: string, from: string, to: string) =>
+    (s || "").split(from).join(to);
+
+  const applyRename = (oldId: string, newId: string) => {
+    extras = extras.map((a) =>
+      a.id === oldId ? { ...a, id: newId, idAnterior: oldId } : a,
+    );
+    if (overrides[oldId]) {
+      const prev = overrides[oldId];
+      delete overrides[oldId];
+      overrides[newId] = { ...prev, idAnterior: oldId };
+    }
+    mensalidades = mensalidades.map((m) =>
+      m.id === oldId ? { ...m, id: newId } : m,
+    );
+    faturas = faturas.map((f) =>
+      (f as { alunoId?: string }).alunoId === oldId
+        ? { ...f, alunoId: newId }
+        : f,
+    );
+    if (fotos[oldId] && !fotos[newId]) {
+      fotos[newId] = fotos[oldId];
+    }
+    delete fotos[oldId];
+    baiExtra = baiExtra.map((m) => ({
+      ...m,
+      id: rewriteBlob(m.id, oldId, newId),
+      descricao: rewriteBlob(m.descricao || "", oldId, newId),
+      observacoes: rewriteBlob(m.observacoes || "", oldId, newId),
+    }));
+    baiDeleted = baiDeleted.map((id) => rewriteBlob(id, oldId, newId));
+    if (!deleted.includes(oldId)) deleted.push(oldId);
+    taken.delete(oldId);
+    taken.add(newId);
+  };
+
+  let remapped = 0;
+
+  // Extras
+  for (const a of [...extras]) {
+    if (!a?.id) continue;
+    const turma = resolveTurmaOficial(a);
+    if (!turma) continue;
+    const fromId = turmaFromId(a.id);
+    if (fromId === turma) continue;
+    const newId = nextIdForTurma(turma, taken);
+    if (newId === a.id) continue;
+    extras = extras.map((row) =>
+      row.id === a.id ? { ...row, turma, grupo: grupoFromTurma(turma) } : row,
+    );
+    applyRename(a.id, newId);
+    remapped += 1;
+  }
+
+  // Seed cujo prefixo já não bate certo: clonar para extra com ID novo e esconder o seed
+  for (const raw of seed.alunos || []) {
+    if (!raw?.id || deleted.includes(raw.id)) continue;
+    const merged = { ...raw, ...(overrides[raw.id] || {}) } as Aluno;
+    const turma = resolveTurmaOficial(merged);
+    if (!turma) continue;
+    const fromId = turmaFromId(raw.id);
+    if (fromId === turma) continue;
+    const newId = nextIdForTurma(turma, taken);
+    extras.push({
+      ...merged,
+      id: newId,
+      idAnterior: raw.id,
+      turma,
+      grupo: grupoFromTurma(turma),
+    });
+    if (overrides[raw.id]) {
+      overrides[newId] = { ...overrides[raw.id], idAnterior: raw.id };
+      delete overrides[raw.id];
+    }
+    applyRename(raw.id, newId);
+    remapped += 1;
+  }
+
+  if (remapped === 0) return 0;
+
+  useFinance.setState({
+    alunosExtra: extras,
+    alunosOverrides: overrides,
+    alunosDeletedIds: deleted,
+    mensalidades,
+    faturasPropina: faturas,
+    fotos,
+    movimentosBaiExtra: baiExtra,
+    movimentosBaiDeletedIds: baiDeleted,
+  });
+  try {
+    useFinance.getState().pushAudit?.(
+      "realinhar_ids",
+      `${remapped} ID(s) alinhados à turma oficial`,
+    );
+  } catch {
+    /* audit opcional */
+  }
+  return remapped;
+}
+
+
+const ID_ALUNO_RE = /\b(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2}\b/gi;
+
+function collectTraceIds(state: {
+  alunosExtra?: Aluno[];
+  alunosOverrides?: Record<string, Partial<Aluno>>;
+  mensalidades?: Mensalidade[];
+  fotos?: Record<string, string>;
+  faturasPropina?: FaturaPropina[];
+  movimentosBaiExtra?: MovimentoBai[];
+  alunosDeletedIds?: string[];
+}): string[] {
+  const ids = new Set<string>();
+  const add = (raw?: string) => {
+    const id = String(raw || "").trim();
+    if (id) ids.add(id);
+  };
+  for (const a of state.alunosExtra || []) {
+    add(a.id);
+    add(a.idAnterior);
+  }
+  for (const id of Object.keys(state.alunosOverrides || {})) add(id);
+  for (const m of state.mensalidades || []) add(m.id);
+  for (const id of Object.keys(state.fotos || {})) add(id);
+  for (const f of state.faturasPropina || []) add(f.alunoId);
+  for (const id of state.alunosDeletedIds || []) add(id);
+  const bai = [...(seed.movimentosBai || []), ...(state.movimentosBaiExtra || [])];
+  for (const m of bai) {
+    const blob = `${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`;
+    const found = blob.match(ID_ALUNO_RE);
+    if (found) for (const id of found) add(id.toUpperCase());
+  }
+  return Array.from(ids);
+}
+
+function parseBaiMatricula(id: string, movimentos: MovimentoBai[]): {
+  nome?: string;
+  liquido?: number;
+  dataPag?: string;
+  recibo?: string;
+  metodo?: string;
+} {
+  const idUp = id.toUpperCase();
+  const idEsc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // "Matrícula Nome Completo (P2-03)" — nome pode ter várias linhas / "e "
+  const re = new RegExp(
+    `Matr[ií]cula\\s+([\\s\\S]+?)\\s*\\(${idEsc}\\)`,
+    "i",
+  );
+  for (const m of movimentos) {
+    const desc = String(m.descricao || "");
+    const obs = String(m.observacoes || "");
+    const mid = String(m.id || "");
+    const blob = `${desc} ${obs} ${mid}`;
+    if (!blob.toUpperCase().includes(idUp)) continue;
+    const mm = desc.match(re) || blob.match(re);
+    const rec = blob.match(/recibo\s*(EF\/\d+)/i);
+    const met = blob.match(/M[eé]todo:\s*([^·\n]+)/i);
+    const entrada = Number(m.entrada) || 0;
+    if (mm || entrada > 0 || mid.toUpperCase().includes(idUp)) {
+      let nome = mm?.[1]?.replace(/\s+/g, " ").trim();
+      // limpar sufixos de parcela "Inscrição · Nome"
+      if (nome && /·/.test(nome)) {
+        const parts = nome.split("·");
+        nome = parts[parts.length - 1].trim();
+      }
+      return {
+        nome: nome || undefined,
+        liquido: entrada > 0 ? entrada : undefined,
+        dataPag: m.data || undefined,
+        recibo: rec?.[1],
+        metodo: met?.[1]?.trim(),
+      };
+    }
+  }
+  return {};
+}
+
+/** Lista todos os IDs de matrícula referidos no extrato BAI com dados de ficha. */
+function scanBaiMatriculas(movimentos: MovimentoBai[]): {
+  id: string;
+  nome: string;
+  liquido: number;
+  dataPag: string;
+  recibo: string;
+  metodo: string;
+}[] {
+  const out: {
+    id: string;
+    nome: string;
+    liquido: number;
+    dataPag: string;
+    recibo: string;
+    metodo: string;
+  }[] = [];
+  const seen = new Set<string>();
+  const reLine =
+    /Matr[ií]cula\s+(.+?)\s*\(([A-Za-z0-9]+-\d{2,})\)/i;
+  for (const m of movimentos) {
+    const desc = String(m.descricao || "");
+    const obs = String(m.observacoes || "");
+    const blob = `${desc} ${obs}`;
+    const rec = blob.match(/recibo\s*(EF\/\d+)/i);
+    const met = blob.match(/M[eé]todo:\s*([^·\n]+)/i);
+    const mm = desc.match(reLine) || blob.match(reLine);
+    if (mm) {
+      let nome = (mm[1] || "").replace(/\s+/g, " ").trim();
+      if (/·/.test(nome)) nome = nome.split("·").pop()!.trim();
+      const id = (mm[2] || "").toUpperCase();
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        out.push({
+          id,
+          nome: nome || `Aluno ${id}`,
+          liquido: Number(m.entrada) || 0,
+          dataPag: m.data || "",
+          recibo: rec?.[1] || "",
+          metodo: met?.[1]?.trim() || "",
+        });
+      }
+    }
+    const idFromApp = String(m.id || "").match(/^APP-MAT-([A-Za-z0-9]+-\d+)/i);
+    if (idFromApp) {
+      const id = idFromApp[1].toUpperCase();
+      if (!seen.has(id)) {
+        seen.add(id);
+        const nomeM = desc.match(/Matr[ií]cula\s+(.+?)\s*\(/i);
+        let nome = (nomeM?.[1] || "").replace(/\s+/g, " ").trim();
+        if (/·/.test(nome)) nome = nome.split("·").pop()!.trim();
+        out.push({
+          id,
+          nome: nome || `Aluno ${id}`,
+          liquido: Number(m.entrada) || 0,
+          dataPag: m.data || "",
+          recibo: rec?.[1] || "",
+          metodo: met?.[1]?.trim() || "",
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function stubAlunoFromTrace(
+  id: string,
+  ov: Partial<Aluno> | undefined,
+  mens: Mensalidade | undefined,
+  faturaNome?: string,
+  bai?: { nome?: string; liquido?: number; dataPag?: string; recibo?: string; metodo?: string },
+): Aluno {
+  const turma = String(ov?.turma || mens?.turma || turmaFromId(id) || "");
+  const liquido = Number(ov?.liquido || bai?.liquido || 0);
+  return {
+    id,
+    nome: String(ov?.nome || mens?.nome || faturaNome || bai?.nome || `Aluno ${id}`),
+    turma,
+    grupo: String(ov?.grupo || grupoFromTurma(turma)),
+    inscricao: Number(ov?.inscricao || 0),
+    manuais: Number(ov?.manuais || 0),
+    uniforme: Number(ov?.uniforme || 0),
+    seguro: Number(ov?.seguro || 0),
+    extras: Number(ov?.extras || 0),
+    curso: Number(ov?.curso || 0),
+    mensalidade1: Number(ov?.mensalidade1 || mens?.propina || 0),
+    dataPag: String(ov?.dataPag || bai?.dataPag || ""),
+    bruto: Number(ov?.bruto || liquido || 0),
+    descPct: Number(ov?.descPct || 0),
+    liquido,
+    encarregado: String(ov?.encarregado || ""),
+    telefone: String(ov?.telefone || ""),
+    bi: String(ov?.bi || ""),
+    familia: String(ov?.familia || ""),
+    recibo: String(ov?.recibo || bai?.recibo || ""),
+    metodoPagamento: String(ov?.metodoPagamento || bai?.metodo || ""),
+    obs:
+      ov?.obs ||
+      (bai?.nome
+        ? `Reposto a partir do extrato BAI (matrícula ${id}${bai.recibo ? ` · ${bai.recibo}` : ""})`
+        : "Reposto a partir de rasto (propinas / BAI / ID antigo)"),
+    propina: Number(ov?.propina || mens?.propina || 0),
+    statusPag: (ov?.statusPag as Aluno["statusPag"]) || (liquido > 0 ? "pago" : "registado"),
+    dataNascimento: ov?.dataNascimento,
+    idAnterior: ov?.idAnterior,
+    transferidoCampusCidade: ov?.transferidoCampusCidade,
+  };
+}
+
+/**
+ * Reabre fichas que o realinhamento ou o merge da nuvem esconderam
+ * (ID antigo em alunosDeletedIds sem substituto, ou só restava a linha de propinas).
+ */
+
+/** Normaliza nome para comparação (sem acentos, minúsculas, espaços colapsados). */
+export function normalizeNomeAluno(n: string): string {
+  return (n || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Colapsa fichas duplicadas (mesmo nome normalizado ou cadeia idAnterior).
+ * Mantém a ficha "melhor" (ID alinhado à turma, mais dados) e esconde as outras.
+ * Resolve o caso 52 → 48 após realinhamentos + recuperação agressiva.
+ */
+export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[] } {
+  const state = useFinance.getState();
+  let extras = [...(state.alunosExtra || [])];
+  let deleted = [...(state.alunosDeletedIds || [])];
+  const overrides = { ...(state.alunosOverrides || {}) };
+  const detalhes: string[] = [];
+
+  const visible = alunosAll(extras, overrides, deleted);
+  const byName = new Map<string, Aluno[]>();
+  for (const a of visible) {
+    const key = normalizeNomeAluno(a.nome);
+    if (!key) continue;
+    const list = byName.get(key) || [];
+    list.push(a);
+    byName.set(key, list);
+  }
+
+  const score = (a: Aluno): number => {
+    let s = 0;
+    const fromId = turmaFromId(a.id);
+    if (fromId && fromId === (a.turma || "").trim()) s += 50;
+    if (a.dataNascimento) s += 20;
+    if (a.idAnterior) s += 10; // já realinhado
+    if ((a.propina || a.mensalidade1 || 0) > 0) s += 5;
+    if ((a.obs || "").length > 0) s += 2;
+    // IDs mais "novos" (maior sufixo numérico) ligeiramente preferidos
+    const m = String(a.id || "").match(/(\d+)$/);
+    if (m) s += Math.min(Number(m[1]), 30);
+    return s;
+  };
+
+  const toDelete = new Set<string>();
+
+  for (const [nome, list] of byName) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => score(b) - score(a));
+    const keep = list[0];
+    for (const dup of list.slice(1)) {
+      toDelete.add(dup.id);
+      detalhes.push(`Duplicado «${nome}»: manter ${keep.id}, esconder ${dup.id}`);
+    }
+  }
+
+  // Cadeias idAnterior: se existe extra com idAnterior=X, X deve ficar apagado
+  for (const a of extras) {
+    if (a.idAnterior && a.idAnterior !== a.id) {
+      toDelete.add(a.idAnterior);
+    }
+  }
+
+  if (toDelete.size === 0) {
+    return { removidos: 0, detalhes: [] };
+  }
+
+  for (const id of toDelete) {
+    if (!deleted.includes(id)) deleted.push(id);
+    // Só esconder via deletedIds — NUNCA apagar de alunosExtra (preserva Otchaly e novas matrículas)
+  }
+
+  useFinance.setState({
+    alunosExtra: extras,
+    alunosDeletedIds: Array.from(new Set(deleted)),
+  });
+
+  try {
+    useFinance.getState().pushAudit?.(
+      "sanear_duplicados",
+      `${toDelete.size} ficha(s): ${detalhes.slice(0, 8).join(" · ")}`,
+    );
+  } catch {
+    /* optional */
+  }
+
+  return { removidos: toDelete.size, detalhes };
+}
+
+export function recuperarAlunosOcultos(): { restaurados: number; detalhes: string[] } {
+  const state = useFinance.getState();
+  let extras = [...(state.alunosExtra || [])];
+  const overrides = { ...(state.alunosOverrides || {}) };
+  let deleted = [...(state.alunosDeletedIds || [])];
+  const mensalidades = state.mensalidades || [];
+  const faturas = state.faturasPropina || [];
+  const detalhes: string[] = [];
+
+  /** Há substituto realinhado (novo ID com idAnterior = oldId)? */
+  const hasReplacement = (oldId: string) =>
+    extras.some((a) => a.idAnterior === oldId && a.id !== oldId);
+
+  // Nunca reabrir IDs que já têm substituto — causa dos 52 vs 48
+  const keptDeleted: string[] = [];
+  for (const id of deleted) {
+    if (hasReplacement(id)) {
+      keptDeleted.push(id);
+      continue;
+    }
+    const isSeed = seed.alunos.some((a) => a.id === id);
+    // Seed apagado sem substituto: só reabrir se não existir ficha extra com o mesmo nome
+    if (isSeed) {
+      const seedNome = normalizeNomeAluno(
+        seed.alunos.find((a) => a.id === id)?.nome || "",
+      );
+      const nomeJaVisivel = alunosAll(extras, overrides, keptDeleted).some(
+        (a) => normalizeNomeAluno(a.nome) === seedNome && a.id !== id,
+      );
+      if (nomeJaVisivel) {
+        keptDeleted.push(id);
+        continue;
+      }
+      detalhes.push(`Seed ${id} estava escondido sem substituto — reaberto`);
+      continue;
+    }
+    if (extras.some((a) => a.id === id)) {
+      // extra na lista de apagados: reabrir só se não houver homónimo visível
+      const ex = extras.find((a) => a.id === id)!;
+      const nomeJaVisivel = alunosAll(
+        extras.filter((a) => a.id !== id),
+        overrides,
+        keptDeleted,
+      ).some((a) => normalizeNomeAluno(a.nome) === normalizeNomeAluno(ex.nome));
+      if (nomeJaVisivel) {
+        keptDeleted.push(id);
+        continue;
+      }
+      detalhes.push(`Extra ${id} estava na lista de apagados — reaberto`);
+      continue;
+    }
+    keptDeleted.push(id);
+  }
+  deleted = keptDeleted;
+
+  const visibleList = alunosAll(extras, overrides, deleted);
+  const visible = new Set(visibleList.map((a) => a.id));
+  const visibleNames = new Set(
+    visibleList.map((a) => normalizeNomeAluno(a.nome)).filter(Boolean),
+  );
+
+  // Traces: NÃO incluir alunosDeletedIds como fonte de reconstrução
+  // (IDs apagados com substituto voltavam como stubs fantasma)
+  const traces = collectTraceIds({
+    alunosExtra: extras,
+    alunosOverrides: overrides,
+    mensalidades,
+    fotos: state.fotos,
+    faturasPropina: faturas,
+    movimentosBaiExtra: state.movimentosBaiExtra,
+    alunosDeletedIds: [], // crítico: não ressuscitar a partir da lista de apagados
+  });
+
+  for (const id of traces) {
+    if (visible.has(id)) continue;
+    if (deleted.includes(id) && hasReplacement(id)) continue;
+    if (seed.alunos.some((a) => a.id === id) && !deleted.includes(id)) {
+      visible.add(id);
+      continue;
+    }
+    if (extras.some((a) => a.id === id)) {
+      // ficha extra existe mas estava filtered por deleted — só reabrir sem homónimo
+      const ex = extras.find((a) => a.id === id)!;
+      const nn = normalizeNomeAluno(ex.nome);
+      if (nn && visibleNames.has(nn)) continue;
+      deleted = deleted.filter((x) => x !== id);
+      visible.add(id);
+      if (nn) visibleNames.add(nn);
+      detalhes.push(`ID ${id} reaberto (ficha extra ainda existia)`);
+      continue;
+    }
+    const ov = overrides[id];
+    const mens = mensalidades.find((m) => m.id === id);
+    const fat = faturas.find((f) => f.alunoId === id);
+    const baiAll = [
+      ...(seed.movimentosBai || []),
+      ...(state.movimentosBaiExtra || []),
+    ];
+    const baiInfo = parseBaiMatricula(id, baiAll);
+    if (!ov && !mens && !fat && !baiInfo.nome && !(baiInfo.liquido && baiInfo.liquido > 0)) {
+      continue;
+    }
+    const stubNome = normalizeNomeAluno(
+      String(ov?.nome || mens?.nome || fat?.alunoNome || baiInfo.nome || ""),
+    );
+    if (stubNome && visibleNames.has(stubNome)) {
+      // Homónimo já visível — não criar stub duplicado
+      if (!deleted.includes(id)) deleted.push(id);
+      continue;
+    }
+    extras.push(stubAlunoFromTrace(id, ov, mens, fat?.alunoNome, baiInfo));
+    deleted = deleted.filter((x) => x !== id);
+    visible.add(id);
+    if (stubNome) visibleNames.add(stubNome);
+    const label =
+      ov?.nome || mens?.nome || fat?.alunoNome || baiInfo.nome || "sem nome";
+    detalhes.push(
+      baiInfo.nome && !ov && !mens
+        ? `ID ${id} reconstruído a partir do BAI (${label})`
+        : `ID ${id} reconstruído (${label})`,
+    );
+  }
+
+  // Força: qualquer «Matrícula Nome (ID)» no BAI sem ficha visível → recria
+  const baiMovs = movimentosAll(
+    state.movimentosBaiExtra || [],
+    state.baiOverride,
+    state.movimentosBaiDeletedIds || [],
+  );
+  for (const b of scanBaiMatriculas(baiMovs)) {
+    if (visible.has(b.id)) continue;
+    if (extras.some((a) => a.id === b.id)) {
+      deleted = deleted.filter((x) => x !== b.id);
+      visible.add(b.id);
+      detalhes.push(`ID ${b.id} reaberto (existia em extras)`);
+      continue;
+    }
+    const nn = normalizeNomeAluno(b.nome);
+    if (nn && visibleNames.has(nn)) continue;
+    extras.push(
+      stubAlunoFromTrace(b.id, undefined, undefined, undefined, {
+        nome: b.nome,
+        liquido: b.liquido,
+        dataPag: b.dataPag,
+        recibo: b.recibo,
+        metodo: b.metodo,
+      }),
+    );
+    deleted = deleted.filter((x) => x !== b.id);
+    visible.add(b.id);
+    if (nn) visibleNames.add(nn);
+    detalhes.push(`ID ${b.id} reconstruído do BAI (${b.nome} · ${b.recibo || "sem EF"})`);
+  }
+
+  if (detalhes.length) {
+    useFinance.setState({
+      alunosExtra: extras,
+      alunosDeletedIds: deleted,
+    });
+    try {
+      useFinance.getState().pushAudit?.(
+        "recuperar_alunos",
+        `${detalhes.length} rasto(s): ${detalhes.slice(0, 6).join(" · ")}`,
+      );
+    } catch {
+      /* audit opcional */
+    }
+  }
+  return { restaurados: detalhes.length, detalhes };
+}
+
 export function alunosAll(
   extras: Aluno[] = [],
   overrides: Record<string, Partial<Aluno>> = {},
@@ -1917,26 +3647,23 @@ export function alunosAll(
   const deleted = new Set(deletedIds);
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
-    return o ? { ...a, ...o, id: a.id } : a;
+    const merged = o ? { ...a, ...o, id: a.id } : { ...a };
+    // Turma oficial: idade prevalece se o prefixo do ID for incompatível
+    // (P1-07 com 11 anos → CM2, não Maternelle P1).
+    const resolved = resolveTurmaOficial(merged);
+    if (resolved && merged.turma !== resolved) {
+      merged.turma = resolved;
+    }
+    const g = grupoFromTurma(merged.turma || "");
+    if (merged.grupo !== g) merged.grupo = g;
+    return merged;
   };
-  const norm = (n: string) =>
-    (n || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
-  const seenNames = new Set<string>();
 
   const push = (a: Aluno) => {
     if (deleted.has(a.id) || seenIds.has(a.id)) return;
-    const nn = norm(a.nome);
-    if (nn && seenNames.has(nn)) return; // bloqueia duplicado por nome
     seenIds.add(a.id);
-    if (nn) seenNames.add(nn);
     out.push(apply(a));
   };
 
