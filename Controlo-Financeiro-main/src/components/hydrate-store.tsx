@@ -8,7 +8,7 @@ import {
   saveAlunoFoto,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
-import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos, sanearAlunosDuplicados } from "@/lib/store";
+import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
@@ -67,8 +67,9 @@ export function HydrateStore() {
           applyAlunoFotos(remoteFotos);
         }
         try {
+          // Só repor fichas em falta (ex. matrícula no BAI sem linha na lista).
+          // NÃO sanear automaticamente — a meta 48 escondia alunos novos legítimos (ex. Otchaly).
           recuperarAlunosOcultos();
-          sanearAlunosDuplicados();
         } catch (e) {
           console.warn("[recuperar-alunos]", e);
         }
@@ -122,12 +123,7 @@ export function HydrateStore() {
             `${rec.restaurados} aluno(s) repostos a partir de rastos no sistema.`,
           );
         }
-        const san = sanearAlunosDuplicados();
-        if (san.removidos > 0) {
-          toast.message(
-            `${san.removidos} ficha(s) duplicada(s) saneada(s) (meta 48).`,
-          );
-        }
+        // Meta 48 desactivada: não correr sanearAlunosDuplicados no arranque.
         // Marcar em Propinas os meses já liquidados na matrícula (mesesPropina)
         try {
           const n = useFinance.getState().syncPropinasFromMatriculas?.() ?? 0;

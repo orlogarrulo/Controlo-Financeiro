@@ -3228,23 +3228,31 @@ function parseBaiMatricula(id: string, movimentos: MovimentoBai[]): {
   metodo?: string;
 } {
   const idUp = id.toUpperCase();
-  // "Matrícula Nome Completo (P2-03)" + obs "Método: … · recibo EF/051"
+  const idEsc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // "Matrícula Nome Completo (P2-03)" — nome pode ter várias linhas / "e "
   const re = new RegExp(
-    `Matr[ií]cula\\s+(.+?)\\s*\\(${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`,
+    `Matr[ií]cula\\s+([\\s\\S]+?)\\s*\\(${idEsc}\\)`,
     "i",
   );
   for (const m of movimentos) {
-    const blob = `${m.descricao || ""} ${m.observacoes || ""}`;
-    if (!blob.toUpperCase().includes(idUp) && !(m.id || "").toUpperCase().includes(idUp)) {
-      continue;
-    }
-    const mm = (m.descricao || "").match(re) || blob.match(re);
-    const rec = blob.match(/recibo\s+(EF\/\d+)/i);
+    const desc = String(m.descricao || "");
+    const obs = String(m.observacoes || "");
+    const mid = String(m.id || "");
+    const blob = `${desc} ${obs} ${mid}`;
+    if (!blob.toUpperCase().includes(idUp)) continue;
+    const mm = desc.match(re) || blob.match(re);
+    const rec = blob.match(/recibo\s*(EF\/\d+)/i);
     const met = blob.match(/M[eé]todo:\s*([^·\n]+)/i);
     const entrada = Number(m.entrada) || 0;
-    if (mm || entrada > 0) {
+    if (mm || entrada > 0 || mid.toUpperCase().includes(idUp)) {
+      let nome = mm?.[1]?.replace(/\s+/g, " ").trim();
+      // limpar sufixos de parcela "Inscrição · Nome"
+      if (nome && /·/.test(nome)) {
+        const parts = nome.split("·");
+        nome = parts[parts.length - 1].trim();
+      }
       return {
-        nome: mm?.[1]?.trim(),
+        nome: nome || undefined,
         liquido: entrada > 0 ? entrada : undefined,
         dataPag: m.data || undefined,
         recibo: rec?.[1],
@@ -3253,6 +3261,71 @@ function parseBaiMatricula(id: string, movimentos: MovimentoBai[]): {
     }
   }
   return {};
+}
+
+/** Lista todos os IDs de matrícula referidos no extrato BAI com dados de ficha. */
+function scanBaiMatriculas(movimentos: MovimentoBai[]): {
+  id: string;
+  nome: string;
+  liquido: number;
+  dataPag: string;
+  recibo: string;
+  metodo: string;
+}[] {
+  const out: {
+    id: string;
+    nome: string;
+    liquido: number;
+    dataPag: string;
+    recibo: string;
+    metodo: string;
+  }[] = [];
+  const seen = new Set<string>();
+  const reLine =
+    /Matr[ií]cula\s+(.+?)\s*\(([A-Za-z0-9]+-\d{2,})\)/i;
+  for (const m of movimentos) {
+    const desc = String(m.descricao || "");
+    const obs = String(m.observacoes || "");
+    const blob = `${desc} ${obs}`;
+    const rec = blob.match(/recibo\s*(EF\/\d+)/i);
+    const met = blob.match(/M[eé]todo:\s*([^·\n]+)/i);
+    const mm = desc.match(reLine) || blob.match(reLine);
+    if (mm) {
+      let nome = (mm[1] || "").replace(/\s+/g, " ").trim();
+      if (/·/.test(nome)) nome = nome.split("·").pop()!.trim();
+      const id = (mm[2] || "").toUpperCase();
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        out.push({
+          id,
+          nome: nome || `Aluno ${id}`,
+          liquido: Number(m.entrada) || 0,
+          dataPag: m.data || "",
+          recibo: rec?.[1] || "",
+          metodo: met?.[1]?.trim() || "",
+        });
+      }
+    }
+    const idFromApp = String(m.id || "").match(/^APP-MAT-([A-Za-z0-9]+-\d+)/i);
+    if (idFromApp) {
+      const id = idFromApp[1].toUpperCase();
+      if (!seen.has(id)) {
+        seen.add(id);
+        const nomeM = desc.match(/Matr[ií]cula\s+(.+?)\s*\(/i);
+        let nome = (nomeM?.[1] || "").replace(/\s+/g, " ").trim();
+        if (/·/.test(nome)) nome = nome.split("·").pop()!.trim();
+        out.push({
+          id,
+          nome: nome || `Aluno ${id}`,
+          liquido: Number(m.entrada) || 0,
+          dataPag: m.data || "",
+          recibo: rec?.[1] || "",
+          metodo: met?.[1]?.trim() || "",
+        });
+      }
+    }
+  }
+  return out;
 }
 
 function stubAlunoFromTrace(
@@ -3375,17 +3448,9 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
 
   for (const id of toDelete) {
     if (!deleted.includes(id)) deleted.push(id);
-    // Não remover extras físicos — só esconder via deletedIds (preserva rasto)
+    // Só esconder via deletedIds — NUNCA apagar de alunosExtra (preserva Otchaly e novas matrículas)
   }
 
-  // Limpar extras que são stubs vazios e estão marcados deleted
-  extras = extras.filter((a) => {
-    if (!toDelete.has(a.id)) return true;
-    // manter se tem idAnterior (é o registo realinhado) — não, se está em toDelete escondemos
-    return false; // remove da lista extra se for o duplicado perdedor
-  });
-
-  // Re-adicionar ao deleted os que removemos dos extras
   useFinance.setState({
     alunosExtra: extras,
     alunosDeletedIds: Array.from(new Set(deleted)),
@@ -3524,6 +3589,37 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
         ? `ID ${id} reconstruído a partir do BAI (${label})`
         : `ID ${id} reconstruído (${label})`,
     );
+  }
+
+  // Força: qualquer «Matrícula Nome (ID)» no BAI sem ficha visível → recria
+  const baiMovs = movimentosAll(
+    state.movimentosBaiExtra || [],
+    state.baiOverride,
+    state.movimentosBaiDeletedIds || [],
+  );
+  for (const b of scanBaiMatriculas(baiMovs)) {
+    if (visible.has(b.id)) continue;
+    if (extras.some((a) => a.id === b.id)) {
+      deleted = deleted.filter((x) => x !== b.id);
+      visible.add(b.id);
+      detalhes.push(`ID ${b.id} reaberto (existia em extras)`);
+      continue;
+    }
+    const nn = normalizeNomeAluno(b.nome);
+    if (nn && visibleNames.has(nn)) continue;
+    extras.push(
+      stubAlunoFromTrace(b.id, undefined, undefined, undefined, {
+        nome: b.nome,
+        liquido: b.liquido,
+        dataPag: b.dataPag,
+        recibo: b.recibo,
+        metodo: b.metodo,
+      }),
+    );
+    deleted = deleted.filter((x) => x !== b.id);
+    visible.add(b.id);
+    if (nn) visibleNames.add(nn);
+    detalhes.push(`ID ${b.id} reconstruído do BAI (${b.nome} · ${b.recibo || "sem EF"})`);
   }
 
   if (detalhes.length) {

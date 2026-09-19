@@ -104,8 +104,9 @@ function Rastreio() {
     reader.readAsText(f);
   }
 
-  const falta = Math.max(0, META_MATRICULADOS - alunos.length);
-  const excesso = Math.max(0, alunos.length - META_MATRICULADOS);
+  // Sem meta numérica: falta/excesso desactivados (matrículas livres)
+  const falta = 0;
+  const excesso = 0;
   const apagados = alunosDeletedIds;
 
   return (
@@ -146,14 +147,8 @@ function Rastreio() {
         <KpiMini
           label="Matriculados neste dispositivo"
           value={String(alunos.length)}
-          hint={
-            excesso > 0
-              ? `Meta ${META_MATRICULADOS} · ${excesso} a mais (duplicados)`
-              : falta > 0
-              ? `Meta ${META_MATRICULADOS} · faltam ${falta} (nuvem ou importar censo)`
-              : `Meta ${META_MATRICULADOS} atingida`
-          }
-          warn={falta > 0 || excesso > 0}
+          hint={`${alunos.length} ficha(s) neste dispositivo · sem tecto de matrículas`}
+          warn={false}
         />
         <KpiMini
           label="Campus Cidade · mês"
@@ -176,7 +171,7 @@ function Rastreio() {
       {excesso > 0 && (
         <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-950">
           <p>
-            Cadastro com <strong>{alunos.length}</strong> / {META_MATRICULADOS} — há{" "}
+            Cadastro com <strong>{alunos.length}</strong> aluno(s). Há{" "}
             <strong>{excesso}</strong> ficha(s) a mais (duplicados por realinhamento de IDs ou
             recuperação de rastos).
           </p>
@@ -207,7 +202,7 @@ function Rastreio() {
                   else toast.message("Nenhum duplicado por nome detectado.");
                 }}
               >
-                Sanear duplicados (voltar a {META_MATRICULADOS})
+                Sanear só duplicados exactos de nome (opcional)
               </Button>
             </div>
           )}

@@ -8,7 +8,8 @@ import { estadoPropinaMes, type EstadoPropinaMes } from "@/lib/store";
 import { CAMPUS_CIDADE_PROPINA, propinaDefaultFromTurma } from "@/lib/classe-congo";
 
 /** Meta comunicada pela escola (ano 2026-2027). */
-export const META_MATRICULADOS = 48;
+/** Sem tecto: a escola pode matricular quantos alunos precisar. (Antiga meta 48 removida.) */
+export const META_MATRICULADOS = Number.POSITIVE_INFINITY;
 
 export type OrigemAluno = "campus_cidade" | "nova_vida";
 

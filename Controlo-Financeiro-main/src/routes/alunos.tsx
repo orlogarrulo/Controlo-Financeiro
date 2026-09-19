@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas } from "@/lib/store";
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
 import { resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -3562,7 +3562,40 @@ function Alunos() {
         >
           Sem telefone{semTelefoneCount ? ` (${semTelefoneCount})` : ""}
         </Button>
+        {canEdit ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            title="Recria fichas em falta a partir do extrato BAI (ex. Otchaly P2-03) sem novo lançamento"
+            onClick={() => {
+              const r = recuperarAlunosOcultos();
+              if (r.restaurados) {
+                toast.success(
+                  `${r.restaurados} ficha(s) reposta(s): ${r.detalhes.slice(0, 3).join(" · ")}`,
+                );
+                setTurmaFiltro("todas");
+                setSoSemTelefone(false);
+              } else {
+                toast.message(
+                  "Nenhuma ficha em falta encontrada no BAI deste dispositivo. Confirme o movimento no extrato BAI.",
+                );
+              }
+            }}
+          >
+            Repor do BAI
+          </Button>
+        ) : null}
       </div>
+
+      {q.trim() && filtered.length === 0 ? (
+        <div className="no-print mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>
+            Nenhum aluno com «{q.trim()}». Se o pagamento está no BAI (ex. Matrícula … (P2-03)), use{" "}
+            <strong>Repor do BAI</strong> — recria a ficha sem duplicar o extrato.
+          </p>
+        </div>
+      ) : null}
 
       <p className="mb-2 text-sm text-[var(--color-muted)]">
         {filtered.length} alunos · Total liquidado {formatKz(total)} · {escola.ano}
