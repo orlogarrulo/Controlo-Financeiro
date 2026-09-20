@@ -1,0 +1,4522 @@
+import {createFileRoute, useNavigate} from "@tanstack/react-router";
+// navigate used to clear deep-link search
+import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText, Calendar, IdCard } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { toast } from "sonner";
+import { PageHeader } from "@/components/kpi";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
+import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
+import { resolveTurmaOficial } from "@/lib/classe-congo";
+import { formatDate, formatKz, todayIso } from "@/lib/format";
+import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
+import {
+  regulamentoInternoHtml,
+  regulamentoPublicUrl,
+} from "@/lib/regulamento-interno";
+import {
+  htmlFragmentToA4Pdf,
+  htmlFragmentsToMultiPageA4Pdf,
+  openPrintHtml,
+  shareOrDownloadPdf,
+  deliverOfficialHtml,
+  isMobileDevice,
+} from "@/lib/pdf-export";
+import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
+import { printCartesScolaires } from "@/lib/print-cartes-scolaires";
+import { CarteScolaire } from "@/components/carte-scolaire";
+import { alunoToCarte, ANO_LECTIF_CARTE } from "@/lib/carte-scolaire";
+import {
+  buildInqueritoSaudeWhatsApp,
+  buildAgendamentoWhatsApp,
+  agendamentoPublicUrl,
+} from "@/lib/inquerito-saude-whatsapp";
+import type { Aluno, FaturaPropina } from "@/data/types";
+import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
+import { NomeAluno } from "@/components/nome-aluno";
+import { MESES_LETIVOS, MESES_LABEL } from "@/data/types";
+import {
+  compressStudentPhoto,
+  formatPhotoSize,
+  ALUNO_FOTO_MAX_SYNC,
+} from "@/lib/image";
+import { saveAlunoFoto, deleteAlunoFoto } from "@/lib/finance-cloud";
+import {
+  linhasMatriculaFromAluno,
+  linhaPropinaMensal,
+  totalLinhas as totalLinhasDoc,
+  buildInvoiceHtml as buildInvoiceHtmlDoc,
+  garantirCodigoReciboAluno,
+} from "@/lib/documento-matricula";
+
+const EMPTY_FATURAS: FaturaPropina[] = [];
+
+export const Route = createFileRoute("/alunos")({
+  component: Alunos,
+  validateSearch: (s: Record<string, unknown>) => ({
+    edit: typeof s.edit === "string" ? s.edit : undefined,
+    focus: typeof s.focus === "string" ? s.focus : undefined,
+  }),
+});
+
+/** Classes / turmas da escola. */
+const TURMAS = [
+  "Maternelle P1",
+  "Maternelle P2",
+  "Maternelle P3",
+  "Maternelle",
+  "CP1",
+  "CP2",
+  "CE1",
+  "CE2",
+  "CM1",
+  "CM2",
+  "6ème",
+  "5ème",
+  "4ème",
+  "3ème",
+] as const;
+
+/** Valores por defeito (ajustáveis no formulário). */
+const DEFAULT_INSCRICAO = 150000;
+const DEFAULT_SEGURO_ESCOLA = 30000;
+
+/** Tarifário especial — transferidos do Campus Cidade (2026-2027). */
+/** Pacote único (já inclui matrícula + seguro de saúde + cartão de estudante): 82 / 99 / 127 mil Kz */
+const CAMPUS_CIDADE_INSCRICAO_82 = 82000;
+const CAMPUS_CIDADE_INSCRICAO_99 = 99000;
+const CAMPUS_CIDADE_INSCRICAO_127 = 127000;
+const CAMPUS_CIDADE_SEGURO = 30000; // referência; no pacote transferido o seguro fica a 0 (já incluído)
+/** Propina mensal transferidos */
+const CAMPUS_CIDADE_PROPINA = 75000;
+const CARTAO_ESTUDANTE_PRECO = 10000;
+const PROPINA_MATERNELLE = 170000;
+const PROPINA_PRIMAIRE = 250000;
+const PROPINA_COLLEGE = 260000;
+const NOME_ESCOLA_FATURA =
+  "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida";
+
+const CAMPUS_CIDADE_NOTA =
+  "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027";
+
+/** Valores de pacote Campus Cidade (matrícula+seguro+cartão já incluídos). */
+const CAMPUS_CIDADE_PACOTES = [
+  CAMPUS_CIDADE_INSCRICAO_82,
+  CAMPUS_CIDADE_INSCRICAO_99,
+  CAMPUS_CIDADE_INSCRICAO_127,
+] as const;
+
+const METODO_NAO_ESCOLHIDO = "";
+const METODO_PLACEHOLDER = "— escolher —";
+
+const METODOS_PAGAMENTO = [
+  "Dinheiro (em mão)",
+  "Depósito em dinheiro (conta BAI)",
+  "Cartão Multicaixa",
+  "Transferência bancária",
+] as const;
+
+/** True se o valor do select é um método real (não o placeholder). */
+function isMetodoEscolhido(v: string | undefined | null): boolean {
+  return Boolean(v && String(v).trim() && v !== METODO_PLACEHOLDER);
+}
+
+/** Normaliza método guardado → valor do select (vazio = — escolher —). */
+function normalizeMetodoStored(v: string | undefined | null): string {
+  if (!v || v === METODO_PLACEHOLDER) return METODO_NAO_ESCOLHIDO;
+  if (v === "Dinheiro") return "Dinheiro (em mão)";
+  if ((METODOS_PAGAMENTO as readonly string[]).includes(v)) return v;
+  // "Misto (...)" não é opção de uma rubrica
+  if (v.startsWith("Misto")) return METODO_NAO_ESCOLHIDO;
+  return METODO_NAO_ESCOLHIDO;
+}
+
+type EscolaContacto = {
+  morada: string;
+  telefones: string;
+  email: string;
+  iban: string;
+};
+
+const DEFAULT_CONTACTO: EscolaContacto = {
+  morada: "Urbanização Nova Vida, Rua 63, Casa S/N, Município Kilamba Kiaxi, Luanda - Angola",
+  telefones: "+244 922 637 640",
+  email: "ecoleconsulaireeducongo1976.nv@gmail.com",
+  iban: "AO06.0040.0000.6725.7113.1013.0",
+};
+
+const CONTACTO_STORAGE_KEY = "ecc-escola-contacto-v1";
+
+function loadContacto(): EscolaContacto {
+  try {
+    const raw = localStorage.getItem(CONTACTO_STORAGE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<EscolaContacto>;
+      return { ...DEFAULT_CONTACTO, ...p };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { ...DEFAULT_CONTACTO };
+}
+
+function saveContacto(c: EscolaContacto) {
+  try {
+    localStorage.setItem(CONTACTO_STORAGE_KEY, JSON.stringify(c));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadIban(): string {
+  return loadContacto().iban;
+}
+
+/** Datas no formato 28-08-2026 */
+function fmtData(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
+}
+
+/**
+ * Limite de pagamento:
+ * - 1.ª fatura (outubro): até 20 de setembro (antes do início das aulas)
+ * - Restantes meses: até dia 10 do mês civil seguinte
+ */
+function prazoFatura(mesLetivo: string): {
+  limite: string;
+  de11a30: string;
+  multa40: string;
+  suspensao: string;
+} {
+  const now = new Date();
+  const mesIdx: Record<string, number> = {
+    set: 8, out: 9, nov: 10, dez: 11, jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
+  };
+  const baseMonth = mesIdx[mesLetivo] ?? now.getMonth();
+  let y = now.getFullYear();
+  if (["set", "out", "nov", "dez"].includes(mesLetivo) && now.getMonth() < 8) y -= 1;
+  if (["jan", "fev", "mar", "abr", "mai", "jun"].includes(mesLetivo) && now.getMonth() >= 8) y += 1;
+
+  // Excepção: propina de outubro → limite 20 de setembro do mesmo ano lectivo
+  if (mesLetivo === "out") {
+    const limite = new Date(y, 8, 20); // 20 set
+    const de11 = new Date(y, 8, 21);
+    const dia30 = new Date(y, 8, 30);
+    const multa40 = new Date(y, 9, 10); // 10 out
+    return {
+      limite: fmtData(limite),
+      de11a30: `${fmtData(de11)} a ${fmtData(dia30)}`,
+      multa40: fmtData(multa40),
+      suspensao: fmtData(multa40),
+    };
+  }
+
+  const limite = new Date(y, baseMonth + 1, 10);
+  const dia30 = new Date(y, baseMonth + 1, 30);
+  const dia10Seguinte = new Date(y, baseMonth + 2, 10);
+  return {
+    limite: fmtData(limite),
+    de11a30: `${fmtData(new Date(y, baseMonth + 1, 11))} a ${fmtData(dia30)}`,
+    multa40: fmtData(dia10Seguinte),
+    suspensao: fmtData(dia10Seguinte),
+  };
+}
+
+
+type FormState = {
+  nome: string;
+  pai: string;
+  mae: string;
+  turma: string;
+  dataPag: string;
+  inscricao: string;
+  seguro: string;
+  seguroExterno: boolean;
+  transferidoCampusCidade: boolean;
+  /** 2+ irmãos no mesmo agregado (propina 75.000 ou +10% campanha). */
+  agregadoIrmaos: boolean;
+  /** 0 nenhum · 2 (−10%) · 3 (−15%) */
+  irmaosNivel: 0 | 2 | 3;
+  /**
+   * Campanha: inscrição até 10/set → 40% desconto nas propinas desta liquidação.
+   * +10% / +15% irmãos. Inscrição e seguro sem desconto.
+   */
+  campanhaPromoSetembro: boolean;
+  manuais: string;
+  cadernos: string;
+  uniforme: string;
+  extras: string;
+  transporte: string;
+  alimentacao: string;
+  curso: string;
+  cartaoEstudante: string;
+  incluirCartaoEstudante: boolean;
+  mensalidade1: string;
+  /** 0 = não incluir propina nesta liquidação; 1–9 meses */
+  mesesPropina: string;
+  propina: string;
+  telefone: string;
+  email: string;
+  morada: string;
+  bi: string;
+  familia: string;
+  obs: string;
+  dataNascimento: string;
+  lugarNascimento: string;
+  sexo: "Féminin" | "Masculin" | "";
+  foto: string;
+  alergiasMedicamentos: string;
+  alergiasAlimentares: string;
+  clinicaProxima: string;
+  grupoSanguineo: string;
+  metodoPagamento: string;
+  /** Métodos por rubrica. */
+  metodoInscricao: string;
+  metodoSeguro: string;
+  metodoManuais: string;
+  metodoCadernos: string;
+  metodoAtl: string;
+  metodoUniforme: string;
+  metodoMensalidade: string;
+  metodoTransporte: string;
+  metodoAlimentacao: string;
+  metodoCurso: string;
+  metodoCartaoEstudante: string;
+  pin: string;
+};
+
+function emptyForm(): FormState {
+  return {
+    nome: "",
+    pai: "",
+    mae: "",
+    turma: TURMAS[0],
+    dataPag: todayIso(),
+    inscricao: String(DEFAULT_INSCRICAO),
+    seguro: String(DEFAULT_SEGURO_ESCOLA),
+    seguroExterno: false,
+    transferidoCampusCidade: false,
+    agregadoIrmaos: false,
+    irmaosNivel: 0,
+    cartaoEstudante: "0",
+    incluirCartaoEstudante: false,
+    campanhaPromoSetembro: false,
+    manuais: "0",
+    cadernos: "0",
+    uniforme: "0",
+    extras: "0",
+    transporte: "0",
+    alimentacao: "0",
+    curso: "0",
+    mensalidade1: "0",
+    mesesPropina: "1",
+    propina: "0",
+    telefone: "",
+    email: "",
+    morada: "",
+    bi: "",
+    familia: "",
+    obs: "",
+    dataNascimento: "",
+    lugarNascimento: "",
+    sexo: "",
+    foto: "",
+    alergiasMedicamentos: "",
+    alergiasAlimentares: "",
+    clinicaProxima: "",
+    grupoSanguineo: "",
+    metodoPagamento: METODO_NAO_ESCOLHIDO,
+    metodoInscricao: METODO_NAO_ESCOLHIDO,
+    metodoSeguro: METODO_NAO_ESCOLHIDO,
+    metodoManuais: METODO_NAO_ESCOLHIDO,
+    metodoCadernos: METODO_NAO_ESCOLHIDO,
+    metodoAtl: METODO_NAO_ESCOLHIDO,
+    metodoUniforme: METODO_NAO_ESCOLHIDO,
+    metodoMensalidade: METODO_NAO_ESCOLHIDO,
+    metodoTransporte: METODO_NAO_ESCOLHIDO,
+    metodoAlimentacao: METODO_NAO_ESCOLHIDO,
+    metodoCurso: METODO_NAO_ESCOLHIDO,
+    metodoCartaoEstudante: METODO_NAO_ESCOLHIDO,
+    pin: "",
+  };
+}
+
+/** Monta observações com notas de seguro externo e Campus Cidade. */
+function buildObs(form: FormState): string {
+  const parts: string[] = [];
+  const base = form.obs.trim();
+  if (base && !base.includes("Transferido do Campus Cidade") && !base.includes("Seguro próprio")) {
+    parts.push(base);
+  } else if (base) {
+    // manter texto livre do utilizador, mas evitar duplicar as etiquetas automáticas
+    const cleaned = base
+      .replace(/\s*·?\s*Transferido do Campus Cidade[^.·]*/gi, "")
+      .replace(/\s*·?\s*Seguro próprio \(externo\)/gi, "")
+      .replace(/\s*·\s*·/g, " · ")
+      .trim()
+      .replace(/^·\s*/, "")
+      .replace(/\s*·$/, "");
+    if (cleaned) parts.push(cleaned);
+  }
+  if (form.transferidoCampusCidade) parts.push(CAMPUS_CIDADE_NOTA);
+  if (form.seguroExterno) parts.push("Seguro próprio (externo)");
+  if (form.campanhaPromoSetembro) {
+    const pc = calcPropinaComCampanha(num(form.propina), num(form.mesesPropina), true, irmaosNivelFromForm(form),
+    );
+    parts.push(
+      `Campanha promo até 10/set (−40% propinas${pc.detalhe ? ` · ${pc.detalhe}` : ""})`,
+    );
+  } else {
+    const nv = irmaosNivelFromForm(form);
+    if (nv === 2 && num(form.mesesPropina) > 0) {
+      parts.push("Desconto 2 irmãos (−10% propinas desta liquidação)");
+    } else if (nv === 3 && num(form.mesesPropina) > 0) {
+      parts.push("Desconto 3+ irmãos (−15% propinas desta liquidação)");
+    }
+  }
+  return parts.join(" · ");
+}
+
+function num(s: string): number {
+  const n = Number(String(s).replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Telefone preenchido na matrícula (ignora traços / n/d). */
+function temContactoTelefonico(a: { telefone?: string }): boolean {
+  const t = String(a.telefone || "")
+    .replace(/[\s./()-]/g, "")
+    .toLowerCase();
+  if (!t) return false;
+  if (/^(—|-|n\/?a|n\/?d|nd|sem|s\/n|nenhum|none|null|undefined)$/i.test(t)) return false;
+  return /\d{6,}/.test(t);
+}
+
+function grupoFromTurma(turma: string): string {
+  if (turma.startsWith("Maternelle")) return "Maternelle";
+  if (["CP1", "CP2", "CE1", "CE2", "CM1", "CM2"].includes(turma)) return "Primaire";
+  return "Collège";
+}
+
+/**
+ * Sugere a classe/turma a partir da data de nascimento.
+ * Referência: idade completa em 1 de outubro do ano lectivo 2026-2027
+ * (início das aulas). Sistema educativo República do Congo (Brazzaville):
+ *   Maternelle P1 ≤3 · P2 =4 · P3 =5
+ *   CP1=6 · CP2=7 · CE1=8 · CE2=9 · CM1=10 · CM2=11
+ *   6ème=12 · 5ème=13 · 4ème=14 · 3ème≥15
+ * Um aluno de 13 anos NUNCA fica em Maternelle — vai para 5ème.
+ * Pode ser sempre sobrescrita manualmente no formulário.
+ */
+function turmaFromDataNascimento(dataNascimento: string): string | null {
+  if (!dataNascimento || dataNascimento.length < 8) return null;
+  const parts = dataNascimento.slice(0, 10).split("-").map(Number);
+  if (parts.length < 3 || !parts[0] || !Number.isFinite(parts[0])) return null;
+  const y = parts[0];
+  const m = parts[1] || 1;
+  const day = parts[2] || 1;
+  if (y < 1995 || y > 2026) return null;
+  const born = new Date(y, m - 1, day);
+  if (Number.isNaN(born.getTime())) return null;
+
+  // Idade de referência: 1 de outubro de 2026 (início das aulas / ano lectivo 2026-2027)
+  const ref = new Date(2026, 9, 1); // mês 9 = outubro
+  let age = ref.getFullYear() - born.getFullYear();
+  const md = ref.getMonth() - born.getMonth();
+  if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
+  if (age < 0 || age > 25) return null;
+
+  // Faixas etárias oficiais — Congo-Brazzaville (não misturar ciclos)
+  if (age <= 3) return "Maternelle P1";
+  if (age === 4) return "Maternelle P2";
+  if (age === 5) return "Maternelle P3";
+  if (age === 6) return "CP1";
+  if (age === 7) return "CP2";
+  if (age === 8) return "CE1";
+  if (age === 9) return "CE2";
+  if (age === 10) return "CM1";
+  if (age === 11) return "CM2";
+  if (age === 12) return "6ème";
+  if (age === 13) return "5ème";
+  if (age === 14) return "4ème";
+  if (age >= 15) return "3ème";
+  return null;
+}
+
+/** Propina mensal de referência pelo ciclo da turma (não transferidos). */
+function propinaDefaultFromTurma(turma: string): number {
+  if (turma.startsWith("Maternelle")) return PROPINA_MATERNELLE;
+  if (["6ème", "5ème", "4ème", "3ème"].includes(turma)) return PROPINA_COLLEGE;
+  return PROPINA_PRIMAIRE;
+}
+
+/** ID automático: PREFIXO-NN a partir da turma. */
+function nextAlunoId(turma: string, existing: Aluno[]): string {
+  const map: Record<string, string> = {
+    "Maternelle P1": "P1",
+    "Maternelle P2": "P2",
+    "Maternelle P3": "P3",
+    Maternelle: "MAT",
+    CP1: "CP1",
+    CP2: "CP2",
+    CE1: "CE1",
+    CE2: "CE2",
+    CM1: "CM1",
+    CM2: "CM2",
+    "6ème": "6E",
+    "5ème": "5E",
+    "4ème": "4E",
+    "3ème": "3E",
+  };
+  const prefix = map[turma] || "AL";
+  let max = 0;
+  for (const a of existing) {
+    if (a.id.startsWith(prefix + "-")) {
+      const n = Number(a.id.split("-").pop());
+      if (Number.isFinite(n)) max = Math.max(max, n);
+    }
+  }
+  return `${prefix}-${String(max + 1).padStart(2, "0")}`;
+}
+
+function nextRecibo(existing: Aluno[]): string {
+  let max = 0;
+  for (const a of existing) {
+    const m = String(a.recibo || "").match(/EF\/(\d+)/i);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `EF/${String(max + 1).padStart(3, "0")}`;
+}
+
+/** Logotipo oficial — usa data-URL embutido no bundle. */
+async function loadEscolaLogoDataUrl(): Promise<string> {
+  return loadLogoShared();
+}
+
+function isMaternelleTurma(turma: string): boolean {
+  return turma.startsWith("Maternelle");
+}
+
+/** Propina de referência por ciclo (respeita transferidos Campus Cidade). */
+function propinaPorCiclo(a: Aluno, ciclo?: "mat" | "pri" | "col" | "auto"): number {
+  if (a.transferidoCampusCidade) {
+    return a.propina && a.propina > 0 ? a.propina : CAMPUS_CIDADE_PROPINA;
+  }
+  const c =
+    ciclo && ciclo !== "auto"
+      ? ciclo
+      : a.grupo === "Maternelle" || a.turma.startsWith("Maternelle")
+        ? "mat"
+        : a.grupo === "Collège" || ["6ème", "5ème", "4ème", "3ème"].includes(a.turma)
+          ? "col"
+          : "pri";
+  if (c === "mat") return PROPINA_MATERNELLE;
+  if (c === "col") return PROPINA_COLLEGE;
+  return PROPINA_PRIMAIRE;
+}
+
+
+/** Descontos só sobre propinas (inscrição/seguro/cartão a 100%).
+ *  irmaosNivel: 0 = nenhum · 2 = −10% · 3 = −15% (3 ou mais irmãos).
+ */
+function calcPropinaComCampanha(
+  propinaMensal: number,
+  meses: number,
+  campanha: boolean,
+  irmaosNivel: 0 | 2 | 3 = 0,
+): {
+  brutoPropina: number;
+  liquidoPropina: number;
+  descPct: number;
+  detalhe: string;
+} {
+  const m = Math.max(0, Math.min(9, Math.round(meses) || 0));
+  const brutoPropina = Math.round(propinaMensal * m);
+  if (brutoPropina <= 0 || m <= 0) {
+    return { brutoPropina: 0, liquidoPropina: 0, descPct: 0, detalhe: "" };
+  }
+  let factor = 1;
+  const parts: string[] = [];
+  if (campanha) {
+    factor *= 0.6; // −40%
+    parts.push("−40% campanha (até 10/set)");
+  }
+  if (irmaosNivel === 2) {
+    factor *= 0.9; // −10%
+    parts.push("−10% 2 irmãos");
+  } else if (irmaosNivel === 3) {
+    factor *= 0.85; // −15%
+    parts.push("−15% 3+ irmãos");
+  }
+  const liquidoPropina = Math.round(brutoPropina * factor);
+  const descPct =
+    brutoPropina > 0
+      ? Math.round(((brutoPropina - liquidoPropina) / brutoPropina) * 1000) / 10
+      : 0;
+  return {
+    brutoPropina,
+    liquidoPropina,
+    descPct,
+    detalhe: parts.length
+      ? `${formatKz(brutoPropina)} → ${formatKz(liquidoPropina)} (${parts.join(", ")})`
+      : "",
+  };
+}
+
+function irmaosNivelFromForm(f: { agregadoIrmaos?: boolean; irmaosNivel?: 0 | 2 | 3 }): 0 | 2 | 3 {
+  if (f.irmaosNivel === 2 || f.irmaosNivel === 3) return f.irmaosNivel;
+  if (f.irmaosNivel === 0) return 0;
+  return f.agregadoIrmaos ? 2 : 0;
+}
+
+function calcTotais(f: FormState) {
+  const inscricao = num(f.inscricao);
+  const seguro = f.seguroExterno ? 0 : num(f.seguro);
+  const manuais = num(f.manuais);
+  const cadernos = num(f.cadernos);
+  const uniforme = num(f.uniforme);
+  const extras = num(f.extras);
+  const transporte = num(f.transporte);
+  const alimentacao = num(f.alimentacao);
+  const curso = num(f.curso);
+  const cartaoEst = num(f.cartaoEstudante);
+  const propCalc = calcPropinaComCampanha(
+    num(f.propina),
+    num(f.mesesPropina),
+    f.campanhaPromoSetembro,
+    irmaosNivelFromForm(f),
+  );
+  // Preferir valor líquido calculado (com −10% / −15% / −40%); senão o campo manual
+  const mensalidade1 =
+    propCalc.brutoPropina > 0 ? propCalc.liquidoPropina : num(f.mensalidade1);
+  const brutoSemDesc =
+    inscricao +
+    seguro +
+    manuais +
+    cadernos +
+    uniforme +
+    extras +
+    transporte +
+    alimentacao +
+    curso +
+    cartaoEst +
+    (propCalc.brutoPropina > 0 ? propCalc.brutoPropina : mensalidade1);
+  const liquido =
+    inscricao +
+    seguro +
+    manuais +
+    cadernos +
+    uniforme +
+    extras +
+    transporte +
+    alimentacao +
+    curso +
+    cartaoEst +
+    mensalidade1;
+  return {
+    inscricao,
+    seguro,
+    manuais,
+    cadernos,
+    uniforme,
+    extras,
+    transporte,
+    alimentacao,
+    curso,
+    cartaoEstudante: cartaoEst,
+    mensalidade1,
+    bruto: brutoSemDesc,
+    liquido,
+    descPct: propCalc.descPct,
+    propCalc,
+  };
+}
+
+/** Recalcula mensalidade1 a partir de propina × meses, campanha e desconto de irmãos (−10% / −15%). */
+function aplicarPropinaForm(form: FormState, patch: Partial<FormState> = {}): FormState {
+  const next = { ...form, ...patch };
+  let meses = num(next.mesesPropina);
+  const prop = num(next.propina);
+  // Se há propina e desconto de irmãos/campanha, garantir pelo menos 1 mês para o total reflectir o desconto
+  if (prop > 0 && meses <= 0 && (next.campanhaPromoSetembro || irmaosNivelFromForm(next) > 0)) {
+    meses = 1;
+    next.mesesPropina = "1";
+  }
+  if (meses <= 0 || prop <= 0) {
+    return { ...next, mensalidade1: meses <= 0 ? "0" : next.mensalidade1 };
+  }
+  const { liquidoPropina } = calcPropinaComCampanha(
+    prop,
+    meses,
+    next.campanhaPromoSetembro,
+    irmaosNivelFromForm(next),
+  );
+  return { ...next, mensalidade1: String(liquidoPropina) };
+}
+
+
+function MatriculaForm({
+  form,
+  setForm,
+  onSave,
+  onCancel,
+}: {
+  form: FormState;
+  setForm: Dispatch<SetStateAction<FormState>>;
+  onSave: () => void | Promise<void>;
+  onCancel: () => void;
+}) {
+  const totais = calcTotais(form);
+  return (
+    <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label>Nome do aluno *</Label>
+        <Input
+          value={form.nome}
+          onChange={(e) => setForm({ ...form, nome: e.target.value })}
+          placeholder="Nome completo"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Nome do pai</Label>
+        <Input data-focus="pai" value={form.pai} onChange={(e) => setForm({ ...form, pai: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Nome da mãe</Label>
+        <Input data-focus="mae" value={form.mae} onChange={(e) => setForm({ ...form, mae: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Data de nascimento</Label>
+        <Input
+          type="date"
+          value={form.dataNascimento}
+          onChange={(e) => {
+            const dataNascimento = e.target.value;
+            const suggested = turmaFromDataNascimento(dataNascimento);
+            setForm((prev) => {
+              if (!suggested) return { ...prev, dataNascimento };
+              // Recalcula classe + propina de referência do ciclo (Congo-Brazzaville)
+              const propinaRef = prev.transferidoCampusCidade
+                ? prev.propina
+                : String(propinaDefaultFromTurma(suggested));
+              return {
+                ...prev,
+                dataNascimento,
+                turma: suggested,
+                propina: propinaRef,
+              };
+            });
+          }}
+        />
+        <p className="text-[11px] text-[var(--color-muted)]">
+          Classe automática pelo sistema Congo-Brazzaville (idade em 1/out/2026 — início das aulas): 13 anos → 5ème, não Maternelle. Pode alterar manualmente.
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Lieu de naissance (carte scolaire)</Label>
+        <Input
+          value={form.lugarNascimento}
+          onChange={(e) => setForm((prev) => ({ ...prev, lugarNascimento: e.target.value }))}
+          placeholder="Luanda"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Sexe (carte scolaire)</Label>
+        <select
+          className="flex h-10 w-full rounded-md border border-[var(--color-line)] bg-transparent px-3 text-sm"
+          value={form.sexo}
+          onChange={(e) =>
+            setForm((prev) => ({
+              ...prev,
+              sexo: e.target.value as "Féminin" | "Masculin" | "",
+            }))
+          }
+        >
+          <option value="">—</option>
+          <option value="Féminin">Féminin</option>
+          <option value="Masculin">Masculin</option>
+        </select>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Classe / turma *</Label>
+        <select
+          className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+          value={form.turma}
+          onChange={(e) => {
+            const turma = e.target.value;
+            setForm((prev) => {
+              const propina = prev.transferidoCampusCidade
+                ? prev.propina
+                : String(propinaDefaultFromTurma(turma));
+              return { ...prev, turma, propina };
+            });
+          }}
+        >
+          {TURMAS.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-2 sm:col-span-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)]/50 p-3">
+        <Label className="text-sm font-semibold">Métodos de pagamento (por rubrica)</Label>
+        <p className="text-[11px] text-[var(--color-muted)]">
+          Escolha o método em cada linha (ex.: inscrição em dinheiro, seguro e manuais em cartão).
+          Só <strong>Cartão</strong>, <strong>Transferência</strong> e <strong>Depósito em dinheiro (conta BAI)</strong> geram entrada no extrato Banco BAI. «Dinheiro (em mão)» não entra no extrato.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {([
+            ["metodoInscricao", "Inscrição"],
+            ["metodoSeguro", "Seguro escolar"],
+            ["metodoManuais", "Manuais"],
+            ["metodoCadernos", "Cadernos"],
+            ["metodoAtl", "ATL"],
+            ["metodoUniforme", "Uniforme"],
+            ["metodoMensalidade", "Mensalidade / propina"],
+            ["metodoTransporte", "Transporte"],
+            ["metodoAlimentacao", "Alimentação"],
+            ["metodoCurso", "Curso intensivo"],
+            ["metodoCartaoEstudante", "Cartão de estudante"],
+          ] as const).map(([key, label]) => (
+            <div key={key} className="space-y-1">
+              <Label className="text-xs">{label}</Label>
+              <select
+                className="flex h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-sm"
+                value={form[key] || METODO_NAO_ESCOLHIDO}
+                onChange={(e) => {
+                  const next = { ...form, [key]: e.target.value };
+                  const vals = [
+                    next.metodoInscricao,
+                    next.metodoSeguro,
+                    next.metodoManuais,
+                    next.metodoCadernos,
+                    next.metodoAtl,
+                    next.metodoUniforme,
+                    next.metodoMensalidade,
+                    next.metodoTransporte,
+                    next.metodoAlimentacao,
+                    next.metodoCurso,
+                    next.metodoCartaoEstudante,
+                  ].filter(isMetodoEscolhido);
+                  const uniq = [...new Set(vals)];
+                  next.metodoPagamento =
+                    uniq.length === 0
+                      ? METODO_NAO_ESCOLHIDO
+                      : uniq.length === 1
+                        ? uniq[0]
+                        : "Misto";
+                  setForm(next);
+                }}
+              >
+                <option value={METODO_NAO_ESCOLHIDO}>{METODO_PLACEHOLDER}</option>
+                {METODOS_PAGAMENTO.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Telefone</Label>
+        <Input
+          data-focus="telefone" value={form.telefone}
+          onChange={(e) => setForm((prev) => ({ ...prev, telefone: e.target.value }))}
+          placeholder="9xx xxx xxx"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>E-mail do encarregado</Label>
+        <Input
+          type="email"
+          data-focus="email"
+          value={form.email}
+          onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+          placeholder="encarregado@email.com"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Morada</Label>
+        <Input
+          value={form.morada}
+          onChange={(e) => setForm({ ...form, morada: e.target.value })}
+          placeholder="Bairro, município…"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Família / apelido</Label>
+        <Input value={form.familia} onChange={(e) => setForm({ ...form, familia: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>BI (opcional)</Label>
+        <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Data da inscrição</Label>
+        <Input
+          type="date"
+          data-focus="dataPag"
+          value={form.dataPag}
+          onChange={(e) => setForm({ ...form, dataPag: e.target.value })}
+        />
+      </div>
+
+      {/* Foto + saúde / emergência */}
+      <div className="sm:col-span-2 grid gap-3 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)]/40 p-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Foto do aluno</Label>
+          <div className="flex items-start gap-3">
+            {form.foto ? (
+              <img
+                src={form.foto}
+                alt="Foto do aluno"
+                className="size-20 rounded-lg border border-[var(--color-line)] object-cover"
+              />
+            ) : (
+              <div className="flex size-20 items-center justify-center rounded-lg border border-dashed border-[var(--color-line-strong)] bg-[var(--color-surface)] text-[10px] text-[var(--color-muted)]">
+                Sem foto
+              </div>
+            )}
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <Input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="text-xs file:mr-2 file:rounded file:border-0 file:bg-[var(--color-forest)] file:px-2 file:py-1 file:text-xs file:text-white"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2.5 * 1024 * 1024) {
+                    toast.error("Foto demasiado grande (máx. ±2,5 MB). Comprima ou tire outra.");
+                    return;
+                  }
+                  const inputEl = e.target;
+                  void (async () => {
+                    try {
+                      const { dataUrl, bytesApprox } = await compressStudentPhoto(file);
+                      setForm((prev) => ({ ...prev, foto: dataUrl }));
+                      if (dataUrl.length > ALUNO_FOTO_MAX_SYNC) {
+                        toast.warning(
+                          `Foto ainda grande (${formatPhotoSize(bytesApprox)}). Pode ficar só neste dispositivo se a nuvem rejeitar o tamanho.`,
+                        );
+                      } else {
+                        toast.success(
+                          `Foto pronta (${formatPhotoSize(bytesApprox)}) — será sincronizada com a nuvem ao gravar.`,
+                        );
+                      }
+                    } catch {
+                      toast.error("Não foi possível processar a foto. Tente outra imagem.");
+                    } finally {
+                      inputEl.value = "";
+                    }
+                  })();
+                }}
+              />
+              {form.foto ? (
+                <button
+                  type="button"
+                  className="text-left text-xs text-red-700 underline"
+                  onClick={() => setForm((prev) => ({ ...prev, foto: "" }))}
+                >
+                  Remover foto
+                </button>
+              ) : (
+                <p className="text-[11px] text-[var(--color-muted)]">
+                  Carregue ou tire uma foto (telemóvel). É comprimida automaticamente para sincronizar entre PCs.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Grupo sanguíneo</Label>
+          <select
+            className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+            value={form.grupoSanguineo}
+            onChange={(e) => setForm({ ...form, grupoSanguineo: e.target.value })}
+          >
+            <option value="">— Desconhecido / não informado —</option>
+            {["O+", "O−", "A+", "A−", "B+", "B−", "AB+", "AB−"].map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Alergias a medicamentos</Label>
+          <Input
+            value={form.alergiasMedicamentos}
+            onChange={(e) => setForm({ ...form, alergiasMedicamentos: e.target.value })}
+            placeholder="Ex.: penicilina — ou «Nenhuma»"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Alergias alimentares</Label>
+          <Input
+            value={form.alergiasAlimentares}
+            onChange={(e) => setForm({ ...form, alergiasAlimentares: e.target.value })}
+            placeholder="Ex.: amendoim, lactose — ou «Nenhuma»"
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Clínica / hospital mais próximo</Label>
+          <Input
+            value={form.clinicaProxima}
+            onChange={(e) => setForm({ ...form, clinicaProxima: e.target.value })}
+            placeholder="Nome e contacto da clínica de emergência"
+          />
+        </div>
+      </div>
+
+      <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-amber-200 bg-amber-50/80 p-3 text-[11px] leading-relaxed text-amber-950">
+        <strong className="font-semibold">Protecção de dados pessoais (Lei n.º 22/11, de 17 de Junho — Angola).</strong>{" "}
+        A École Consulaire trata os dados deste cadastro (identificação, contactos, saúde e imagem) com
+        respeito pela reserva da vida privada e pelos direitos fundamentais previstos na Constituição da
+        República de Angola e na Lei da Protecção de Dados Pessoais. Os dados destinam-se exclusivamente
+        à gestão escolar e à segurança do aluno; não são cedidos a terceiros sem fundamento legal ou
+        consentimento. O titular (ou encarregado de educação) pode solicitar acesso, rectificação ou
+        apagamento junto da escola, nos termos da referida lei e da Agência de Protecção de Dados (APD).
+      </div>
+
+      <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-forest)]/40 bg-[var(--color-forest-soft)]/40 p-3">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={form.transferidoCampusCidade}
+            onChange={(e) => {
+              const on = e.target.checked;
+              if (on) {
+                // Pacote 82 mil por defeito: já inclui matrícula + seguro + cartão
+                // Propina 75.000 + recalcular mensalidade1 com descontos de irmãos/campanha
+                setForm(
+                  aplicarPropinaForm(form, {
+                    transferidoCampusCidade: true,
+                    seguroExterno: false,
+                    inscricao: String(CAMPUS_CIDADE_INSCRICAO_82),
+                    seguro: "0",
+                    incluirCartaoEstudante: false,
+                    cartaoEstudante: "0",
+                    propina: String(CAMPUS_CIDADE_PROPINA),
+                    mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
+                  }),
+                );
+              } else {
+                setForm(
+                  aplicarPropinaForm(form, {
+                    transferidoCampusCidade: false,
+                    agregadoIrmaos: false,
+                    irmaosNivel: 0,
+                    inscricao: String(DEFAULT_INSCRICAO),
+                    seguro: form.seguroExterno ? "0" : String(DEFAULT_SEGURO_ESCOLA),
+                    propina: "0",
+                    mensalidade1: "0",
+                  }),
+                );
+              }
+            }}
+          />
+          <span>
+            <strong>Transferido do Campus Cidade</strong>
+            <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
+              Pacote (matrícula + seguro de saúde + cartão de estudante):{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_82)}</strong>,{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_99)}</strong> ou{" "}
+              <strong>{formatKz(CAMPUS_CIDADE_INSCRICAO_127)}</strong>
+              {" "}· Propina mensal <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>.
+              Desconto irmãos nas propinas: −10% (2) ou −15% (3+).
+            </span>
+          </span>
+        </label>
+        {form.transferidoCampusCidade ? (
+          <div className="mt-3 space-y-3 border-t border-[var(--color-line)] pt-3 text-sm">
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">
+                Pacote pago (matrícula + seguro + cartão de estudante)
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {([
+                  CAMPUS_CIDADE_INSCRICAO_82,
+                  CAMPUS_CIDADE_INSCRICAO_99,
+                  CAMPUS_CIDADE_INSCRICAO_127,
+                ] as const).map((pacote) => (
+                  <label
+                    key={pacote}
+                    className="flex items-center gap-2 rounded-md border border-[var(--color-line)] px-3 py-2"
+                  >
+                    <input
+                      type="radio"
+                      name="inscCampus"
+                      checked={num(form.inscricao) === pacote}
+                      onChange={() =>
+                        setForm(
+                          aplicarPropinaForm(form, {
+                            inscricao: String(pacote),
+                            // Já incluídos no pacote
+                            seguro: "0",
+                            incluirCartaoEstudante: false,
+                            cartaoEstudante: "0",
+                            propina: String(CAMPUS_CIDADE_PROPINA),
+                          }),
+                        )
+                      }
+                    />
+                    {formatKz(pacote)}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
+                Estes valores já incluem matrícula, seguro de saúde e cartão de estudante
+                (não são cobrados em separado).
+              </p>
+            </div>
+            <p className="text-xs text-[var(--color-muted)]">
+              Propina mensal fixa: <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>
+            </p>
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">
+                Irmãos no mesmo agregado (desconto automático na propina)
+              </p>
+              <div className="flex flex-wrap gap-3 text-xs">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="irmaosCampus"
+                    checked={irmaosNivelFromForm(form) === 0}
+                    onChange={() =>
+                      setForm(
+                        aplicarPropinaForm(form, {
+                          irmaosNivel: 0,
+                          agregadoIrmaos: false,
+                          propina: String(CAMPUS_CIDADE_PROPINA),
+                          mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
+                        }),
+                      )
+                    }
+                  />
+                  Nenhum · {formatKz(CAMPUS_CIDADE_PROPINA)}/mês
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="irmaosCampus"
+                    checked={irmaosNivelFromForm(form) === 2}
+                    onChange={() =>
+                      setForm(
+                        aplicarPropinaForm(form, {
+                          irmaosNivel: 2,
+                          agregadoIrmaos: true,
+                          propina: String(CAMPUS_CIDADE_PROPINA),
+                          mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
+                        }),
+                      )
+                    }
+                  />
+                  2 irmãos (−10%) · {formatKz(Math.round(CAMPUS_CIDADE_PROPINA * 0.9))}/mês
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="irmaosCampus"
+                    checked={irmaosNivelFromForm(form) === 3}
+                    onChange={() =>
+                      setForm(
+                        aplicarPropinaForm(form, {
+                          irmaosNivel: 3,
+                          agregadoIrmaos: true,
+                          propina: String(CAMPUS_CIDADE_PROPINA),
+                          mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
+                        }),
+                      )
+                    }
+                  />
+                  3 ou mais (−15%) · {formatKz(Math.round(CAMPUS_CIDADE_PROPINA * 0.85))}/mês
+                </label>
+              </div>
+              {irmaosNivelFromForm(form) > 0 || form.campanhaPromoSetembro ? (
+                <p className="mt-1.5 text-[11px] text-[var(--color-forest)]">
+                  {(() => {
+                    const pc = calcPropinaComCampanha(
+                      CAMPUS_CIDADE_PROPINA,
+                      Math.max(1, num(form.mesesPropina) || 1),
+                      form.campanhaPromoSetembro,
+                      irmaosNivelFromForm(form),
+                    );
+                    return pc.detalhe
+                      ? `Propina líquida nesta liquidação: ${pc.detalhe}`
+                      : null;
+                  })()}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+        <p className="mb-2 text-xs font-medium text-[var(--color-muted)] uppercase tracking-wide">
+          Valores da matrícula
+          {form.transferidoCampusCidade ? " · Campus Cidade (editáveis)" : ""}
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Inscrição (Kz)</Label>
+            <Input
+              value={form.inscricao}
+              onChange={(e) => setForm({ ...form, inscricao: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Seguro escolar (Kz)</Label>
+            <Input
+              data-focus="seguro" value={form.seguro}
+              disabled={form.seguroExterno}
+              onChange={(e) => setForm({ ...form, seguro: e.target.value })}
+            />
+            <label className="mt-1 flex items-center gap-2 text-xs text-[var(--color-muted)]">
+              <input
+                type="checkbox"
+                checked={form.seguroExterno}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    seguroExterno: e.target.checked,
+                    seguro: e.target.checked
+                      ? "0"
+                      : form.transferidoCampusCidade
+                        ? "0" // pacote transferido já inclui seguro
+                        : String(DEFAULT_SEGURO_ESCOLA),
+                  })
+                }
+              />
+              Seguro próprio (externo) — não cobrar o da escola
+            </label>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Manuais</Label>
+            <Input value={form.manuais} onChange={(e) => setForm({ ...form, manuais: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Cadernos</Label>
+            <Input value={form.cadernos} onChange={(e) => setForm({ ...form, cadernos: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Uniforme</Label>
+            <Input value={form.uniforme} onChange={(e) => setForm({ ...form, uniforme: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>ATL</Label>
+            <Input
+              value={form.extras}
+              onChange={(e) => setForm({ ...form, extras: e.target.value })}
+              inputMode="decimal"
+              placeholder="0"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Transporte</Label>
+            <Input
+              value={form.transporte}
+              onChange={(e) => setForm({ ...form, transporte: e.target.value })}
+              inputMode="decimal"
+              placeholder="0"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Alimentação</Label>
+            <Input
+              value={form.alimentacao}
+              onChange={(e) => setForm({ ...form, alimentacao: e.target.value })}
+              inputMode="decimal"
+              placeholder="0"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Curso intensivo</Label>
+            <Input value={form.curso} onChange={(e) => setForm({ ...form, curso: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Cartão de estudante</Label>
+            <Input
+              value={form.cartaoEstudante}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  cartaoEstudante: e.target.value,
+                  incluirCartaoEstudante: num(e.target.value) > 0,
+                })
+              }
+              inputMode="decimal"
+              placeholder={String(CARTAO_ESTUDANTE_PRECO)}
+            />
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Valor habitual {formatKz(CARTAO_ESTUDANTE_PRECO)}. Deixe 0 se não aplicar.
+            </p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 shrink-0"
+                checked={form.campanhaPromoSetembro}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setForm(
+                    aplicarPropinaForm(form, {
+                      campanhaPromoSetembro: on,
+                      // Campanha costuma ser liquidação dos 9 meses no acto
+                      mesesPropina: on && num(form.mesesPropina) < 9 ? "9" : form.mesesPropina,
+                    }),
+                  );
+                }}
+              />
+              <span>
+                <strong>Campanha promocional (até 10 de setembro)</strong>
+                <span className="mt-1 block text-[12px] text-[var(--color-muted)]">
+                  −40% nas propinas desta liquidação (ex.: 9 meses pagos no acto da inscrição).
+                  Com <strong>2+ irmãos</strong> no mesmo agregado, aplica-se ainda −10%.
+                  Inscrição e seguro <strong>sem desconto</strong>.
+                </span>
+              </span>
+            </label>
+            {!form.transferidoCampusCidade ? (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-[var(--color-muted)]">Irmãos no mesmo agregado (desconto na propina)</p>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="irmaosGeral"
+                      checked={irmaosNivelFromForm(form) === 0}
+                      onChange={() =>
+                        setForm(aplicarPropinaForm(form, { irmaosNivel: 0, agregadoIrmaos: false }))
+                      }
+                    />
+                    Nenhum
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="irmaosGeral"
+                      checked={irmaosNivelFromForm(form) === 2}
+                      onChange={() =>
+                        setForm(aplicarPropinaForm(form, { irmaosNivel: 2, agregadoIrmaos: true }))
+                      }
+                    />
+                    2 irmãos (−10%)
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="irmaosGeral"
+                      checked={irmaosNivelFromForm(form) === 3}
+                      onChange={() =>
+                        setForm(aplicarPropinaForm(form, { irmaosNivel: 3, agregadoIrmaos: true }))
+                      }
+                    />
+                    3+ irmãos (−15%)
+                  </label>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Meses de propina a pagar agora (1–9)</Label>
+            <select
+              className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+              value={form.mesesPropina}
+              onChange={(e) => {
+                setForm(aplicarPropinaForm(form, { mesesPropina: e.target.value }));
+              }}
+            >
+              <option value="0">0 — não incluir propina nesta liquidação</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
+                const preview = calcPropinaComCampanha(num(form.propina), n, form.campanhaPromoSetembro, irmaosNivelFromForm(form),
+                );
+                return (
+                  <option key={n} value={String(n)}>
+                    {n} {n === 1 ? "mês" : "meses"}
+                    {num(form.propina) > 0
+                      ? ` · ${formatKz(preview.liquidoPropina)}`
+                      : ""}
+                  </option>
+                );
+              })}
+            </select>
+            <p className="text-[11px] text-[var(--color-muted)]">
+              {form.campanhaPromoSetembro
+                ? "Total propinas com desconto(s) da campanha. Pode ajustar o valor abaixo se necessário."
+                : "Total = propina mensal × nº de meses. Pode ajustar o valor abaixo."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              Total propinas nesta liquidação
+              {num(form.mesesPropina) > 0
+                ? ` (${form.mesesPropina} ${num(form.mesesPropina) === 1 ? "mês" : "meses"})`
+                : ""}
+            </Label>
+            <Input
+              value={form.mensalidade1}
+              onChange={(e) => setForm({ ...form, mensalidade1: e.target.value })}
+              inputMode="decimal"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Propina mensal (referência)</Label>
+            <select
+              className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+              value={
+                [
+                  String(PROPINA_MATERNELLE),
+                  String(PROPINA_PRIMAIRE),
+                  String(PROPINA_COLLEGE),
+                  String(CAMPUS_CIDADE_PROPINA),
+                  String(CAMPUS_CIDADE_PROPINA),
+                  "0",
+                ].includes(form.propina)
+                  ? form.propina
+                  : "__custom__"
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__custom__") {
+                  setForm({ ...form, propina: form.propina === "0" ? "" : form.propina });
+                  return;
+                }
+                const isTrans =
+                  v === String(CAMPUS_CIDADE_PROPINA) || v === String(CAMPUS_CIDADE_PROPINA);
+                setForm(
+                  aplicarPropinaForm(form, {
+                    propina: v,
+                    transferidoCampusCidade: isTrans ? true : form.transferidoCampusCidade,
+                    agregadoIrmaos: isTrans
+                      ? v === String(CAMPUS_CIDADE_PROPINA)
+                      : form.agregadoIrmaos,
+                  }),
+                );
+              }}
+            >
+              <option value="0">— escolher —</option>
+              <option value={String(PROPINA_MATERNELLE)}>Maternelle — {formatKz(PROPINA_MATERNELLE)}</option>
+              <option value={String(PROPINA_PRIMAIRE)}>Primaire — {formatKz(PROPINA_PRIMAIRE)}</option>
+              <option value={String(PROPINA_COLLEGE)}>Collège — {formatKz(PROPINA_COLLEGE)}</option>
+              <option value={String(CAMPUS_CIDADE_PROPINA)}>
+                Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA)}
+              </option>
+              <option value={String(CAMPUS_CIDADE_PROPINA)}>
+                Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA)}
+              </option>
+              <option value="__custom__">Outro valor…</option>
+            </select>
+            {![
+              String(PROPINA_MATERNELLE),
+              String(PROPINA_PRIMAIRE),
+              String(PROPINA_COLLEGE),
+              String(CAMPUS_CIDADE_PROPINA),
+              String(CAMPUS_CIDADE_PROPINA),
+              "0",
+            ].includes(form.propina) ? (
+              <Input
+                className="mt-1.5"
+                value={form.propina}
+                onChange={(e) => setForm({ ...form, propina: e.target.value })}
+                placeholder="Valor personalizado (Kz)"
+              />
+            ) : null}
+          </div>
+        </div>
+        <ul className="mt-2 space-y-0.5 text-[12px] text-[var(--color-muted)]">
+          {totais.inscricao > 0 ? <li>Inscrição: {formatKz(totais.inscricao)}</li> : null}
+          {totais.seguro > 0 ? <li>Seguro: {formatKz(totais.seguro)}</li> : null}
+          {totais.manuais > 0 ? <li>Manuais: {formatKz(totais.manuais)}</li> : null}
+          {totais.cadernos > 0 ? <li>Cadernos: {formatKz(totais.cadernos)}</li> : null}
+          {totais.uniforme > 0 ? <li>Uniforme: {formatKz(totais.uniforme)}</li> : null}
+          {totais.extras > 0 ? <li>ATL: {formatKz(totais.extras)}</li> : null}
+          {totais.transporte > 0 ? <li>Transporte: {formatKz(totais.transporte)}</li> : null}
+          {totais.alimentacao > 0 ? <li>Alimentação: {formatKz(totais.alimentacao)}</li> : null}
+          {totais.curso > 0 ? <li>Curso intensivo: {formatKz(totais.curso)}</li> : null}
+          {totais.cartaoEstudante > 0 ? (
+            <li>Cartão de estudante: {formatKz(totais.cartaoEstudante)}</li>
+          ) : null}
+          {totais.mensalidade1 > 0 ? (
+            <li>
+              Propinas
+              {num(form.mesesPropina) > 0 ? ` (${form.mesesPropina} mês${num(form.mesesPropina) > 1 ? "es" : ""})` : ""}
+              : {formatKz(totais.mensalidade1)}
+              {totais.propCalc?.detalhe ? (
+                <span className="block text-[11px] text-[var(--color-muted)]">
+                  {totais.propCalc.detalhe}
+                </span>
+              ) : null}
+            </li>
+          ) : null}
+        </ul>
+        <p className="mt-3 text-sm font-medium text-[var(--color-forest)]">
+          Total a pagar: {formatKz(totais.liquido)}
+          {totais.descPct > 0 ? ` · desconto propinas ${totais.descPct}%` : ""}
+          {form.seguroExterno ? " (sem seguro da escola)" : ""}
+          {form.transferidoCampusCidade
+            ? ` · propina mensal ref. ${formatKz(
+                irmaosNivelFromForm(form) === 2
+                  ? Math.round(CAMPUS_CIDADE_PROPINA * 0.9)
+                  : irmaosNivelFromForm(form) === 3
+                    ? Math.round(CAMPUS_CIDADE_PROPINA * 0.85)
+                    : CAMPUS_CIDADE_PROPINA,
+              )}/mês (Campus Cidade${
+                irmaosNivelFromForm(form) === 2
+                  ? " · −10% 2 irmãos"
+                  : irmaosNivelFromForm(form) === 3
+                    ? " · −15% 3+ irmãos"
+                    : ""
+              })`
+            : ""}
+        </p>
+      </div>
+
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label>Observações</Label>
+        <Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} />
+      </div>
+
+      {!isAdminUnlocked() ? (
+        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+          <Label>Código de autorização (Colaborador 1)</Label>
+          <Input
+            type="password"
+            inputMode="numeric"
+            placeholder="••••"
+            value={form.pin}
+            onChange={(e) => setForm({ ...form, pin: e.target.value })}
+            className="mt-1.5 max-w-[160px]"
+            autoComplete="off"
+          />
+        </div>
+      ) : (
+        <p className="sm:col-span-2 text-[11px] text-[var(--color-muted)]">
+          Sessão do Colaborador 1 já autorizada — não é necessário voltar a digitar o código.
+        </p>
+      )}
+
+      <div className="flex justify-end gap-2 sm:col-span-2">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancelar
+        </Button>
+        <Button type="button" onClick={onSave}>
+          Guardar matrícula
+        </Button>
+      </div>
+    </div>
+  );
+  }
+
+function Alunos() {
+  const extraA = useFinance((s) => s.alunosExtra);
+  const overrides = useFinance((s) => s.alunosOverrides);
+  const addAluno = useFinance((s) => s.addAluno);
+  const updateAluno = useFinance((s) => s.updateAluno);
+  const alinharCampusPorFamilia = useFinance((s) => s.alinharCampusPorFamilia);
+  const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
+  const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
+  const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
+  const addDocumentoAluno = useFinance((s) => s.addDocumentoAluno);
+  const findCodigoReciboAlunoMes = useFinance((s) => s.findCodigoReciboAlunoMes);
+  const incrementCodigoReciboVia = useFinance((s) => s.incrementCodigoReciboVia);
+  const faturasPropina = useFinance((s) => s.faturasPropina) || EMPTY_FATURAS;
+  const mensalidades = useFinance((s) => s.mensalidades);
+  const operators = useFinance((s) => s.operators);
+  const activeOperator = useFinance((s) => s.activeOperator);
+  const canEdit = isCollaborator1(activeOperator, operators);
+  const deletedAlunos = useFinance((s) => s.alunosDeletedIds || []);
+  const alunos = alunosAll(extraA, overrides, deletedAlunos);
+  const escola = getSeed().escola;
+  const printRef = useRef<HTMLDivElement>(null);
+  const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  function clearDeepLink() {
+    if (search.edit || search.focus) {
+      void navigate({ search: { edit: undefined, focus: undefined }, replace: true });
+    }
+  }
+
+
+  const [q, setQ] = useState("");
+  const [turmaFiltro, setTurmaFiltro] = useState("todas");
+  const [soSemTelefone, setSoSemTelefone] = useState(false);
+  const [editing, setEditing] = useState<Aluno | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<FormState>(emptyForm());
+  const [invoicePreview, setInvoicePreview] = useState<{
+    aluno: Aluno;
+    numero: string;
+    valor: number;
+    mesRef: string;
+    mesKey: string;
+    mesLetivo: string;
+    pagoMes: number;
+    contacto: EscolaContacto;
+    html: string;
+    linhas: { key: string; label: string; value: number; on: boolean }[];
+    mesesProp: number;
+    campanha?: boolean;
+    irmaos?: boolean | 0 | 2 | 3;
+    /** fatura = cobrança; recibo = comprovativo de pagamento */
+    modo: "fatura" | "recibo";
+    codigoVerificacao?: string;
+    viaLabel?: string;
+  } | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [declOpen, setDeclOpen] = useState(false);
+  const [declAlunoId, setDeclAlunoId] = useState("");
+  const [declBiEmitido, setDeclBiEmitido] = useState("");
+  const [declBiLocal, setDeclBiLocal] = useState("Arquivo de Identificação de Luanda");
+  const [declPreview, setDeclPreview] = useState<string | null>(null);
+  const [regOpen, setRegOpen] = useState(false);
+  const [regLang, setRegLang] = useState<"pt" | "fr">("pt");
+  const [regBusy, setRegBusy] = useState(false);
+  const [cadastroAluno, setCadastroAluno] = useState<Aluno | null>(null);
+  const [cartePreview, setCartePreview] = useState<Aluno | null>(null);
+  const [cadastroLang, setCadastroLang] = useState<"pt" | "fr">("pt");
+  const [cadastroBusy, setCadastroBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportIds, setExportIds] = useState<Set<string>>(new Set());
+  const [pdfLang, setPdfLang] = useState<"pt" | "fr">("fr");
+  const [exportBusy, setExportBusy] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+
+  const turmasDisponiveis = useMemo(
+    () => ["todas", ...TURMAS.filter((t) => alunos.some((a) => a.turma === t))],
+    [alunos],
+  );
+  const semTelefoneCount = alunos.filter((a) => !temContactoTelefonico(a)).length;
+  const filtered = alunos.filter((a) => {
+    if (turmaFiltro !== "todas" && a.turma !== turmaFiltro) return false;
+    if (soSemTelefone && temContactoTelefonico(a)) return false;
+    // "cidade" / "campus" encontra todos os transferidos Campus Cidade
+    return alunoMatchesQuery(a, q);
+  });
+  /** Ordenado por turma para visualização / impressão por classes. */
+  const filteredByClass = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const ia = TURMAS.indexOf(a.turma as (typeof TURMAS)[number]);
+      const ib = TURMAS.indexOf(b.turma as (typeof TURMAS)[number]);
+      if (ia !== ib) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      return a.nome.localeCompare(b.nome, "pt");
+    });
+  }, [filtered]);
+  const total = filtered.reduce((s, a) => s + a.liquido, 0);
+  const totais = calcTotais(form);
+
+  function openNew() {
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1 pode criar matrículas.");
+      return;
+    }
+    setForm(emptyForm());
+    setCreating(true);
+  }
+
+  function openEdit(a: Aluno) {
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1 pode editar alunos.");
+      return;
+    }
+    setEditing(a);
+    // Turma oficial: idade prevalece se o ID (ex. P1-07) for incompatível.
+    const suggestedTurma = a.dataNascimento
+      ? turmaFromDataNascimento(a.dataNascimento)
+      : null;
+    const turmaCorrigida =
+      resolveTurmaOficial(a) || a.turma || suggestedTurma || TURMAS[0];
+    setForm({
+      nome: a.nome || "",
+      pai: a.pai || "",
+      mae: a.mae || "",
+      turma: turmaCorrigida,
+      dataPag: a.dataPag || todayIso(),
+      // Usar valores reais da ficha (0 incluído). Não injectar tarifário por defeito na edição —
+      // senão obriga a escolher métodos de pagamento só para gravar o telefone.
+      inscricao: String(a.inscricao ?? 0),
+      seguro: String(a.seguro ?? 0),
+      seguroExterno: (a.seguro ?? 0) === 0,
+      transferidoCampusCidade: Boolean(a.transferidoCampusCidade),
+      irmaosNivel: (a as { irmaosNivel?: 0 | 2 | 3 }).irmaosNivel === 3
+        ? 3
+        : (a as { irmaosNivel?: 0 | 2 | 3 }).irmaosNivel === 2 ||
+            (a.obs || "").includes("−10%") ||
+            (a.obs || "").includes("-10%")
+          ? 2
+          : (a.obs || "").includes("−15%") || (a.obs || "").includes("-15%")
+            ? 3
+            : 0,
+      cartaoEstudante: String(
+        Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0,
+      ),
+      incluirCartaoEstudante: Boolean(
+        Number((a as { cartaoEstudante?: number }).cartaoEstudante) > 0,
+      ),
+      agregadoIrmaos: Boolean(
+        (a.transferidoCampusCidade &&
+          (a.propina === CAMPUS_CIDADE_PROPINA || (a.obs || "").includes("75.000"))) ||
+          /irm[aã]os|−10%|2\+/i.test(a.obs || ""),
+      ),
+      campanhaPromoSetembro:
+        typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean"
+          ? Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro)
+          : /campanha|−40%|promo/i.test(a.obs || "") || (a.descPct || 0) >= 40,
+      manuais: String(a.manuais ?? 0),
+      cadernos: String(a.cadernos ?? 0),
+      uniforme: String(a.uniforme ?? 0),
+      extras: String(a.extras ?? 0),
+      transporte: String(a.transporte ?? 0),
+      alimentacao: String(a.alimentacao ?? 0),
+      curso: String(a.curso ?? 0),
+      mensalidade1: String(a.mensalidade1 ?? 0),
+      mesesPropina: String(
+        a.mesesPropina ?? (a.mensalidade1 && a.mensalidade1 > 0 ? 1 : 0),
+      ),
+      propina: String(
+        a.transferidoCampusCidade
+          ? (a.propina ?? CAMPUS_CIDADE_PROPINA)
+          : (a.propina ?? propinaDefaultFromTurma(turmaCorrigida)),
+      ),
+      telefone: a.telefone || "",
+      email: a.email || "",
+      morada: a.morada || "",
+      bi: a.bi || "",
+      familia: a.familia || "",
+      obs: a.obs || "",
+      dataNascimento: a.dataNascimento || "",
+      lugarNascimento: a.lugarNascimento || "",
+      sexo: a.sexo === "Féminin" || a.sexo === "Masculin" ? a.sexo : "",
+      foto: a.foto || "",
+      alergiasMedicamentos: a.alergiasMedicamentos || "",
+      alergiasAlimentares: a.alergiasAlimentares || "",
+      clinicaProxima: a.clinicaProxima || "",
+      grupoSanguineo: a.grupoSanguineo || "",
+      // Só preenche o que foi gravado por rubrica. Não usa metodoPagamento genérico
+      // (antes forçava todas as caixas a «Dinheiro» e parecia que nada mudava).
+      metodoPagamento: normalizeMetodoStored(
+        a.metodosPagamento
+          ? undefined
+          : a.metodoPagamento?.startsWith("Misto")
+            ? undefined
+            : a.metodoPagamento,
+      ),
+      metodoInscricao: normalizeMetodoStored(a.metodosPagamento?.inscricao),
+      metodoSeguro: normalizeMetodoStored(a.metodosPagamento?.seguro),
+      metodoManuais: normalizeMetodoStored(a.metodosPagamento?.manuais),
+      metodoCadernos: normalizeMetodoStored(a.metodosPagamento?.cadernos),
+      metodoAtl: normalizeMetodoStored(a.metodosPagamento?.atl),
+      metodoUniforme: normalizeMetodoStored(a.metodosPagamento?.uniforme),
+      metodoMensalidade: normalizeMetodoStored(a.metodosPagamento?.mensalidade),
+      metodoTransporte: normalizeMetodoStored(a.metodosPagamento?.transporte),
+      metodoAlimentacao: normalizeMetodoStored(a.metodosPagamento?.alimentacao),
+      metodoCurso: normalizeMetodoStored(a.metodosPagamento?.curso),
+      metodoCartaoEstudante: normalizeMetodoStored(
+        (a.metodosPagamento as { cartaoEstudante?: string } | undefined)?.cartaoEstudante,
+      ),
+      pin: "",
+    });
+  }
+
+  // Deep-link desde Pendências: ?edit=ID&focus=campo (só uma vez; limpa a URL)
+  useEffect(() => {
+    if (!search.edit) return;
+    const a = alunos.find((x) => x.id === search.edit);
+    if (!a) return;
+    openEdit(a);
+    const focus = search.focus;
+    window.setTimeout(() => {
+      if (focus) {
+        const el = document.querySelector<HTMLElement>(`[data-focus="${focus}"]`);
+        el?.focus();
+        el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+      clearDeepLink();
+    }, 250);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.edit]);
+
+
+  function metodosFromForm(form: FormState): {
+    metodoPagamento: string;
+    metodosPagamento: NonNullable<Aluno["metodosPagamento"]>;
+  } {
+    const pick = (v: string) => (isMetodoEscolhido(v) ? v : "");
+    const metodosPagamento = {
+      inscricao: pick(form.metodoInscricao),
+      seguro: pick(form.metodoSeguro),
+      manuais: pick(form.metodoManuais),
+      cadernos: pick(form.metodoCadernos),
+      atl: pick(form.metodoAtl),
+      uniforme: pick(form.metodoUniforme),
+      mensalidade: pick(form.metodoMensalidade),
+      transporte: pick(form.metodoTransporte),
+      alimentacao: pick(form.metodoAlimentacao),
+      curso: pick(form.metodoCurso),
+      cartaoEstudante: pick(form.metodoCartaoEstudante),
+    };
+    const unique = [...new Set(Object.values(metodosPagamento).filter(Boolean))];
+    const metodoPagamento =
+      unique.length === 0
+        ? ""
+        : unique.length === 1
+          ? unique[0]
+          : `Misto (${unique.join(" + ")})`;
+    return { metodoPagamento, metodosPagamento };
+  }
+
+  /**
+   * Para rubricas com valor > 0, o método de pagamento tem de estar escolhido.
+   * Evita gravar vários métodos “por defeito” sem o utilizador ter escolhido.
+   */
+  function validarMetodosObrigatorios(form: FormState): string | null {
+    const t = calcTotais(form);
+    const checks: [number, string, string][] = [
+      [t.inscricao, form.metodoInscricao, "Inscrição"],
+      [t.seguro, form.metodoSeguro, "Seguro escolar"],
+      [t.manuais, form.metodoManuais, "Manuais"],
+      [t.cadernos, form.metodoCadernos, "Cadernos"],
+      [t.extras, form.metodoAtl, "ATL"],
+      [t.uniforme, form.metodoUniforme, "Uniforme"],
+      [t.mensalidade1, form.metodoMensalidade, "Mensalidade / propina"],
+      [t.transporte, form.metodoTransporte, "Transporte"],
+      [t.alimentacao, form.metodoAlimentacao, "Alimentação"],
+      [t.curso, form.metodoCurso, "Curso intensivo"],
+      [t.cartaoEstudante, form.metodoCartaoEstudante, "Cartão de estudante"],
+    ];
+    const emFalta = checks
+      .filter(([valor, metodo]) => valor > 0 && !isMetodoEscolhido(metodo))
+      .map(([, , label]) => label);
+    if (emFalta.length === 0) return null;
+    return `Escolha o método de pagamento para: ${emFalta.join(", ")}.`;
+  }
+
+  /** Garante foto leve o suficiente para a nuvem (re-comprime se necessário). */
+  async function ensureFotoForSync(foto: string | undefined): Promise<string | undefined> {
+    if (!foto) return undefined;
+    if (foto.length <= ALUNO_FOTO_MAX_SYNC) return foto;
+    try {
+      const { dataUrl, bytesApprox } = await compressStudentPhoto(foto);
+      toast.message(`Foto re-comprimida (${formatPhotoSize(bytesApprox)}) para sincronizar na nuvem.`);
+      return dataUrl;
+    } catch {
+      toast.warning("Não foi possível reduzir a foto; pode ficar só neste dispositivo.");
+      return foto;
+    }
+  }
+
+  /** Grava ou remove a foto na tabela dedicada da nuvem (visível noutros PCs). */
+  async function syncFotoToCloud(id: string, foto: string | undefined) {
+    try {
+      if (foto && foto.startsWith("data:image")) {
+        await saveAlunoFoto({ data: { id, dataUrl: foto } });
+      } else {
+        await deleteAlunoFoto({ data: { id } });
+      }
+    } catch (e) {
+      console.warn("[aluno-foto] sync", e);
+      toast.warning(
+        "A foto ficou neste dispositivo, mas pode não ter chegado à nuvem. Verifique a rede e volte a gravar.",
+      );
+    }
+  }
+
+
+/** Normaliza nome para comparação (ignora acentos, maiúsculas e espaços extra). */
+function normalizeNomeAluno(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+  async function saveNew() {
+    if (!canEdit) return;
+    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
+      toast.error("Código incorrecto.");
+      return;
+    }
+    if (!form.nome.trim()) {
+      toast.error("Indique o nome do aluno.");
+      return;
+    }
+    // Impedir matrícula duplicada (mesmo nome já na base)
+    const nomeNorm = normalizeNomeAluno(form.nome);
+    const existente = alunos.find((a) => normalizeNomeAluno(a.nome) === nomeNorm);
+    if (existente) {
+      toast.error(
+        `Aluno já existe na base de dados (${existente.id} · ${existente.turma}). Não é possível gravar matrícula duplicada.`,
+      );
+      return;
+    }
+    // BI igual (se preenchido)
+    const biNorm = form.bi.trim().toLowerCase();
+    if (biNorm) {
+      const mesmoBi = alunos.find((a) => (a.bi || "").trim().toLowerCase() === biNorm);
+      if (mesmoBi) {
+        toast.error(
+          `Já existe aluno com este BI/documento (${mesmoBi.id} · ${mesmoBi.nome}). Aluno já existe.`,
+        );
+        return;
+      }
+    }
+    const faltaMetodo = validarMetodosObrigatorios(form);
+    if (faltaMetodo) {
+      toast.error(faltaMetodo);
+      return;
+    }
+    const t = calcTotais(form);
+    const id = nextAlunoId(form.turma, alunos);
+    const recibo = nextRecibo(alunos);
+    const encarregado = form.pai.trim() || form.mae.trim() || "";
+    const foto = await ensureFotoForSync(form.foto || undefined);
+    const aluno: Aluno = {
+      id,
+      nome: form.nome.trim(),
+      turma: form.turma,
+      grupo: grupoFromTurma(form.turma),
+      inscricao: t.inscricao,
+      manuais: t.manuais,
+      cadernos: t.cadernos,
+      uniforme: t.uniforme,
+      seguro: t.seguro,
+      extras: t.extras,
+      transporte: t.transporte,
+      alimentacao: t.alimentacao,
+      curso: t.curso,
+      cartaoEstudante: t.cartaoEstudante || 0,
+      mensalidade1: t.mensalidade1,
+      mesesPropina: num(form.mesesPropina) || 0,
+      dataPag: form.dataPag,
+      bruto: t.bruto,
+      descPct: t.descPct || 0,
+      liquido: t.liquido,
+      encarregado,
+      pai: form.pai.trim(),
+      mae: form.mae.trim(),
+      telefone: form.telefone.trim(),
+      email: form.email.trim(),
+      morada: form.morada.trim(),
+      bi: form.bi.trim(),
+      familia: form.familia.trim() || form.nome.trim().split(" ").slice(-2).join(" "),
+      recibo,
+      obs: buildObs(form),
+      propina: num(form.propina),
+      statusPag: t.liquido > 0 ? "pago" : "registado",
+      dataNascimento: form.dataNascimento.trim() || undefined,
+      lugarNascimento: form.lugarNascimento.trim() || undefined,
+      sexo: form.sexo || undefined,
+      foto,
+      alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
+      alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
+      clinicaProxima: form.clinicaProxima.trim() || undefined,
+      grupoSanguineo: form.grupoSanguineo.trim() || undefined,
+      ...metodosFromForm(form),
+      transferidoCampusCidade: form.transferidoCampusCidade,
+      irmaosNivel: irmaosNivelFromForm(form),
+      campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+    } as Aluno;
+    addAluno(aluno);
+    await syncFotoToCloud(id, foto);
+    toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
+    setCreating(false);
+    setForm(emptyForm());
+    // Garantir que a ficha fica visível e o recibo pode ser impresso de imediato
+    setQ("");
+    setTurmaFiltro("todas");
+    setSoSemTelefone(false);
+    // Abrir recibo de liquidação (mesmo fluxo do botão Recibo na lista)
+    try {
+      abrirRecibo(aluno);
+    } catch (e) {
+      console.warn("[saveNew] abrirRecibo", e);
+      toast.message(`Aluna gravada: ${id}. Pesquise «${aluno.nome.split(" ")[0]}» na lista para abrir o recibo.`);
+    }
+  }
+
+  async function saveEdit() {
+    if (!editing || !canEdit) return;
+    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
+      toast.error("Código incorrecto.");
+      return;
+    }
+    const faltaMetodo = validarMetodosObrigatorios(form);
+    if (faltaMetodo) {
+      toast.error(faltaMetodo);
+      return;
+    }
+    const t = calcTotais(form);
+    const encarregado = form.pai.trim() || form.mae.trim() || editing.encarregado;
+    const foto = await ensureFotoForSync(form.foto || undefined);
+    try {
+      updateAluno(editing.id, {
+        nome: form.nome.trim() || editing.nome,
+        turma: form.turma,
+        grupo: grupoFromTurma(form.turma),
+        encarregado,
+        pai: form.pai.trim(),
+        mae: form.mae.trim(),
+        telefone: form.telefone.trim(),
+        email: form.email.trim(),
+        morada: form.morada.trim(),
+        bi: form.bi.trim(),
+        familia: form.familia.trim(),
+        obs: buildObs(form),
+        dataNascimento: form.dataNascimento.trim() || undefined,
+        lugarNascimento: form.lugarNascimento.trim() || undefined,
+        sexo: form.sexo || undefined,
+        foto,
+        alergiasMedicamentos: form.alergiasMedicamentos.trim() || undefined,
+        alergiasAlimentares: form.alergiasAlimentares.trim() || undefined,
+        clinicaProxima: form.clinicaProxima.trim() || undefined,
+        grupoSanguineo: form.grupoSanguineo.trim() || undefined,
+        inscricao: t.inscricao,
+        seguro: t.seguro,
+        manuais: t.manuais,
+        cadernos: t.cadernos,
+        uniforme: t.uniforme,
+        extras: t.extras,
+        transporte: t.transporte,
+        alimentacao: t.alimentacao,
+        curso: t.curso,
+        cartaoEstudante: t.cartaoEstudante || 0,
+        mensalidade1: t.mensalidade1,
+        mesesPropina: num(form.mesesPropina) || 0,
+        propina: num(form.propina),
+        dataPag: form.dataPag.trim(),
+        bruto: t.bruto,
+        descPct: t.descPct || 0,
+        liquido: t.liquido,
+        ...metodosFromForm(form),
+        transferidoCampusCidade: form.transferidoCampusCidade,
+        irmaosNivel: irmaosNivelFromForm(form),
+        campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+      } as Partial<Aluno>);
+      await syncFotoToCloud(editing.id, foto);
+      // Forçar push para a nuvem para o outro PC não sobrescrever com dados antigos
+      try {
+        const { pushFinanceNow } = await import("@/components/hydrate-store");
+        if (typeof pushFinanceNow === "function") await pushFinanceNow();
+      } catch {
+        try {
+          // fallback: evento usado pela app
+          window.dispatchEvent(new CustomEvent("ecc-finance-push"));
+        } catch {
+          /* ignore */
+        }
+      }
+      toast.success(`Aluno ${editing.id} actualizado`);
+      setEditing(null);
+      clearDeepLink();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
+    }
+  }
+
+  /** Cadastro individual — idioma FR ou PT antes de gerar PDF. */
+  async function imprimirCadastroIndividual(a: Aluno, lang: "pt" | "fr" = "pt") {
+    const fr = lang === "fr";
+    const escolaNome = escola.nome || "École Consulaire";
+    const emitido = new Date().toLocaleDateString(fr ? "fr-FR" : "pt-PT", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+    const fmt = (v?: string) => (v && String(v).trim() ? String(v).trim() : "—");
+    const logoSrc = escolaLogoSrc();
+    const semFoto = fr ? "Sans photo" : "Sem foto";
+    const fotoBlock = a.foto
+      ? `<img src="${a.foto}" alt="" style="width:120px;height:150px;object-fit:contain;object-position:center top;border:1.5px solid #1a4d3e;border-radius:4px;background:#fff;" />`
+      : `<div style="width:120px;height:150px;border:1.5px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;text-align:center;padding:4px;">${semFoto}</div>`;
+
+    const L = fr
+      ? {
+          title: "Fiche individuelle de l’élève",
+          meta: "Fiche pour confirmation et signature d’exactitude par le parent / responsable légal",
+          idLine: (id: string, recibo: string, em: string) =>
+            `ID ${id} · Reçu ${recibo} · Émis le ${em}`,
+          s1: "1. Identification",
+          nome: "Nom complet",
+          nasc: "Date de naissance",
+          classe: "Classe / section",
+          grupo: "Groupe / cycle",
+          familia: "Famille / nom de famille",
+          bi: "Pièce d’identité (BI)",
+          s2: "2. Responsables et contacts",
+          pai: "Père",
+          mae: "Mère",
+          enc: "Responsable légal",
+          tel: "Téléphone",
+          email: "E-mail",
+          morada: "Adresse",
+          s3: "3. Santé et urgence",
+          sangue: "Groupe sanguin",
+          alergMed: "Allergies médicamenteuses",
+          alergAlim: "Allergies alimentaires",
+          clinica: "Clinique / hôpital le plus proche",
+          s4: "4. Observations",
+          obs: "Observations",
+          avisoTitle:
+            "Protection des données personnelles — Loi n° 22/11 du 17 juin (Loi sur la protection des données personnelles — Angola).",
+          avisoBody:
+            "L’école respecte et protège l’enregistrement des données personnelles de l’élève et des responsables, conformément à la Constitution de la République d’Angola et à ladite loi, sous le contrôle de l’Agence de Protection des Données (APD). Les données (y compris l’image et les informations de santé) sont destinées exclusivement à la gestion scolaire et à la sécurité de l’élève. Le titulaire peut exercer les droits d’information, d’accès, de rectification, d’opposition et d’effacement prévus par la loi.",
+          declaro:
+            "Je déclare, en qualité de père / mère / responsable légal, que les informations figurant sur cette fiche sont <strong>exactes et complètes</strong>, et j’autorise le traitement des données personnelles à des fins scolaires et d’urgence, conformément à la Loi n° 22/11.",
+          sigEnc: "Le responsable légal / parent",
+          sigEsc: "L’école (réception de la fiche)",
+          nomeLbl: "Nom",
+          dataLbl: "Date",
+          assLbl: "Signature",
+          carimbo: "Signature / cachet",
+          foot: "Département des Finances / Secrétariat · Document confidentiel",
+        }
+      : {
+          title: "Cadastro individual do aluno",
+          meta: "Ficha para confirmação e assinatura de veracidade pelos pais / encarregado de educação",
+          idLine: (id: string, recibo: string, em: string) =>
+            `ID ${id} · Recibo ${recibo} · Emitido em ${em}`,
+          s1: "1. Identificação",
+          nome: "Nome completo",
+          nasc: "Data de nascimento",
+          classe: "Classe / turma",
+          grupo: "Grupo / ciclo",
+          familia: "Família / apelido",
+          bi: "BI",
+          s2: "2. Encarregados e contactos",
+          pai: "Pai",
+          mae: "Mãe",
+          enc: "Encarregado de educação",
+          tel: "Telefone",
+          email: "E-mail",
+          morada: "Morada",
+          s3: "3. Saúde e emergência",
+          sangue: "Grupo sanguíneo",
+          alergMed: "Alergias a medicamentos",
+          alergAlim: "Alergias alimentares",
+          clinica: "Clínica / hospital mais próximo",
+          s4: "4. Observações",
+          obs: "Observações",
+          avisoTitle:
+            "Protecção de dados pessoais — Lei n.º 22/11, de 17 de Junho (Lei da Protecção de Dados Pessoais — Angola).",
+          avisoBody:
+            "A escola respeita e protege o registo dos dados pessoais do aluno e dos encarregados de educação, em conformidade com a Constituição da República de Angola e com a referida lei, sob fiscalização da Agência de Protecção de Dados (APD). Os dados (incluindo imagem e informações de saúde) destinam-se exclusivamente à gestão escolar e à segurança do aluno. O titular pode exercer os direitos de informação, acesso, rectificação, oposição e apagamento nos termos legais.",
+          declaro:
+            "Declaro, na qualidade de pai / mãe / encarregado de educação, que as informações constantes deste cadastro são <strong>verdadeiras e completas</strong>, e autorizo o tratamento dos dados pessoais para fins escolares e de emergência, nos termos da Lei n.º 22/11.",
+          sigEnc: "O(A) encarregado(a) de educação",
+          sigEsc: "A escola (recepção do cadastro)",
+          nomeLbl: "Nome",
+          dataLbl: "Data",
+          assLbl: "Assinatura",
+          carimbo: "Assinatura / carimbo",
+          foot: "Departamento de Finanças / Secretaria · Documento confidencial",
+        };
+
+    const row = (label: string, value: string) =>
+      `<tr><td style="padding:4px 6px;border:1px solid #c5d0ca;width:36%;background:#f4f7f5;font-weight:600;font-size:10px;">${label}</td><td style="padding:4px 6px;border:1px solid #c5d0ca;font-size:11px;">${value}</td></tr>`;
+
+    const html = `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 14mm 16mm; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { padding: 0 4mm; box-sizing: border-box; width: 100%; max-width: 100%; overflow: hidden; }
+  .head { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 10px; }
+  .head-logo { width: 70px; height: 70px; object-fit: contain; flex-shrink: 0; display: block; }
+  .head-mid { flex: 1; min-width: 0; padding-top: 4px; }
+  .head-foto { flex-shrink: 0; width: 120px; min-height: 150px; text-align: right; overflow: visible; }
+  .head-foto img, .head-foto > div { display: block; margin-left: auto; }
+  .kicker { margin: 0; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #1f5c4a; font-weight: 700; }
+  .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
+  .meta { margin: 3px 0 0; font-size: 10px; color: #555; line-height: 1.3; }
+  h2 { font-size: 10.5px; margin: 8px 0 4px; color: #1f5c4a; text-transform: uppercase; letter-spacing: 0.04em; }
+  table { width: 100%; border-collapse: collapse; }
+  .aviso { margin-top: 8px; padding: 6px 8px; border: 1px solid #d4a017; background: #fffbeb; font-size: 8.5px; line-height: 1.35; color: #422006; }
+  .declaro { margin: 10px 0 0; font-size: 10.5px; line-height: 1.4; }
+  /* Espaço ~2× entre a declaração e as linhas de assinatura */
+  .assinaturas { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .sig { border-top: 1px solid #333; padding-top: 4px; font-size: 10px; }
+  .sig strong { display: block; margin-bottom: 2px; }
+  .foot { margin-top: 8px; font-size: 8px; color: #64748b; text-align: right; }
+</style></head><body>
+<div class="sheet">
+  <div class="head">
+    <img class="head-logo" src="${logoSrc}" width="70" height="70" alt="" />
+    <div class="head-mid">
+      <p class="kicker">${escolaNome}</p>
+      <p class="title">${L.title}</p>
+      <p class="meta">${L.meta}</p>
+      <p class="meta">${L.idLine(a.id, fmt(a.recibo), emitido)}</p>
+    </div>
+    <div class="head-foto">${fotoBlock}</div>
+  </div>
+
+  <h2>${L.s1}</h2>
+  <table>
+    ${row(L.nome, fmt(nomeComSufixoCampus(a)))}
+    ${row(L.nasc, a.dataNascimento ? formatDate(a.dataNascimento) : "—")}
+    ${row(L.classe, fmt(a.turma))}
+    ${row(L.grupo, fmt(a.grupo))}
+    ${row(L.familia, fmt(a.familia))}
+    ${row(L.bi, fmt(a.bi))}
+  </table>
+
+  <h2>${L.s2}</h2>
+  <table>
+    ${row(L.pai, fmt(a.pai))}
+    ${row(L.mae, fmt(a.mae))}
+    ${row(L.enc, fmt(a.encarregado))}
+    ${row(L.tel, fmt(a.telefone))}
+    ${row(L.email, fmt(a.email))}
+    ${row(L.morada, fmt(a.morada))}
+  </table>
+
+  <h2>${L.s3}</h2>
+  <table>
+    ${row(L.sangue, fmt(a.grupoSanguineo))}
+    ${row(L.alergMed, fmt(a.alergiasMedicamentos))}
+    ${row(L.alergAlim, fmt(a.alergiasAlimentares))}
+    ${row(L.clinica, fmt(a.clinicaProxima))}
+  </table>
+
+  <h2>${L.s4}</h2>
+  <table>
+    ${row(L.obs, fmt(a.obs))}
+  </table>
+
+  <div class="aviso">
+    <strong>${L.avisoTitle}</strong>
+    ${L.avisoBody}
+  </div>
+
+  <p class="declaro">${L.declaro}</p>
+
+  <div class="assinaturas">
+    <div class="sig">
+      <strong>${L.sigEnc}</strong>
+      ${L.nomeLbl}: _________________________________<br/>
+      ${L.dataLbl}: ____ / ____ / ________ &nbsp;&nbsp; ${L.assLbl}: _________________
+    </div>
+    <div class="sig">
+      <strong>${L.sigEsc}</strong>
+      ${L.nomeLbl}: _________________________________<br/>
+      ${L.dataLbl}: ____ / ____ / ________ &nbsp;&nbsp; ${L.carimbo}: _________
+    </div>
+  </div>
+  <p class="foot">${L.foot} · ${escolaNome}</p>
+</div>
+</body></html>`;
+
+    try {
+      setCadastroBusy(true);
+      const r = await deliverOfficialHtml(html, {
+        filename: `cadastro-${lang}-${a.id}-${(a.nome || "aluno").replace(/\s+/g, "-").slice(0, 40)}.pdf`,
+        forceSinglePage: true,
+        shareTitle: fr ? `Fiche ${a.nome}` : `Cadastro ${a.nome}`,
+        shareText: fr
+          ? `Fiche individuelle à signer · ${a.nome} (${a.id})`
+          : `Cadastro individual para assinatura · ${a.nome} (${a.id})`,
+      });
+      if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+      else if (isMobileDevice()) toast.success(fr ? "PDF prêt" : "PDF do cadastro pronto");
+      else
+        toast.success(
+          fr
+            ? "Document ouvert — imprimez pour signature"
+            : "Cadastro aberto — imprima para assinatura dos pais",
+        );
+      setCadastroAluno(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar cadastro");
+    } finally {
+      setCadastroBusy(false);
+    }
+  }
+
+  /** Mês lectivo actual (set–jun). */
+  function mesLetivoAtual(): { key: string; mesRef: string; mesKey: string } {
+    const now = new Date();
+    let m = now.getMonth(); // 0-11
+    let y = now.getFullYear();
+    // Aulas começam a 1 de outubro: em agosto/setembro a 1.ª cobrança é OUTUBRO
+    if (m === 7 || m === 8) {
+      m = 9; // outubro
+    }
+    const map: Record<number, string> = {
+      8: "set", 9: "out", 10: "nov", 11: "dez",
+      0: "jan", 1: "fev", 2: "mar", 3: "abr", 4: "mai", 5: "jun",
+    };
+    const key = map[m] || "out";
+    const refDate = new Date(y, m, 1);
+    return {
+      key,
+      mesRef: refDate.toLocaleDateString("pt-PT", { month: "long", year: "numeric" }),
+      mesKey: `${y}-${String(m + 1).padStart(2, "0")}`,
+    };
+  }
+
+  function resolverValorPropina(a: Aluno, mesLetivo: string): { valor: number; pagoMes: number; propinaRef: number } {
+    const row = (mensalidades || []).find((m) => m.id === a.id);
+    const pagoMes = row ? Number(row.pagamentos?.[mesLetivo] || 0) : 0;
+    // Se propina no registo estiver a 0 (dados sincronizados incompletos), usar tarifa da classe
+    let propinaRef = Number(row?.propina || a.propina || 0);
+    if (!(propinaRef > 0)) {
+      try {
+        propinaRef = propinaPorCiclo(a);
+      } catch {
+        propinaRef = 0;
+      }
+    }
+    if (!(propinaRef > 0) && a.transferidoCampusCidade) {
+      propinaRef = Number(a.propina) || 100000;
+    }
+    const valor = pagoMes > 0 ? pagoMes : propinaRef;
+    return { valor, pagoMes, propinaRef };
+  }
+
+
+  type LinhaFat = { key: string; label: string; value: number; on: boolean };
+
+  /** Meses de propina da liquidação — iguais ao diálogo de matrícula. */
+  function mesesPropinaFromAluno(a: Aluno): number {
+    const saved = Number(a.mesesPropina) || 0;
+    if (saved > 0) return Math.min(9, saved);
+    const prop = Number(a.propina) || 0;
+    const mens = Number(a.mensalidade1) || 0;
+    if (prop > 0 && mens > 0) {
+      for (const m of [9, 8, 7, 6, 5, 4, 3, 2, 1]) {
+        for (const camp of [true, false]) {
+          for (const ir of [0, 2, 3] as const) {
+            const pc = calcPropinaComCampanha(prop, m, camp, ir);
+            if (pc.liquidoPropina === mens) return m;
+          }
+        }
+      }
+    }
+    return mens > 0 ? 1 : 0;
+  }
+
+  function alunoTemCampanha(a: Aluno): boolean {
+    if (typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean") {
+      return Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro);
+    }
+    if ((a.descPct || 0) >= 40) return true;
+    const obs = (a.obs || "").toLowerCase();
+    return /campanha|−40%|-40%|promo/.test(obs);
+  }
+
+  /** Nível de desconto por irmãos: 0 · 2 (−10%) · 3 (−15%). Transferidos Campus Cidade = 0. */
+  function alunoTemIrmaosDesc(a: Aluno): 0 | 2 | 3 {
+    if (a.transferidoCampusCidade) return 0;
+    const n = Number((a as { irmaosNivel?: number }).irmaosNivel) || 0;
+    if (n === 2 || n === 3) return n as 2 | 3;
+    const obs = (a.obs || "").toLowerCase();
+    if (/3\+|3 ou mais|−15%|-15%/.test(obs)) return 3;
+    if (/2\+|2 irm|−10%|-10%|agregado/.test(obs)) return 2;
+    if ((a.descPct || 0) >= 45) return 2;
+    return 0;
+  }
+
+  /**
+   * Mesmas rubricas e valores que o diálogo de matrícula (calcTotais).
+   * Fonte única: campos gravados na ficha + campanha/irmãos/meses.
+   */
+  function linhasMatriculaBase(
+    a: Aluno,
+    mesesProp = 1,
+    opts?: { campanha?: boolean; irmaos?: boolean | 0 | 2 | 3 },
+  ): LinhaFat[] {
+    return linhasMatriculaFromAluno(a, mesesProp, opts);
+    const meses = Math.min(9, Math.max(0, Math.round(mesesProp) || 0));
+    const campanha =
+      opts?.campanha ??
+      (typeof (a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro === "boolean"
+        ? Boolean((a as { campanhaPromoSetembro?: boolean }).campanhaPromoSetembro)
+        : alunoTemCampanha(a));
+    let irmaosNivel: 0 | 2 | 3 = 0;
+    if (opts?.irmaos === true) irmaosNivel = alunoTemIrmaosDesc(a) || 2;
+    else if (opts?.irmaos === false) irmaosNivel = 0;
+    else if (opts?.irmaos === 2 || opts?.irmaos === 3 || opts?.irmaos === 0) irmaosNivel = opts.irmaos;
+    else irmaosNivel = alunoTemIrmaosDesc(a);
+
+    let propinaMes = Number(a.propina) || 0;
+    if (!(propinaMes > 0)) {
+      try {
+        propinaMes = propinaPorCiclo(a);
+      } catch {
+        propinaMes = 0;
+      }
+    }
+    const pc = calcPropinaComCampanha(propinaMes, meses, campanha, irmaosNivel);
+    // Preferir mensalidade1 gravada se for a liquidação com estes meses (evita desvio)
+    let propinaLiquida = pc.liquidoPropina;
+    const mensSaved = Number(a.mensalidade1) || 0;
+    const mesesSaved = Number(a.mesesPropina) || 0;
+    if (mensSaved > 0 && mesesSaved === meses && meses > 0) {
+      propinaLiquida = mensSaved;
+    } else if (propinaLiquida <= 0 && mensSaved > 0 && meses > 0) {
+      propinaLiquida = mensSaved;
+    }
+
+    const propLabel =
+      meses > 1
+        ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
+        : meses === 1
+          ? `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`
+          : `Propina${pc.detalhe ? " · " + pc.detalhe : ""}`;
+
+    const cartaoVal = Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0;
+    const inscricaoVal = Number(a.inscricao) || 0;
+    const seguroVal = Number(a.seguro) || 0;
+    const manuaisVal = Number(a.manuais) || 0;
+    const cadernosVal = Number(a.cadernos) || 0;
+    const uniformeVal = Number(a.uniforme) || 0;
+    const atlVal = Number(a.extras) || 0;
+    const transporteVal = Number(a.transporte) || 0;
+    const alimentacaoVal = Number(a.alimentacao) || 0;
+    const cursoVal = Number(a.curso) || 0;
+
+    const isPacoteCampus =
+      Boolean(a.transferidoCampusCidade) &&
+      (CAMPUS_CIDADE_PACOTES as readonly number[]).includes(inscricaoVal);
+    const labelInscricao = isPacoteCampus
+      ? `Pacote Campus Cidade ${formatKz(inscricaoVal)} (matrícula + seguro escolar + cartão de estudante)`
+      : "Inscrição";
+
+    return [
+      { key: "inscricao", label: labelInscricao, value: inscricaoVal, on: inscricaoVal > 0 },
+      { key: "seguro", label: "Seguro escolar", value: seguroVal, on: seguroVal > 0 },
+      { key: "manuais", label: "Manuais", value: manuaisVal, on: manuaisVal > 0 },
+      { key: "cadernos", label: "Cadernos", value: cadernosVal, on: cadernosVal > 0 },
+      { key: "uniforme", label: "Uniforme", value: uniformeVal, on: uniformeVal > 0 },
+      { key: "atl", label: "ATL", value: atlVal, on: atlVal > 0 },
+      { key: "transporte", label: "Transporte", value: transporteVal, on: transporteVal > 0 },
+      { key: "alimentacao", label: "Alimentação", value: alimentacaoVal, on: alimentacaoVal > 0 },
+      { key: "curso", label: "Curso intensivo", value: cursoVal, on: cursoVal > 0 },
+      { key: "cartaoEstudante", label: "Cartão de estudante", value: cartaoVal, on: cartaoVal > 0 },
+      {
+        key: "propinas",
+        label: propLabel,
+        value: propinaLiquida > 0 ? propinaLiquida : 0,
+        on: propinaLiquida > 0 && meses > 0,
+      },
+      {
+        key: "multaAtraso",
+        label: "Multa por atraso no pagamento",
+        value: 0,
+        on: false,
+      },
+      {
+        key: "multaRecolha",
+        label: "Multa atraso recolha aluno(a) após 18:00",
+        value: 15000,
+        on: false,
+      },
+    ];
+  }
+
+  function totalLinhas(linhas: LinhaFat[]) {
+    return totalLinhasDoc(linhas);
+  }
+
+  function linhasMatriculaSynced(
+    a: Aluno,
+    mesesProp = 1,
+    opts?: { campanha?: boolean; irmaos?: boolean | 0 | 2 | 3 },
+  ): LinhaFat[] {
+    return linhasMatriculaFromAluno(a, mesesProp, opts);
+  }
+
+  function buildInvoiceHtml(opts: {
+    a: Aluno;
+    numero: string;
+    valor: number;
+    mesRef: string;
+    mesLetivo: string;
+    pagoMes: number;
+    contacto: EscolaContacto;
+    linhas?: LinhaFat[];
+    modo?: "fatura" | "recibo";
+    /** Código único anti-falsificação (só recibos) */
+    codigoVerificacao?: string;
+    viaLabel?: string;
+  }): string {
+    return buildInvoiceHtmlDoc(opts);
+    const { a, numero, valor, mesRef, mesLetivo, pagoMes, contacto, linhas } = opts;
+    const modo = opts.modo || "fatura";
+    const isRecibo = modo === "recibo";
+    const codigoVerificacao = opts.codigoVerificacao || "";
+    const viaLabel = opts.viaLabel || "";
+    const linhasAtivas = (linhas || []).filter((l) => l.on && l.value > 0);
+    const linhasHtml = linhasAtivas.length
+      ? `<table style="width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:12px;">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 0;border-bottom:2px solid #cbd5e1;color:#64748b;font-size:10px;text-transform:uppercase;">Rubrica</th>
+            <th style="text-align:right;padding:6px 0;border-bottom:2px solid #cbd5e1;color:#64748b;font-size:10px;text-transform:uppercase;">Valor</th>
+          </tr></thead>
+          <tbody>
+            ${linhasAtivas
+              .map(
+                (l) =>
+                  `<tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${l.label}</td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;text-align:right;font-variant-numeric:tabular-nums;">${formatKz(l.value)}</td></tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>`
+      : "";
+    const { morada, telefones, email: emailEscola, iban } = contacto;
+    const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
+    const email = (a.email || "").trim();
+    const logoSrc = escolaLogoSrc();
+    const prazo = prazoFatura(mesLetivo);
+    const multa35v = formatKz(Math.round(valor * 0.35));
+    const multa40v = formatKz(Math.round(valor * 0.4));
+    const total35 = formatKz(Math.round(valor * 1.35));
+    const total40 = formatKz(Math.round(valor * 1.4));
+    const emitida = fmtData(new Date());
+    // Design: logo a cores; resto em cinzentos. IBAN + métodos numa só caixa.
+    // Tipografia Georgia / Times New Roman
+    return `
+<div style="font-family:Georgia,'Times New Roman',Times,serif;color:#374151;background:#fff;min-height:1040px;display:flex;flex-direction:column;box-sizing:border-box;padding:0;">
+  <!-- Cabeçalho compacto à esquerda (alinhado com Facture) -->
+  <div style="background:#ffffff;padding:6px 28px 8px;display:flex;align-items:center;justify-content:flex-start;gap:12px;border-bottom:1px solid #d1d5db;">
+    <img src="${logoSrc}" width="64" height="64" alt="Logo" style="width:64px;height:64px;object-fit:contain;border-radius:8px;flex-shrink:0;" crossorigin="anonymous" />
+    <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;">Apprendre · Grandir · Réussir</p>
+  </div>
+
+  <div style="flex:1;padding:18px 28px 12px;display:flex;flex-direction:column;gap:12px;">
+    <!-- Título + ref -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:2px solid #9ca3af;padding-bottom:10px;">
+      <div>
+        <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#4b5563;">${
+          isRecibo
+            ? `Reçu <span style="opacity:0.45;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Recibo / Comprovativo</span>`
+            : `Facture <span style="opacity:0.45;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;letter-spacing:0.06em;">Fatura</span>`
+        }</p>
+        <p style="margin:6px 0 0;font-size:12px;color:#6b7280;">${mesRef} · ${MESES_LABEL[mesLetivo] || mesLetivo} · Ano ${escola.ano || ""}</p>
+      </div>
+      <div style="text-align:right;background:#f3f4f6;color:#374151;padding:10px 14px;border-radius:8px;min-width:140px;border:1px solid #d1d5db;">
+        <p style="margin:0;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;font-weight:700;">Referência</p>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:700;font-family:ui-monospace,monospace;color:#111827;">${numero}</p>
+        <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">${emitida}</p>
+      </div>
+    </div>
+
+    <!-- Escola + cliente -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="border-left:3px solid #9ca3af;padding:10px 12px;background:#f9fafb;border-radius:0 8px 8px 0;">
+        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Emissor</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${NOME_ESCOLA_FATURA}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#6b7280;line-height:1.4;">${morada}</p>
+        <p style="margin:4px 0 0;font-size:11px;color:#6b7280;">${telefones}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${emailEscola}</p>
+      </div>
+      <div style="border-left:3px solid #9ca3af;padding:10px 12px;background:#f9fafb;border-radius:0 8px 8px 0;">
+        <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Facturado a</p>
+        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
+        ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#4b5563;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
+        <p style="margin:4px 0 0;font-size:10px;color:#6b7280;line-height:1.35;">Pacotes: 82.000 · 99.000 · 127.000 Kz (cada um inclui matrícula + seguro escolar + cartão de estudante). Propina mensal 75.000 Kz.</p>` : ""}
+      </div>
+    </div>
+
+    <!-- Descrição + Total (mesmo fundo cinza) -->
+    <div style="display:flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid #d1d5db;">
+      <div style="flex:1;padding:14px 16px;background:#f3f4f6;">
+        <p style="margin:0;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;"><span style="font-weight:700;color:#4b5563;">Description</span> <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Descrição</span></p>
+        <p style="margin:8px 0 0;font-size:14px;font-weight:700;color:#111827;">${
+          isRecibo
+            ? `Reçu de paiement <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Recibo de pagamento</span>`
+            : `Frais de scolarité <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:12px;font-weight:500;color:#6b7280;">Fatura / liquidação</span>`
+        }</p>
+                ${linhasHtml}
+      </div>
+      <div style="min-width:160px;background:#f3f4f6;color:#111827;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:14px 16px;border-left:1px solid #d1d5db;">
+        <p style="margin:0;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;font-weight:700;">${isRecibo ? "Total recebido" : "Total"}</p>
+        <p style="margin:6px 0 0;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:#111827;">${formatKz(valor)}</p>
+        <p style="margin:6px 0 0;font-size:10px;color:#6b7280;">${isRecibo ? "Pago" : `até ${prazo.limite}`}</p>
+        ${isRecibo && codigoVerificacao ? `<p style="margin:10px 0 0;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;font-weight:700;">Código de verificação</p><p style="margin:4px 0 0;font-size:13px;font-weight:800;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.06em;color:#111827;">${codigoVerificacao}</p>${viaLabel && viaLabel !== "1.ª via" ? `<p style="margin:6px 0 0;font-size:11px;font-weight:700;color:#4b5563;">${viaLabel} do mesmo recibo</p>` : (viaLabel === "1.ª via" ? `<p style="margin:6px 0 0;font-size:10px;color:#6b7280;">1.ª via</p>` : "")}` : ""}
+      </div>
+    </div>
+
+    ${isRecibo ? "" : `<!-- Prazos -->
+    <div style="background:#f9fafb;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;">
+      <p style="margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#4b5563;">Délais <span style="opacity:0.4;font-weight:500;">|</span> <span style="font-size:10px;font-weight:500;">Prazos</span></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">SEM MULTA</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">Até ${prazo.limite}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Pagar ${formatKz(valor)}</p>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">MULTA 35%</p>
+          <p style="margin:4px 0 0;font-size:12px;font-weight:600;color:#111827;">${prazo.de11a30}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">+${multa35v} · total ${total35}</p>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">MULTA 40%</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">Até ${prazo.multa40}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">+${multa40v} · total ${total40}</p>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:10px;color:#4b5563;font-weight:700;">SUSPENSÃO</p>
+          <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">Após ${prazo.suspensao}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Sem pagamento · aluno suspenso</p>
+        </div>
+      </div>
+    </div>`}
+
+    <!-- IBAN + métodos numa só caixa -->
+    <div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;">
+      <p style="margin:0;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#6b7280;font-weight:700;">IBAN · Métodos de pagamento</p>
+      <p style="margin:10px 0 0;font-size:14px;font-weight:700;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.04em;word-break:break-all;line-height:1.35;color:#111827;">${iban}</p>
+      <p style="margin:12px 0 0;font-size:12px;line-height:1.7;color:#4b5563;">
+        1. Transferência bancária &nbsp;·&nbsp; 2. Cartão Multicaixa &nbsp;·&nbsp; 3. Dinheiro (Departamento de Finanças)
+      </p>
+    </div>
+
+    <div style="flex:1;"></div>
+  </div>
+
+  <!-- Rodapé -->
+  <div style="border-top:1px solid #d1d5db;padding:12px 24px 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;background:#f9fafb;">
+    <div>
+      <p style="margin:0;font-size:11px;font-weight:700;color:#374151;">Departamento de Finanças</p>
+      <p style="margin:4px 0 0;font-size:10px;color:#6b7280;">Documento elaborado pelo Departamento de Finanças</p>
+      <p style="margin:10px 0 0;border-top:1px solid #d1d5db;padding-top:4px;width:160px;font-size:10px;color:#6b7280;">Assinatura / carimbo</p>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#6b7280;">
+      <p style="margin:0;">Ref. <strong style="color:#111827;">${numero}</strong></p>
+      <p style="margin:2px 0 0;">Emitida em ${emitida}</p>
+    </div>
+  </div>
+</div>
+    `;
+  }
+
+
+  async function imprimirAlunosPorClasse(lang: "pt" | "fr" = "fr") {
+    const lista = filteredByClass;
+    if (lista.length === 0) {
+      toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
+      return;
+    }
+    // REGRA: secção do PDF = turma oficial (idade se o ID for incompatível).
+    // P1-07 com 11 anos vai para CM2, não para Maternelle P1.
+    const byClass = new Map<string, typeof lista>();
+    for (const a of lista) {
+      const official = resolveTurmaOficial(a);
+      const stored = a.turma && String(a.turma).trim();
+      const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
+      const k =
+        official ||
+        stored ||
+        suggested ||
+        (lang === "fr" ? "Sans classe" : "Sem classe");
+      if (!byClass.has(k)) byClass.set(k, []);
+      byClass.get(k)!.push(a);
+    }
+    const logoSrc = await loadEscolaLogoDataUrl();
+    const locale = lang === "fr" ? "fr-FR" : "pt-PT";
+    const fmtDate = (s?: string) => {
+      if (!s) return "—";
+      const d = s.slice(0, 10);
+      if (d.length < 8) return "—";
+      const [y, m, day] = d.split("-");
+      return `${day}/${m}/${y}`;
+    };
+    const calcAge = (s?: string) => {
+      if (!s) return "—";
+      const d = s.slice(0, 10);
+      const parts = d.split("-").map(Number);
+      if (parts.length < 3 || !parts[0]) return "—";
+      const [y, m, day] = parts;
+      const born = new Date(y, (m || 1) - 1, day || 1);
+      if (Number.isNaN(born.getTime())) return "—";
+      // Idade de referência: 1 out 2026 (início das aulas / ano lectivo) — alinhado com classe Congo-Brazzaville
+      const ref = new Date(2026, 9, 1);
+      let age = ref.getFullYear() - born.getFullYear();
+      const md = ref.getMonth() - born.getMonth();
+      if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
+      return age >= 0 && age < 120 ? String(age) : "—";
+    };
+    const esc = (v: unknown) =>
+      String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+    const L =
+      lang === "fr"
+        ? {
+            title: soSemTelefone ? "Élèves sans contact téléphonique" : "Liste des élèves",
+            year: "Année scolaire",
+            all: soSemTelefone ? "Sans téléphone à l'inscription" : "Toutes les classes",
+            classPref: "Classe",
+            pupils: "élève(s)",
+            colId: "ID",
+            colName: "Nom de l'élève",
+            colBirth: "Date de naissance",
+            colAge: "Âge",
+            colPhone: "Téléphone",
+            foot: "Document généré par le Département des Finances",
+            ok: "Document ouvert",
+            pdfReady: "PDF prêt",
+            share: "Choisissez WhatsApp, Gmail ou une autre app",
+            saveHint: "utilisez « Enregistrer au format PDF » si besoin",
+          }
+        : {
+            title: soSemTelefone ? "Alunos sem contacto telefónico" : "Lista de alunos",
+            year: "Ano lectivo",
+            all: soSemTelefone ? "Sem telefone na matrícula" : "Todas as classes",
+            classPref: "Classe",
+            pupils: "aluno(s)",
+            colId: "ID",
+            colName: "Nome do aluno",
+            colBirth: "Data de nascimento",
+            colAge: "Idade",
+            colPhone: "Telefone",
+            foot: "Documento gerado pelo Departamento de Finanças",
+            ok: "Documento aberto",
+            pdfReady: "PDF pronto",
+            share: "Escolha WhatsApp, Gmail ou outra app",
+            saveHint: "use «Guardar como PDF» se precisar",
+          };
+
+    // Ordem cronológica do ciclo escolar Congo-Brazzaville (P1 → 3ème)
+    const ordemTurmas = [
+      ...TURMAS,
+      ...[...byClass.keys()].filter((t) => !(TURMAS as readonly string[]).includes(t)),
+    ];
+    const turmasOrdenadas = ordemTurmas.filter((t) => byClass.has(t));
+
+    let body = "";
+    for (const turma of turmasOrdenadas) {
+      const rows = byClass.get(turma)!;
+      // Alunos por nome dentro de cada classe
+      rows.sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt"));
+      body += `<h2>${esc(turma)} <span class="count">(${rows.length})</span></h2>`;
+      body += `<table>
+        <thead>
+          <tr>
+            <th style="width:10%">${L.colId}</th>
+            <th style="width:32%">${L.colName}</th>
+            <th style="width:18%">${L.colBirth}</th>
+            <th style="width:10%">${L.colAge}</th>
+            <th style="width:30%">${L.colPhone}</th>
+          </tr>
+        </thead>
+        <tbody>`;
+      rows.forEach((a, i) => {
+        const bg = i % 2 ? "#f5f5f5" : "#ffffff";
+        body += `<tr style="background:${bg}">
+          <td>${esc(a.id)}</td>
+          <td>${esc(nomeComSufixoCampus(a) || "—")}</td>
+          <td>${fmtDate(a.dataNascimento)}</td>
+          <td>${calcAge(a.dataNascimento)}</td>
+          <td>${esc(a.telefone || "—")}</td>
+        </tr>`;
+      });
+      body += `</tbody></table>`;
+    }
+
+    const filtroLabel =
+      turmaFiltro !== "todas"
+        ? ` · ${L.classPref} ${esc(turmaFiltro)}`
+        : ` · ${L.all}`;
+    const hoje = new Date().toLocaleDateString(locale);
+    const inner = `
+<div class="sheet">
+  <div class="head">
+    <img src="${logoSrc}" width="72" height="72" alt="Logo École Consulaire" />
+    <div>
+      <p class="kicker">${esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda")}</p>
+      <p class="title">${L.title}</p>
+      <p class="meta">${L.year} ${esc(escola.ano || "")}${filtroLabel} · ${lista.length} ${L.pupils} · ${hoje}</p>
+    </div>
+  </div>
+  ${body}
+  <p class="foot">${L.foot} · ${hoje}</p>
+</div>`;
+
+    const docHtml = `<!DOCTYPE html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8"/>
+<title>${L.title}</title>
+<style>
+  /* Margem esquerda 3× a base (16mm→48mm) para a impressão não cortar a coluna ID */
+  @page { size: A4 portrait; margin: 14mm 12mm 14mm 48mm; } /* top right bottom left */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #fff; color: #000;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .sheet {
+    max-width: 100%; width: 100%; margin: 0;
+    padding: 2mm 0 4mm 0; color: #000;
+    overflow: visible; box-sizing: border-box;
+  }
+  @media print {
+    html, body { margin: 0 !important; padding: 0 !important; }
+    .sheet { margin: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+  }
+  .head { display: flex; gap: 14px; align-items: center;
+    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 16px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .head img {
+    width: 72px; height: 72px; object-fit: contain; flex-shrink: 0;
+    display: block; background: #fff;
+  }
+  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #000; font-weight: 700; }
+  .title { margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #000; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #000; }
+  h2 { margin: 14px 0 6px; font-size: 12px; color: #000; font-weight: 700;
+    border-bottom: 1px solid #333; padding-bottom: 3px; page-break-after: avoid; }
+  h2 .count { font-weight: 400; color: #333; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px;
+    page-break-inside: auto; }
+  thead { display: table-header-group; }
+  th {
+    background: #fff; color: #000; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.03em; padding: 7px 8px; text-align: left;
+    border: 1px solid #000;
+  }
+  td {
+    padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
+    color: #000; word-break: break-word; overflow-wrap: anywhere;
+  }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #000;
+    border-top: 1px solid #999; padding-top: 6px; }
+  @media screen {
+    body { padding: 16px; background: #e8ece9; }
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  }
+</style>
+</head>
+<body>${inner}</body>
+</html>`;
+    try {
+      const r = await deliverOfficialHtml(docHtml, {
+        filename: lang === "fr" ? "liste-eleves.pdf" : "lista-alunos.pdf",
+        shareTitle: L.title,
+        shareText: `${lista.length} · École Consulaire`,
+      });
+      if (r.delivery === "shared") toast.success(L.share);
+      else if (isMobileDevice()) toast.success(L.pdfReady);
+      else toast.success(`${L.ok} · ${lista.length} ${L.pupils} — ${L.saveHint}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : lang === "fr" ? "Erreur d'impression" : "Erro ao imprimir");
+    }
+  }
+
+
+  /** Abre o modelo da fatura (com logo) — NÃO grava nem gera PDF ainda.
+   * Inclui TODAS as rubricas da ficha (inscrição, seguro, manuais, propina, multas, …).
+   * O utilizador marca só o que entra nesta fatura — a referência identifica-se pelas rubricas, não só por «propina».
+   */
+  function abrirFatura(a: Aluno) {
+    const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
+    const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
+    if (typeof nextFaturaNumero !== "function") {
+      toast.error("Actualize a página (numeração indisponível).");
+      return;
+    }
+    const numero =
+      typeof nextFaturaNumero === "function"
+        ? nextFaturaNumero(mesKey)
+        : `PROP-${mesKey}-001`;
+    const contacto = loadContacto();
+    const mesesProp = mesesPropinaFromAluno(a);
+    const campanha = alunoTemCampanha(a);
+    const irmaos = alunoTemIrmaosDesc(a);
+    // Todas as rubricas da matrícula (mesma base que o recibo de liquidação)
+    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
+    // Se já há valor pago neste mês lectivo, reflectir na linha de propinas
+    if (pagoMes > 0) {
+      linhas = linhas.map((l) =>
+        l.key === "propinas" ? { ...l, value: pagoMes, on: true } : l,
+      );
+    }
+    // Manter visíveis as linhas com valor 0 (desligadas) para o utilizador poder activar
+    // Multas continuam off por defeito
+    const total = totalLinhas(linhas) || valor || propinaPorCiclo(a);
+    const html = buildInvoiceHtml({
+      a,
+      numero,
+      valor: total,
+      mesRef,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      linhas,
+      modo: "fatura",
+    });
+    setInvoicePreview({
+      aluno: a,
+      numero,
+      valor: total,
+      mesRef,
+      mesKey,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      html,
+      linhas,
+      mesesProp,
+      campanha,
+      irmaos,
+      modo: "fatura",
+    });
+  }
+
+  /** Recibo / comprovativo: mesmos itens com check, texto de pagamento efectuado. */
+  function abrirRecibo(a: Aluno) {
+    const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
+    const { pagoMes } = resolverValorPropina(a, mesLetivo);
+    const contacto = loadContacto();
+    // Mesmos meses / campanha / irmãos / rubricas que o diálogo de matrícula
+    const mesesProp = mesesPropinaFromAluno(a);
+    const campanha = alunoTemCampanha(a);
+    const irmaos = alunoTemIrmaosDesc(a);
+    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
+    // Rubricas da matrícula com valor > 0.
+    // Multas ficam desligadas por defeito (on: false em linhasMatriculaBase)
+    // — só entram se o utilizador as marcar no diálogo do recibo.
+    linhas = linhas.map((l) => ({
+      ...l,
+      on: Boolean(l.on) && l.value > 0,
+    }));
+    const total = totalLinhas(linhas);
+    const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
+    const rubricas = linhas.filter((l) => l.on && l.value > 0).map((l) => l.label).join(", ");
+    let codigoVerificacao = "";
+    let viaLabel = "1.ª via";
+    try {
+      const stamp = garantirCodigoReciboAluno({
+        alunoId: a.id,
+        alunoNome: a.nome,
+        mesKey,
+        valor: total || 0,
+        rubricas,
+      });
+      codigoVerificacao = stamp.codigo;
+      viaLabel = stamp.viaLabel;
+    } catch {
+      /* ignore */
+    }
+    const html = buildInvoiceHtml({
+      a,
+      numero,
+      valor: total || 0,
+      mesRef,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      linhas,
+      modo: "recibo",
+      codigoVerificacao,
+      viaLabel,
+    });
+    setInvoicePreview({
+      aluno: a,
+      numero,
+      valor: total || 0,
+      mesRef,
+      mesKey,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      html,
+      linhas,
+      mesesProp,
+      modo: "recibo",
+      codigoVerificacao,
+      viaLabel,
+    } as never);
+  }
+
+  function refrescarFatura(patch: {
+    linhas?: LinhaFat[];
+    mesesProp?: number;
+    mesLetivo?: string;
+    mesRef?: string;
+    campanha?: boolean;
+    irmaos?: boolean;
+  }) {
+    if (!invoicePreview) return;
+    const a = invoicePreview.aluno;
+    let mesesProp = patch.mesesProp ?? invoicePreview.mesesProp;
+    let linhas = patch.linhas ?? invoicePreview.linhas;
+    const campanha = patch.campanha ?? invoicePreview.campanha ?? alunoTemCampanha(a);
+    const irmaos = patch.irmaos ?? invoicePreview.irmaos ?? alunoTemIrmaosDesc(a);
+    if (patch.mesesProp != null || patch.campanha != null || patch.irmaos != null) {
+      const base = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
+      const prop = base.find((l) => l.key === "propinas");
+      linhas = linhas.map((l) =>
+        l.key === "propinas" && prop
+          ? { ...prop, on: prop.on ? (l.on !== false) : false }
+          : l,
+      );
+    }
+    const total = totalLinhas(linhas);
+    const mesLetivo = patch.mesLetivo ?? invoicePreview.mesLetivo;
+    const mesRef = patch.mesRef ?? invoicePreview.mesRef;
+    const html = buildInvoiceHtml({
+      a,
+      numero: invoicePreview.numero,
+      valor: total,
+      mesRef,
+      mesLetivo,
+      pagoMes: invoicePreview.pagoMes,
+      contacto: invoicePreview.contacto,
+      linhas,
+      modo: invoicePreview.modo || "fatura",
+    });
+    setInvoicePreview({
+      ...invoicePreview,
+      linhas,
+      mesesProp,
+      campanha,
+      irmaos,
+      valor: total,
+      mesLetivo,
+      mesRef,
+      html,
+    });
+  }
+
+  /** Alterar o mês lectivo na pré-visualização e recalcular valor/HTML. */
+  function mudarMesFatura(mesLetivo: string) {
+    if (!invoicePreview) return;
+    const a = invoicePreview.aluno;
+    const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
+    if (valor <= 0) {
+      toast.error("Sem valor de propina para este mês. Registe em Propinas ou na matrícula.");
+      return;
+    }
+    const now = new Date();
+    // Mapear mês lectivo → referência textual
+    const labels: Record<string, string> = {
+      set: "setembro", out: "outubro", nov: "novembro", dez: "dezembro",
+      jan: "janeiro", fev: "fevereiro", mar: "março", abr: "abril", mai: "maio", jun: "junho",
+    };
+    const year = now.getMonth() >= 8 || ["set","out","nov","dez"].includes(mesLetivo)
+      ? (mesLetivo === "jan" || mesLetivo === "fev" || mesLetivo === "mar" || mesLetivo === "abr" || mesLetivo === "mai" || mesLetivo === "jun"
+          ? now.getFullYear() + (now.getMonth() >= 8 ? 1 : 0)
+          : now.getFullYear())
+      : now.getFullYear();
+    // Simplificar: usar label + ano civil aproximado
+    const y = ["set", "out", "nov", "dez"].includes(mesLetivo)
+      ? (now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1)
+      : (now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear());
+    const mesRef = `${labels[mesLetivo] || mesLetivo} de ${y}`;
+    const mesKey = invoicePreview.mesKey; // numeração do mês civil actual
+    const ja = (faturasPropina || []).find((f) => f.alunoId === a.id && f.mesKey === mesKey);
+    const numero = ja?.numero || invoicePreview.numero;
+    const contacto = invoicePreview.contacto || loadContacto();
+    const linhas = invoicePreview.linhas;
+    const total = totalLinhas(linhas) || valor;
+    const html = buildInvoiceHtml({
+      a,
+      numero,
+      valor: total,
+      mesRef,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      linhas,
+      modo: invoicePreview.modo || "fatura",
+    });
+    setInvoicePreview({
+      ...invoicePreview,
+      aluno: a,
+      numero,
+      valor: total,
+      mesRef,
+      mesKey,
+      mesLetivo,
+      pagoMes,
+      contacto,
+      html,
+      linhas,
+    });
+  }
+
+  /** A partir da pré-visualização: gera PDF A4 e regista a fatura. */
+  async function confirmarFaturaPdf(enviarEmail: boolean) {
+    if (!invoicePreview) return;
+    const { aluno: a, numero, valor, mesRef, mesKey, html } = invoicePreview;
+    const isRecibo = invoicePreview.modo === "recibo";
+    const email = (a.email || "").trim();
+    const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
+    setInvoiceBusy(true);
+    try {
+      const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  html, body { margin: 0; padding: 0; background: #fff;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+</style>
+</head><body>${html}</body></html>`;
+      // PC: impressão · Telemóvel: partilha WhatsApp / e-mail
+      const result = await deliverOfficialHtml(docHtml, {
+        filename: `${isRecibo ? "recibo" : "fatura"}-${numero}.pdf`,
+        shareTitle: `${isRecibo ? "Recibo" : "Fatura"} ${numero} · ${a.nome}`,
+        shareText: `${isRecibo ? "Recibo" : "Fatura"} ${numero} — ${mesRef} — ${a.nome}`,
+      });
+      if (!isRecibo) {
+        const ja = (faturasPropina || []).some((f) => f.numero === numero);
+        if (!ja && typeof addFaturaPropina === "function") {
+          addFaturaPropina({
+            id: numero,
+            numero,
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesRef,
+            mesKey,
+            valor,
+            email: email || undefined,
+            emitidoEm: new Date().toISOString(),
+          });
+        }
+      }
+      // Arquivo do aluno — histórico + fila CRM (por_enviar para faturas)
+      try {
+        const linhasDoc = (invoicePreview.linhas || [])
+          .filter((l) => l.on && l.value > 0)
+          .map((l) => ({
+            key: l.key,
+            label: l.label,
+            value: l.value,
+            on: true,
+          }));
+        addDocumentoAluno?.({
+          tipo: isRecibo ? "recibo" : "fatura",
+          modelo: isRecibo ? "liquidacao_matricula" : "propina_mes",
+          numero,
+          alunoId: a.id,
+          alunoNome: a.nome,
+          mesKey,
+          mesRef,
+          valor,
+          linhas: linhasDoc,
+          estado: isRecibo ? "emitido" : "por_enviar",
+          codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+          criadoPor: activeOperator,
+        });
+      } catch {
+        /* ignore */
+      }
+      if (result.delivery === "shared") {
+        toast.success("Escolha WhatsApp, Gmail ou outra app");
+      } else if (isMobileDevice()) {
+        toast.success(`PDF pronto · ${numero}`);
+      } else {
+        toast.success(`Documento aberto · ${numero} — escolha impressora ou «Guardar como PDF»`);
+      }
+      if (enviarEmail && email && !isMobileDevice()) {
+        const subject = encodeURIComponent(`Fatura ${numero} — ${mesRef} — ${a.nome}`);
+        const body = encodeURIComponent(
+          `Exmo(a). ${encarregado},\n\nSegue a fatura de mensalidade ${mesRef}.\n\nN.º: ${numero}\nAluno: ${a.nome} (${a.id})\nValor: ${formatKz(valor)}\n\nAnexe o PDF gerado a este e-mail.\n\nDepartamento de Finanças · ${escola.nome || "École Consulaire"}\n`,
+        );
+        window.setTimeout(() => {
+          window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+        }, 400);
+      } else if (enviarEmail && !email) {
+        toast.message("Este aluno não tem e-mail do encarregado na matrícula.");
+      }
+      setInvoicePreview(null);
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        toast.message("Partilha cancelada");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Erro ao gerar PDF");
+      }
+    } finally {
+      setInvoiceBusy(false);
+    }
+  }
+
+
+  async function gerarFaturasDoMes() {
+    if (batchBusy) return;
+    setBatchBusy(true);
+    try {
+      if (typeof nextFaturaNumero !== "function") {
+        toast.error("Actualize a página (função de faturas indisponível).");
+        return;
+      }
+      const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
+      const contacto = loadContacto();
+      const fragments: string[] = [];
+      let registadas = 0;
+      let semValor = 0;
+
+      const elegiveis = alunos.filter((a) => resolverValorPropina(a, mesLetivo).valor > 0);
+      if (elegiveis.length === 0) {
+        toast.error(
+          "Nenhum aluno com propina definida. Indique a propina na matrícula ou em Propinas.",
+        );
+        return;
+      }
+
+      toast.message(`A montar 1 PDF com ${elegiveis.length} fatura(s)…`);
+
+      // Sequência local: evita o mesmo n.º se o store ainda não gravou
+      let seq = 0;
+      try {
+        const existing = faturasPropina || [];
+        const re = new RegExp(`^PROP-${mesKey}-(\d+)$`);
+        for (const f of existing) {
+          const m = String(f.numero || "").match(re);
+          if (m) seq = Math.max(seq, Number(m[1]));
+        }
+      } catch {
+        /* ignore */
+      }
+
+      for (let i = 0; i < elegiveis.length; i++) {
+        const a = elegiveis[i];
+        const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
+        if (valor <= 0) {
+          semValor++;
+          continue;
+        }
+        seq += 1;
+        const numero = `PROP-${mesKey}-${String(seq).padStart(3, "0")}`;
+        // Se propina 0 no registo, usa tarifário do ciclo (exceto transferidos já tratados em resolver)
+        let valorFat = valor;
+        if (valorFat <= 0) valorFat = propinaPorCiclo(a);
+        fragments.push(
+          buildInvoiceHtml({ a, numero, valor: valorFat, mesRef, mesLetivo, pagoMes, contacto }),
+        );
+        if (typeof addFaturaPropina === "function") {
+          try {
+            addFaturaPropina({
+              id: numero,
+              numero,
+              alunoId: a.id,
+              alunoNome: a.nome,
+              mesRef,
+              mesKey,
+              valor: valorFat,
+              email: a.email || undefined,
+              emitidoEm: new Date().toISOString(),
+            });
+            registadas++;
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          addDocumentoAluno?.({
+            tipo: "fatura",
+            modelo: "propina_mes",
+            numero,
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesKey,
+            mesRef,
+            valor: valorFat,
+            linhas: [
+              {
+                key: "propina",
+                label: `Propina ${mesRef}`,
+                value: valorFat,
+                on: true,
+              },
+            ],
+            estado: "por_enviar",
+            criadoPor: activeOperator,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (fragments.length === 0) {
+        toast.error("Nenhuma fatura para incluir no PDF.");
+        return;
+      }
+
+      await htmlFragmentsToMultiPageA4Pdf(fragments, {
+        filename: `faturas-propina-${mesKey}.pdf`,
+      });
+      toast.success(
+        `Documento aberto com ${fragments.length} fatura(s) — use «Guardar como PDF»` +
+          (semValor ? ` · ${semValor} sem propina` : ""),
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar o PDF das faturas");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function exportListaPdf() {
+    const selected = filteredByClass.filter((a) => exportIds.has(a.id));
+    if (selected.length === 0) {
+      toast.error("Seleccione pelo menos um aluno.");
+      return;
+    }
+    setExportBusy(true);
+    try {
+      const logoSrc = await loadEscolaLogoDataUrl();
+      const rows = selected
+        .map(
+          (a, i) => {
+            const turmaPdf = resolveTurmaOficial(a) || (a.turma && String(a.turma).trim()) || a.turma;
+            return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
+              <td class="mono">${a.id}</td>
+              <td>${nomeComSufixoCampus(a)}</td>
+              <td>${turmaPdf}</td>
+              <td class="num">${formatKz(a.liquido)}</td>
+              <td class="mono">${a.recibo}</td>
+            </tr>`;
+          },
+        )
+        .join("");
+      const inner = `
+<div class="sheet">
+  <div class="head">
+    <img src="${logoSrc}" width="72" height="72" alt="Logo École Consulaire" />
+    <div>
+      <p class="kicker">${escola.nome || "École Consulaire"}</p>
+      <p class="title">Lista de matrículas</p>
+      <p class="meta">${selected.length} aluno(s) · ${new Date().toLocaleDateString("pt-PT")}</p>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nome</th>
+        <th>Turma</th>
+        <th class="r">Líquido</th>
+        <th>Recibo</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p class="foot">Documento gerado pelo Departamento de Finanças · ${escola.nome || "École Consulaire"}</p>
+</div>`;
+      const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif; font-size: 11px; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet { padding: 4mm 2mm 6mm 2mm; overflow: visible; }
+  .head { display: flex; align-items: center; gap: 14px; border-bottom: 2.5px solid #1f5c4a;
+    padding-bottom: 12px; margin-bottom: 14px; page-break-inside: avoid; }
+  .head img { width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; display: block; }
+  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #1f5c4a; font-weight: 700; }
+  .title { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #555; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  th { background: #1f5c4a; color: #fff; font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; padding: 7px 6px; text-align: left;
+    border: 1px solid #1a4d3e; }
+  th.r { text-align: right; }
+  td { padding: 5px 6px; border-bottom: 1px solid #d5ddd8; font-size: 10.5px; vertical-align: top; }
+  td.mono { font-family: "Courier New", Courier, monospace; font-size: 9.5px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums;
+    font-family: "Courier New", Courier, monospace; font-size: 10px; white-space: nowrap; }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #64748b; }
+  @media screen {
+    body { padding: 16px; background: #e8ece9; }
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 16px 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  }
+</style>
+</head><body>${inner}</body></html>`;
+      const r = await deliverOfficialHtml(docHtml, {
+        filename: "lista-matriculas.pdf",
+        shareTitle: "Lista de matrículas",
+        shareText: `${selected.length} aluno(s) · École Consulaire`,
+      });
+      if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+      else if (isMobileDevice()) toast.success("PDF pronto");
+      else toast.success(`Documento aberto · ${selected.length} aluno(s) — use «Guardar como PDF» se precisar`);
+      setExportOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao exportar");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <PageHeader
+        kicker="Cadastro de alunos · 2026/2027"
+        title="Matrículas"
+        description={
+          canEdit
+            ? "1) Cadastrar aluno (Nova matrícula). 2) Quando quiser, Fatura ou Recibo → ver modelo → PDF. No dia 30 pode gerar todas as faturas de uma vez."
+            : "Consulta das matrículas. Só o Colaborador 1 pode criar ou editar."
+        }
+        actions={
+          <div className="no-print flex flex-row flex-wrap items-center gap-2">
+            {canEdit ? (
+              <Button className="shrink-0" onClick={openNew}>
+                <UserPlus className="mr-1 size-4" /> Nova matrícula
+              </Button>
+            ) : null}
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              onClick={() => setDeclOpen(true)}
+            >
+              <ScrollText className="mr-1 size-4" /> Declaração de matrícula
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Regulamento interno FR/PT — PDF e link para pais (WhatsApp / e-mail)"
+              onClick={() => setRegOpen(true)}
+            >
+              <FileText className="mr-1 size-4" /> Regulamento interno
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Agendamento pedagógico — sábados 09:30–12:30 (link /marca)"
+              onClick={() => {
+                const url = agendamentoPublicUrl();
+                const msg = buildAgendamentoWhatsApp({
+                  escolaNome: getSeed().escola?.nome,
+                  linkFormulario: url,
+                });
+                void navigator.clipboard.writeText(msg).then(
+                  () => toast.success("Mensagem de agendamento copiada — cole no WhatsApp"),
+                  () => {
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  },
+                );
+              }}
+            >
+              <Calendar className="mr-1 size-4" /> Agendamento
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Imprimir cartões de estudante (frente + verso) — usa a selecção da lista ou todos filtrados"
+              onClick={() => {
+                const pool = filteredByClass;
+                const selected = exportIds.size > 0
+                  ? pool.filter((a) => exportIds.has(a.id))
+                  : pool;
+                if (selected.length === 0) {
+                  toast.error("Não há alunos para imprimir. Ajuste o filtro ou seleccione na lista.");
+                  return;
+                }
+                void printCartesScolaires(selected).then(() => {
+                  toast.success(`Cartes scolaires (FR): ${selected.length} élève(s) — Guardar como PDF`);
+                });
+              }}
+            >
+              <Printer className="mr-1 size-4" /> Cartão de estudante
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Copiar inquérito estilo WhatsApp (lista de envio — os pais respondem na conversa)"
+              onClick={() => {
+                const msg = buildInqueritoSaudeWhatsApp({
+                  escolaNome: getSeed().escola.nome || "École Consulaire du Congo – Nova Vida",
+                });
+                void navigator.clipboard.writeText(msg).then(
+                  () => toast.success("Inquérito copiado — cole na lista de envio do WhatsApp"),
+                  () => toast.error("Não foi possível copiar"),
+                );
+              }}
+            >
+              <Mail className="mr-1 size-4" /> Inquérito de saúde
+            </Button>
+            <div className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+              <select
+                className="h-9 rounded-md border-0 bg-transparent px-2 text-xs font-medium text-[var(--color-ink)] outline-none"
+                value={pdfLang}
+                onChange={(e) => setPdfLang(e.target.value as "pt" | "fr")}
+                aria-label="Idioma do PDF"
+                title="Idioma do PDF"
+              >
+                <option value="fr">FR</option>
+                <option value="pt">PT</option>
+              </select>
+              {canEdit ? (
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  title="Corrige turma pela idade e muda o ID (P1-07 com 11 anos → CM2-xx)"
+                  onClick={() => {
+                    const n = recalcularClassesMatriculas();
+                    if (n > 0) {
+                      toast.success(`${n} matrícula(s) realinhada(s). Volte a gerar o PDF.`);
+                    } else {
+                      toast.message("Nada a corrigir — IDs já correspondem à turma.");
+                    }
+                  }}
+                >
+                  Realinhar IDs
+                </Button>
+              ) : null}
+              {canEdit ? (
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  title="Alinha a marca Campus Cidade entre irmãos (pai/mãe/família/sobrenome). Corrige famílias mistas como Mutapayi."
+                  onClick={() => {
+                    try {
+                      const r = alinharCampusPorFamilia();
+                      if (r.alunosAlterados > 0) {
+                        toast.success(
+                          `${r.alunosAlterados} aluno(s) alinhado(s) · ${r.familiasMistas} família(s) mista(s) · Campus ${r.campus} · Nova Vida ${r.novaVida}`,
+                        );
+                        void import("@/components/hydrate-store").then((m) => m.pushFinanceNow?.());
+                      } else {
+                        toast.message(
+                          r.familiasMistas
+                            ? "Famílias mistas detectadas mas sem alteração necessária."
+                            : `Sem famílias mistas · Campus ${r.campus} · Nova Vida ${r.novaVida}`,
+                        );
+                      }
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Falha ao alinhar famílias");
+                    }
+                  }}
+                >
+                  Alinhar Campus / famílias
+                </Button>
+              ) : null}
+              <Button
+                className="shrink-0"
+                variant="secondary"
+                title={
+                  pdfLang === "fr"
+                    ? "PDF A4 — ID, nom, date de naissance, âge, téléphone"
+                    : "PDF A4 — ID, nome, data de nascimento, idade, telefone"
+                }
+                onClick={() => void imprimirAlunosPorClasse(pdfLang)}
+              >
+                <FileText className="mr-1 size-4" /> PDF
+              </Button>
+            </div>
+            {canEdit ? (
+              <Button
+                className="shrink-0"
+                variant="secondary"
+                title="Gera e descarrega uma fatura PDF por aluno com propina"
+                disabled={batchBusy}
+                onClick={() => void gerarFaturasDoMes()}
+              >
+                {batchBusy ? "A gerar faturas…" : "Faturas do mês"}
+              </Button>
+            ) : null}
+          </div>
+        }
+      />
+
+      <div className="no-print mb-4 flex flex-col gap-2 sm:flex-row">
+        <Input
+          placeholder="Nome, família, ID, cidade, nova vida…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <select
+          className="h-11 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+          value={turmaFiltro}
+          onChange={(e) => setTurmaFiltro(e.target.value)}
+          aria-label="Filtrar por classe"
+        >
+          {turmasDisponiveis.map((t) => (
+            <option key={t} value={t}>
+              {t === "todas" ? "Todas as classes" : t}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant={soSemTelefone ? "default" : "outline"}
+          className="shrink-0"
+          title="Mostrar só matrículas sem número de telefone"
+          onClick={() => setSoSemTelefone((v) => !v)}
+        >
+          Sem telefone{semTelefoneCount ? ` (${semTelefoneCount})` : ""}
+        </Button>
+        {canEdit ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            title="Recria fichas em falta a partir do extrato BAI (ex. Otchaly P2-03) sem novo lançamento"
+            onClick={() => {
+              const r = recuperarAlunosOcultos();
+              if (r.restaurados) {
+                toast.success(
+                  `${r.restaurados} ficha(s) reposta(s): ${r.detalhes.slice(0, 3).join(" · ")}`,
+                );
+                setTurmaFiltro("todas");
+                setSoSemTelefone(false);
+              } else {
+                toast.message(
+                  "Nenhuma ficha em falta encontrada no BAI deste dispositivo. Confirme o movimento no extrato BAI.",
+                );
+              }
+            }}
+          >
+            Repor do BAI
+          </Button>
+        ) : null}
+      </div>
+
+      {q.trim() && filtered.length === 0 ? (
+        <div className="no-print mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>
+            Nenhum aluno com «{q.trim()}». Se o pagamento está no BAI (ex. Matrícula … (P2-03)), use{" "}
+            <strong>Repor do BAI</strong> — recria a ficha sem duplicar o extrato.
+          </p>
+        </div>
+      ) : null}
+
+      <p className="mb-2 text-sm text-[var(--color-muted)]">
+        {filtered.length} alunos · Total liquidado {formatKz(total)} · {escola.ano}
+        {semTelefoneCount > 0 ? (
+          <span className="ml-2 text-amber-800 dark:text-amber-300">
+            · {semTelefoneCount} sem contacto telefónico na matrícula
+          </span>
+        ) : null}
+      </p>
+
+      <div ref={printRef}>
+      {/* Cabeçalho de impressão com logotipo */}
+      <header className="print-only mb-4 hidden items-center gap-3 border-b border-black pb-3 print:flex print:text-black">
+        <img src={escolaLogoSrc()} alt="" className="h-14 w-14 object-contain" width={56} height={56} />
+        <div>
+          <p className="text-[10px] font-medium tracking-[0.14em] text-black uppercase">
+            {escola.nome}
+          </p>
+          <p className="font-display text-lg leading-tight text-black">Liste des élèves</p>
+          <p className="text-[11px] text-black">
+            {new Date().toLocaleDateString("fr-FR")} · {escola.ano}
+            {turmaFiltro !== "todas" ? ` · ${turmaFiltro}` : " · Toutes les classes"}
+          </p>
+        </div>
+      </header>
+
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
+        <table className="w-full min-w-[900px] text-sm">
+          <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
+            <tr>
+              <th className="px-3 py-2 text-left">ID</th>
+              <th className="px-3 py-2 text-left">Nome</th>
+              <th className="px-3 py-2 text-left">Turma</th>
+              <th className="px-3 py-2 text-left">Telefone</th>
+              <th className="px-3 py-2 text-left">Data</th>
+              <th className="px-3 py-2 text-right">Líquido</th>
+              <th className="px-3 py-2 text-left">Seguro</th>
+              <th className="px-3 py-2 text-left">Pagamento</th>
+              <th className="px-3 py-2 text-left">Recibo</th>
+              <th className="no-print px-3 py-2 text-right"> </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredByClass.map((a) => (
+              <tr key={a.id} className="border-t border-[var(--color-line)]">
+                <td className="px-3 py-2 font-mono text-xs">{a.id}</td>
+                <td className="px-3 py-2">
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <NomeAluno aluno={a} />
+                  </span>
+                  {a.pai || a.mae ? (
+                    <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
+                      {[a.pai && `Pai: ${a.pai}`, a.mae && `Mãe: ${a.mae}`].filter(Boolean).join(" · ")}
+                    </span>
+                  ) : a.encarregado ? (
+                    <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">{a.encarregado}</span>
+                  ) : null}
+                </td>
+                <td className="px-3 py-2">{a.turma}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs">
+                  {temContactoTelefonico(a) ? (
+                    a.telefone
+                  ) : (
+                    <span className="text-amber-800 dark:text-amber-300">Sem contacto</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {a.dataPag ? formatDate(a.dataPag) : "—"}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{formatKz(a.liquido)}</td>
+                <td className="px-3 py-2">
+                  {a.seguro === 0 ? (
+                    <Badge variant="outline">Próprio</Badge>
+                  ) : (
+                    formatKz(a.seguro)
+                  )}
+                </td>
+                <td className="px-3 py-2 text-xs">{a.metodoPagamento || "—"}</td>
+                <td className="px-3 py-2 font-mono text-xs">{a.recibo}</td>
+                <td className="no-print px-3 py-2 text-right">
+                  <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Fatura (cobrança) — seleccionar itens e gerar PDF"
+                      onClick={() => abrirFatura(a)}
+                    >
+                      <FileText className="size-3.5" />
+                      <span className="ml-1 hidden sm:inline">Fatura</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Recibo / comprovativo de pagamento — itens pagos"
+                      onClick={() => abrirRecibo(a)}
+                    >
+                      <Receipt className="size-3.5" />
+                      <span className="ml-1 hidden lg:inline">Recibo</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Cadastro individual — escolher FR ou PT e gerar PDF"
+                      onClick={() => {
+                        setCadastroLang("pt");
+                        setCadastroAluno(a);
+                      }}
+                    >
+                      <ScrollText className="size-3.5" />
+                      <span className="ml-1 hidden xl:inline">Cadastro</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Cartão de estudante — pré-visualização e PDF"
+                      onClick={() => setCartePreview(a)}
+                    >
+                      <IdCard className="size-3.5" />
+                      <span className="ml-1 hidden xl:inline">Cartão</span>
+                    </Button>
+                    {canEdit ? (
+                      <Button size="sm" variant="secondary" onClick={() => openEdit(a)}>
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      </div>
+
+      {/* Nova matrícula */}
+      <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="size-5" /> Nova matrícula
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-[var(--color-muted)]">
+            Só cadastra o aluno. O ID e o recibo EF/… são automáticos. A fatura de propina gera-se depois, com o botão «Fatura».
+          </p>
+          <MatriculaForm form={form} setForm={setForm} onSave={saveNew} onCancel={() => setCreating(false)} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar — mesmo formulário e campos que «Nova matrícula» */}
+      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) { setEditing(null); clearDeepLink(); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              Editar matrícula {editing?.id}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-[var(--color-muted)]">
+            Mesmos campos que a nova matrícula. A classe é recalculada pela data de nascimento (sistema Congo-Brazzaville: 13 anos → 5ème). Pode alterar manualmente. ID e recibo mantêm-se.
+          </p>
+          <MatriculaForm form={form} setForm={setForm} onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
+        </DialogContent>
+      </Dialog>
+
+
+      
+      {/* Declaração de matrícula */}
+      <Dialog open={declOpen} onOpenChange={setDeclOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Declaração de matrícula</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Aluno</Label>
+              <select
+                className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                value={declAlunoId}
+                onChange={(e) => setDeclAlunoId(e.target.value)}
+              >
+                <option value="">— seleccionar aluno —</option>
+                {alunos
+                  .slice()
+                  .sort((a, b) => a.nome.localeCompare(b.nome, "pt"))
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {nomeComSufixoCampus(a)} · {a.id} · {a.turma}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>BI emitido em (opcional)</Label>
+                <Input
+                  placeholder="02/02/2022"
+                  value={declBiEmitido}
+                  onChange={(e) => setDeclBiEmitido(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Arquivo de identificação</Label>
+                <Input value={declBiLocal} onChange={(e) => setDeclBiLocal(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Dados do cadastro (pais, BI, turma, processo). Complete a data de emissão do BI se necessário.
+            </p>
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <Button type="button" variant="secondary" onClick={() => setDeclOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  const a = alunos.find((x) => x.id === declAlunoId);
+                  if (!a) {
+                    toast.error("Seleccione o aluno.");
+                    return;
+                  }
+                  setDeclPreview(
+                    declaracaoMatriculaHtml(escola, a, {
+                      biEmitido: declBiEmitido,
+                      biLocal: declBiLocal,
+                    }),
+                  );
+                }}
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                Pré-visualizar / Imprimir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!declPreview} onOpenChange={(o) => !o && setDeclPreview(null)}>
+        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-3">
+          <DialogHeader>
+            <DialogTitle>Declaração de matrícula</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto rounded border border-[var(--color-line)] bg-white">
+            {declPreview ? (
+              <iframe title="Declaração" srcDoc={declPreview} className="h-[60vh] w-full bg-white" />
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-2 border-t pt-3">
+            <Button type="button" variant="secondary" onClick={() => setDeclPreview(null)}>
+              Fechar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!declPreview) return;
+                void deliverOfficialHtml(declPreview, {
+                  filename: "declaracao-matricula.pdf",
+                  shareTitle: "Declaração de matrícula",
+                  shareText: "Declaração de matrícula · École Consulaire",
+                }).then((r) => {
+                  if (r.delivery === "shared") toast.success("Escolha WhatsApp, Gmail ou outra app");
+                  else if (isMobileDevice()) toast.success("PDF pronto");
+                  else toast.message("No diálogo: impressora ou «Guardar como PDF»");
+                });
+              }}
+            >
+              PDF
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Carte scolaire — diálogo (um aluno, sem janela nova) */}
+      <Dialog open={!!cartePreview} onOpenChange={(o) => !o && setCartePreview(null)}>
+        <DialogContent className="max-h-[92vh] max-w-[min(96vw,480px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Carte scolaire</DialogTitle>
+          </DialogHeader>
+          {cartePreview ? (
+            <div className="space-y-4">
+              <p className="text-sm text-[var(--color-muted)]">
+                <strong>{cartePreview.nome}</strong>
+                {cartePreview.turma ? ` · ${cartePreview.turma}` : ""} · Matricule{" "}
+                {cartePreview.id}
+              </p>
+              <div className="flex justify-center overflow-x-auto rounded-lg bg-zinc-50 p-3">
+                <CarteScolaire data={alunoToCarte(cartePreview, ANO_LECTIF_CARTE)} />
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={() => setCartePreview(null)}>
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void printCartesScolaires([cartePreview]).then(() => {
+                      toast.success("Pré-visualização de impressão — Guardar como PDF");
+                    });
+                  }}
+                >
+                  <Printer className="mr-1 size-4" /> PDF / Imprimir
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cadastro individual — escolher idioma */}
+      <Dialog
+        open={!!cadastroAluno}
+        onOpenChange={(o) => {
+          if (!o) setCadastroAluno(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cadastro individual</DialogTitle>
+          </DialogHeader>
+          {cadastroAluno ? (
+            <>
+              <p className="text-sm text-[var(--color-muted)]">
+                <strong>{cadastroAluno.nome}</strong>
+                {cadastroAluno.turma ? ` · ${cadastroAluno.turma}` : ""} · ID{" "}
+                {cadastroAluno.id}
+              </p>
+              <p className="text-sm">Escolha o idioma do documento antes de gerar o PDF:</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={cadastroLang === "pt" ? "default" : "secondary"}
+                  onClick={() => setCadastroLang("pt")}
+                >
+                  Português
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={cadastroLang === "fr" ? "default" : "secondary"}
+                  onClick={() => setCadastroLang("fr")}
+                >
+                  Français
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  type="button"
+                  disabled={cadastroBusy}
+                  onClick={() =>
+                    void imprimirCadastroIndividual(cadastroAluno, cadastroLang)
+                  }
+                >
+                  {cadastroBusy ? "A gerar…" : "PDF"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setCadastroAluno(null)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Regulamento interno FR / PT */}
+      <Dialog open={regOpen} onOpenChange={setRegOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Regulamento interno</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[var(--color-muted)]">
+            Documento oficial (multas, 18h00, vestuário, comportamento, denúncias).
+            Para os pais: envie o link — leem, marcam «Tomei conhecimento», indicam nomes e
+            confirmam (sem imprimir). O PDF serve só para arquivo / impressão na escola.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={regLang === "pt" ? "default" : "secondary"}
+              onClick={() => setRegLang("pt")}
+            >
+              Português
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={regLang === "fr" ? "default" : "secondary"}
+              onClick={() => setRegLang("fr")}
+            >
+              Français
+            </Button>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Button
+              type="button"
+              disabled={regBusy}
+              onClick={() => {
+                setRegBusy(true);
+                const contacto = loadContacto();
+                const html = regulamentoInternoHtml(regLang, {
+                  nome: escola.nome,
+                  nomeCurto: escola.nomeCurto,
+                  subtitulo: escola.subtitulo,
+                  ano: escola.ano,
+                  morada: contacto.morada,
+                  telefones: contacto.telefones,
+                  email: contacto.email,
+                });
+                void deliverOfficialHtml(html, {
+                  filename: `regulamento-interno-${regLang}.pdf`,
+                  shareTitle:
+                    regLang === "fr"
+                      ? "Règlement intérieur · École Consulaire"
+                      : "Regulamento interno · École Consulaire",
+                  shareText:
+                    regLang === "fr"
+                      ? "Règlement intérieur à lire et signer"
+                      : "Regulamento interno para leitura e assinatura",
+                })
+                  .then((r) => {
+                    if (r.delivery === "shared")
+                      toast.success("Escolha WhatsApp, Gmail ou outra app");
+                    else if (isMobileDevice()) toast.success("PDF pronto");
+                    else toast.message("No diálogo: impressora ou «Guardar como PDF»");
+                  })
+                  .finally(() => setRegBusy(false));
+              }}
+            >
+              {regBusy ? "A gerar…" : "PDF"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                // Um único link (sem duplicar no WhatsApp: não passar text+url juntos)
+                const url = regulamentoPublicUrl(regLang);
+                const text = [
+                  "Règlement intérieur — École Consulaire du Congo (Luanda)",
+                  "Merci de lire le règlement, cocher « J’ai pris connaissance », indiquer votre nom et celui de l’élève, puis confirmer :",
+                  "",
+                  "Regulamento interno — École Consulaire du Congo (Luanda)",
+                  "Por favor leia o regulamento, marque «Tomei conhecimento», indique o seu nome e o do aluno, e confirme:",
+                  "",
+                  url,
+                ].join("\n");
+                if (navigator.share) {
+                  void navigator
+                    .share({ title: "Règlement intérieur / Regulamento interno", text })
+                    .then(() => toast.success("Link partilhado"))
+                    .catch(() => {
+                      void navigator.clipboard?.writeText(text);
+                      toast.success("Texto copiado");
+                    });
+                } else {
+                  void navigator.clipboard?.writeText(text).then(
+                    () => toast.success("Texto copiado — cole no WhatsApp ou e-mail"),
+                    () => toast.message(url),
+                  );
+                }
+              }}
+            >
+              Link (WhatsApp / e-mail)
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                window.open(regulamentoPublicUrl(regLang), "_blank", "noopener,noreferrer");
+              }}
+            >
+              Abrir página pública
+            </Button>
+          </div>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            Link público: <code className="text-[10px]">{regulamentoPublicUrl(regLang)}</code>
+            {" — "}os pais abrem, leem, marcam «Tomei conhecimento» e confirmam.
+            A lista fica em Google Sheets → Regulamento (assinaturas).
+          </p>
+        </DialogContent>
+      </Dialog>
+
+      {/* Exportar lista PDF — seleccionar alunos */}
+      <Dialog open={exportOpen} onOpenChange={(o) => !o && setExportOpen(false)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Exportar lista de matrículas (PDF)</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-[var(--color-muted)]">
+            Escolha todos ou apenas alguns alunos. O PDF da lista usa o filtro actual de grupo/turma.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setExportIds(new Set(filteredByClass.map((a) => a.id)))}
+            >
+              Seleccionar todos
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setExportIds(new Set())}>
+              Limpar
+            </Button>
+            <span className="self-center text-xs text-[var(--color-muted)]">
+              {exportIds.size} seleccionado(s)
+            </span>
+          </div>
+          <div className="max-h-[40vh] space-y-1 overflow-y-auto rounded border border-[var(--color-line)] p-2">
+            {filteredByClass.map((a) => (
+              <label
+                key={a.id}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-[var(--color-bg)]"
+              >
+                <input
+                  type="checkbox"
+                  checked={exportIds.has(a.id)}
+                  onChange={(e) => {
+                    setExportIds((prev) => {
+                      const n = new Set(prev);
+                      if (e.target.checked) n.add(a.id);
+                      else n.delete(a.id);
+                      return n;
+                    });
+                  }}
+                />
+                <span className="font-mono text-xs text-[var(--color-muted)]">{a.id}</span>
+                <span className="truncate"><NomeAluno aluno={a} /></span>
+                <span className="ml-auto text-xs text-[var(--color-muted)]">{a.turma}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setExportOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={exportBusy || exportIds.size === 0}
+              onClick={() => void exportListaPdf()}
+            >
+              {exportBusy ? "A gerar…" : "PDF"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pré-visualização da fatura (modelo com logo) */}
+      <Dialog open={!!invoicePreview} onOpenChange={(o) => !o && !invoiceBusy && setInvoicePreview(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {invoicePreview?.modo === "recibo" ? (
+                <Receipt className="size-5" />
+              ) : (
+                <FileText className="size-5" />
+              )}
+              {invoicePreview?.modo === "recibo" ? "Recibo / Comprovativo" : "Fatura"}{" "}
+              {invoicePreview?.numero}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-[var(--color-muted)]">
+            {invoicePreview?.modo === "recibo"
+              ? "RECIBO — comprovativo de pagamento já efectuado. Sem tabela de prazos/multas (isso só na fatura). Não é necessário gerar PDF A4."
+              : "FATURA — documento de cobrança com prazos e multas. Gere o PDF para envio / arquivo."}
+          </p>
+          {invoicePreview ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Mês da fatura</label>
+                    <select
+                      className="flex h-10 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                      value={invoicePreview.mesLetivo}
+                      onChange={(e) => mudarMesFatura(e.target.value)}
+                    >
+                      {MESES_LETIVOS.map((m) => (
+                        <option key={m} value={m}>
+                          {MESES_LABEL[m]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Tarifa / classe</label>
+                    <select
+                      className="flex h-10 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                      defaultValue="auto"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const a = invoicePreview.aluno;
+                        let valor: number;
+                        if (v === "trans1") valor = CAMPUS_CIDADE_PROPINA;
+                        else if (v === "trans2") valor = CAMPUS_CIDADE_PROPINA;
+                        else if (v === "auto") valor = propinaPorCiclo(a);
+                        else valor = propinaPorCiclo(a, v as "mat" | "pri" | "col");
+                        const html = buildInvoiceHtml({
+                          a,
+                          numero: invoicePreview.numero,
+                          valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto: invoicePreview.contacto,
+                        });
+                        setInvoicePreview({ ...invoicePreview, valor, html });
+                      }}
+                    >
+                      <option value="auto">Automático (turma do aluno)</option>
+                      <option value="mat">Maternelle — {formatKz(PROPINA_MATERNELLE)}</option>
+                      <option value="pri">Primaire — {formatKz(PROPINA_PRIMAIRE)}</option>
+                      <option value="col">Collège — {formatKz(PROPINA_COLLEGE)}</option>
+                      <option value="trans1">
+                        Transferido Campus Cidade (1 aluno) — {formatKz(CAMPUS_CIDADE_PROPINA)}
+                      </option>
+                      <option value="trans2">
+                        Transferido Campus Cidade (2+ irmãos) — {formatKz(CAMPUS_CIDADE_PROPINA)}
+                      </option>
+                    </select>
+                  </div>
+                  <span className="pb-2 text-xs text-[var(--color-muted)]">
+                    {formatKz(invoicePreview.valor)}
+                    {invoicePreview.aluno.transferidoCampusCidade
+                      ? " · transferido Campus Cidade"
+                      : invoicePreview.pagoMes > 0
+                        ? " · pago"
+                        : " · a cobrar"}
+                  </span>
+                </div>
+                <div className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                    Itens da fatura (marque o que incluir)
+                  </p>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-[var(--color-muted)]">Meses de propina</label>
+                    <select
+                      className="h-9 rounded border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-sm"
+                      value={String(invoicePreview.mesesProp)}
+                      onChange={(e) => refrescarFatura({ mesesProp: Number(e.target.value) || 0 })}
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                        <option key={n} value={n}>
+                          {n === 0 ? "0 (sem propina)" : `${n} mês${n > 1 ? "es" : ""}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mb-2 space-y-1.5 rounded border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] p-2">
+                    <label className="flex items-start gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={Boolean(invoicePreview.campanha)}
+                        onChange={(e) => refrescarFatura({ campanha: e.target.checked })}
+                      />
+                      <span>
+                        <strong>Campanha promocional (−40% propinas)</strong>
+                        <span className="block text-[10px] text-[var(--color-muted)]">
+                          Inscrição e seguro sem desconto. Até 10 de setembro.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={Boolean(invoicePreview.irmaos)}
+                        onChange={(e) => refrescarFatura({ irmaos: e.target.checked })}
+                      />
+                      <span>
+                        <strong>2+ irmãos no agregado (−10% adicional)</strong>
+                        <span className="block text-[10px] text-[var(--color-muted)]">
+                          Aplica-se só às propinas desta liquidação.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {invoicePreview.linhas.map((l) => {
+                      const isMultaAtraso = l.key === "multaAtraso";
+                      const isMultaRecolha = l.key === "multaRecolha";
+                      const basePropina =
+                        invoicePreview.linhas.find((x) => x.key === "propinas" && x.on)?.value ||
+                        invoicePreview.linhas.find((x) => x.key === "propinas")?.value ||
+                        0;
+                      return (
+                      <li
+                        key={l.key}
+                        className={
+                          isMultaAtraso || isMultaRecolha
+                            ? "flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50/60 p-2 text-sm"
+                            : "flex flex-wrap items-center gap-2 text-sm"
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={l.on}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            let value = l.value;
+                            if (isMultaAtraso && on && !(value > 0) && basePropina > 0) {
+                              // por defeito 10% da propina marcada
+                              value = Math.round(basePropina * 0.1);
+                            }
+                            if (isMultaRecolha && on && !(value > 0)) {
+                              value = 15000;
+                            }
+                            const linhas = invoicePreview.linhas.map((x) =>
+                              x.key === l.key ? { ...x, on, value } : x,
+                            );
+                            refrescarFatura({ linhas });
+                          }}
+                        />
+                        <span className="min-w-[7rem] flex-1">{l.label}</span>
+                        {isMultaAtraso ? (
+                          <select
+                            className="h-8 rounded border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
+                            value={
+                              basePropina > 0 && l.value > 0
+                                ? String(Math.round((l.value / basePropina) * 100))
+                                : "10"
+                            }
+                            disabled={!l.on}
+                            title="Percentagem sobre a propina marcada"
+                            onChange={(e) => {
+                              const pct = Number(e.target.value) || 0;
+                              const value = Math.round(basePropina * (pct / 100));
+                              const linhas = invoicePreview.linhas.map((x) =>
+                                x.key === l.key ? { ...x, value, on: true } : x,
+                              );
+                              refrescarFatura({ linhas });
+                            }}
+                          >
+                            {[5, 10, 15, 20, 25, 30, 35, 40, 50].map((p) => (
+                              <option key={p} value={p}>
+                                {p}%
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <Input
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="h-8 w-28 text-right tabular-nums"
+                          value={l.value || ""}
+                          title={
+                            isMultaRecolha
+                              ? "Valor editável (predefinição 15.000 Kz)"
+                              : "Valor editável (mesmo se o cadastro estiver a zero)"
+                          }
+                          onChange={(e) => {
+                            const v = Number(e.target.value) || 0;
+                            const linhas = invoicePreview.linhas.map((x) =>
+                              x.key === l.key
+                                ? { ...x, value: v, on: v > 0 ? true : x.on }
+                                : x,
+                            );
+                            refrescarFatura({ linhas });
+                          }}
+                        />
+                      </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                    Pode marcar qualquer item e alterar o valor. Multas: escolha a % de atraso no
+                    pagamento (sobre a propina) ou a multa de recolha após 18:00 (15.000 Kz, editável).
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--color-forest)]">
+                    Total fatura: {formatKz(invoicePreview.valor)}
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Morada da escola</label>
+                    <Input
+                      value={invoicePreview.contacto.morada}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, morada: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">Telefones (editável)</label>
+                    <Input
+                      value={invoicePreview.contacto.telefones}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, telefones: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">E-mail (editável)</label>
+                    <Input
+                      type="email"
+                      value={invoicePreview.contacto.email}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, email: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-medium text-[var(--color-muted)]">IBAN (editável)</label>
+                    <Input
+                      value={invoicePreview.contacto.iban}
+                      onChange={(e) => {
+                        const contacto = { ...invoicePreview.contacto, iban: e.target.value };
+                        saveContacto(contacto);
+                        const html = buildInvoiceHtml({
+                          a: invoicePreview.aluno,
+                          numero: invoicePreview.numero,
+                          valor: invoicePreview.valor,
+                          mesRef: invoicePreview.mesRef,
+                          mesLetivo: invoicePreview.mesLetivo,
+                          pagoMes: invoicePreview.pagoMes,
+                          contacto,
+                          linhas: invoicePreview.linhas,
+                          modo: invoicePreview.modo,
+                        });
+                        setInvoicePreview({ ...invoicePreview, contacto, html });
+                      }}
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div
+                className="mx-auto max-h-[55vh] overflow-auto rounded-[var(--radius-md)] border border-[var(--color-line)] bg-white p-4 shadow-sm"
+                style={{ width: "100%", maxWidth: "210mm", aspectRatio: "210/297" }}
+              >
+                <div
+                  className="text-[var(--color-ink)]"
+                  dangerouslySetInnerHTML={{ __html: invoicePreview.html }}
+                />
+              </div>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" disabled={invoiceBusy} onClick={() => setInvoicePreview(null)}>
+              Fechar
+            </Button>
+            {invoicePreview?.modo === "recibo" ? (
+              <Button type="button" disabled={invoiceBusy} onClick={() => void confirmarFaturaPdf(false)}>
+                <Printer className="mr-1 size-4" />
+                {invoiceBusy ? "A gerar…" : "PDF"}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={invoiceBusy}
+                  onClick={() => void confirmarFaturaPdf(true)}
+                >
+                  <Mail className="mr-1 size-4" />
+                  PDF + e-mail
+                </Button>
+                <Button type="button" disabled={invoiceBusy} onClick={() => void confirmarFaturaPdf(false)}>
+                  <Printer className="mr-1 size-4" />
+                  {invoiceBusy ? "A gerar…" : "PDF"}
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
