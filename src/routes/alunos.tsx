@@ -1567,8 +1567,12 @@ function Alunos() {
     html: string;
     linhas: { key: string; label: string; value: number; on: boolean }[];
     mesesProp: number;
+    campanha?: boolean;
+    irmaos?: boolean | 0 | 2 | 3;
     /** fatura = cobrança; recibo = comprovativo de pagamento */
     modo: "fatura" | "recibo";
+    codigoVerificacao?: string;
+    viaLabel?: string;
   } | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [declOpen, setDeclOpen] = useState(false);
@@ -2829,7 +2833,10 @@ function normalizeNomeAluno(s: string): string {
   }
 
 
-  /** Abre o modelo da fatura (com logo) — NÃO grava nem gera PDF ainda. */
+  /** Abre o modelo da fatura (com logo) — NÃO grava nem gera PDF ainda.
+   * Inclui TODAS as rubricas da ficha (inscrição, seguro, manuais, propina, multas, …).
+   * O utilizador marca só o que entra nesta fatura — a referência identifica-se pelas rubricas, não só por «propina».
+   */
   function abrirFatura(a: Aluno) {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
@@ -2843,10 +2850,19 @@ function normalizeNomeAluno(s: string): string {
         : `PROP-${mesKey}-001`;
     const contacto = loadContacto();
     const mesesProp = mesesPropinaFromAluno(a);
-    const linha = linhaPropinaMensal(a, mesLetivo);
-    if (pagoMes > 0) linha.value = pagoMes;
-    const linhas = [linha];
-    const total = totalLinhas(linhas) || linha.value || valor || propinaPorCiclo(a);
+    const campanha = alunoTemCampanha(a);
+    const irmaos = alunoTemIrmaosDesc(a);
+    // Todas as rubricas da matrícula (mesma base que o recibo de liquidação)
+    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
+    // Se já há valor pago neste mês lectivo, reflectir na linha de propinas
+    if (pagoMes > 0) {
+      linhas = linhas.map((l) =>
+        l.key === "propinas" ? { ...l, value: pagoMes, on: true } : l,
+      );
+    }
+    // Manter visíveis as linhas com valor 0 (desligadas) para o utilizador poder activar
+    // Multas continuam off por defeito
+    const total = totalLinhas(linhas) || valor || propinaPorCiclo(a);
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2870,8 +2886,8 @@ function normalizeNomeAluno(s: string): string {
       html,
       linhas,
       mesesProp,
-      campanha: alunoTemCampanha(a),
-      irmaos: alunoTemIrmaosDesc(a),
+      campanha,
+      irmaos,
       modo: "fatura",
     });
   }

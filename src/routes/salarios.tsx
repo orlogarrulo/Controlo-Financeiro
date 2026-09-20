@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FileText, Pencil, Plus, Printer, Trash2, UserPlus } from "lucide-react";
+import { Banknote, FileText, Pencil, Plus, Printer, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -700,14 +700,33 @@ function autorizacaoPagamentoHtml(
 </body></html>`;
 }
 
+/** Código anti-falsificação: PREFIX-AAAAMM-XXXX-NN */
+function gerarCodigoVerificacao(prefix: "RH" | "RAD", mesKey: string, seq: number): string {
+  const yymm = String(mesKey || "").replace(/-/g, "").slice(0, 6) || new Date().toISOString().slice(0, 7).replace(/-/g, "");
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `${prefix}-${yymm}-${rand}-${String(seq).padStart(2, "0")}`;
+}
+
 function reciboHonorarioHtml(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
   const logo = escolaLogoSrc();
+  const isAdiantamento = r.tipo === "adiantamento";
   const descricao = descricaoPrestacaoPorFuncao(r.funcao);
   const { ini, fim } = periodoPrestacaoMes(r.mesKey, r.mes);
   const dataDoc = dataDocFinancas(r.dataPag || todayIso());
+  const titulo = isAdiantamento
+    ? "Recibo de adiantamento de honorários / salários"
+    : "Recibo de honorários / prestação de serviços";
+  const texto = isAdiantamento
+    ? `Pagámos a <b>${r.nome}</b> a quantia de <b>${formatKz(r.liquido)}</b> a título de <b>adiantamento</b> de honorários referentes a <b>${r.mes || r.mesKey}</b> (${descricao}). Este valor será descontado no recibo final do mês.`
+    : `Pagámos a <b>${r.nome}</b> a quantia de <b>${formatKz(r.liquido)}</b> referente a ${descricao}, durante o período <b>${ini}</b> a <b>${fim}</b>.`;
+  const codigo =
+    r.codigoVerificacao ||
+    (isAdiantamento
+      ? gerarCodigoVerificacao("RAD", r.mesKey, 1)
+      : gerarCodigoVerificacao("RH", r.mesKey, 1));
   return `<article class="recibo">
   <header class="rh">
     <img src="${logo}" alt=""/>
@@ -716,16 +735,23 @@ function reciboHonorarioHtml(
       <span class="mu">${escola.subtitulo || "Luanda"} · ${escola.ano || ""}</span>
     </div>
   </header>
-  <p class="ki" style="text-align:center">Recibo de honorários / prestação de serviços</p>
+  <p class="ki" style="text-align:center">${titulo}</p>
   <div class="rw"><span>N.º <b>${r.id}</b></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
-  <p class="tx">Pagámos a <b>${r.nome}</b> a quantia de <b>${formatKz(r.liquido)}</b> referente a ${descricao}, durante o período <b>${ini}</b> a <b>${fim}</b>.</p>
+  <p class="tx">${texto}</p>
+  ${r.notas ? `<p class="mu">Notas: ${String(r.notas).replace(/</g, "&lt;")}</p>` : ""}
   <table class="tb">
-    <tr><td>Honorário de referência</td><td class="n">${formatKz(r.salarioBruto)}</td></tr>
+    ${
+      isAdiantamento
+        ? `<tr><td>Valor do adiantamento</td><td class="n">${formatKz(r.liquido)}</td></tr>
+    <tr><td>Honorário de referência do mês</td><td class="n">${formatKz(r.salarioBruto)}</td></tr>`
+        : `<tr><td>Honorário de referência</td><td class="n">${formatKz(r.salarioBruto)}</td></tr>
     ${r.descontoDias > 0 ? `<tr><td>Desconto dias (${r.diasTrab}/${r.diasUteis})</td><td class="n">−${formatKz(r.descontoDias)}</td></tr>` : ""}
-    ${(r.outrosDesc || 0) > 0 ? `<tr><td>Outros descontos</td><td class="n">−${formatKz(r.outrosDesc)}</td></tr>` : ""}
-    <tr class="tot"><td>Líquido</td><td class="n">${formatKz(r.liquido)}</td></tr>
+    ${(r.outrosDesc || 0) > 0 ? `<tr><td>Outros descontos${/adiantamento/i.test(String(r.notas || "")) ? " (incl. adiantamento)" : ""}</td><td class="n">−${formatKz(r.outrosDesc)}</td></tr>` : ""}
+    <tr class="tot"><td>Líquido</td><td class="n">${formatKz(r.liquido)}</td></tr>`
+    }
   </table>
   ${r.iban ? `<p class="mu">IBAN: ${r.iban}</p>` : ""}
+  <p class="mu" style="margin-top:10px;font-size:11px;letter-spacing:0.04em"><b>Código de verificação:</b> ${codigo}</p>
   <div class="sg">
     <div><span>O prestador</span><i></i></div>
     <div><span>Departamento de Finanças</span><i></i></div>
@@ -1327,6 +1353,14 @@ function Salarios() {
   const [genOpen, setGenOpen] = useState(false);
   const [genMes, setGenMes] = useState("");
   const [genMesKey, setGenMesKey] = useState("");
+  /** Diálogo de adiantamento de honorários */
+  const [advOpen, setAdvOpen] = useState(false);
+  const [advSelected, setAdvSelected] = useState<Set<string>>(new Set());
+  const [advMesKey, setAdvMesKey] = useState("");
+  const [advMesLabel, setAdvMesLabel] = useState("");
+  const [advDataPag, setAdvDataPag] = useState(todayIso());
+  const [advValores, setAdvValores] = useState<Record<string, string>>({});
+  const [advNotas, setAdvNotas] = useState("");
   /** Diálogo «Imprimir lista»: escolher quem entra na listagem + total do mês. */
   const [listPickerOpen, setListPickerOpen] = useState(false);
   const [listSelectedIds, setListSelectedIds] = useState<Set<string>>(() => new Set());
@@ -1546,6 +1580,114 @@ function Salarios() {
     setGenOpen(true);
   }
 
+  /** Abre formulário de adiantamento — um ou vários funcionários. */
+  function openAdiantamento(preselectId?: string) {
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1.");
+      return;
+    }
+    const comp = mesCompetenciaPagamento();
+    const mesKey =
+      filterMes && filterMes !== "todos" ? filterMes : comp.key;
+    const fromOpts = opcoesMesReferencia().find((o) => o.key === mesKey);
+    const mesLabel = fromOpts?.label || comp.label;
+    setAdvMesKey(mesKey);
+    setAdvMesLabel(mesLabel);
+    setAdvDataPag(todayIso());
+    setAdvNotas("");
+    const ids = preselectId ? new Set([preselectId]) : new Set<string>();
+    setAdvSelected(ids);
+    const vals: Record<string, string> = {};
+    rows.forEach((r) => {
+      // Sugestão: metade do honorário (editável)
+      vals[r.id] = preselectId === r.id || !preselectId ? String(Math.round((r.salario || 0) / 2)) : "";
+    });
+    if (preselectId) {
+      const f = rows.find((r) => r.id === preselectId);
+      if (f) vals[preselectId] = String(Math.round((f.salario || 0) / 2));
+    }
+    setAdvValores(vals);
+    setAdvOpen(true);
+  }
+
+  function emitirAdiantamentos() {
+    if (!advSelected.size) {
+      toast.error("Seleccione pelo menos um funcionário.");
+      return;
+    }
+    const existentes = recibosSalario || [];
+    const baseSeq =
+      existentes.filter(
+        (r) => r.mesKey === advMesKey && (r.tipo === "adiantamento" || String(r.id).startsWith("RAD-")),
+      ).length;
+    const created: ReciboSalario[] = [];
+    let i = 0;
+    for (const id of advSelected) {
+      const f = rows.find((r) => r.id === id);
+      if (!f) continue;
+      const valor = Number(advValores[id]) || 0;
+      if (valor <= 0) {
+        toast.error(`Indique um valor > 0 para ${f.nome}.`);
+        return;
+      }
+      if (valor > f.salario) {
+        toast.error(
+          `Adiantamento de ${f.nome} (${formatKz(valor)}) superior ao honorário (${formatKz(f.salario)}).`,
+        );
+        return;
+      }
+      i += 1;
+      const seq = baseSeq + i;
+      const rid = `RAD-${advMesKey}-${String(seq).padStart(3, "0")}`;
+      created.push({
+        id: rid,
+        funcionarioId: id,
+        nome: f.nome,
+        funcao: f.funcao,
+        mes: advMesLabel,
+        mesKey: advMesKey,
+        diasUteis: f.diasUteis || 22,
+        diasTrab: f.diasTrab || 22,
+        salarioBruto: f.salario,
+        descontoDias: 0,
+        outrosDesc: 0,
+        liquido: valor,
+        dataPag: advDataPag || todayIso(),
+        pago: true, // adiantamento já pago no acto
+        iban: f.iban,
+        criadoEm: new Date().toISOString(),
+        tipo: "adiantamento",
+        codigoVerificacao: gerarCodigoVerificacao("RAD", advMesKey, seq),
+        notas: advNotas.trim() || "Adiantamento de honorários — a descontar no recibo do mês",
+      });
+    }
+    if (!created.length) {
+      toast.error("Nenhum adiantamento a emitir.");
+      return;
+    }
+    addRecibosSalario(created);
+    setFilterMes(advMesKey);
+    setUiPrefs({
+      salariosMesKey: advMesKey,
+      salariosMesLabel: advMesLabel,
+      salariosFilterMes: advMesKey,
+    });
+    setAdvOpen(false);
+    toast.success(
+      `${created.length} recibo(s) de adiantamento emitido(s). O valor será descontado automaticamente ao gerar o recibo do mês.`,
+    );
+    // Pré-visualizar o(s) recibo(s)
+    if (created.length === 1) {
+      verDocumento(`Adiantamento — ${created[0].nome}`, wrapReciboPage(escola, created[0]));
+    } else {
+      const body = created.map((r) => reciboHonorarioHtml(escola, r)).join("");
+      verDocumento(
+        `Adiantamentos — ${advMesLabel}`,
+        `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title><style>${cssImpressaoRecibos()}</style></head><body><div class="folha">${body}</div></body></html>`,
+      );
+    }
+  }
+
 
   /** Força os 7 honorários de Agosto 2026 como pagos + alinha débitos no Banco BAI. */
   function forcarSetePagosAgosto() {
@@ -1651,12 +1793,24 @@ function Salarios() {
       return;
     }
     const diasU = Number(genDiasUteis) || 22;
+    const existentes = recibosSalario || [];
     const created: ReciboSalario[] = [];
+    let comAdiantamento = 0;
     for (const id of selected) {
       const f = rows.find((r) => r.id === id);
       if (!f) continue;
       const diasT = Number(diasMap[id] ?? diasU) || 0;
-      const { descontoDias, liquido } = liquidoCalc(f.salario, diasU, diasT, f.outrosDesc || 0);
+      // Soma adiantamentos já emitidos neste mês (tipo adiantamento) — descontam no líquido
+      const adiantamentosMes = existentes.filter(
+        (x) =>
+          x.funcionarioId === id &&
+          x.mesKey === genMesKey &&
+          x.tipo === "adiantamento",
+      );
+      const totalAdiant = adiantamentosMes.reduce((s, x) => s + (Number(x.liquido) || 0), 0);
+      const outrosBase = (f.outrosDesc || 0) + totalAdiant;
+      const { descontoDias, liquido } = liquidoCalc(f.salario, diasU, diasT, outrosBase);
+      if (totalAdiant > 0) comAdiantamento += 1;
       const rid = `RS-${id}-${genMesKey}`;
       created.push({
         id: rid,
@@ -1669,18 +1823,24 @@ function Salarios() {
         diasTrab: diasT,
         salarioBruto: f.salario,
         descontoDias,
-        outrosDesc: f.outrosDesc || 0,
+        outrosDesc: outrosBase,
         liquido,
         dataPag: genDataPag || todayIso(),
         pago: false,
         iban: f.iban,
         criadoEm: new Date().toISOString(),
+        tipo: "honorario",
+        notas:
+          totalAdiant > 0
+            ? `Inclui desconto de adiantamento(s): ${formatKz(totalAdiant)}`
+            : undefined,
       });
     }
-    // Numeração RH-AAAA-MM-NNN
+    // Numeração RH-AAAA-MM-NNN + código de verificação
     const numbered = created.map((r, i) => ({
       ...r,
       id: `RH-${genMesKey}-${String(i + 1).padStart(3, "0")}`,
+      codigoVerificacao: gerarCodigoVerificacao("RH", genMesKey, i + 1),
     }));
     addRecibosSalario(numbered);
     setFilterMes(genMesKey);
@@ -1691,9 +1851,11 @@ function Salarios() {
     });
     setGenOpen(false);
     toast.success(
-      `${numbered.length} recibo(s) + autorização gerados para ${genMes} (ref. ${genMesKey})`,
+      `${numbered.length} recibo(s) + autorização gerados para ${genMes}` +
+        (comAdiantamento > 0
+          ? ` · ${comAdiantamento} com desconto de adiantamento`
+          : ""),
     );
-    // Um único documento: recibos (um por funcionário) + autorização no fim
     verDocumento(
       `Recibos e autorização — ${genMes}`,
       pacoteRecibosComAutorizacaoHtml(escola, numbered),
@@ -1779,6 +1941,16 @@ function Salarios() {
                 </Button>
                 <Button className="shrink-0" type="button" variant="secondary" onClick={openGerarRecibos}>
                   Gerar recibos
+                </Button>
+                <Button
+                  className="shrink-0"
+                  type="button"
+                  variant="secondary"
+                  title="Recibo de adiantamento de honorários (desconta no mês)"
+                  onClick={() => openAdiantamento()}
+                >
+                  <Banknote className="mr-1 size-4" />
+                  Adiantamento
                 </Button>
               </>
             ) : null}
@@ -1939,6 +2111,16 @@ function Salarios() {
                           <FileText className="h-3.5 w-3.5" />
                           <span className="ml-1 hidden sm:inline">Contrato</span>
                         </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          title="Recibo de adiantamento (desconta no honorário do mês)"
+                          onClick={() => openAdiantamento(r.id)}
+                        >
+                          <Banknote className="h-3.5 w-3.5" />
+                          <span className="ml-1 hidden sm:inline">Adiant.</span>
+                        </Button>
                       </>
                     ) : null}
                   </div>
@@ -2092,10 +2274,22 @@ function Salarios() {
               ) : (
                 recibosFiltrados.map((r) => (
                   <tr key={r.id} className="border-t border-[var(--color-line)]">
-                    <td className="px-3 py-2 font-medium">{r.nome}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <div>{r.nome}</div>
+                      {r.tipo === "adiantamento" ? (
+                        <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                          Adiantamento
+                        </span>
+                      ) : null}
+                      {r.codigoVerificacao ? (
+                        <div className="mt-0.5 font-mono text-[10px] text-[var(--color-muted)]">
+                          {r.codigoVerificacao}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatKz(r.liquido)}</td>
                     <td className="px-3 py-2">
-                      {r.diasTrab}/{r.diasUteis}
+                      {r.tipo === "adiantamento" ? "—" : `${r.diasTrab}/${r.diasUteis}`}
                     </td>
                     <td className="px-3 py-2">
                       {r.pago ? (
@@ -2636,6 +2830,116 @@ function Salarios() {
               <Button type="button" onClick={gerarRecibos}>
                 <Printer className="mr-1.5 h-4 w-4" />
                 Gerar recibos
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Adiantamento de honorários */}
+      <Dialog open={advOpen} onOpenChange={setAdvOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Recibo de adiantamento de honorários</DialogTitle>
+          </DialogHeader>
+          <div className="grid max-h-[70vh] gap-3 overflow-y-auto">
+            <p className="text-xs text-[var(--color-muted)]">
+              O valor pago agora será <strong>descontado automaticamente</strong> no recibo de
+              honorários do mês de referência quando usar «Gerar recibos». Cada recibo sai com
+              código de verificação.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Mês de referência (a descontar)</Label>
+                <select
+                  className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                  value={advMesKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    const opt = opcoesMesReferencia().find((o) => o.key === key);
+                    setAdvMesKey(key);
+                    if (opt) setAdvMesLabel(opt.label);
+                  }}
+                >
+                  {opcoesMesReferencia().map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label>Data do pagamento</Label>
+                <Input
+                  type="date"
+                  value={advDataPag}
+                  onChange={(e) => setAdvDataPag(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Notas (opcional)</Label>
+                <Input
+                  value={advNotas}
+                  onChange={(e) => setAdvNotas(e.target.value)}
+                  placeholder="Motivo do adiantamento…"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setAdvSelected(new Set(rows.map((r) => r.id)))}
+              >
+                Todos
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => setAdvSelected(new Set())}>
+                Nenhum
+              </Button>
+            </div>
+            <ul className="space-y-2">
+              {rows.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center gap-2 rounded border border-[var(--color-line)] px-2 py-1.5"
+                >
+                  <input
+                    type="checkbox"
+                    checked={advSelected.has(r.id)}
+                    onChange={(e) => {
+                      const n = new Set(advSelected);
+                      if (e.target.checked) n.add(r.id);
+                      else n.delete(r.id);
+                      setAdvSelected(n);
+                    }}
+                  />
+                  <span className="min-w-[8rem] flex-1 text-sm font-medium">{r.nome}</span>
+                  <span className="text-xs text-[var(--color-muted)]">ref. {formatKz(r.salario)}</span>
+                  <label className="flex items-center gap-1 text-xs">
+                    Valor
+                    <Input
+                      className="h-8 w-28 text-right tabular-nums"
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={advValores[r.id] ?? ""}
+                      disabled={!advSelected.has(r.id)}
+                      onChange={(e) =>
+                        setAdvValores({ ...advValores, [r.id]: e.target.value })
+                      }
+                    />
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <Button type="button" variant="secondary" onClick={() => setAdvOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="button" onClick={emitirAdiantamentos}>
+                <Banknote className="mr-1.5 h-4 w-4" />
+                Emitir recibo(s)
               </Button>
             </div>
           </div>

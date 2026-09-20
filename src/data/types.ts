@@ -349,7 +349,7 @@ export type Salario = {
   temContrato?: boolean;
 };
 
-/** Recibo de honorários / prestação de serviços (mês) */
+/** Recibo de honorários / prestação de serviços (mês) ou adiantamento */
 export type ReciboSalario = {
   id: string;
   funcionarioId: string;
@@ -367,6 +367,12 @@ export type ReciboSalario = {
   pago: boolean;
   iban?: string;
   criadoEm: string;
+  /** honorario (mês completo) | adiantamento (antecipação descontada no mês) */
+  tipo?: "honorario" | "adiantamento";
+  /** Código anti-falsificação impresso no PDF (RH-… ou RAD-…) */
+  codigoVerificacao?: string;
+  /** Notas livres (ex.: motivo do adiantamento) */
+  notas?: string;
 };
 
 export type Escola = {
