@@ -177,7 +177,22 @@ export const CAMPUS_CIDADE_PROPINA = 75000;
 
 export function propinaDefaultFromTurma(turma: string, transferidoCampusCidade = false): number {
   if (transferidoCampusCidade) return CAMPUS_CIDADE_PROPINA;
-  if ((turma || "").startsWith("Maternelle")) return PROPINA_MATERNELLE;
-  if (["6ème", "5ème", "4ème", "3ème"].includes(turma)) return PROPINA_COLLEGE;
+  const t = turma || "";
+  if (t.startsWith("Maternelle") || /^P[1-5]\b/i.test(t) || t === "PS" || t === "MS" || t === "GS") {
+    return PROPINA_MATERNELLE;
+  }
+  if (["6ème", "5ème", "4ème", "3ème"].includes(t)) return PROPINA_COLLEGE;
   return PROPINA_PRIMAIRE;
+}
+
+/** Tarifa mensal efectiva: ficha → mensalidade1 → grelha da turma. */
+export function tarifaPropinaAluno(a: {
+  propina?: number;
+  mensalidade1?: number;
+  turma?: string;
+  transferidoCampusCidade?: boolean;
+}): number {
+  const fromFicha = Number(a.propina) || Number(a.mensalidade1) || 0;
+  if (fromFicha > 0) return fromFicha;
+  return propinaDefaultFromTurma(a.turma || "", Boolean(a.transferidoCampusCidade));
 }

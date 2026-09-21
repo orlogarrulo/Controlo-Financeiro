@@ -18,6 +18,7 @@ import {
 } from "@/lib/store";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatKz } from "@/lib/format";
+import { tarifaPropinaAluno } from "@/lib/classe-congo";
 import {
   documentoReciboComCodigo,
   loadContacto,
@@ -221,25 +222,47 @@ function Mensalidades() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  try {
-                    const r = reporPropinasFromMatriculas();
-                    toast.success(
-                      `Propinas repostas: ${r.alunos} aluno(s)${
-                        r.removidos ? ` · ${r.removidos} extra(s) removido(s)` : ""
-                      }.`,
-                    );
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Falha ao repor");
-                  }
-                }}
-              >
-                Repor (= Matrículas)
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    try {
+                      const rec = useFinance.getState().reabrirAlunosUnicos();
+                      const r = reporPropinasFromMatriculas();
+                      toast.success(
+                        rec.restaurados
+                          ? `Encontrado(s) ${rec.restaurados}: ${rec.detalhes.slice(0, 3).join(" · ")}. Cadastro ${r.alunos}.`
+                          : `Cadastro ${r.alunos} aluno(s). Nenhum ID extra único por reabrir.`,
+                      );
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Falha ao procurar");
+                    }
+                  }}
+                >
+                  Procurar o 51.º
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    try {
+                      const r = reporPropinasFromMatriculas();
+                      toast.success(
+                        `Propinas repostas: ${r.alunos} aluno(s)${
+                          r.removidos ? ` · ${r.removidos} extra(s) removido(s)` : ""
+                        }.`,
+                      );
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Falha ao repor");
+                    }
+                  }}
+                >
+                  Repor (= Matrículas)
+                </Button>
+              </>
             ) : null}
             <PrintActions
               targetRef={printRef}
@@ -353,7 +376,15 @@ function Mensalidades() {
                           {cred > 0 ? ` · crédito ${formatKz(cred)}` : ""}
                         </p>
                       </td>
-                      <td className="px-3 py-2 tabular-nums text-xs">{formatKz(r.propina)}</td>
+                      <td className="px-3 py-2 tabular-nums text-xs">
+                        {formatKz(
+                          tarifaPropinaAluno({
+                            propina: r.propina,
+                            turma: r.turma,
+                            transferidoCampusCidade: alunoMetaById.get(r.id)?.transferidoCampusCidade,
+                          }),
+                        )}
+                      </td>
                       {MESES_LETIVOS.map((m) => {
                         const val = r.pagamentos[m] || 0;
                         const dataPag = r.pagamentosEm?.[m];

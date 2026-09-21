@@ -19,11 +19,17 @@ export function htmlContaCorrente(opts: {
   let running = 0;
   const linhas = rows
     .map((m) => {
-      const cred = m.tipo === "credito" ? m.valor : 0;
-      const deb = m.tipo !== "credito" ? m.valor : 0;
+      const cred = m.tipo === "credito" || m.tipo === "pagamento" ? m.valor : 0;
+      const deb = m.tipo === "aplicacao" || m.tipo === "reembolso" || m.tipo === "pagamento" ? m.valor : 0;
       running += cred - deb;
       const tipoLabel =
-        m.tipo === "credito" ? "Crédito" : m.tipo === "aplicacao" ? "Aplicação" : "Reembolso";
+        m.tipo === "credito"
+          ? "Crédito"
+          : m.tipo === "aplicacao"
+            ? "Aplicação"
+            : m.tipo === "pagamento"
+              ? "Pagamento"
+              : "Reembolso";
       return `<tr>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;white-space:nowrap;">${esc(m.data)}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e5e7eb;">${esc(tipoLabel)} · ${esc(m.descricao)}${m.mes ? ` <span style="color:#6b7280">(${esc(m.mes)})</span>` : ""}<br/><span style="font-size:10px;color:#6b7280;">${esc(m.doc)}</span></td>

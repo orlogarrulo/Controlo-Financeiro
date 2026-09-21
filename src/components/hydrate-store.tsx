@@ -13,6 +13,7 @@ import {
   recalcularClassesMatriculas,
   reporPropinasFromMatriculas,
   sanearAlunosDuplicados,
+  reabrirAlunosUnicos,
 } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 
@@ -73,6 +74,7 @@ export function HydrateStore() {
         }
         try {
           // Não ressuscitar stubs a partir de propinas/BAI (inflava 51 → 64).
+          reabrirAlunosUnicos();
           sanearAlunosDuplicados();
           reporPropinasFromMatriculas();
         } catch (e) {
@@ -123,6 +125,10 @@ export function HydrateStore() {
           }
         }
         try {
+          const rec = reabrirAlunosUnicos();
+          if (rec.restaurados > 0) {
+            toast.message(`${rec.restaurados} aluno(s) reaberto(s) neste dispositivo.`);
+          }
           const dups = sanearAlunosDuplicados();
           if (dups.removidos > 0) {
             toast.message(`${dups.removidos} ficha(s) duplicada(s) escondida(s).`);

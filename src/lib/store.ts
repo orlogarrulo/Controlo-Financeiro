@@ -27,6 +27,7 @@ import {
   resolveTurmaOficial,
   turmaFromId,
   nextIdForTurma,
+  tarifaPropinaAluno,
 } from "@/lib/classe-congo";
 
 const seed = seedJson as Seed;
@@ -36,20 +37,39 @@ function requireEdit(get: () => { activeOperator: string; operators: string[] })
   assertCanEdit(get().activeOperator || "", get().operators || []);
 }
 
-/** Meses de propina já pagos na ficha (campo ou inferência mensalidade1 / líquido). */
+/** Meses de propina já pagos na ficha (campo ou inferência mensalidade1 / líquido).
+ *  Política 2026-27: a 1.ª propina (Outubro) paga-se na matrícula. */
 function inferMesesAdiantados(a: Aluno): number {
-  const prop = Number(a.propina) || 0;
+  const prop = tarifaPropinaAluno(a);
   const mens = Number(a.mensalidade1) || 0;
-  if (!(mens > 0)) return 0;
   const saved = Number(a.mesesPropina) || 0;
-  if (saved > 0 && prop > 0 && mens + 1 >= prop * 0.5) {
-    return Math.min(9, saved);
-  }
-  if (prop > 0) {
+  if (saved > 0) return Math.min(9, saved);
+  if (prop > 0 && mens > 0) {
     const ratio = Math.round(mens / prop);
     if (ratio >= 2 && ratio <= 9 && Math.abs(mens - prop * ratio) <= prop * 0.02) return ratio;
+    if (mens + 1 >= prop * 0.5) return 1;
   }
+  const matriculado =
+    (a.statusPag && a.statusPag !== "pendente") ||
+    Number(a.liquido) > 0 ||
+    Boolean(a.dataPag) ||
+    Number(a.inscricao) > 0;
+  if (matriculado) return 1;
   return 0;
+}
+
+/** Adiantamento da matrícula nunca é Setembro — a 1.ª propina é Outubro. */
+function moverSetembroParaOutubro(
+  pagamentos: Record<string, number>,
+  pagamentosEm: Record<string, string> = {},
+): void {
+  const setVal = Number(pagamentos.set) || 0;
+  if (setVal > 0 && !(Number(pagamentos.out) > 0)) {
+    pagamentos.out = setVal;
+    if (pagamentosEm.set) pagamentosEm.out = pagamentosEm.set;
+  }
+  delete pagamentos.set;
+  delete pagamentosEm.set;
 }
 
 /** Numeração interna mensal: PREFIXO-AAAA-MM-001 (reinicia cada mês). */
@@ -215,6 +235,7 @@ type Store = ExtraState & {
   /** Varre propinas, BAI, overrides e IDs apagados; repõe fichas ocultas. */
   recuperarAlunosOcultos: () => { restaurados: number; detalhes: string[] };
   sanearAlunosDuplicados: () => { removidos: number; detalhes: string[] };
+  reabrirAlunosUnicos: () => { restaurados: number; detalhes: string[] };
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
   updateReciboSalario: (
@@ -340,6 +361,8 @@ export function estadoPropinaMes(
   dataPagamento?: string,
   hoje = new Date(),
 ): EstadoPropinaMes {
+  // Setembro não é mês de propina neste ano lectivo (1.ª = Outubro).
+  if (mesLetivo === "set" && !(valorPago > 0)) return "futuro";
   const { inicio, fim } = limitePropina(mesLetivo);
   const h = new Date(hoje);
   h.setHours(12, 0, 0, 0);
@@ -1037,7 +1060,7 @@ export const useFinance = create<Store>()(
         // Sincronizar com Propinas: criar linha de mensalidade se ainda não existir
         const jaTemPropina = (get().mensalidades || []).some((m) => m.id === row.id);
         if (!jaTemPropina) {
-          const propMes = Number(row.propina) || 0;
+          const propMes = tarifaPropinaAluno(row);
           const nMeses = Math.min(
             Math.max(0, Number(row.mesesPropina) || 0),
             MESES_PROPINA_ADIANTADOS.length,
@@ -1052,10 +1075,7 @@ export const useFinance = create<Store>()(
               if (row.dataPag) pagamentosEm[mesKey] = row.dataPag;
             }
             // Legado: mapping antigo começava em "set" — remover se igual à propina adiantada
-            if (pagamentos.set === propMes && !MESES_PROPINA_ADIANTADOS.slice(0, nMeses).includes("set" as never)) {
-              delete pagamentos.set;
-              delete pagamentosEm.set;
-            }
+            moverSetembroParaOutubro(pagamentos, pagamentosEm);
           }
           set({
             mensalidades: [
@@ -1262,7 +1282,7 @@ export const useFinance = create<Store>()(
         let added = 0;
         let updated = 0;
         for (const a of alunos) {
-          const propMes = Number(a.propina) || 0;
+          const propMes = tarifaPropinaAluno(a);
           const nMeses = Math.min(
             Math.max(0, inferMesesAdiantados(a)),
             MESES_PROPINA_ADIANTADOS.length,
@@ -1316,12 +1336,14 @@ export const useFinance = create<Store>()(
             const nextEm = { ...((existing as { pagamentosEm?: Record<string, string> }).pagamentosEm || {}) };
             let changed = false;
             for (const [k, v] of Object.entries(pagamentos)) {
+              if (k === "set") continue;
               if (!nextPag[k] || nextPag[k] <= 0) {
                 nextPag[k] = v;
                 if (pagamentosEm[k]) nextEm[k] = pagamentosEm[k];
                 changed = true;
               }
             }
+            moverSetembroParaOutubro(nextPag, nextEm);
             // Corrigir legado: mesesPropina contava a partir de "set"; agora a 1.ª é "out"
             if (
               nextPag.set === propMes &&
@@ -1618,11 +1640,35 @@ export const useFinance = create<Store>()(
        *  na conta corrente — o BAI recebe o valor integral uma só vez. */
       confirmPropinaBai: (id, mes) => {
         requireEdit(get);
+        if (mes === "set") {
+          const row0 = get().mensalidades.find((m) => m.id === id);
+          const vSet = Number(row0?.pagamentos?.set || 0);
+          if (vSet > 0) {
+            set({
+              mensalidades: get().mensalidades.map((m) =>
+                m.id === id
+                  ? {
+                      ...m,
+                      pagamentos: { ...m.pagamentos, out: m.pagamentos.out || vSet, set: 0 },
+                      pagamentosEm: { ...(m.pagamentosEm || {}), out: m.pagamentosEm?.out || m.pagamentosEm?.set || "" },
+                    }
+                  : m,
+              ),
+            });
+          }
+          mes = "out";
+        }
         const row = get().mensalidades.find((m) => m.id === id);
         if (!row) return { ok: false, message: "Aluno não encontrado em Propinas." };
         const valorDigitado = Number(row.pagamentos?.[mes] || 0);
         if (valorDigitado <= 0) return { ok: false, message: "Indique um valor pago maior que zero antes de salvar." };
-        const tarifa = Number(row.propina) || valorDigitado;
+        const tarifa =
+          Number(row.propina) ||
+          tarifaPropinaAluno({
+            propina: row.propina,
+            turma: row.turma,
+          }) ||
+          valorDigitado;
         const excedente = tarifa > 0 ? Math.max(0, Math.round(valorDigitado - tarifa)) : 0;
         const alocado = excedente > 0 ? tarifa : valorDigitado;
         const movId = `APP-PROP-${id}-${mes}`;
@@ -1700,7 +1746,10 @@ export const useFinance = create<Store>()(
         requireEdit(get);
         const row = get().mensalidades.find((m) => m.id === id);
         if (!row) return { ok: false, message: "Aluno não encontrado em Propinas.", aplicado: 0 };
-        const tarifa = Number(row.propina) || 0;
+        const tarifa =
+          Number(row.propina) ||
+          tarifaPropinaAluno({ propina: row.propina, turma: row.turma }) ||
+          0;
         const ja = Number(row.pagamentos?.[mes] || 0);
         const falta = Math.max(0, tarifa - ja);
         const saldo = saldoCreditoDe(get().contaCorrente || [], id);
@@ -2222,6 +2271,7 @@ export const useFinance = create<Store>()(
       },
       recuperarAlunosOcultos: () => recuperarAlunosOcultos(),
       sanearAlunosDuplicados: () => sanearAlunosDuplicados(),
+      reabrirAlunosUnicos: () => reabrirAlunosUnicos(),
       importLancamentos: (rows) => {
         requireEdit(get);
         let n = 0;
@@ -3534,33 +3584,67 @@ export function reporPropinasFromMatriculas(): { alunos: number; removidos: numb
   }
   const activeIds = new Set(alunos.map((a) => a.id));
   const leftovers = old.filter((m) => m?.id && !activeIds.has(m.id));
+  const cc = [...(state.contaCorrente || [])].map((c) =>
+    c.mes === "set" && (c.tipo === "pagamento" || c.tipo === "aplicacao")
+      ? { ...c, mes: "out", descricao: (c.descricao || "").replace(/[Ss]etembro/g, "Outubro") }
+      : c,
+  );
   const next: Mensalidade[] = alunos.map((a) => {
     let row = byId.get(a.id);
     if (!row) {
       const nn = normalizeNomeAluno(a.nome);
       row = leftovers.find((m) => normalizeNomeAluno(m.nome) === nn);
     }
+    const tarifa = tarifaPropinaAluno(a) || Number(row?.propina) || 0;
+    const pagamentos = { ...(row?.pagamentos || {}) };
+    const pagamentosEm = { ...(row?.pagamentosEm || {}) };
+    const nAdiant = inferMesesAdiantados(a);
+    moverSetembroParaOutubro(pagamentos, pagamentosEm);
+    if (nAdiant > 0 && tarifa > 0) {
+      for (let i = 0; i < nAdiant; i++) {
+        const mesKey = MESES_PROPINA_ADIANTADOS[i];
+        if (!pagamentos[mesKey] || pagamentos[mesKey] <= 0) {
+          pagamentos[mesKey] = tarifa;
+          pagamentosEm[mesKey] = String(a.dataPag || new Date().toISOString().slice(0, 10));
+        }
+      }
+      moverSetembroParaOutubro(pagamentos, pagamentosEm);
+      const jaCc = cc.some(
+        (c) => c.alunoId === a.id && c.mes === "out" && (c.tipo === "pagamento" || c.tipo === "aplicacao"),
+      );
+      if (!jaCc && (pagamentos.out || 0) > 0) {
+        const seq = cc.filter((c) => c.alunoId === a.id).length + 1;
+        cc.push({
+          id: `CC-OUT-${a.id}`,
+          alunoId: a.id,
+          data: pagamentosEm.out || new Date().toISOString().slice(0, 10),
+          tipo: "pagamento",
+          valor: Number(pagamentos.out) || tarifa,
+          mes: "out",
+          descricao: "Propina Outubro paga antecipadamente na matrícula",
+          doc: `CC-${a.id}-${String(seq).padStart(4, "0")}`,
+        });
+      }
+    }
     return {
       id: a.id,
       nome: a.nome,
       turma: a.turma || "",
-      propina: Number(a.propina) || Number(row?.propina) || 0,
-      pagamentos: row?.pagamentos || {},
-      pagamentosEm: row?.pagamentosEm || {},
+      propina: tarifa,
+      pagamentos,
+      pagamentosEm,
       obs: row?.obs || a.obs || "",
     };
   });
   const removidos = Math.max(0, old.length - next.length);
-  if (old.length !== next.length || old.some((m, i) => m.id !== next[i]?.id)) {
-    useFinance.setState({ mensalidades: next });
-    try {
-      useFinance.getState().pushAudit?.(
-        "propina_repor",
-        `${next.length} aluno(s) · removidas ${removidos} linha(s) órfã(s)/duplicada(s)`,
-      );
-    } catch {
-      /* optional */
-    }
+  useFinance.setState({ mensalidades: next, contaCorrente: cc });
+  try {
+    useFinance.getState().pushAudit?.(
+      "propina_repor",
+      `${next.length} aluno(s) · Outubro adiantado · removidas ${removidos} linha(s)`,
+    );
+  } catch {
+    /* optional */
   }
   return { alunos: next.length, removidos };
 }
@@ -3608,6 +3692,12 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
     list.sort((a, b) => score(b) - score(a));
     const keep = list[0];
     for (const dup of list.slice(1)) {
+      const stub =
+        !dup.dataNascimento &&
+        !(dup.telefone || "").trim() &&
+        !(dup.encarregado || "").trim();
+      const cadeia = Boolean(keep.idAnterior === dup.id || dup.idAnterior === keep.id);
+      if (!stub && !cadeia) continue;
       toDelete.add(dup.id);
       detalhes.push(`Duplicado «${nome}»: manter ${keep.id}, esconder ${dup.id}`);
     }
@@ -3644,6 +3734,103 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
   }
 
   return { removidos: toDelete.size, detalhes };
+}
+
+/** Reabre o aluno que falta neste PC: deletedIds + linha de Propinas + BAI APP-PROP/APP-MAT. */
+export function reabrirAlunosUnicos(): { restaurados: number; detalhes: string[] } {
+  const state = useFinance.getState();
+  const extras = [...(state.alunosExtra || [])];
+  const overrides = { ...(state.alunosOverrides || {}) };
+  let deleted = [...(state.alunosDeletedIds || [])];
+  const mensalidades = state.mensalidades || [];
+  const detalhes: string[] = [];
+  const visiveis = alunosAll(extras, overrides, deleted);
+  const nomes = new Set(visiveis.map((a) => normalizeNomeAluno(a.nome)).filter(Boolean));
+  const idsVis = new Set(visiveis.map((a) => a.id));
+
+  const keepDeleted: string[] = [];
+  for (const id of deleted) {
+    const extra = extras.find((a) => a.id === id);
+    const seedHit = seed.alunos.find((a) => a.id === id);
+    const mens = mensalidades.find((m) => m.id === id);
+    const fonteNome = extra?.nome || seedHit?.nome || mens?.nome || overrides[id]?.nome;
+    if (!extra && !seedHit && !mens && !overrides[id]) {
+      keepDeleted.push(id);
+      continue;
+    }
+    const nn = normalizeNomeAluno(String(fonteNome || ""));
+    if (idsVis.has(id) || (nn && nomes.has(nn))) {
+      keepDeleted.push(id);
+      continue;
+    }
+    deleted = deleted.filter((x) => x !== id);
+    if (!extra && !seedHit) {
+      extras.push(
+        stubAlunoFromTrace(id, overrides[id], mens, undefined, undefined),
+      );
+    }
+    detalhes.push(`Reaberto ${id} · ${fonteNome || id}`);
+    if (nn) nomes.add(nn);
+    idsVis.add(id);
+  }
+
+  for (const m of mensalidades) {
+    if (!m?.id || idsVis.has(m.id)) continue;
+    const nn = normalizeNomeAluno(m.nome);
+    if (!nn || nomes.has(nn)) continue;
+    if (deleted.includes(m.id)) deleted = deleted.filter((x) => x !== m.id);
+    if (!extras.some((a) => a.id === m.id) && !seed.alunos.some((a) => a.id === m.id)) {
+      extras.push(stubAlunoFromTrace(m.id, overrides[m.id], m, undefined, undefined));
+    }
+    detalhes.push(`Encontrado em Propinas ${m.id} · ${m.nome}`);
+    nomes.add(nn);
+    idsVis.add(m.id);
+  }
+
+  const bai = [...(seed.movimentosBai || []), ...(state.movimentosBaiExtra || [])];
+  for (const mov of bai) {
+    const blob = `${mov.id || ""} ${mov.descricao || ""} ${mov.observacoes || ""}`;
+    const app = String(mov.id || "").match(/^APP-(?:PROP|MAT)-([A-Za-z0-9]+-\d+)/i);
+    const obs = String(mov.observacoes || "").match(/\bAluno\s+([A-Za-z0-9]+-\d+)/i);
+    const id = (app?.[1] || obs?.[1] || "").toUpperCase();
+    if (!id || idsVis.has(id)) continue;
+    let nome = "";
+    const pn = String(mov.descricao || "").match(/Propina\s+\w+\s+·\s+(.+)$/i);
+    const mn = String(mov.descricao || "").match(/Matr[ií]cula\s+(.+?)\s*\(/i);
+    nome = (pn?.[1] || mn?.[1] || "").replace(/\s+/g, " ").trim();
+    const nn = normalizeNomeAluno(nome);
+    if (nn && nomes.has(nn)) continue;
+    if (!nn && !mensalidades.some((x) => x.id === id)) continue;
+    if (deleted.includes(id)) deleted = deleted.filter((x) => x !== id);
+    const mens = mensalidades.find((x) => x.id === id);
+    if (!extras.some((a) => a.id === id) && !seed.alunos.some((a) => a.id === id)) {
+      extras.push(
+        stubAlunoFromTrace(id, overrides[id], mens, nome || undefined, {
+          nome: nome || undefined,
+          liquido: Number(mov.entrada) || 0,
+          dataPag: mov.data,
+        }),
+      );
+    }
+    detalhes.push(`Encontrado no BAI ${id} · ${nome || id}`);
+    if (nn) nomes.add(nn);
+    idsVis.add(id);
+  }
+
+  if (detalhes.length === 0) return { restaurados: 0, detalhes: [] };
+  useFinance.setState({
+    alunosExtra: extras,
+    alunosDeletedIds: Array.from(new Set(deleted)),
+  });
+  try {
+    useFinance.getState().pushAudit?.(
+      "reabrir_unicos",
+      `${detalhes.length}: ${detalhes.slice(0, 8).join(" · ")}`,
+    );
+  } catch {
+    /* optional */
+  }
+  return { restaurados: detalhes.length, detalhes };
 }
 
 export function recuperarAlunosOcultos(): { restaurados: number; detalhes: string[] } {
@@ -3898,6 +4085,7 @@ export function saldoCreditoDe(rows: ContaCorrenteMov[] | undefined, alunoId: st
   let s = 0;
   for (const m of rows || []) {
     if (m.alunoId !== alunoId) continue;
+    if (m.tipo === "pagamento") continue;
     if (m.tipo === "credito") s += Number(m.valor) || 0;
     else s -= Number(m.valor) || 0;
   }
