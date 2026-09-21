@@ -35,6 +35,7 @@ export type FinanceCloudPayload = {
   crmEnvios?: unknown[];
   codigosRecibo?: unknown[];
   documentosAluno?: unknown[];
+  contaCorrente?: unknown[];
   clientUpdatedAt?: string;
 };
 
@@ -214,6 +215,7 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
       crmEnvios: mergeById(current.crmEnvios, data.crmEnvios),
       codigosRecibo: mergeById(current.codigosRecibo, data.codigosRecibo),
       documentosAluno: mergeById(current.documentosAluno, data.documentosAluno),
+      contaCorrente: mergeById(current.contaCorrente, data.contaCorrente),
       auditLog: mergeById(current.auditLog, data.auditLog).slice(-200),
       sessionLog: (data.sessionLog?.length ? data.sessionLog : current.sessionLog) || [],
       clientUpdatedAt: updatedAt,
@@ -280,6 +282,7 @@ export function sliceFromStore(s: {
   crmEnvios?: unknown[];
   codigosRecibo?: unknown[];
   documentosAluno?: unknown[];
+  contaCorrente?: unknown[];
 }): FinanceCloudPayload {
   return sliceFromStoreDetailed(s).payload;
 }
@@ -314,6 +317,7 @@ export function sliceFromStoreDetailed(s: {
   crmEnvios?: unknown[];
   codigosRecibo?: unknown[];
   documentosAluno?: unknown[];
+  contaCorrente?: unknown[];
 }): SliceCloudResult {
   const { list: alunosExtraSafe, omitted: o1 } = stripLargeFotosFromAlunos(
     s.alunosExtra || [],
@@ -351,6 +355,7 @@ export function sliceFromStoreDetailed(s: {
       crmEnvios: s.crmEnvios || [],
       codigosRecibo: s.codigosRecibo || [],
       documentosAluno: s.documentosAluno || [],
+      contaCorrente: s.contaCorrente || [],
     },
   };
 }

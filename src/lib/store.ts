@@ -5,6 +5,7 @@ import type {
   Aluno,
   CrmEnvio,
   CodigoRecibo,
+  ContaCorrenteMov,
   DocumentoAluno,
   DocumentoAlunoEstado,
   FaturaPropina,
@@ -145,6 +146,8 @@ type ExtraState = {
   codigosRecibo: CodigoRecibo[];
   /** Arquivo do aluno: faturas e recibos emitidos (histórico por aluno). */
   documentosAluno: DocumentoAluno[];
+  /** Créditos / aplicações / reembolsos por aluno (conta corrente). */
+  contaCorrente: ContaCorrenteMov[];
 };
 
 type Store = ExtraState & {
@@ -174,6 +177,12 @@ type Store = ExtraState & {
   importCensoAlunos: (alunos: Aluno[], mensalidades?: Mensalidade[]) => number;
 
   confirmPropinaBai: (id: string, mes: string) => { ok: boolean; message: string };
+  /**
+   * Aplica saldo credor à propina de um mês sem criar movimento BAI
+   * (o dinheiro já entrou no recebimento original).
+   */
+  aplicarCreditoPropina: (id: string, mes: string) => { ok: boolean; message: string; aplicado: number };
+  saldoCreditoAluno: (id: string) => number;
   setFoto: (id: string, dataUrl: string) => void;
   removeExtra: (id: string) => void;
   updateExtra: (id: string, patch: Partial<Lancamento>) => void;
@@ -368,6 +377,7 @@ export const useFinance = create<Store>()(
       crmEnvios: [],
       codigosRecibo: [],
       documentosAluno: [],
+      contaCorrente: [],
       setUiPrefs: (patch) => {
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
       },
@@ -1596,15 +1606,42 @@ export const useFinance = create<Store>()(
         get().pushAudit("import_censo", `${fused} aluno(s) · ${incoming.length} no ficheiro`);
         return fused;
       },
-      /** Confirma o valor da propina no mês e regista entrada no Banco BAI (id estável por aluno+mês). */
+      /** Confirma o valor da propina no mês e regista entrada no Banco BAI (id estável por aluno+mês).
+       *  Se o valor digitado for maior que a tarifa, a diferença fica como crédito
+       *  na conta corrente — o BAI recebe o valor integral uma só vez. */
       confirmPropinaBai: (id, mes) => {
         requireEdit(get);
         const row = get().mensalidades.find((m) => m.id === id);
         if (!row) return { ok: false, message: "Aluno não encontrado em Propinas." };
-        const valor = Number(row.pagamentos?.[mes] || 0);
-        if (valor <= 0) return { ok: false, message: "Indique um valor pago maior que zero antes de salvar." };
+        const valorDigitado = Number(row.pagamentos?.[mes] || 0);
+        if (valorDigitado <= 0) return { ok: false, message: "Indique um valor pago maior que zero antes de salvar." };
+        const tarifa = Number(row.propina) || valorDigitado;
+        const excedente = tarifa > 0 ? Math.max(0, Math.round(valorDigitado - tarifa)) : 0;
+        const alocado = excedente > 0 ? tarifa : valorDigitado;
         const movId = `APP-PROP-${id}-${mes}`;
         const hoje = new Date().toISOString().slice(0, 10);
+        const ccPrev = (get().contaCorrente || []).filter(
+          (c) => !(c.alunoId === id && c.mes === mes && c.tipo === "credito" && c.baiId === movId),
+        );
+        let ccNext = ccPrev;
+        if (excedente > 0) {
+          const seq = ccPrev.filter((c) => c.alunoId === id).length + 1;
+          ccNext = [
+            ...ccPrev,
+            {
+              id: `CC-${id}-${mes}-${Date.now()}`,
+              alunoId: id,
+              data: hoje,
+              tipo: "credito" as const,
+              valor: excedente,
+              mes,
+              descricao: `Excedente propina ${mes} (recebido ${valorDigitado} · tarifa ${tarifa})`,
+              doc: `CC-${id}-${String(seq).padStart(4, "0")}`,
+              baiId: movId,
+              criadoPor: get().activeOperator,
+            },
+          ];
+        }
         // Remove movimento anterior do mesmo aluno/mês (re-sincronizar)
         set({
           movimentosBaiExtra: (get().movimentosBaiExtra || []).filter((m) => m.id !== movId),
@@ -1612,28 +1649,87 @@ export const useFinance = create<Store>()(
             m.id === id
               ? {
                   ...m,
+                  pagamentos: { ...m.pagamentos, [mes]: alocado },
                   pagamentosEm: { ...(m.pagamentosEm || {}), [mes]: hoje },
                 }
               : m,
           ),
+          contaCorrente: ccNext,
         });
         const ok = pushBaiMovimento(get, set, {
           id: movId,
           data: hoje,
-          entrada: valor,
+          entrada: valorDigitado,
           banco: "PROPINA-APP",
-          descricao: `Propina ${mes} · ${row.nome}`,
-          observacoes: `Aluno ${id} · confirmado Departamento de Finanças`,
+          descricao:
+            excedente > 0
+              ? `Propina ${mes} ${alocado} + crédito ${excedente} · ${row.nome}`
+              : `Propina ${mes} · ${row.nome}`,
+          observacoes: `Aluno ${id} · confirmado Departamento de Finanças${
+            excedente > 0 ? ` · crédito ${excedente} Kz` : ""
+          }`,
         });
         if (!ok) return { ok: false, message: "Não foi possível registar no BAI." };
-        get().pushAudit("bai_entrada_propina", `${id} · ${mes} · ${valor}`);
-        // Classificar pontualidade
+        get().pushAudit(
+          "bai_entrada_propina",
+          `${id} · ${mes} · recebido ${valorDigitado} · alocado ${alocado}${
+            excedente > 0 ? ` · crédito ${excedente}` : ""
+          }`,
+        );
         const pontual = propinaNoPrazo(mes, hoje);
+        const base = pontual
+          ? `Propina ${mes} · ${row.nome}: ${alocado} Kz no prazo (Pago).`
+          : `Propina ${mes} · ${row.nome}: ${alocado} Kz fora do prazo (Pago c/ multa).`;
         return {
           ok: true,
-          message: pontual
-            ? `Propina ${mes} · ${row.nome}: ${valor} Kz no BAI (dentro do prazo → Pago).`
-            : `Propina ${mes} · ${row.nome}: ${valor} Kz no BAI (fora do prazo → Pago c/ multa).`,
+          message:
+            excedente > 0
+              ? `${base} Recebido ${valorDigitado} Kz no BAI. Crédito ${excedente} Kz na conta corrente (sem 2.ª entrada).`
+              : `${base} ${valorDigitado} Kz no BAI.`,
+        };
+      },
+      saldoCreditoAluno: (id) => saldoCreditoDe(get().contaCorrente || [], id),
+      aplicarCreditoPropina: (id, mes) => {
+        requireEdit(get);
+        const row = get().mensalidades.find((m) => m.id === id);
+        if (!row) return { ok: false, message: "Aluno não encontrado em Propinas.", aplicado: 0 };
+        const tarifa = Number(row.propina) || 0;
+        const ja = Number(row.pagamentos?.[mes] || 0);
+        const falta = Math.max(0, tarifa - ja);
+        const saldo = saldoCreditoDe(get().contaCorrente || [], id);
+        if (saldo <= 0) return { ok: false, message: "Este aluno não tem crédito disponível.", aplicado: 0 };
+        if (falta <= 0) return { ok: false, message: "Este mês já está liquidado. Nada a aplicar.", aplicado: 0 };
+        const aplicado = Math.min(saldo, falta);
+        const hoje = new Date().toISOString().slice(0, 10);
+        const seq = (get().contaCorrente || []).filter((c) => c.alunoId === id).length + 1;
+        const mov: ContaCorrenteMov = {
+          id: `CC-APL-${id}-${mes}-${Date.now()}`,
+          alunoId: id,
+          data: hoje,
+          tipo: "aplicacao",
+          valor: aplicado,
+          mes,
+          descricao: `Aplicação de crédito à propina ${mes}`,
+          doc: `CC-${id}-${String(seq).padStart(4, "0")}`,
+          criadoPor: get().activeOperator,
+        };
+        set({
+          mensalidades: get().mensalidades.map((m) =>
+            m.id === id
+              ? {
+                  ...m,
+                  pagamentos: { ...m.pagamentos, [mes]: ja + aplicado },
+                  pagamentosEm: { ...(m.pagamentosEm || {}), [mes]: hoje },
+                }
+              : m,
+          ),
+          contaCorrente: [...(get().contaCorrente || []), mov],
+        });
+        get().pushAudit("cc_aplicar", `${id} · ${mes} · ${aplicado}`);
+        return {
+          ok: true,
+          aplicado,
+          message: `Aplicados ${aplicado} Kz de crédito a ${mes} · ${row.nome}. Sem movimento BAI (já recebido).`,
         };
       },
       setFoto: (id, dataUrl) => {
@@ -2426,6 +2522,7 @@ export const useFinance = create<Store>()(
           crmEnvios: [],
           codigosRecibo: [],
           documentosAluno: [],
+          contaCorrente: [],
         });
       },
       resetLocalStorage: () => {
@@ -2509,6 +2606,7 @@ export const useFinance = create<Store>()(
           alunosExtra: extras,
           alunosOverrides: overrides,
           alunosDeletedIds: Array.isArray(s.alunosDeletedIds) ? s.alunosDeletedIds : [],
+          contaCorrente: Array.isArray(s.contaCorrente) ? s.contaCorrente : [],
         };
       },
       partialize: (s) => ({
@@ -2537,6 +2635,7 @@ export const useFinance = create<Store>()(
         crmEnvios: s.crmEnvios || [],
         codigosRecibo: s.codigosRecibo || [],
         documentosAluno: s.documentosAluno || [],
+        contaCorrente: s.contaCorrente || [],
       }),
     },
   ),
@@ -3716,6 +3815,16 @@ export function salariosAll(
 
 
 /** Acrescenta movimento à conta BAI (entrada ou saída) e actualiza saldo. */
+export function saldoCreditoDe(rows: ContaCorrenteMov[] | undefined, alunoId: string): number {
+  let s = 0;
+  for (const m of rows || []) {
+    if (m.alunoId !== alunoId) continue;
+    if (m.tipo === "credito") s += Number(m.valor) || 0;
+    else s -= Number(m.valor) || 0;
+  }
+  return Math.round(s);
+}
+
 function pushBaiMovimento(
   get: () => {
     movimentosBaiExtra: MovimentoBai[];

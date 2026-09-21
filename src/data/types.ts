@@ -340,6 +340,24 @@ export type Mensalidade = {
   obs: string;
 };
 
+/** Movimento da conta corrente do aluno/encarregado (crédito a favor, não é 2.ª entrada BAI). */
+export type TipoMovimentoCC = "credito" | "aplicacao" | "reembolso";
+
+export type ContaCorrenteMov = {
+  id: string;
+  alunoId: string;
+  data: string;
+  tipo: TipoMovimentoCC;
+  /** Sempre positivo. credito aumenta saldo a favor; aplicacao/reembolso diminuem. */
+  valor: number;
+  mes?: string;
+  descricao: string;
+  doc: string;
+  /** Movimento BAI associado (só no crédito gerado por recebimento). */
+  baiId?: string;
+  criadoPor?: string;
+};
+
 export type Salario = {
   id: string;
   nome: string;

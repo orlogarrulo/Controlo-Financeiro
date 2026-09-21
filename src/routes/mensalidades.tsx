@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { alunoMatchesQuery } from "@/lib/aluno-display";
 import { NomeAluno } from "@/components/nome-aluno";
-import { Save, Receipt } from "lucide-react";
-import { createFileRoute } from "@tanstack/react-router";
+import { Save, Receipt, Wallet } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/kpi";
@@ -55,6 +55,8 @@ function Mensalidades() {
   const alunosDeletedIds = useFinance((s) => s.alunosDeletedIds || []);
   const setMensalidade = useFinance((s) => s.setMensalidade);
   const confirmPropinaBai = useFinance((s) => s.confirmPropinaBai);
+  const aplicarCreditoPropina = useFinance((s) => s.aplicarCreditoPropina);
+  const contaCorrente = useFinance((s) => s.contaCorrente || []);
   const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
   const activeOperator = useFinance((s) => s.activeOperator);
@@ -114,6 +116,24 @@ function Mensalidades() {
   function jaNoBai(id: string, mes: string) {
     const movId = `APP-PROP-${id}-${mes}`;
     return movimentosBaiExtra.some((m) => m.id === movId);
+  }
+
+  function creditoDe(id: string) {
+    return useFinance.getState().saldoCreditoAluno(id);
+  }
+
+  function aplicarCredito(id: string, mes: string) {
+    if (!canEdit) {
+      toast.error(VIEW_ONLY_MSG);
+      return;
+    }
+    try {
+      const r = aplicarCreditoPropina(id, mes);
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao aplicar crédito");
+    }
   }
 
   function salvarBai(id: string, mes: string) {
@@ -198,7 +218,7 @@ function Mensalidades() {
         }
         kicker="Setembro a Junho"
         title="Mensalidades"
-        description="Prazo sem multa: do dia 30 do mês da propina até ao dia 10 do mês seguinte. Fora disso: pendente com multa (ou pago com multa se pagar tarde)."
+        description="Prazo sem multa: do dia 30 do mês da propina até ao dia 10 do mês seguinte. Valor recebido acima da tarifa → crédito na conta corrente (1 só entrada BAI). Aplicar crédito no mês seguinte não volta a mexer no banco."
       />
 
       <div className="no-print mb-3">
@@ -215,7 +235,10 @@ function Mensalidades() {
         {q.trim() ? ` de ${rows.length}` : ""} aluno(s) · Total recebido (lista): {formatKz(grand)}.{" "}
         {canEdit
           ? "Introduza o valor e clique em «BAI» para confirmar. Estados: Pago · Pago c/ multa · Em prazo · Pendente · multa."
-          : "Modo consulta — só visualizar e imprimir. Edição reservada ao Colaborador 1."}
+          : "Modo consulta — só visualizar e imprimir. Edição reservada ao Colaborador 1."}{" "}
+        <Link to="/conta-corrente" className="underline">
+          Conta corrente
+        </Link>
       </p>
       <div ref={printRef}>
         <header className="print-only mb-4 hidden items-center gap-3 border-b border-[var(--color-line-strong)] pb-3 print:flex">
@@ -264,6 +287,7 @@ function Mensalidades() {
                 </tr>
               ) : (
                 filtered.map((r) => {
+                  const cred = creditoDe(r.id);
                   const paid = MESES_LETIVOS.reduce((s, m) => s + (r.pagamentos[m] || 0), 0);
                   const monthsPaid = MESES_LETIVOS.filter((m) => (r.pagamentos[m] || 0) > 0).length;
                   const emAtraso = MESES_LETIVOS.filter((m) => {
@@ -292,6 +316,7 @@ function Mensalidades() {
                         <p className="text-xs text-[var(--color-muted)]">
                           {r.id} · {r.turma}
                           {alunoMetaById.get(r.id)?.familia ? ` · ${alunoMetaById.get(r.id)?.familia}` : ""}
+                          {cred > 0 ? ` · crédito ${formatKz(cred)}` : ""}
                         </p>
                       </td>
                       <td className="px-3 py-2 tabular-nums text-xs">{formatKz(r.propina)}</td>
@@ -369,6 +394,18 @@ function Mensalidades() {
                                     Recibo
                                   </Button>
                                 </div>
+                              ) : cred > 0 && canEdit && val < r.propina ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  className="h-7 px-1 text-[10px]"
+                                  title="Aplicar crédito deste aluno a este mês (sem BAI)"
+                                  onClick={() => aplicarCredito(r.id, m)}
+                                >
+                                  <Wallet className="mr-0.5 size-3" />
+                                  Crédito
+                                </Button>
                               ) : null}
                             </div>
                             <span className="hidden print:inline text-xs tabular-nums">

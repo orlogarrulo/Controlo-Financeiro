@@ -356,6 +356,10 @@ function applyPayload(p: FinanceCloudPayload) {
       (local.documentosAluno as never[]) || [],
       (p.documentosAluno as never[]) || [],
     ) as never[],
+    contaCorrente: mergeById(
+      (local.contaCorrente as never[]) || [],
+      (p.contaCorrente as never[]) || [],
+    ) as never[],
   });
   // Alinha botões com extrato após aplicar nuvem
   try {
