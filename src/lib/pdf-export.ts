@@ -785,6 +785,227 @@ export async function htmlToPdfBlob(
   }
 }
 
+
+/**
+ * Extrai o corpo HTML (fragmento ou documento completo) para embutir nas vias.
+ */
+function extractPrintableBody(html: string): string {
+  const raw = (html || "").trim();
+  if (!raw) return "";
+  const bodyMatch = raw.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  if (bodyMatch) return bodyMatch[1].trim();
+  return raw;
+}
+
+/**
+ * Duas vias A4 do mesmo documento:
+ * 1) Originale | Original (cores) — 1.ª página
+ * 2) Copie | Cópia (preto e branco) — 2.ª página
+ * Sem numeração de páginas no conteúdo.
+ */
+export function wrapDocumentoDuasViasHtml(html: string): string {
+  const body = extractPrintableBody(html);
+  const badge = (label: string, variant: "original" | "copie") =>
+    `<div class="ecc-via-badge ecc-via-badge-${variant}" aria-hidden="true">${label}</div>`;
+
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  /* Sem cabeçalho/rodapé de numeração no conteúdo gerado */
+  html, body {
+    margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .ecc-via {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 270mm;
+    page-break-after: always;
+    break-after: page;
+    padding: 0;
+    margin: 0;
+  }
+  .ecc-via:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .ecc-via-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 50;
+    font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1.5px solid;
+    background: #ffffff;
+    line-height: 1.2;
+  }
+  .ecc-via-badge-original {
+    color: #1a4d3e;
+    border-color: #1a4d3e;
+  }
+  .ecc-via-badge-copie {
+    color: #374151;
+    border-color: #6b7280;
+  }
+  .ecc-via-copie .ecc-via-body {
+    filter: grayscale(100%);
+    -webkit-filter: grayscale(100%);
+  }
+  .ecc-via-body {
+    box-sizing: border-box;
+    width: 100%;
+  }
+</style>
+</head><body>
+  <section class="ecc-via ecc-via-original">
+    ${badge("Originale | Original", "original")}
+    <div class="ecc-via-body">${body}</div>
+  </section>
+  <section class="ecc-via ecc-via-copie">
+    ${badge("Copie | Cópia", "copie")}
+    <div class="ecc-via-body">${body}</div>
+  </section>
+</body></html>`;
+}
+
+/**
+ * PDF A4 com 2 vias (Original a cores + Cópia P&B) para faturas e recibos.
+ * PC: impressão HTML nativa · Telemóvel: PDF multipágina.
+ */
+export async function deliverFaturaReciboDuasVias(
+  html: string,
+  opts: {
+    filename: string;
+    openPrint?: boolean;
+    shareTitle?: string;
+    shareText?: string;
+  },
+): Promise<{ blob: Blob; filename: string; delivery?: PdfDelivery }> {
+  const dual = wrapDocumentoDuasViasHtml(html);
+  return deliverOfficialHtml(dual, {
+    filename: opts.filename,
+    forceSinglePage: false,
+    openPrint: opts.openPrint !== false,
+    shareTitle: opts.shareTitle,
+    shareText: opts.shareText,
+  });
+}
+
+/**
+ * Gera Blob PDF A4 com exactamente 2 páginas (Original + Cópia P&B).
+ * Usado em ZIP CRM, Mensalidades, Arquivo, etc.
+ */
+export async function htmlToPdfBlobDuasVias(
+  html: string,
+  opts?: { filename?: string },
+): Promise<{ blob: Blob; filename: string }> {
+  const { html2canvas, jsPDF } = await ensureLibs();
+  const wPx = A4_WIDTH_PX;
+  const filename =
+    opts?.filename || `documento-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const body = extractPrintableBody(html);
+  const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+
+  const variants: Array<{ key: "original" | "copie"; label: string }> = [
+    { key: "original", label: "Originale | Original" },
+    { key: "copie", label: "Copie | Cópia" },
+  ];
+
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i];
+    const stage = makeStage(false);
+    try {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = [
+        "width:100%",
+        "max-width:100%",
+        "background:#ffffff",
+        "color:#0f172a",
+        "box-sizing:border-box",
+        "padding:0",
+        "margin:0",
+        "position:relative",
+        "font-family:Georgia,'Times New Roman',Times,serif",
+        v.key === "copie" ? "filter:grayscale(100%);-webkit-filter:grayscale(100%)" : "",
+      ]
+        .filter(Boolean)
+        .join(";");
+
+      const badge = document.createElement("div");
+      badge.textContent = v.label;
+      badge.style.cssText = [
+        "position:absolute",
+        "top:4px",
+        "right:4px",
+        "z-index:50",
+        "font-family:system-ui,sans-serif",
+        "font-size:10px",
+        "font-weight:700",
+        "letter-spacing:0.04em",
+        "text-transform:uppercase",
+        "padding:4px 10px",
+        "border-radius:4px",
+        "border:1.5px solid",
+        "background:#ffffff",
+        v.key === "original" ? "color:#1a4d3e;border-color:#1a4d3e" : "color:#374151;border-color:#6b7280",
+      ].join(";");
+      wrap.appendChild(badge);
+
+      const box = document.createElement("div");
+      box.style.cssText = "width:100%;background:#ffffff;box-sizing:border-box;";
+      box.innerHTML = body;
+      wrap.appendChild(box);
+      stage.appendChild(wrap);
+
+      try {
+        const logoData = await resolveLogoDataUrl();
+        wrap.querySelectorAll("img").forEach((img) => {
+          const el = img as HTMLImageElement;
+          const s = (el.getAttribute("src") || el.src || "").toLowerCase();
+          if (s.includes("logo") || s.includes("escola") || !s || s.endsWith("/")) {
+            el.src = logoData;
+          }
+        });
+      } catch {
+        /* logo opcional */
+      }
+
+      await waitImages(stage);
+      await wait(80);
+
+      const canvas = await html2canvas(wrap, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: wPx,
+        windowWidth: wPx,
+        scrollX: 0,
+        scrollY: 0,
+      });
+
+      addCanvasToPdf(pdf, canvas, {
+        landscape: false,
+        forceSinglePage: true,
+        hasPriorPages: i > 0,
+      });
+    } finally {
+      stage.remove();
+    }
+  }
+
+  return { blob: pdf.output("blob"), filename };
+}
+
 export type PdfDelivery = "shared" | "opened" | "downloaded";
 
 /**

@@ -42,7 +42,7 @@ import type {
   Lancamento,
 } from "@/data/types";
 import { formatDate, formatKz } from "@/lib/format";
-import { htmlToPdfBlob } from "@/lib/pdf-export";
+import { htmlToPdfBlobDuasVias } from "@/lib/pdf-export";
 import {
   documentoOficialFromAluno,
   documentoReciboComCodigo,
@@ -250,7 +250,7 @@ function ArquivoPage() {
         .replace(/\s+/g, "-")
         .slice(0, 40);
       const fname = `${doc.tipo}-${doc.numero.replace(/[^\w\-]/g, "_")}_${safe}.pdf`;
-      const { blob } = await htmlToPdfBlob(html, { filename: fname, forceSinglePage: true });
+      const { blob } = await htmlToPdfBlobDuasVias(html, { filename: fname });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

@@ -35,7 +35,7 @@ import {
   useFinance,
 } from "@/lib/store";
 import { formatKz, formatDate } from "@/lib/format";
-import { htmlToPdfBlob } from "@/lib/pdf-export";
+import { htmlToPdfBlobDuasVias } from "@/lib/pdf-export";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Aluno, CrmEnvio, FaturaPropina } from "@/data/types";
 import {
@@ -771,7 +771,7 @@ function CrmPage() {
         const num = row.fatura?.numero || `REF-${a.id}`;
         const fname = `${num}_${safe}.pdf`;
         try {
-          const { blob } = await htmlToPdfBlob(html, {
+          const { blob } = await htmlToPdfBlobDuasVias(html, {
             filename: fname,
             forceSinglePage: true,
           });
@@ -933,7 +933,7 @@ function CrmPage() {
           .slice(0, 50);
         const fname = `${String(numeroRecibo).replace(/[^\w\-]/g, "_")}_${safe}.pdf`;
         try {
-          const { blob } = await htmlToPdfBlob(stamped, {
+          const { blob } = await htmlToPdfBlobDuasVias(stamped, {
             filename: fname,
             forceSinglePage: true,
           });

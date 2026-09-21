@@ -22,7 +22,7 @@ import {
   documentoReciboComCodigo,
   loadContacto,
 } from "@/lib/documento-matricula";
-import { htmlToPdfBlob } from "@/lib/pdf-export";
+import { htmlToPdfBlobDuasVias } from "@/lib/pdf-export";
 import { PrintActions } from "@/components/print-actions";
 import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
 
@@ -171,9 +171,8 @@ function Mensalidades() {
         pagoMes: valor,
         contacto: loadContacto(),
       });
-      const { blob } = await htmlToPdfBlob(doc.html, {
+      const { blob } = await htmlToPdfBlobDuasVias(doc.html, {
         filename: `Recibo-Propina-${id}-${mes}.pdf`,
-        forceSinglePage: true,
       });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");

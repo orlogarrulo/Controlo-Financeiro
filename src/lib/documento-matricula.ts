@@ -400,7 +400,8 @@ function viaLabelFromCount(vias: number): string {
 }
 
 /**
- * Garante código RC-YYYYMM-XXXX-NN registado no store (reutiliza se já existir no mesmo aluno+mês).
+ * Gera SEMPRE um código RC-YYYYMM-XXXX-NN novo e regista-o no store.
+ * Anti-fraude: cada emissão de recibo tem código único (nunca reutiliza o do mesmo aluno+mês).
  * Usar em TODOS os recibos de alunos (Matrículas, Mensalidades, CRM, Arquivo).
  */
 export function garantirCodigoReciboAluno(opts: {
@@ -411,17 +412,15 @@ export function garantirCodigoReciboAluno(opts: {
   rubricas?: string;
 }): { codigo: string; viaLabel: string; vias: number } {
   const s = useFinance.getState();
-  const existing =
-    typeof s.findCodigoReciboAlunoMes === "function"
-      ? s.findCodigoReciboAlunoMes(opts.alunoId, opts.mesKey)
-      : undefined;
-  if (existing?.codigo) {
-    const bumped =
-      typeof s.incrementCodigoReciboVia === "function"
-        ? s.incrementCodigoReciboVia(existing.id)
-        : undefined;
-    const vias = bumped?.vias || (existing.vias || 1) + 1;
-    return { codigo: existing.codigo, viaLabel: viaLabelFromCount(vias), vias };
+  // Contagem só informativa (quantas emissões já existem para aluno+mês)
+  let vias = 1;
+  try {
+    const list = (s.codigosRecibo || []).filter(
+      (r) => r.alunoId === opts.alunoId && r.mesKey === opts.mesKey,
+    );
+    vias = list.length + 1;
+  } catch {
+    vias = 1;
   }
   const reg = s.addCodigoRecibo({
     alunoId: opts.alunoId,
@@ -430,7 +429,7 @@ export function garantirCodigoReciboAluno(opts: {
     valor: opts.valor || 0,
     rubricas: opts.rubricas,
   });
-  return { codigo: reg.codigo, viaLabel: "1.ª via", vias: 1 };
+  return { codigo: reg.codigo, viaLabel: viaLabelFromCount(vias), vias };
 }
 
 /** Recibo oficial COM código de verificação (padronizado). */

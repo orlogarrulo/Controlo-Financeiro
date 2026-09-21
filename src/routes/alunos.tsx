@@ -21,6 +21,8 @@ import {
 } from "@/lib/regulamento-interno";
 import {
   htmlFragmentToA4Pdf,
+  deliverFaturaReciboDuasVias,
+  wrapDocumentoDuasViasHtml,
   htmlFragmentsToMultiPageA4Pdf,
   openPrintHtml,
   shareOrDownloadPdf,
@@ -2932,6 +2934,46 @@ function Alunos() {
 
 
   /** Abre o modelo da fatura (com logo) — NÃO grava nem gera PDF ainda. */
+
+  /** Destinatário gravado na ficha (ou pai/mãe) para recibos/faturas. */
+  function resolveDestinatario(a: Aluno): {
+    destTipo: "pai" | "mae" | "outro" | "empresa";
+    destNome: string;
+    destNif: string;
+    destMorada: string;
+    destinatario: {
+      tipo: "pai" | "mae" | "outro" | "empresa";
+      nome: string;
+      nif?: string;
+      morada?: string;
+    };
+  } {
+    const pref = a.faturaDestinatario;
+    let destTipo: "pai" | "mae" | "outro" | "empresa" = pref?.tipo || "pai";
+    let destNome = (pref?.nome || "").trim();
+    let destNif = (pref?.nif || "").trim();
+    let destMorada = (pref?.morada || a.morada || "").trim();
+    if (!destNome) {
+      if ((a.pai || "").trim()) {
+        destTipo = "pai";
+        destNome = (a.pai || "").trim();
+      } else if ((a.mae || "").trim()) {
+        destTipo = "mae";
+        destNome = (a.mae || "").trim();
+      } else {
+        destTipo = "outro";
+        destNome = (a.encarregado || "").trim();
+      }
+    }
+    const destinatario = {
+      tipo: destTipo,
+      nome: destNome || "Encarregado de educação",
+      nif: destNif || undefined,
+      morada: destMorada || undefined,
+    };
+    return { destTipo, destNome: destinatario.nome, destNif, destMorada, destinatario };
+  }
+
   function abrirFatura(a: Aluno) {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
@@ -2949,6 +2991,7 @@ function Alunos() {
     if (pagoMes > 0) linha.value = pagoMes;
     const linhas = [linha];
     const total = totalLinhas(linhas) || linha.value || valor || propinaPorCiclo(a);
+    const { destTipo, destNome, destNif, destMorada, destinatario } = resolveDestinatario(a);
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2959,6 +3002,7 @@ function Alunos() {
       contacto,
       linhas,
       modo: "fatura",
+      destinatario,
     });
     setInvoicePreview({
       aluno: a,
@@ -2975,7 +3019,11 @@ function Alunos() {
       campanha: alunoTemCampanha(a),
       irmaos: alunoTemIrmaosDesc(a),
       modo: "fatura",
-    });
+      destTipo,
+      destNome,
+      destNif,
+      destMorada,
+    } as never);
   }
 
   /** Recibo / comprovativo: mesmos itens com check, texto de pagamento efectuado. */
@@ -3029,30 +3077,7 @@ function Alunos() {
         toast.error("Não foi possível gerar o código de verificação. Tente de novo.");
       }
     }
-    // Destinatário inicial: preferência gravada → pai → mãe → encarregado
-    const pref = a.faturaDestinatario;
-    let destTipo: "pai" | "mae" | "outro" | "empresa" = pref?.tipo || "pai";
-    let destNome = (pref?.nome || "").trim();
-    let destNif = (pref?.nif || "").trim();
-    let destMorada = (pref?.morada || a.morada || "").trim();
-    if (!destNome) {
-      if ((a.pai || "").trim()) {
-        destTipo = "pai";
-        destNome = (a.pai || "").trim();
-      } else if ((a.mae || "").trim()) {
-        destTipo = "mae";
-        destNome = (a.mae || "").trim();
-      } else {
-        destTipo = "outro";
-        destNome = (a.encarregado || "").trim();
-      }
-    }
-    const destinatario = {
-      tipo: destTipo,
-      nome: destNome || "Encarregado de educação",
-      nif: destNif || undefined,
-      morada: destMorada || undefined,
-    };
+    const { destTipo, destNome, destNif, destMorada, destinatario } = resolveDestinatario(a);
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -3250,16 +3275,8 @@ function Alunos() {
     const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
     setInvoiceBusy(true);
     try {
-      const docHtml = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
-<style>
-  @page { size: A4 portrait; margin: 8mm; }
-  html, body { margin: 0; padding: 0; background: #fff;
-    font-family: Georgia, "Times New Roman", Times, serif;
-    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-</style>
-</head><body>${html}</body></html>`;
-      // PC: impressão · Telemóvel: partilha WhatsApp / e-mail
-      const result = await deliverOfficialHtml(docHtml, {
+      // 2 vias A4: Originale | Original (cores) + Copie | Cópia (P&B)
+      const result = await deliverFaturaReciboDuasVias(html, {
         filename: `${isRecibo ? "recibo" : "fatura"}-${numero}.pdf`,
         shareTitle: `${isRecibo ? "Recibo" : "Fatura"} ${numero} · ${a.nome}`,
         shareText: `${isRecibo ? "Recibo" : "Fatura"} ${numero} — ${mesRef} — ${a.nome}`,
@@ -3465,7 +3482,16 @@ function Alunos() {
         return;
       }
 
-      await htmlFragmentsToMultiPageA4Pdf(fragments, {
+      // Cada fatura = 2 vias (Original a cores + Cópia P&B)
+      const dualFragments = fragments.flatMap((frag) => {
+        const dual = wrapDocumentoDuasViasHtml(frag);
+        const m = dual.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        const body = m ? m[1] : dual;
+        // Separar as duas <section class="ecc-via">
+        const parts = body.split(/<\/section>/i).map((s) => s.trim()).filter(Boolean);
+        return parts.map((p) => (p.includes("<section") ? p + "</section>" : p));
+      });
+      await htmlFragmentsToMultiPageA4Pdf(dualFragments.length ? dualFragments : fragments, {
         filename: `faturas-propina-${mesKey}.pdf`,
       });
       toast.success(
@@ -4460,7 +4486,8 @@ function Alunos() {
                     Destinatário do recibo / fatura
                   </p>
                   <p className="mb-2 text-[11px] text-[var(--color-muted)]">
-                    Escolha pai, mãe, outro ou empresa (NIF de contribuinte em Angola + morada). Só afecta o documento; a ficha do aluno mantém pai/mãe.
+                    Escolha pai, mãe, outro ou empresa (NIF de contribuinte em Angola + morada).
+                    Ao gerar o PDF, estes dados <strong>ficam gravados</strong> na ficha para os próximos recibos/faturas — pode alterar aqui quando precisar.
                   </p>
                   <div className="mb-2 flex flex-wrap gap-3 text-xs">
                     {(
@@ -4633,6 +4660,38 @@ function Alunos() {
                     </div>
                   </div>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-9 text-xs"
+                    disabled={!canEdit}
+                    onClick={() => {
+                      if (!invoicePreview || !canEdit) return;
+                      const dn = ((invoicePreview as { destNome?: string }).destNome || "").trim();
+                      if (!dn) {
+                        toast.error("Indique o nome do destinatário.");
+                        return;
+                      }
+                      updateAluno(invoicePreview.aluno.id, {
+                        faturaDestinatario: {
+                          tipo: ((invoicePreview as { destTipo?: string }).destTipo || "outro") as
+                            | "pai"
+                            | "mae"
+                            | "outro"
+                            | "empresa",
+                          nome: dn,
+                          nif: ((invoicePreview as { destNif?: string }).destNif || "").trim() || undefined,
+                          morada: ((invoicePreview as { destMorada?: string }).destMorada || "").trim() || undefined,
+                        },
+                      } as Partial<Aluno>);
+                      toast.success("Destinatário gravado na ficha — será usado nos próximos documentos.");
+                    }}
+                  >
+                    Guardar destinatário na ficha
+                  </Button>
+                </div>
+
                 <div className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
                     Itens da fatura (marque o que incluir)
