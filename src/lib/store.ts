@@ -157,6 +157,11 @@ type Store = ExtraState & {
   setMensalidade: (id: string, mes: string, valor: number) => void;
   /** Garante que todos os alunos activos têm linha em Propinas (backfill). */
   syncPropinasFromMatriculas: () => number;
+  /**
+   * Repõe Propinas = 1 linha por aluno activo em Matrículas.
+   * Remove órfãos / IDs duplicados e funde pagamentos.
+   */
+  reporPropinasFromMatriculas: () => { alunos: number; removidos: number };
   detectarIrmaosEAplicarDescontos: () => number;
   /**
    * Alinha a marca Campus Cidade dentro de cada família (pai, mãe ou campo família).
@@ -1346,8 +1351,10 @@ export const useFinance = create<Store>()(
             `${added} criado(s), ${updated} actualizado(s) com meses pagos na matrícula`,
           );
         }
-        return added + updated;
+        const pruned = reporPropinasFromMatriculas();
+        return added + updated + pruned.removidos;
       },
+      reporPropinasFromMatriculas: () => reporPropinasFromMatriculas(),
       detectarIrmaosEAplicarDescontos: () => {
         const alunos = alunosAll(
           get().alunosExtra || [],
@@ -3484,6 +3491,78 @@ export function normalizeNomeAluno(n: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function mergePagamentosMes(
+  a: Record<string, number> = {},
+  b: Record<string, number> = {},
+): Record<string, number> {
+  const out: Record<string, number> = { ...a };
+  for (const [k, v] of Object.entries(b || {})) {
+    const nv = Number(v) || 0;
+    if (nv > (Number(out[k]) || 0)) out[k] = nv;
+  }
+  return out;
+}
+
+/**
+ * Fonte de verdade = Matrículas (alunosAll).
+ * Propinas fica com exactamente 1 linha por aluno activo.
+ */
+export function reporPropinasFromMatriculas(): { alunos: number; removidos: number } {
+  const state = useFinance.getState();
+  const alunos = alunosAll(
+    state.alunosExtra || [],
+    state.alunosOverrides || {},
+    state.alunosDeletedIds || [],
+  );
+  const old = [...(state.mensalidades || [])];
+  const byId = new Map<string, Mensalidade>();
+  for (const m of old) {
+    if (!m?.id) continue;
+    const prev = byId.get(m.id);
+    if (!prev) {
+      byId.set(m.id, m);
+      continue;
+    }
+    byId.set(m.id, {
+      ...prev,
+      ...m,
+      pagamentos: mergePagamentosMes(prev.pagamentos, m.pagamentos),
+      pagamentosEm: { ...(prev.pagamentosEm || {}), ...(m.pagamentosEm || {}) },
+    });
+  }
+  const activeIds = new Set(alunos.map((a) => a.id));
+  const leftovers = old.filter((m) => m?.id && !activeIds.has(m.id));
+  const next: Mensalidade[] = alunos.map((a) => {
+    let row = byId.get(a.id);
+    if (!row) {
+      const nn = normalizeNomeAluno(a.nome);
+      row = leftovers.find((m) => normalizeNomeAluno(m.nome) === nn);
+    }
+    return {
+      id: a.id,
+      nome: a.nome,
+      turma: a.turma || "",
+      propina: Number(a.propina) || Number(row?.propina) || 0,
+      pagamentos: row?.pagamentos || {},
+      pagamentosEm: row?.pagamentosEm || {},
+      obs: row?.obs || a.obs || "",
+    };
+  });
+  const removidos = Math.max(0, old.length - next.length);
+  if (old.length !== next.length || old.some((m, i) => m.id !== next[i]?.id)) {
+    useFinance.setState({ mensalidades: next });
+    try {
+      useFinance.getState().pushAudit?.(
+        "propina_repor",
+        `${next.length} aluno(s) · removidas ${removidos} linha(s) órfã(s)/duplicada(s)`,
+      );
+    } catch {
+      /* optional */
+    }
+  }
+  return { alunos: next.length, removidos };
 }
 
 /**

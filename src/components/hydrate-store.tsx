@@ -8,7 +8,12 @@ import {
   saveAlunoFoto,
   type FinanceCloudPayload,
 } from "@/lib/finance-cloud";
-import { useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
+import {
+  useFinance,
+  recalcularClassesMatriculas,
+  reporPropinasFromMatriculas,
+  sanearAlunosDuplicados,
+} from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
@@ -67,11 +72,11 @@ export function HydrateStore() {
           applyAlunoFotos(remoteFotos);
         }
         try {
-          // Só repor fichas em falta (ex. matrícula no BAI sem linha na lista).
-          // NÃO sanear automaticamente — a meta 48 escondia alunos novos legítimos (ex. Otchaly).
-          recuperarAlunosOcultos();
+          // Não ressuscitar stubs a partir de propinas/BAI (inflava 51 → 64).
+          sanearAlunosDuplicados();
+          reporPropinasFromMatriculas();
         } catch (e) {
-          console.warn("[recuperar-alunos]", e);
+          console.warn("[propinas-dedupe]", e);
         }
         applyingRemote.current = false;
         lastPull.current = Date.now();
@@ -117,19 +122,20 @@ export function HydrateStore() {
             );
           }
         }
-        const rec = recuperarAlunosOcultos();
-        if (rec.restaurados > 0) {
-          toast.success(
-            `${rec.restaurados} aluno(s) repostos a partir de rastos no sistema.`,
-          );
-        }
-        // Meta 48 desactivada: não correr sanearAlunosDuplicados no arranque.
-        // Marcar em Propinas os meses já liquidados na matrícula (mesesPropina)
         try {
-          const n = useFinance.getState().syncPropinasFromMatriculas?.() ?? 0;
-          if (n > 0) {
+          const dups = sanearAlunosDuplicados();
+          if (dups.removidos > 0) {
+            toast.message(`${dups.removidos} ficha(s) duplicada(s) escondida(s).`);
+          }
+        } catch (e) {
+          console.warn("[sanear-duplicados]", e);
+        }
+        try {
+          useFinance.getState().syncPropinasFromMatriculas?.();
+          const r = reporPropinasFromMatriculas();
+          if (r.removidos > 0) {
             toast.message(
-              `Propinas alinhadas: ${n} aluno(s) com meses já pagos na matrícula.`,
+              `Propinas repostas: ${r.alunos} aluno(s) · ${r.removidos} linha(s) duplicada(s)/órfã(s) removida(s).`,
             );
           }
         } catch (e) {

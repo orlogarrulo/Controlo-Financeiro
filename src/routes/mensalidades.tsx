@@ -58,6 +58,7 @@ function Mensalidades() {
   const aplicarCreditoPropina = useFinance((s) => s.aplicarCreditoPropina);
   const contaCorrente = useFinance((s) => s.contaCorrente || []);
   const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
+  const reporPropinasFromMatriculas = useFinance((s) => s.reporPropinasFromMatriculas);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
@@ -65,17 +66,20 @@ function Mensalidades() {
 
   const [q, setQ] = useState("");
 
-  // Backfill: alunos em Matrículas que ainda não tinham linha em Propinas
+  // Backfill + limpar órfãos/duplicados (Propinas = Matrículas)
   useEffect(() => {
     try {
-      const n = syncPropinasFromMatriculas();
-      if (n > 0) {
-        toast.message(`${n} aluno(s) de Matrículas sincronizado(s) com Propinas.`);
+      syncPropinasFromMatriculas();
+      const r = reporPropinasFromMatriculas();
+      if (r.removidos > 0) {
+        toast.message(
+          `Propinas alinhadas a Matrículas: ${r.alunos} aluno(s), ${r.removidos} linha(s) a mais removida(s).`,
+        );
       }
     } catch {
       /* ignore */
     }
-  }, [syncPropinasFromMatriculas]);
+  }, [syncPropinasFromMatriculas, reporPropinasFromMatriculas]);
 
   const alunoMetaById = useMemo(() => {
     const map = new Map<string, { familia?: string; transferidoCampusCidade?: boolean; nome?: string }>();
@@ -90,9 +94,16 @@ function Mensalidades() {
   }, [alunosExtra, alunosOverrides, alunosDeletedIds]);
 
   const filtered = useMemo(() => {
+    const activos = rows.filter((r) => alunoMetaById.has(r.id));
+    const seen = new Set<string>();
+    const unique = activos.filter((r) => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
     const needle = q.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((r) => {
+    if (!needle) return unique;
+    return unique.filter((r) => {
       const meta = alunoMetaById.get(r.id);
       return alunoMatchesQuery(
         {
@@ -208,13 +219,36 @@ function Mensalidades() {
     <div>
       <PageHeader
         actions={
-          <PrintActions
-            targetRef={printRef}
-            filename="propinas.pdf"
-            landscape
-            shareTitle="Propinas · École Consulaire"
-            shareText="Documento gerado pelo Departamento de Finanças."
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  try {
+                    const r = reporPropinasFromMatriculas();
+                    toast.success(
+                      `Propinas repostas: ${r.alunos} aluno(s)${
+                        r.removidos ? ` · ${r.removidos} extra(s) removido(s)` : ""
+                      }.`,
+                    );
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Falha ao repor");
+                  }
+                }}
+              >
+                Repor (= Matrículas)
+              </Button>
+            ) : null}
+            <PrintActions
+              targetRef={printRef}
+              filename="propinas.pdf"
+              landscape
+              shareTitle="Propinas · École Consulaire"
+              shareText="Documento gerado pelo Departamento de Finanças."
+            />
+          </div>
         }
         kicker="Setembro a Junho"
         title="Mensalidades"
