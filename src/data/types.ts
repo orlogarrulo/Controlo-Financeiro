@@ -185,6 +185,19 @@ export type Aluno = {
   clinicaProxima?: string;
   /** Grupo sanguíneo (ex.: A+, O−, desconhecido). */
   grupoSanguineo?: string;
+  /**
+   * Checklist de documentos entregues na matrícula.
+   * Marcar no formulário; não altera valores financeiros.
+   */
+  docsEntregues?: {
+    fotos4?: boolean;
+    boletimVacinas?: boolean;
+    boletimNotas?: boolean;
+    biAluno?: boolean;
+    biPais?: boolean;
+    seguro?: boolean;
+    atestadoMedico?: boolean;
+  };
   criadoPor?: string;
   createdAt?: string;
   editadoPor?: string;

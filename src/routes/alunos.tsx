@@ -276,6 +276,16 @@ type FormState = {
   alergiasAlimentares: string;
   clinicaProxima: string;
   grupoSanguineo: string;
+  /** Checklist documentos entregues na matrícula. */
+  docsEntregues: {
+    fotos4: boolean;
+    boletimVacinas: boolean;
+    boletimNotas: boolean;
+    biAluno: boolean;
+    biPais: boolean;
+    seguro: boolean;
+    atestadoMedico: boolean;
+  };
   metodoPagamento: string;
   /** Métodos por rubrica. */
   metodoInscricao: string;
@@ -332,6 +342,15 @@ function emptyForm(): FormState {
     alergiasAlimentares: "",
     clinicaProxima: "",
     grupoSanguineo: "",
+    docsEntregues: {
+      fotos4: false,
+      boletimVacinas: false,
+      boletimNotas: false,
+      biAluno: false,
+      biPais: false,
+      seguro: false,
+      atestadoMedico: false,
+    },
     metodoPagamento: METODO_NAO_ESCOLHIDO,
     metodoInscricao: METODO_NAO_ESCOLHIDO,
     metodoSeguro: METODO_NAO_ESCOLHIDO,
@@ -1519,6 +1538,49 @@ function MatriculaForm({
         </p>
       </div>
 
+      <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
+        <p className="mb-2 text-sm font-semibold text-[var(--color-ink)]">Documentos entregues</p>
+        <p className="mb-2 text-[11px] text-[var(--color-muted)]">
+          Checklist seleccionável — não altera valores. Marque o que o encarregado já entregou.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 text-sm">
+          {([
+            ["fotos4", "4 fotografias"],
+            ["boletimVacinas", "Boletim de vacinas"],
+            ["boletimNotas", "Boletim de notas"],
+            ["biAluno", "B.I. do aluno"],
+            ["biPais", "B.I. dos pais / encarregado"],
+            ["seguro", "Seguro (comprovativo)"],
+            ["atestadoMedico", "Atestado médico"],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={Boolean(form.docsEntregues?.[key])}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    docsEntregues: {
+                      ...(form.docsEntregues || {
+                        fotos4: false,
+                        boletimVacinas: false,
+                        boletimNotas: false,
+                        biAluno: false,
+                        biPais: false,
+                        seguro: false,
+                        atestadoMedico: false,
+                      }),
+                      [key]: e.target.checked,
+                    },
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </div>
+
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Observações</Label>
         <Input value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} />
@@ -1735,6 +1797,15 @@ function Alunos() {
       alergiasAlimentares: a.alergiasAlimentares || "",
       clinicaProxima: a.clinicaProxima || "",
       grupoSanguineo: a.grupoSanguineo || "",
+      docsEntregues: {
+        fotos4: Boolean(a.docsEntregues?.fotos4),
+        boletimVacinas: Boolean(a.docsEntregues?.boletimVacinas),
+        boletimNotas: Boolean(a.docsEntregues?.boletimNotas),
+        biAluno: Boolean(a.docsEntregues?.biAluno),
+        biPais: Boolean(a.docsEntregues?.biPais),
+        seguro: Boolean(a.docsEntregues?.seguro),
+        atestadoMedico: Boolean(a.docsEntregues?.atestadoMedico),
+      },
       // Só preenche o que foi gravado por rubrica. Não usa metodoPagamento genérico
       // (antes forçava todas as caixas a «Dinheiro» e parecia que nada mudava).
       metodoPagamento: normalizeMetodoStored(
@@ -1929,6 +2000,7 @@ function Alunos() {
       transferidoCampusCidade: form.transferidoCampusCidade,
       irmaosNivel: irmaosNivelFromForm(form),
       campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+      docsEntregues: form.docsEntregues,
     } as Aluno;
     addAluno(aluno);
     await syncFotoToCloud(id, foto);
@@ -2031,6 +2103,7 @@ function Alunos() {
         transferidoCampusCidade: form.transferidoCampusCidade,
         irmaosNivel: irmaosNivelFromForm(form),
         campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+        docsEntregues: form.docsEntregues,
       } as Partial<Aluno>);
       await syncFotoToCloud(editing.id, foto);
       // Forçar push para a nuvem para o outro PC não sobrescrever com dados antigos
@@ -2939,8 +3012,24 @@ function Alunos() {
       });
       codigoVerificacao = stamp.codigo;
       viaLabel = stamp.viaLabel;
-    } catch {
-      /* ignore */
+    } catch (e) {
+      console.warn("[abrirRecibo] codigo", e);
+      // Fallback legível (ainda assim tenta registar de novo no store via addCodigo)
+      try {
+        const s = useFinance.getState();
+        const reg = s.addCodigoRecibo({
+          alunoId: a.id,
+          alunoNome: a.nome,
+          mesKey,
+          valor: total || 0,
+          rubricas,
+        });
+        codigoVerificacao = reg.codigo;
+        viaLabel = "1.ª via";
+      } catch (e2) {
+        console.warn("[abrirRecibo] fallback codigo", e2);
+        toast.error("Não foi possível gerar o código de verificação. Tente de novo.");
+      }
     }
     const html = buildInvoiceHtml({
       a,
@@ -2999,6 +3088,29 @@ function Alunos() {
     const total = totalLinhas(linhas);
     const mesLetivo = patch.mesLetivo ?? invoicePreview.mesLetivo;
     const mesRef = patch.mesRef ?? invoicePreview.mesRef;
+    const modo = invoicePreview.modo || "fatura";
+    let codigoVerificacao = (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao || "";
+    let viaLabel = (invoicePreview as { viaLabel?: string }).viaLabel || "";
+    // Recibo: garantir código sempre presente (regenera/regista se faltar)
+    if (modo === "recibo" && !codigoVerificacao) {
+      try {
+        const rubricas = linhas.filter((l) => l.on && l.value > 0).map((l) => l.label).join(", ");
+        const mesKey =
+          (invoicePreview as { mesKey?: string }).mesKey ||
+          new Date().toISOString().slice(0, 7);
+        const stamp = garantirCodigoReciboAluno({
+          alunoId: a.id,
+          alunoNome: a.nome,
+          mesKey,
+          valor: total,
+          rubricas,
+        });
+        codigoVerificacao = stamp.codigo;
+        viaLabel = stamp.viaLabel;
+      } catch (e) {
+        console.warn("[refrescarFatura] codigo", e);
+      }
+    }
     const html = buildInvoiceHtml({
       a,
       numero: invoicePreview.numero,
@@ -3008,7 +3120,9 @@ function Alunos() {
       pagoMes: invoicePreview.pagoMes,
       contacto: invoicePreview.contacto,
       linhas,
-      modo: invoicePreview.modo || "fatura",
+      modo,
+      codigoVerificacao: modo === "recibo" ? codigoVerificacao : undefined,
+      viaLabel: modo === "recibo" ? viaLabel : undefined,
     });
     setInvoicePreview({
       ...invoicePreview,
@@ -3020,6 +3134,7 @@ function Alunos() {
       mesLetivo,
       mesRef,
       html,
+      ...(modo === "recibo" ? { codigoVerificacao, viaLabel } : {}),
     });
   }
 
@@ -4430,6 +4545,8 @@ function Alunos() {
                           contacto,
                           linhas: invoicePreview.linhas,
                           modo: invoicePreview.modo,
+                          codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                          viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -4452,6 +4569,8 @@ function Alunos() {
                           contacto,
                           linhas: invoicePreview.linhas,
                           modo: invoicePreview.modo,
+                          codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                          viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -4475,6 +4594,8 @@ function Alunos() {
                           contacto,
                           linhas: invoicePreview.linhas,
                           modo: invoicePreview.modo,
+                          codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                          viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -4497,6 +4618,8 @@ function Alunos() {
                           contacto,
                           linhas: invoicePreview.linhas,
                           modo: invoicePreview.modo,
+                          codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                          viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
