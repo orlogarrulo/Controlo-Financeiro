@@ -52,6 +52,8 @@ import {
   totalLinhas as totalLinhasDoc,
   buildInvoiceHtml as buildInvoiceHtmlDoc,
   garantirCodigoReciboAluno,
+  labelPropinasPorMeses,
+  nomeMesPropina,
 } from "@/lib/documento-matricula";
 
 const EMPTY_FATURAS: FaturaPropina[] = [];
@@ -1391,9 +1393,10 @@ function MatriculaForm({
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
                 const preview = calcPropinaComCampanha(num(form.propina), n, form.campanhaPromoSetembro, irmaosNivelFromForm(form),
                 );
+                const mesLabel = labelPropinasPorMeses(n);
                 return (
                   <option key={n} value={String(n)}>
-                    {n} {n === 1 ? "mês" : "meses"}
+                    {mesLabel}
                     {num(form.propina) > 0
                       ? ` · ${formatKz(preview.liquidoPropina)}`
                       : ""}
@@ -1411,7 +1414,7 @@ function MatriculaForm({
             <Label>
               Total propinas nesta liquidação
               {num(form.mesesPropina) > 0
-                ? ` (${form.mesesPropina} ${num(form.mesesPropina) === 1 ? "mês" : "meses"})`
+                ? ` (${labelPropinasPorMeses(num(form.mesesPropina))})`
                 : ""}
             </Label>
             <Input
@@ -2471,12 +2474,7 @@ function Alunos() {
       propinaLiquida = mensSaved;
     }
 
-    const propLabel =
-      meses > 1
-        ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
-        : meses === 1
-          ? `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`
-          : `Propina${pc.detalhe ? " · " + pc.detalhe : ""}`;
+    const propLabel = labelPropinasPorMeses(meses, pc.detalhe || undefined);
 
     const cartaoVal = Number((a as { cartaoEstudante?: number }).cartaoEstudante) || 0;
     const inscricaoVal = Number(a.inscricao) || 0;
@@ -3031,6 +3029,30 @@ function Alunos() {
         toast.error("Não foi possível gerar o código de verificação. Tente de novo.");
       }
     }
+    // Destinatário inicial: preferência gravada → pai → mãe → encarregado
+    const pref = a.faturaDestinatario;
+    let destTipo: "pai" | "mae" | "outro" | "empresa" = pref?.tipo || "pai";
+    let destNome = (pref?.nome || "").trim();
+    let destNif = (pref?.nif || "").trim();
+    let destMorada = (pref?.morada || a.morada || "").trim();
+    if (!destNome) {
+      if ((a.pai || "").trim()) {
+        destTipo = "pai";
+        destNome = (a.pai || "").trim();
+      } else if ((a.mae || "").trim()) {
+        destTipo = "mae";
+        destNome = (a.mae || "").trim();
+      } else {
+        destTipo = "outro";
+        destNome = (a.encarregado || "").trim();
+      }
+    }
+    const destinatario = {
+      tipo: destTipo,
+      nome: destNome || "Encarregado de educação",
+      nif: destNif || undefined,
+      morada: destMorada || undefined,
+    };
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -3043,6 +3065,7 @@ function Alunos() {
       modo: "recibo",
       codigoVerificacao,
       viaLabel,
+      destinatario,
     });
     setInvoicePreview({
       aluno: a,
@@ -3059,6 +3082,10 @@ function Alunos() {
       modo: "recibo",
       codigoVerificacao,
       viaLabel,
+      destTipo,
+      destNome: destinatario.nome,
+      destNif,
+      destMorada,
     } as never);
   }
 
@@ -3111,6 +3138,24 @@ function Alunos() {
         console.warn("[refrescarFatura] codigo", e);
       }
     }
+    const destTipo = (invoicePreview as { destTipo?: string }).destTipo as
+      | "pai"
+      | "mae"
+      | "outro"
+      | "empresa"
+      | undefined;
+    const destNome = (invoicePreview as { destNome?: string }).destNome || "";
+    const destNif = (invoicePreview as { destNif?: string }).destNif || "";
+    const destMorada = (invoicePreview as { destMorada?: string }).destMorada || "";
+    const destinatario =
+      destNome.trim()
+        ? {
+            tipo: destTipo || "outro",
+            nome: destNome.trim(),
+            nif: destNif.trim() || undefined,
+            morada: destMorada.trim() || undefined,
+          }
+        : undefined;
     const html = buildInvoiceHtml({
       a,
       numero: invoicePreview.numero,
@@ -3123,6 +3168,7 @@ function Alunos() {
       modo,
       codigoVerificacao: modo === "recibo" ? codigoVerificacao : undefined,
       viaLabel: modo === "recibo" ? viaLabel : undefined,
+      destinatario,
     });
     setInvoicePreview({
       ...invoicePreview,
@@ -3234,6 +3280,26 @@ function Alunos() {
           });
         }
       }
+      // Preferência de destinatário na ficha (próximos recibos)
+      try {
+        const dn = ((invoicePreview as { destNome?: string }).destNome || "").trim();
+        if (dn && typeof updateAluno === "function") {
+          updateAluno(a.id, {
+            faturaDestinatario: {
+              tipo: ((invoicePreview as { destTipo?: string }).destTipo || "outro") as
+                | "pai"
+                | "mae"
+                | "outro"
+                | "empresa",
+              nome: dn,
+              nif: ((invoicePreview as { destNif?: string }).destNif || "").trim() || undefined,
+              morada: ((invoicePreview as { destMorada?: string }).destMorada || "").trim() || undefined,
+            },
+          } as Partial<Aluno>);
+        }
+      } catch {
+        /* ignore */
+      }
       // Arquivo do aluno — histórico + fila CRM (por_enviar para faturas)
       try {
         const linhasDoc = (invoicePreview.linhas || [])
@@ -3257,6 +3323,12 @@ function Alunos() {
           estado: isRecibo ? "emitido" : "por_enviar",
           codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
           criadoPor: activeOperator,
+          notas: (() => {
+            const dn = ((invoicePreview as { destNome?: string }).destNome || "").trim();
+            const nif = ((invoicePreview as { destNif?: string }).destNif || "").trim();
+            if (!dn) return undefined;
+            return nif ? `Destinatário: ${dn} · NIF ${nif}` : `Destinatário: ${dn}`;
+          })(),
         });
       } catch {
         /* ignore */
@@ -4385,6 +4457,184 @@ function Alunos() {
                 </div>
                 <div className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                    Destinatário do recibo / fatura
+                  </p>
+                  <p className="mb-2 text-[11px] text-[var(--color-muted)]">
+                    Escolha pai, mãe, outro ou empresa (NIF de contribuinte em Angola + morada). Só afecta o documento; a ficha do aluno mantém pai/mãe.
+                  </p>
+                  <div className="mb-2 flex flex-wrap gap-3 text-xs">
+                    {(
+                      [
+                        ["pai", "Pai", invoicePreview.aluno.pai],
+                        ["mae", "Mãe", invoicePreview.aluno.mae],
+                        ["outro", "Outro", ""],
+                        ["empresa", "Empresa", ""],
+                      ] as const
+                    ).map(([tipo, label, nomePadrao]) => (
+                      <label key={tipo} className="flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name="destTipoRecibo"
+                          checked={(invoicePreview as { destTipo?: string }).destTipo === tipo}
+                          onChange={() => {
+                            const nome =
+                              tipo === "pai"
+                                ? (invoicePreview.aluno.pai || "").trim()
+                                : tipo === "mae"
+                                  ? (invoicePreview.aluno.mae || "").trim()
+                                  : (invoicePreview as { destNome?: string }).destNome || "";
+                            const destNome = nome || (tipo === "empresa" ? "" : nome);
+                            const destinatario = {
+                              tipo: tipo as "pai" | "mae" | "outro" | "empresa",
+                              nome: destNome || label,
+                              nif: (invoicePreview as { destNif?: string }).destNif || undefined,
+                              morada: (invoicePreview as { destMorada?: string }).destMorada || undefined,
+                            };
+                            const html = buildInvoiceHtml({
+                              a: invoicePreview.aluno,
+                              numero: invoicePreview.numero,
+                              valor: invoicePreview.valor,
+                              mesRef: invoicePreview.mesRef,
+                              mesLetivo: invoicePreview.mesLetivo,
+                              pagoMes: invoicePreview.pagoMes,
+                              contacto: invoicePreview.contacto,
+                              linhas: invoicePreview.linhas,
+                              modo: invoicePreview.modo,
+                              codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                              viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                              destinatario,
+                            });
+                            setInvoicePreview({
+                              ...invoicePreview,
+                              destTipo: tipo,
+                              destNome: destinatario.nome,
+                              html,
+                            } as never);
+                          }}
+                        />
+                        {label}
+                        {nomePadrao ? (
+                          <span className="text-[10px] text-[var(--color-muted)]">
+                            ({String(nomePadrao).slice(0, 24)}
+                            {String(nomePadrao).length > 24 ? "…" : ""})
+                          </span>
+                        ) : null}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="text-xs font-medium text-[var(--color-muted)]">Nome no documento</label>
+                      <Input
+                        value={(invoicePreview as { destNome?: string }).destNome || ""}
+                        onChange={(e) => {
+                          const destNome = e.target.value;
+                          const destinatario = {
+                            tipo: ((invoicePreview as { destTipo?: string }).destTipo || "outro") as
+                              | "pai"
+                              | "mae"
+                              | "outro"
+                              | "empresa",
+                            nome: destNome,
+                            nif: (invoicePreview as { destNif?: string }).destNif || undefined,
+                            morada: (invoicePreview as { destMorada?: string }).destMorada || undefined,
+                          };
+                          const html = buildInvoiceHtml({
+                            a: invoicePreview.aluno,
+                            numero: invoicePreview.numero,
+                            valor: invoicePreview.valor,
+                            mesRef: invoicePreview.mesRef,
+                            mesLetivo: invoicePreview.mesLetivo,
+                            pagoMes: invoicePreview.pagoMes,
+                            contacto: invoicePreview.contacto,
+                            linhas: invoicePreview.linhas,
+                            modo: invoicePreview.modo,
+                            codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                            viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                            destinatario,
+                          });
+                          setInvoicePreview({ ...invoicePreview, destNome, html } as never);
+                        }}
+                        placeholder="Nome completo ou firma"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-[var(--color-muted)]">
+                        NIF / nº contribuinte (Angola)
+                      </label>
+                      <Input
+                        value={(invoicePreview as { destNif?: string }).destNif || ""}
+                        onChange={(e) => {
+                          const destNif = e.target.value;
+                          const destinatario = {
+                            tipo: ((invoicePreview as { destTipo?: string }).destTipo || "outro") as
+                              | "pai"
+                              | "mae"
+                              | "outro"
+                              | "empresa",
+                            nome: (invoicePreview as { destNome?: string }).destNome || "",
+                            nif: destNif || undefined,
+                            morada: (invoicePreview as { destMorada?: string }).destMorada || undefined,
+                          };
+                          const html = buildInvoiceHtml({
+                            a: invoicePreview.aluno,
+                            numero: invoicePreview.numero,
+                            valor: invoicePreview.valor,
+                            mesRef: invoicePreview.mesRef,
+                            mesLetivo: invoicePreview.mesLetivo,
+                            pagoMes: invoicePreview.pagoMes,
+                            contacto: invoicePreview.contacto,
+                            linhas: invoicePreview.linhas,
+                            modo: invoicePreview.modo,
+                            codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                            viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                            destinatario,
+                          });
+                          setInvoicePreview({ ...invoicePreview, destNif, html } as never);
+                        }}
+                        placeholder="Ex.: 5417XXXXXX"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-[var(--color-muted)]">Morada (no documento)</label>
+                      <Input
+                        value={(invoicePreview as { destMorada?: string }).destMorada || ""}
+                        onChange={(e) => {
+                          const destMorada = e.target.value;
+                          const destinatario = {
+                            tipo: ((invoicePreview as { destTipo?: string }).destTipo || "outro") as
+                              | "pai"
+                              | "mae"
+                              | "outro"
+                              | "empresa",
+                            nome: (invoicePreview as { destNome?: string }).destNome || "",
+                            nif: (invoicePreview as { destNif?: string }).destNif || undefined,
+                            morada: destMorada || undefined,
+                          };
+                          const html = buildInvoiceHtml({
+                            a: invoicePreview.aluno,
+                            numero: invoicePreview.numero,
+                            valor: invoicePreview.valor,
+                            mesRef: invoicePreview.mesRef,
+                            mesLetivo: invoicePreview.mesLetivo,
+                            pagoMes: invoicePreview.pagoMes,
+                            contacto: invoicePreview.contacto,
+                            linhas: invoicePreview.linhas,
+                            modo: invoicePreview.modo,
+                            codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
+                            viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                            destinatario,
+                          });
+                          setInvoicePreview({ ...invoicePreview, destMorada, html } as never);
+                        }}
+                        placeholder="Rua, bairro, município"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
                     Itens da fatura (marque o que incluir)
                   </p>
                   <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -4396,7 +4646,7 @@ function Alunos() {
                     >
                       {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                         <option key={n} value={n}>
-                          {n === 0 ? "0 (sem propina)" : `${n} mês${n > 1 ? "es" : ""}`}
+                          {n === 0 ? "0 (sem propina)" : n === 1 ? "outubro" : n === 2 ? "outubro–novembro" : n === 3 ? "outubro–dezembro" : `outubro–… (${n} meses)`}
                         </option>
                       ))}
                     </select>
@@ -4547,6 +4797,14 @@ function Alunos() {
                           modo: invoicePreview.modo,
                           codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
                           viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                          destinatario: (invoicePreview as { destNome?: string }).destNome
+                            ? {
+                                tipo: (invoicePreview as { destTipo?: "pai" | "mae" | "outro" | "empresa" }).destTipo || "outro",
+                                nome: (invoicePreview as { destNome?: string }).destNome || "",
+                                nif: (invoicePreview as { destNif?: string }).destNif || undefined,
+                                morada: (invoicePreview as { destMorada?: string }).destMorada || undefined,
+                              }
+                            : undefined,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -4571,6 +4829,14 @@ function Alunos() {
                           modo: invoicePreview.modo,
                           codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
                           viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                          destinatario: (invoicePreview as { destNome?: string }).destNome
+                            ? {
+                                tipo: (invoicePreview as { destTipo?: "pai" | "mae" | "outro" | "empresa" }).destTipo || "outro",
+                                nome: (invoicePreview as { destNome?: string }).destNome || "",
+                                nif: (invoicePreview as { destNif?: string }).destNif || undefined,
+                                morada: (invoicePreview as { destMorada?: string }).destMorada || undefined,
+                              }
+                            : undefined,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -4596,6 +4862,14 @@ function Alunos() {
                           modo: invoicePreview.modo,
                           codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
                           viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                          destinatario: (invoicePreview as { destNome?: string }).destNome
+                            ? {
+                                tipo: (invoicePreview as { destTipo?: "pai" | "mae" | "outro" | "empresa" }).destTipo || "outro",
+                                nome: (invoicePreview as { destNome?: string }).destNome || "",
+                                nif: (invoicePreview as { destNif?: string }).destNif || undefined,
+                                morada: (invoicePreview as { destMorada?: string }).destMorada || undefined,
+                              }
+                            : undefined,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}
@@ -4620,6 +4894,14 @@ function Alunos() {
                           modo: invoicePreview.modo,
                           codigoVerificacao: (invoicePreview as { codigoVerificacao?: string }).codigoVerificacao,
                           viaLabel: (invoicePreview as { viaLabel?: string }).viaLabel,
+                          destinatario: (invoicePreview as { destNome?: string }).destNome
+                            ? {
+                                tipo: (invoicePreview as { destTipo?: "pai" | "mae" | "outro" | "empresa" }).destTipo || "outro",
+                                nome: (invoicePreview as { destNome?: string }).destNome || "",
+                                nif: (invoicePreview as { destNif?: string }).destNif || undefined,
+                                morada: (invoicePreview as { destMorada?: string }).destMorada || undefined,
+                              }
+                            : undefined,
                         });
                         setInvoicePreview({ ...invoicePreview, contacto, html });
                       }}

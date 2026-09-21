@@ -189,7 +189,17 @@ export type Aluno = {
    * Checklist de documentos entregues na matrícula.
    * Marcar no formulário; não altera valores financeiros.
    */
-  docsEntregues?: {
+  /**
+   * Destinatário preferido no recibo/fatura (pai, mãe, outro ou empresa com NIF).
+   * Não substitui pai/mãe na ficha; só o nome impresso no documento.
+   */
+  faturaDestinatario?: {
+    tipo: "pai" | "mae" | "outro" | "empresa";
+    nome: string;
+    nif?: string;
+    morada?: string;
+  };
+    docsEntregues?: {
     fotos4?: boolean;
     boletimVacinas?: boolean;
     boletimNotas?: boolean;

@@ -3,7 +3,7 @@
  * Rubricas e totais vêm sempre da ficha do aluno.
  */
 import type { Aluno } from "@/data/types";
-import { MESES_LABEL } from "@/data/types";
+import { MESES_LABEL, MESES_PROPINA_ADIANTADOS } from "@/data/types";
 import { nomeComSufixoCampus } from "@/lib/aluno-display";
 import { formatKz } from "@/lib/format";
 import { escolaLogoSrc } from "@/lib/logo-escola";
@@ -92,6 +92,48 @@ export function prazoFatura(mesLetivo: string): {
     multa40: fmtData(dia10Seguinte),
     suspensao: fmtData(dia10Seguinte),
   };
+}
+
+
+/** Nomes completos dos meses de propina (1.º = outubro). */
+const MESES_PROP_NOME: Record<string, string> = {
+  out: "outubro",
+  nov: "novembro",
+  dez: "dezembro",
+  jan: "janeiro",
+  fev: "fevereiro",
+  mar: "março",
+  abr: "abril",
+  mai: "maio",
+  jun: "junho",
+  set: "setembro",
+};
+
+/**
+ * Rótulo da rubrica de propina: "Propina outubro" ou "Propinas outubro–dezembro".
+ * Nunca "1 mês" — usa a sequência lectiva a partir de Outubro.
+ */
+export function labelPropinasPorMeses(meses: number, detalhe?: string): string {
+  const n = Math.max(0, Math.min(9, Math.round(meses) || 0));
+  const keys = MESES_PROPINA_ADIANTADOS.slice(0, n);
+  const nomes = keys.map((k) => MESES_PROP_NOME[k] || MESES_LABEL[k] || k);
+  let base: string;
+  if (n <= 0) {
+    base = "Propina";
+  } else if (n === 1) {
+    base = `Propina ${nomes[0]}`;
+  } else if (n <= 3) {
+    base = `Propinas ${nomes.join(", ")}`;
+  } else {
+    base = `Propinas ${nomes[0]}–${nomes[nomes.length - 1]}`;
+  }
+  return detalhe ? `${base} · ${detalhe}` : base;
+}
+
+/** Nome completo de um mês lectivo (ex.: out → outubro). */
+export function nomeMesPropina(mesLetivo: string): string {
+  const k = (mesLetivo || "").toLowerCase().slice(0, 3);
+  return MESES_PROP_NOME[k] || MESES_LABEL[k] || mesLetivo || "";
 }
 
 export function propinaPorCiclo(a: Aluno): number {
@@ -227,12 +269,8 @@ export function linhasMatriculaFromAluno(
     propinaLiquida = mensSaved;
   }
 
-  const propLabel =
-    meses > 1
-      ? `Propinas (${meses} meses)${pc.detalhe ? " · " + pc.detalhe : ""}`
-      : meses === 1
-        ? `Propina (1 mês)${pc.detalhe ? " · " + pc.detalhe : ""}`
-        : `Propina${pc.detalhe ? " · " + pc.detalhe : ""}`;
+  // Rótulo com meses reais (outubro, novembro, …) — não "1 mês"
+  const propLabel = labelPropinasPorMeses(meses, pc.detalhe || undefined);
 
   const cartaoVal = Number(a.cartaoEstudante) || 0;
   const inscricaoVal = Number(a.inscricao) || 0;
@@ -289,11 +327,14 @@ export function linhaPropinaMensal(a: Aluno, mesLetivo?: string): LinhaFat {
     : ["6ème", "5ème", "4ème", "3ème"].includes(a.turma)
       ? "Collège"
       : "Primaire";
-  const mesTxt = mesLetivo ? ` · ${mesLetivo}` : "";
+  const mesNome = mesLetivo ? nomeMesPropina(mesLetivo) : "";
+  const mesTxt = mesNome ? ` ${mesNome}` : "";
   const desc = pc.detalhe ? ` · ${pc.detalhe}` : "";
   return {
     key: "propinas",
-    label: `Propina ${ciclo} (${a.turma || "—"})${mesTxt} · tarifa ${formatKz(tarifa)}${desc}`,
+    label: mesNome
+      ? `Propina ${mesNome}${desc}`
+      : `Propina ${ciclo} (${a.turma || "—"}) · tarifa ${formatKz(tarifa)}${desc}`,
     value: pc.liquidoPropina > 0 ? pc.liquidoPropina : tarifa,
     on: (pc.liquidoPropina > 0 ? pc.liquidoPropina : tarifa) > 0,
   };
@@ -470,6 +511,13 @@ export function buildInvoiceHtml(opts: {
   modo?: "fatura" | "recibo";
   codigoVerificacao?: string;
   viaLabel?: string;
+  /** Destinatário no documento (pai/mãe/outro/empresa). */
+  destinatario?: {
+    tipo?: "pai" | "mae" | "outro" | "empresa";
+    nome: string;
+    nif?: string;
+    morada?: string;
+  };
 }): string {
   const { a, numero, valor, mesRef, mesLetivo, contacto, linhas } = opts;
   const modo = opts.modo || "fatura";
@@ -495,7 +543,25 @@ export function buildInvoiceHtml(opts: {
         </table>`
     : "";
   const { morada, telefones, email: emailEscola, iban } = contacto;
-  const encarregado = a.pai || a.mae || a.encarregado || "Encarregado de educação";
+  const dest = opts.destinatario;
+  const encarregado =
+    (dest?.nome && dest.nome.trim()) ||
+    a.faturaDestinatario?.nome ||
+    a.pai ||
+    a.mae ||
+    a.encarregado ||
+    "Encarregado de educação";
+  const destNif = (dest?.nif || a.faturaDestinatario?.nif || "").trim();
+  const destMorada = (dest?.morada || a.faturaDestinatario?.morada || a.morada || "").trim();
+  const destTipo = dest?.tipo || a.faturaDestinatario?.tipo;
+  const destLabel =
+    destTipo === "empresa"
+      ? "Empresa / contribuinte"
+      : destTipo === "pai"
+        ? "Pai"
+        : destTipo === "mae"
+          ? "Mãe"
+          : "Encarregado de educação";
   const email = (a.email || "").trim();
   const logoSrc = escolaLogoSrc();
   const prazo = prazoFatura(mesLetivo);
@@ -538,7 +604,10 @@ export function buildInvoiceHtml(opts: {
       </div>
       <div style="border-left:3px solid #9ca3af;padding:10px 12px;background:#f9fafb;border-radius:0 8px 8px 0;">
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Facturado a</p>
-        <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
+        <p style="margin:0;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#6b7280;font-weight:600;">${destLabel}</p>
+        <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
+        ${destNif ? `<p style="margin:2px 0 0;font-size:11px;color:#4b5563;">NIF / Contribuinte: <strong>${destNif}</strong></p>` : ""}
+        ${destMorada ? `<p style="margin:2px 0 0;font-size:11px;color:#4b5563;">Morada: ${destMorada}</p>` : ""}
         <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
