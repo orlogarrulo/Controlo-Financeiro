@@ -46,6 +46,8 @@ const CARD_CSS = `
     color: #0B1F4A;
     background: #fff;
     -webkit-font-smoothing: antialiased;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   /* Folha: centrar pares (recto+verso) com marcas de corte */
   .sheet {
@@ -154,129 +156,178 @@ const CARD_CSS = `
     box-shadow: none;
   }
 
-  /* ——— RECTO ——— */
+  /* ——— RECTO — grelha geométrica ISO ID-1 ———
+   * Margens internas: 2,5 mm
+   * Cabeçalho: 13 mm | Corpo: flex | Rodapé: 12 mm
+   * Coluna foto: 22 mm | Coluna dados: resto
+   */
   .card.front {
     background: #fff;
-    border: 1.4px solid #009543;
+    border: 1.2px solid #009543;
   }
   .card.front::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 3mm;
+    height: 2.5mm;
     background: linear-gradient(90deg, #009543 0%, #009543 33%, #FBDE4A 33%, #FBDE4A 66%, #DC241F 66%, #DC241F 100%);
+    z-index: 2;
   }
 
+  /* Grelha principal: 3 faixas horizontais */
+  .front-grid {
+    display: grid;
+    grid-template-rows: 12mm 1fr 9mm;
+    height: 100%;
+    padding: 3.2mm 2.5mm 1.5mm 2.5mm;
+    gap: 0;
+  }
+
+  /* —— Linha 1: cabeçalho —— */
   .front-head {
-    display: flex;
+    display: grid;
+    grid-template-columns: 12mm 1fr auto;
     align-items: center;
     gap: 2mm;
-    padding: 3.8mm 2.5mm 1mm 2.5mm;
+    min-height: 0;
   }
   .front-head .logo {
-    width: 14.5mm;
-    height: 14.5mm;
+    width: 12mm;
+    height: 12mm;
     object-fit: contain;
-    border-radius: 1.5mm;
+    border-radius: 1.2mm;
     background: #fff;
-    flex-shrink: 0;
   }
-  .front-head .titles { flex: 1; min-width: 0; }
+  .front-head .titles {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.3mm;
+  }
   .front-head .school-name {
-    font-size: 7.2px;
+    font-size: 6.8px;
     font-weight: 700;
-    line-height: 1.18;
+    line-height: 1.15;
     color: #0B1F4A;
   }
   .front-head .school-sub {
-    font-size: 6px;
+    font-size: 5.8px;
     font-weight: 600;
     color: #009543;
-    margin-top: 0.4mm;
   }
   .front-head .badge {
-    font-size: 6px;
+    font-size: 5.8px;
     font-weight: 700;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: #fff;
     background: #009543;
-    padding: 1mm 1.8mm;
-    border-radius: 1.2mm;
-    flex-shrink: 0;
+    padding: 1.2mm 2mm;
+    border-radius: 1mm;
+    align-self: center;
   }
 
+  /* —— Linha 2: corpo (foto | dados | QR) — grelha 3 colunas, gaps iguais —— */
   .front-body {
-    display: flex;
-    flex: 1;
-    padding: 0.8mm 2.8mm 1mm 2.8mm;
-    gap: 2.2mm;
+    display: grid;
+    grid-template-columns: 20mm 1fr 13mm;
+    gap: 2.5mm; /* espaçamento igual entre as 3 zonas */
+    align-items: center;
     min-height: 0;
+    padding: 1.5mm 0 1.2mm 0;
+    border-top: 0.4px solid #e2e8f0;
+    border-bottom: 0.4px solid #e2e8f0;
+  }
+  .front-body.no-qr {
+    grid-template-columns: 20mm 1fr;
   }
   .left-col {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 1mm;
-    flex-shrink: 0;
+    justify-content: center;
   }
-  .foto {
-    width: 20mm;
-    height: 24mm;
-    object-fit: cover;
-    border-radius: 1.5mm;
-    border: 1px solid #cbd5e1;
-    background: #f1f5f9;
-  }
-  .foto-placeholder {
-    width: 20mm;
-    height: 24mm;
-    border: 1.2px dashed #94a3b8;
-    border-radius: 1.5mm;
+  .qr-col {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 6px;
+    height: 100%;
+  }
+  .qr-wrap {
+    width: 12mm;
+    height: 12mm;
+    padding: 0.5mm;
+    background: #fff;
+    border-radius: 0.6mm;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .qr-wrap .qr {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    image-rendering: -webkit-optimize-contrast;
+  }
+  .foto-frame {
+    width: 20mm;
+    height: 25mm; /* proporção tipo passe (≈35×45) */
+    border-radius: 1.2mm;
+    border: 1px solid #cbd5e1;
+    background: #f1f5f9;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .foto-frame img.foto {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .foto-frame .foto-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 5.5px;
     color: #94a3b8;
     text-align: center;
     background: #f8fafc;
     line-height: 1.2;
   }
-  .qr {
-    width: 11mm;
-    height: 11mm;
-    object-fit: contain;
-    border: 0;
-    display: block;
-    border-radius: 0.6mm;
-  }
   .info {
-    flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
+    justify-content: space-between;
     min-width: 0;
+    min-height: 0;
   }
   .nome {
-    font-size: 9.2px;
+    font-size: 9px;
     font-weight: 700;
-    line-height: 1.12;
-    margin: 0 0 0.8mm;
+    line-height: 1.15;
+    margin: 0 0 1mm;
     color: #0B1F4A;
     text-transform: uppercase;
+    letter-spacing: -0.01em;
   }
   .meta-row {
-    display: flex;
-    gap: 1.2mm;
-    margin: 0 0 0.4mm;
-    font-size: 6.6px;
+    display: grid;
+    grid-template-columns: 18mm 1fr;
+    gap: 1mm;
+    margin: 0 0 0.35mm;
+    font-size: 6.5px;
     line-height: 1.25;
   }
   .meta-row .label {
     color: #64748b;
     font-weight: 500;
-    min-width: 18mm;
-    flex-shrink: 0;
   }
   .meta-row .value {
     color: #0B1F4A;
@@ -286,18 +337,17 @@ const CARD_CSS = `
   .id-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-top: 0.6mm;
     gap: 1.5mm;
+    margin-top: 0.8mm;
   }
   .id-badge {
-    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-family: ui-monospace, "SF Mono", monospace;
     font-size: 6.5px;
     font-weight: 700;
     background: #e8f8ef;
     color: #009543;
-    padding: 0.6mm 1.5mm;
-    border-radius: 1.1mm;
+    padding: 0.7mm 1.6mm;
+    border-radius: 1mm;
     border: 1px solid #a7e0bc;
   }
   .ano-badge {
@@ -305,31 +355,32 @@ const CARD_CSS = `
     font-weight: 600;
     color: #0B1F4A;
     background: #FBDE4A;
-    padding: 0.5mm 1.3mm;
+    padding: 0.6mm 1.4mm;
     border-radius: 1mm;
   }
-  /* Zone signature Proviseur */
+
+  /* —— Linha 3: só assinatura Le Proviseur (direita) —— */
   .front-sign {
     display: flex;
     justify-content: flex-end;
     align-items: flex-end;
-    padding: 0 2.8mm 1.5mm 2.8mm;
-    margin-top: auto;
+    min-height: 0;
+    padding-top: 0.6mm;
   }
   .front-sign .sign-box {
     text-align: center;
-    min-width: 28mm;
+    width: 30mm;
   }
   .front-sign .sign-line {
-    border-bottom: 0.6px solid #94a3b8;
-    height: 5mm;
-    margin-bottom: 0.6mm;
+    border-bottom: 0.55px solid #94a3b8;
+    height: 4mm;
+    margin-bottom: 0.4mm;
   }
   .front-sign .sign-label {
-    font-size: 5.8px;
+    font-size: 5.5px;
     font-weight: 600;
     color: #475569;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
   }
 
   /* ——— VERSO (fond vert, sans en-tête école / sans cadre perte) ——— */
@@ -349,8 +400,8 @@ const CARD_CSS = `
     margin: 0 0 2.5mm;
   }
   .back-text {
-    font-size: 7.5px;
-    line-height: 1.45;
+    font-size: 7px;
+    line-height: 1.4;
     margin: 0;
     opacity: 0.96;
   }
@@ -371,12 +422,25 @@ const CARD_CSS = `
 
   @media print {
     body { padding: 0; margin: 0; }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
     .sheet {
       padding: 0;
       margin-left: auto;
       margin-right: auto;
     }
     .card { box-shadow: none; }
+    .card.back {
+      background: #009543 !important;
+      color: #fff !important;
+    }
+    .card.front::before {
+      background: linear-gradient(90deg, #009543 0%, #009543 33%, #FBDE4A 33%, #FBDE4A 66%, #DC241F 66%, #DC241F 100%) !important;
+    }
+    .back-lema { color: #FBDE4A !important; }
     .crop, .crop-outline {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -394,12 +458,15 @@ export type CartaoEstudanteOpts = {
   logoUrl?: string;
   /** Inclure date/lieu de naissance et sexe si disponibles. */
   camposExtra?: boolean;
+  /** Sans QR code (layout 2 colonnes). */
+  semQr?: boolean;
 };
 
 const LOGO_DEFAULT = "/logo-carte-scolaire.jpg";
 
 function qrUrl(payload: string): string {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=1&data=${encodeURIComponent(payload)}`;
+  /* size alto + margin=2 (quiet zone) → leitura fiável em impressão 12 mm */
+  return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=2&ecc=M&data=${encodeURIComponent(payload)}`;
 }
 
 
@@ -420,12 +487,11 @@ function frontCard(a: Aluno, opts: CartaoEstudanteOpts): string {
   const ano = esc(opts.anoEscolar || "2026-2027");
   const logoSrc = opts.logoUrl || LOGO_DEFAULT;
   const logo = `<img class="logo" src="${esc(logoSrc)}" alt="Logo" />`;
-  const foto = a.foto
-    ? `<img class="foto" src="${a.foto}" alt="" />`
-    : `<div class="foto-placeholder">Sans<br/>photo</div>`;
-
-  const qrPayload = `ECC|${a.id || ""}|${opts.anoEscolar || "2026-2027"}|${a.nome || ""}`;
-  const qr = `<img class="qr" src="${esc(qrUrl(qrPayload))}" alt="QR" width="40" height="40" />`;
+  const showQr = opts.semQr !== true;
+  const qrPayload = `ECC|${a.id || ""}|${opts.anoEscolar || "2026-2027"}`;
+  const qr = showQr
+    ? `<div class="qr-wrap"><img class="qr" src="${esc(qrUrl(qrPayload))}" alt="QR" width="48" height="48" /></div>`
+    : "";
 
   const showExtra = opts.camposExtra !== false;
   const dataNasc = showExtra && a.dataNascimento ? formatDate(a.dataNascimento) : null;
@@ -458,36 +524,42 @@ function frontCard(a: Aluno, opts: CartaoEstudanteOpts): string {
     );
   }
 
+  const fotoInner = a.foto
+    ? `<img class="foto" src="${a.foto}" alt="" />`
+    : `<div class="foto-placeholder">Sans<br/>photo</div>`;
+
   return `
   <div class="card front">
-    <div class="front-head">
-      ${logo}
-      <div class="titles">
-        <div class="school-name">École Consulaire<br/>de la République du Congo</div>
-        <div class="school-sub">Annexe Nova Vida · Luanda</div>
-      </div>
-      <div class="badge">Élève</div>
-    </div>
-    <div class="front-body">
-      <div class="left-col">
-        ${foto}
-        ${qr}
-      </div>
-      <div class="info">
-        <div>
-          <p class="nome">${esc(a.nome || "—")}</p>
-          ${metaRows.join("\n")}
+    <div class="front-grid">
+      <div class="front-head">
+        ${logo}
+        <div class="titles">
+          <div class="school-name">École Consulaire<br/>de la République du Congo</div>
+          <div class="school-sub">Annexe Nova Vida · Luanda</div>
         </div>
-        <div class="id-row">
-          <span class="id-badge">Matricule ${esc(a.id)}</span>
-          <span class="ano-badge">${ano}</span>
-        </div>
+        <div class="badge">Élève</div>
       </div>
-    </div>
-    <div class="front-sign">
-      <div class="sign-box">
-        <div class="sign-line"></div>
-        <div class="sign-label">Le Proviseur</div>
+      <div class="front-body${showQr ? "" : " no-qr"}">
+        <div class="left-col">
+          <div class="foto-frame">${fotoInner}</div>
+        </div>
+        <div class="info">
+          <div>
+            <p class="nome">${esc(a.nome || "—")}</p>
+            ${metaRows.join("\n")}
+          </div>
+          <div class="id-row">
+            <span class="id-badge">Matricule ${esc(a.id)}</span>
+            <span class="ano-badge">${ano}</span>
+          </div>
+        </div>
+        ${showQr ? `<div class="qr-col">${qr}</div>` : ""}
+      </div>
+      <div class="front-sign">
+        <div class="sign-box">
+          <div class="sign-line"></div>
+          <div class="sign-label">Le Proviseur</div>
+        </div>
       </div>
     </div>
   </div>`;
@@ -499,8 +571,12 @@ function backCard(opts: CartaoEstudanteOpts): string {
   <div class="card back">
     <p class="back-title">Avis important</p>
     <p class="back-text">
-      Cette carte est <strong>personnelle et incessible</strong>.<br/>
+      Cette carte est <strong>personnelle et incessible</strong>.
       Elle appartient exclusivement à l'élève identifié au recto.
+    </p>
+    <p class="back-text" style="margin-top:2.2mm;">
+      <strong>En cas de perte</strong>, elle doit être remise au secrétariat de
+      l'École Consulaire de la République du Congo (Brazzaville) — Annexe Nova Vida.
     </p>
     <p class="back-lema">Apprendre · Grandir · Réussir</p>
     <p class="back-contact">Tél. / WhatsApp · ${tel}</p>

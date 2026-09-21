@@ -178,7 +178,7 @@ export function alunoToCarte(
     anneeScolaire: annee,
     validite: annee,
     photo: aluno.foto,
-    qrPayload: `ECC|${aluno.id || ""}|${annee}|${aluno.nome || ""}`,
+    qrPayload: `ECC|${aluno.id || ""}|${annee}`,
   };
 }
 

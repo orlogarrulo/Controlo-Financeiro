@@ -1,9 +1,10 @@
 import { ECOLE_CARTE, type CarteScolaireData } from "@/lib/carte-scolaire";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 
-const LEMA = "Apprendre · Grandir · Réussir";
-const LIEU = "Luanda · Angola";
-
+/**
+ * Pré-visualização geométrica ISO ID-1 (proporção 85,6 × 54).
+ * 3 faixas: cabeçalho · corpo (foto|dados) · rodapé (QR|Proviseur).
+ */
 export function CarteScolaire({
   data,
   className = "",
@@ -11,108 +12,126 @@ export function CarteScolaire({
 }: {
   data: CarteScolaireData;
   className?: string;
-  /** Opcional: data-URL ou caminho do logotipo. */
   logoSrc?: string;
 }) {
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=2&data=${encodeURIComponent(data.qrPayload)}`;
-  const logo = logoSrc || escolaLogoSrc() || "/logo-ecole-consulaire-print.png";
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=2&ecc=M&data=${encodeURIComponent(data.qrPayload)}`;
+  const logo = logoSrc || escolaLogoSrc() || "/logo-carte-scolaire.jpg";
 
   return (
     <article
-      className={`carte-scolaire relative overflow-hidden rounded-xl border border-zinc-200 bg-white text-[#1a1a1a] shadow-md ${className}`}
+      className={`carte-scolaire relative overflow-hidden rounded-[10px] border border-[#009543] bg-white text-[#0B1F4A] shadow-md ${className}`}
       style={{
-        width: 420,
-        minHeight: 280,
-        fontFamily: "Georgia, 'Times New Roman', serif",
+        width: 342,
+        height: 216,
+        fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif',
+        display: "grid",
+        gridTemplateRows: "52px 1fr 48px",
+        padding: "14px 10px 8px",
+        boxSizing: "border-box",
       }}
     >
-      <div className="grid grid-cols-[64px_1fr_88px] items-center gap-2 px-3 pt-6">
+      <div
+        className="absolute left-0 right-0 top-0"
+        style={{
+          height: 8,
+          background:
+            "linear-gradient(90deg, #009543 0%, #009543 33%, #FBDE4A 33%, #FBDE4A 66%, #DC241F 66%, #DC241F 100%)",
+        }}
+      />
+
+      <div
+        className="grid items-center gap-2"
+        style={{ gridTemplateColumns: "48px 1fr auto" }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={logo}
           alt="Logo"
-          className="h-16 w-16 object-contain rounded-md bg-white"
+          className="h-12 w-12 rounded object-contain bg-white"
         />
-        <div className="text-center leading-tight">
-          <div className="text-[12px] font-bold uppercase tracking-wide text-[#1a4d2e]">
-            {ECOLE_CARTE.nom}
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold leading-tight">
+            École Consulaire
+            <br />
+            de la République du Congo
           </div>
-          <div className="text-[12px] font-bold uppercase tracking-wide text-[#1a4d2e]">
-            {ECOLE_CARTE.nom2}
-          </div>
-          <div className="mt-1.5 text-[16px] font-extrabold uppercase tracking-wider text-[#2e7d32]">
-            {ECOLE_CARTE.titre}
-          </div>
-        </div>
-        <div className="text-right leading-tight font-sans">
-          <div className="text-[9px] font-bold uppercase tracking-wide text-[#1e3a5f]">
-            {LEMA}
-          </div>
-          <div className="mt-0.5 text-[10px] font-semibold text-[#c9a227]">
-            {LIEU}
+          <div className="mt-0.5 text-[9px] font-semibold text-[#009543]">
+            Annexe Nova Vida · Luanda
           </div>
         </div>
+        <span className="rounded bg-[#009543] px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-white">
+          Élève
+        </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-[88px_1fr] gap-3 px-3 pb-1">
-        <div className="flex flex-col items-center gap-1.5">
-          <div className="h-[100px] w-[80px] overflow-hidden rounded-sm border border-zinc-300 bg-zinc-100">
+      <div
+        className="grid items-center gap-2.5 border-y border-zinc-200 py-2"
+        style={{ gridTemplateColumns: "80px 1fr 48px", minHeight: 0 }}
+      >
+        <div className="flex items-center justify-center">
+          <div className="flex h-[96px] w-[80px] items-center justify-center overflow-hidden rounded border border-zinc-300 bg-zinc-100">
             {data.photo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={data.photo} alt="" className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full items-center justify-center text-[9px] text-zinc-400">
-                Photo
-              </div>
+              <span className="text-center text-[9px] leading-tight text-zinc-400">
+                Sans
+                <br />
+                photo
+              </span>
             )}
           </div>
+        </div>
+        <div className="flex min-w-0 flex-col justify-between">
+          <div>
+            <p className="mb-1 text-[13px] font-bold uppercase leading-tight">
+              {data.nomPrenoms}
+            </p>
+            <Meta label="Classe" value={data.classe} />
+            <Meta label="Né(e) le" value={data.dateNaissance} />
+            <Meta label="Lieu" value={data.lieuNaissance} />
+            <Meta label="Sexe" value={data.sexe} />
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#009543]">
+              Matricule {data.matricule}
+            </span>
+            <span className="rounded bg-[#FBDE4A] px-1.5 py-0.5 text-[9px] font-semibold">
+              {data.anneeScolaire}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={qrSrc}
             alt="QR"
-            className="h-[64px] w-[64px] shrink-0 bg-white object-contain"
+            className="h-11 w-11 rounded-sm bg-white object-contain"
           />
-        </div>
-
-        <div className="text-[12px] leading-[1.55]">
-          <Row label="Noms & Prénoms" value={data.nomPrenoms} accent />
-          <Row label="Date de Naissance" value={data.dateNaissance} />
-          <Row label="Lieu de Naissance" value={data.lieuNaissance} />
-          <Row label="Sexe" value={data.sexe} />
-          <Row label="Classe" value={data.classe} />
-          <Row label="Matricule" value={data.matricule} />
-          <Row label="Année Scolaire" value={data.anneeScolaire} />
-          <Row label="Validité" value={data.validite} />
         </div>
       </div>
 
-      <div className="flex items-end justify-end px-3 pb-3 pt-1">
-        <div className="text-right text-[10px] text-zinc-600">{ECOLE_CARTE.proviseur}</div>
+      <div className="flex items-end justify-end pt-1">
+        <div className="w-[110px] text-center">
+          <div className="mb-0.5 h-4 border-b border-zinc-400" />
+          <div className="text-[9px] font-semibold text-zinc-600">
+            {ECOLE_CARTE.proviseur}
+          </div>
+        </div>
       </div>
     </article>
   );
 }
 
-function Row({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
+function Meta({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <span className="text-zinc-600">{label}: </span>
-      <span className={accent ? "font-bold uppercase text-[#b42318]" : "font-semibold"}>
-        {value}
-      </span>
+    <div className="grid text-[10px] leading-snug" style={{ gridTemplateColumns: "56px 1fr" }}>
+      <span className="font-medium text-zinc-500">{label}</span>
+      <span className="font-semibold">{value || "—"}</span>
     </div>
   );
 }
 
-/** Campos do formulário de matrícula (francês no cartão; etiquetas na ficha). */
 export function CarteScolaireFormFields({
   lugarNascimento,
   sexo,

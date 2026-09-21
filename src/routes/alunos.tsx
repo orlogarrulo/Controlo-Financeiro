@@ -4279,9 +4279,14 @@ function Alunos() {
                 <Button
                   type="button"
                   onClick={() => {
-                    void printCartesScolaires([cartePreview]).then(() => {
-                      toast.success("Pré-visualização de impressão — Guardar como PDF");
-                    });
+                    openPrintHtml(
+                      cartoesEstudanteHtml([cartePreview], {
+                        anoEscolar: "2026-2027",
+                        logoUrl: escolaLogoSrc(),
+                      }),
+                      { autoPrint: true },
+                    );
+                    toast.success("Pré-visualização de impressão — Guardar como PDF");
                   }}
                 >
                   <Printer className="mr-1 size-4" /> PDF / Imprimir
