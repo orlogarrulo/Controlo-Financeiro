@@ -29,7 +29,13 @@ import {
   deliverOfficialHtml,
   isMobileDevice,
 } from "@/lib/pdf-export";
-import { cartoesEstudanteHtml } from "@/lib/cartao-estudante";
+import {
+  cartoesEstudanteHtml,
+  cartoesEstudanteHtmlPartitioned,
+  partitionAlunosParaCartoes,
+  filtrarCartoesLot,
+  type CartoesLotKey,
+} from "@/lib/cartao-estudante";
 import { printCartesScolaires } from "@/lib/print-cartes-scolaires";
 import { CarteScolaire } from "@/components/carte-scolaire";
 import { alunoToCarte, ANO_LECTIF_CARTE } from "@/lib/carte-scolaire";
@@ -2861,27 +2867,40 @@ function Alunos() {
 <meta charset="utf-8"/>
 <title>${L.title}</title>
 <style>
-  /* Margem esquerda 3× a base (16mm→48mm) para a impressão não cortar a coluna ID */
-  @page { size: A4 portrait; margin: 14mm 12mm 14mm 48mm; } /* top right bottom left */
+  /* Margens iguais — listagem centrada na folha A4 (sem deslocar para a direita) */
+  @page { size: A4 portrait; margin: 14mm; }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-size: 11px; line-height: 1.35;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    width: 100%;
   }
   .sheet {
-    max-width: 100%; width: 100%; margin: 0;
-    padding: 2mm 0 4mm 0; color: #000;
-    overflow: visible; box-sizing: border-box;
+    width: 100%;
+    max-width: 182mm; /* 210 − 2×14mm */
+    margin: 0 auto;
+    padding: 0;
+    color: #000;
+    overflow: visible;
+    box-sizing: border-box;
   }
   @media print {
-    html, body { margin: 0 !important; padding: 0 !important; }
-    .sheet { margin: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+    html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+    .sheet {
+      margin-left: auto !important;
+      margin-right: auto !important;
+      padding: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+    }
   }
-  .head { display: flex; gap: 14px; align-items: center;
-    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 16px;
+  .head {
+    display: flex; gap: 14px; align-items: center; justify-content: flex-start;
+    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin: 0 0 16px 0;
     page-break-inside: avoid; break-inside: avoid;
+    width: 100%;
   }
   .head img {
     width: 72px; height: 72px; object-fit: contain; flex-shrink: 0;
@@ -2894,16 +2913,21 @@ function Alunos() {
   h2 { margin: 14px 0 6px; font-size: 12px; color: #000; font-weight: 700;
     border-bottom: 1px solid #333; padding-bottom: 3px; page-break-after: avoid; }
   h2 .count { font-weight: 400; color: #333; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 10px;
-    page-break-inside: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 10px 0;
+    page-break-inside: auto;
+    table-layout: fixed;
+  }
   thead { display: table-header-group; }
   th {
     background: #fff; color: #000; font-size: 10px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.03em; padding: 7px 8px; text-align: left;
+    text-transform: uppercase; letter-spacing: 0.03em; padding: 7px 6px; text-align: left;
     border: 1px solid #000;
   }
   td {
-    padding: 6px 8px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
+    padding: 6px 6px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
     color: #000; word-break: break-word; overflow-wrap: anywhere;
   }
   tr { page-break-inside: avoid; break-inside: avoid; }
@@ -2911,7 +2935,7 @@ function Alunos() {
     border-top: 1px solid #999; padding-top: 6px; }
   @media screen {
     body { padding: 16px; background: #e8ece9; }
-    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px 18px;
+    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px;
       box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   }
 </style>
@@ -3658,7 +3682,7 @@ function Alunos() {
             <Button
               className="shrink-0"
               variant="secondary"
-              title="Imprimir cartões de estudante (frente + verso) — usa a selecção da lista ou todos filtrados"
+              title="Imprimir os 4 lotes: Cidade/Nova Vida × com/sem foto"
               onClick={() => {
                 const pool = filteredByClass;
                 const selected = exportIds.size > 0
@@ -3668,12 +3692,124 @@ function Alunos() {
                   toast.error("Não há alunos para imprimir. Ajuste o filtro ou seleccione na lista.");
                   return;
                 }
-                void printCartesScolaires(selected).then(() => {
-                  toast.success(`Cartes scolaires (FR): ${selected.length} élève(s) — Guardar como PDF`);
+                const parts = partitionAlunosParaCartoes(selected);
+                const html = cartoesEstudanteHtmlPartitioned(selected, {
+                  anoEscolar: "2026-2027",
+                  logoUrl: escolaLogoSrc(),
                 });
+                openPrintHtml(html, { autoPrint: true });
+                const c = parts.campusCidade;
+                const n = parts.novaVida;
+                toast.success(
+                  `Cidade ${c.comFoto.length}+${c.semFoto.length} · Nova Vida ${n.comFoto.length}+${n.semFoto.length}`,
+                );
               }}
             >
-              <Printer className="mr-1 size-4" /> Cartão de estudante
+              <Printer className="mr-1 size-4" /> Cartões (4 lotes)
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="outline"
+              title="Campus Cidade — alunos com foto"
+              onClick={() => {
+                const pool = filteredByClass;
+                const selected = exportIds.size > 0
+                  ? pool.filter((a) => exportIds.has(a.id))
+                  : pool;
+                const lot = filtrarCartoesLot(selected, "campusCidade", "comFoto");
+                if (!lot.length) {
+                  toast.error("Nenhum aluno Campus Cidade com foto.");
+                  return;
+                }
+                openPrintHtml(
+                  cartoesEstudanteHtml(lot, {
+                    anoEscolar: "2026-2027",
+                    logoUrl: escolaLogoSrc(),
+                  }),
+                  { autoPrint: true },
+                );
+                toast.success(`Cidade · com foto: ${lot.length}`);
+              }}
+            >
+              <IdCard className="mr-1 size-4" /> Cidade · foto
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="outline"
+              title="Campus Cidade — alunos sem foto"
+              onClick={() => {
+                const pool = filteredByClass;
+                const selected = exportIds.size > 0
+                  ? pool.filter((a) => exportIds.has(a.id))
+                  : pool;
+                const lot = filtrarCartoesLot(selected, "campusCidade", "semFoto");
+                if (!lot.length) {
+                  toast.error("Nenhum aluno Campus Cidade sem foto.");
+                  return;
+                }
+                openPrintHtml(
+                  cartoesEstudanteHtml(lot, {
+                    anoEscolar: "2026-2027",
+                    logoUrl: escolaLogoSrc(),
+                  }),
+                  { autoPrint: true },
+                );
+                toast.success(`Cidade · sem foto: ${lot.length}`);
+              }}
+            >
+              <IdCard className="mr-1 size-4" /> Cidade · s/foto
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="outline"
+              title="Annexe Nova Vida — alunos com foto"
+              onClick={() => {
+                const pool = filteredByClass;
+                const selected = exportIds.size > 0
+                  ? pool.filter((a) => exportIds.has(a.id))
+                  : pool;
+                const lot = filtrarCartoesLot(selected, "novaVida", "comFoto");
+                if (!lot.length) {
+                  toast.error("Nenhum aluno Nova Vida com foto.");
+                  return;
+                }
+                openPrintHtml(
+                  cartoesEstudanteHtml(lot, {
+                    anoEscolar: "2026-2027",
+                    logoUrl: escolaLogoSrc(),
+                  }),
+                  { autoPrint: true },
+                );
+                toast.success(`Nova Vida · com foto: ${lot.length}`);
+              }}
+            >
+              <IdCard className="mr-1 size-4" /> N.Vida · foto
+            </Button>
+            <Button
+              className="shrink-0"
+              variant="outline"
+              title="Annexe Nova Vida — alunos sem foto"
+              onClick={() => {
+                const pool = filteredByClass;
+                const selected = exportIds.size > 0
+                  ? pool.filter((a) => exportIds.has(a.id))
+                  : pool;
+                const lot = filtrarCartoesLot(selected, "novaVida", "semFoto");
+                if (!lot.length) {
+                  toast.error("Nenhum aluno Nova Vida sem foto.");
+                  return;
+                }
+                openPrintHtml(
+                  cartoesEstudanteHtml(lot, {
+                    anoEscolar: "2026-2027",
+                    logoUrl: escolaLogoSrc(),
+                  }),
+                  { autoPrint: true },
+                );
+                toast.success(`Nova Vida · sem foto: ${lot.length}`);
+              }}
+            >
+              <IdCard className="mr-1 size-4" /> N.Vida · s/foto
             </Button>
             <Button
               className="shrink-0"
