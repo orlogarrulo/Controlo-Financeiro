@@ -1,5 +1,1 @@
-{
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "framework": null
-}
+{"buildCommand":"npm run build","installCommand":"npm install"}

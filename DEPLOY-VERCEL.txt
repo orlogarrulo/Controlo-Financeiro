@@ -1,14 +1,24 @@
-DEPLOY VERCEL — estrutura correcta
-==================================
-O package.json DEVE estar na RAIZ do repositório GitHub (não dentro de
-Controlo-Financeiro-main/Controlo-Financeiro-main/).
+CONTROLO FINANCEIRO · École Consulaire (Nova Vida)
+Pacote completo para deploy no Vercel
+================================================
 
-Erro típico:
-  ENOENT ... /Controlo-Financeiro-main/package.json
+1. Extrair este zip
+2. Na pasta do projecto:
+     npm install
+     npm run build          # confirma que compila
+3. Deploy no Vercel:
+   - Importar o repositório GitHub OU
+   - vercel --prod  (CLI)
+   - Framework: Vite
+   - Build Command: npm run build
+   - Output Directory: dist
+   - Install Command: npm install
 
-Solução:
-1. No GitHub Desktop, a raiz do repositório deve conter package.json, src/, public/, etc.
-2. Em Vercel → Project Settings → General → Root Directory: deixar VAZIO
-3. Não fazer commit da pasta .grok/
+Já inclui:
+  - package.json + vercel.json + vite.config.ts
+  - src/ completo (recibos, CRM, matrículas, store com codigosRecibo)
+  - Código único de verificação nos recibos (RC-YYYYMM-XXXX-NN)
+  - Separador CRM para validar códigos
+  - Scripts, migrations, data-export, public
 
-Após push: Vercel faz npm install na raiz e encontra package.json.
+Não incluir node_modules no Git (já está ausente neste zip).

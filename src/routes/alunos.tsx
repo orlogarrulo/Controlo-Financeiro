@@ -667,11 +667,14 @@ function MatriculaForm({
   setForm,
   onSave,
   onCancel,
+  protegerLiquidacaoPaga = false,
 }: {
   form: FormState;
   setForm: Dispatch<SetStateAction<FormState>>;
   onSave: () => void | Promise<void>;
   onCancel: () => void;
+  /** Se true (edição com liquidação já paga): Campus Cidade só muda propina futura; não recalcula taxas/líquido. */
+  protegerLiquidacaoPaga?: boolean;
 }) {
   const totais = calcTotais(form);
   return (
@@ -987,6 +990,13 @@ function MatriculaForm({
         apagamento junto da escola, nos termos da referida lei e da Agência de Protecção de Dados (APD).
       </div>
 
+      {protegerLiquidacaoPaga ? (
+        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-amber-300 bg-amber-50 p-3 text-[12px] leading-relaxed text-amber-950">
+          <strong>Liquidação já paga (valores na conta da escola).</strong> Pode marcar Campus Cidade e
+          fixar a propina mensal em <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong> para cobranças futuras.
+          As taxas e o total já liquidados <strong>não são recalculados</strong> nem alterados no BAI.
+        </div>
+      ) : null}
       <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-forest)]/40 bg-[var(--color-forest-soft)]/40 p-3">
         <label className="flex items-start gap-2 text-sm">
           <input
@@ -995,9 +1005,29 @@ function MatriculaForm({
             checked={form.transferidoCampusCidade}
             onChange={(e) => {
               const on = e.target.checked;
+              if (protegerLiquidacaoPaga) {
+                // Liquidação já na conta: só estatuto + propina futura (75.000). Não mexer em taxas/líquido.
+                if (on) {
+                  setForm({
+                    ...form,
+                    transferidoCampusCidade: true,
+                    propina: String(CAMPUS_CIDADE_PROPINA),
+                    mesesPropina: "0",
+                    // mensalidade1 / inscrição / seguro / manuais mantêm-se
+                  });
+                } else {
+                  const propCiclo = String(propinaDefaultFromTurma(form.turma) || form.propina || "0");
+                  setForm({
+                    ...form,
+                    transferidoCampusCidade: false,
+                    propina: propCiclo,
+                    mesesPropina: "0",
+                  });
+                }
+                return;
+              }
               if (on) {
-                // Pacote 82 mil por defeito: já inclui matrícula + seguro + cartão
-                // Propina 75.000 + recalcular mensalidade1 com descontos de irmãos/campanha
+                // Nova matrícula / liquidação ainda aberta: pacote Campus + propina 75.000
                 setForm(
                   aplicarPropinaForm(form, {
                     transferidoCampusCidade: true,
@@ -1393,15 +1423,21 @@ function MatriculaForm({
                   setForm({ ...form, propina: form.propina === "0" ? "" : form.propina });
                   return;
                 }
-                const isTrans =
-                  v === String(CAMPUS_CIDADE_PROPINA) || v === String(CAMPUS_CIDADE_PROPINA);
+                const isTrans = v === String(CAMPUS_CIDADE_PROPINA);
+                if (protegerLiquidacaoPaga) {
+                  setForm({
+                    ...form,
+                    propina: v,
+                    transferidoCampusCidade: isTrans ? true : form.transferidoCampusCidade,
+                    mesesPropina: "0",
+                  });
+                  return;
+                }
                 setForm(
                   aplicarPropinaForm(form, {
                     propina: v,
                     transferidoCampusCidade: isTrans ? true : form.transferidoCampusCidade,
-                    agregadoIrmaos: isTrans
-                      ? v === String(CAMPUS_CIDADE_PROPINA)
-                      : form.agregadoIrmaos,
+                    agregadoIrmaos: isTrans ? form.agregadoIrmaos : form.agregadoIrmaos,
                   }),
                 );
               }}
@@ -1567,12 +1603,8 @@ function Alunos() {
     html: string;
     linhas: { key: string; label: string; value: number; on: boolean }[];
     mesesProp: number;
-    campanha?: boolean;
-    irmaos?: boolean | 0 | 2 | 3;
     /** fatura = cobrança; recibo = comprovativo de pagamento */
     modo: "fatura" | "recibo";
-    codigoVerificacao?: string;
-    viaLabel?: string;
   } | null>(null);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [declOpen, setDeclOpen] = useState(false);
@@ -1832,17 +1864,6 @@ function Alunos() {
     }
   }
 
-
-/** Normaliza nome para comparação (ignora acentos, maiúsculas e espaços extra). */
-function normalizeNomeAluno(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
   async function saveNew() {
     if (!canEdit) return;
     if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
@@ -1852,26 +1873,6 @@ function normalizeNomeAluno(s: string): string {
     if (!form.nome.trim()) {
       toast.error("Indique o nome do aluno.");
       return;
-    }
-    // Impedir matrícula duplicada (mesmo nome já na base)
-    const nomeNorm = normalizeNomeAluno(form.nome);
-    const existente = alunos.find((a) => normalizeNomeAluno(a.nome) === nomeNorm);
-    if (existente) {
-      toast.error(
-        `Aluno já existe na base de dados (${existente.id} · ${existente.turma}). Não é possível gravar matrícula duplicada.`,
-      );
-      return;
-    }
-    // BI igual (se preenchido)
-    const biNorm = form.bi.trim().toLowerCase();
-    if (biNorm) {
-      const mesmoBi = alunos.find((a) => (a.bi || "").trim().toLowerCase() === biNorm);
-      if (mesmoBi) {
-        toast.error(
-          `Já existe aluno com este BI/documento (${mesmoBi.id} · ${mesmoBi.nome}). Aluno já existe.`,
-        );
-        return;
-      }
     }
     const faltaMetodo = validarMetodosObrigatorios(form);
     if (faltaMetodo) {
@@ -1993,13 +1994,39 @@ function normalizeNomeAluno(s: string): string {
         alimentacao: t.alimentacao,
         curso: t.curso,
         cartaoEstudante: t.cartaoEstudante || 0,
-        mensalidade1: t.mensalidade1,
-        mesesPropina: num(form.mesesPropina) || 0,
-        propina: num(form.propina),
-        dataPag: form.dataPag.trim(),
-        bruto: t.bruto,
-        descPct: t.descPct || 0,
-        liquido: t.liquido,
+        // Se liquidação já paga: preservar taxas/líquido/recibo; só actualizar propina + estatuto Campus
+        ...(
+          editing.statusPag === "pago" ||
+          (Number(editing.liquido) > 0 && (Boolean(editing.dataPag) || Boolean(editing.recibo)))
+            ? {
+                inscricao: Number(editing.inscricao) || 0,
+                seguro: Number(editing.seguro) || 0,
+                manuais: Number(editing.manuais) || 0,
+                cadernos: Number(editing.cadernos) || 0,
+                uniforme: Number(editing.uniforme) || 0,
+                extras: Number(editing.extras) || 0,
+                curso: Number(editing.curso) || 0,
+                cartaoEstudante: Number(editing.cartaoEstudante) || 0,
+                mensalidade1: Number(editing.mensalidade1) || 0,
+                mesesPropina: Number(editing.mesesPropina) || 0,
+                propina: num(form.propina),
+                dataPag: editing.dataPag || form.dataPag.trim(),
+                bruto: Number(editing.bruto) || Number(editing.liquido) || 0,
+                descPct: Number(editing.descPct) || 0,
+                liquido: Number(editing.liquido) || 0,
+                statusPag: editing.statusPag,
+                recibo: editing.recibo,
+              }
+            : {
+                mensalidade1: t.mensalidade1,
+                mesesPropina: num(form.mesesPropina) || 0,
+                propina: num(form.propina),
+                dataPag: form.dataPag.trim(),
+                bruto: t.bruto,
+                descPct: t.descPct || 0,
+                liquido: t.liquido,
+              }
+        ),
         ...metodosFromForm(form),
         transferidoCampusCidade: form.transferidoCampusCidade,
         irmaosNivel: irmaosNivelFromForm(form),
@@ -2833,10 +2860,7 @@ function normalizeNomeAluno(s: string): string {
   }
 
 
-  /** Abre o modelo da fatura (com logo) — NÃO grava nem gera PDF ainda.
-   * Inclui TODAS as rubricas da ficha (inscrição, seguro, manuais, propina, multas, …).
-   * O utilizador marca só o que entra nesta fatura — a referência identifica-se pelas rubricas, não só por «propina».
-   */
+  /** Abre o modelo da fatura (com logo) — NÃO grava nem gera PDF ainda. */
   function abrirFatura(a: Aluno) {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
@@ -2850,19 +2874,10 @@ function normalizeNomeAluno(s: string): string {
         : `PROP-${mesKey}-001`;
     const contacto = loadContacto();
     const mesesProp = mesesPropinaFromAluno(a);
-    const campanha = alunoTemCampanha(a);
-    const irmaos = alunoTemIrmaosDesc(a);
-    // Todas as rubricas da matrícula (mesma base que o recibo de liquidação)
-    let linhas = linhasMatriculaBase(a, mesesProp, { campanha, irmaos });
-    // Se já há valor pago neste mês lectivo, reflectir na linha de propinas
-    if (pagoMes > 0) {
-      linhas = linhas.map((l) =>
-        l.key === "propinas" ? { ...l, value: pagoMes, on: true } : l,
-      );
-    }
-    // Manter visíveis as linhas com valor 0 (desligadas) para o utilizador poder activar
-    // Multas continuam off por defeito
-    const total = totalLinhas(linhas) || valor || propinaPorCiclo(a);
+    const linha = linhaPropinaMensal(a, mesLetivo);
+    if (pagoMes > 0) linha.value = pagoMes;
+    const linhas = [linha];
+    const total = totalLinhas(linhas) || linha.value || valor || propinaPorCiclo(a);
     const html = buildInvoiceHtml({
       a,
       numero,
@@ -2886,8 +2901,8 @@ function normalizeNomeAluno(s: string): string {
       html,
       linhas,
       mesesProp,
-      campanha,
-      irmaos,
+      campanha: alunoTemCampanha(a),
+      irmaos: alunoTemIrmaosDesc(a),
       modo: "fatura",
     });
   }
@@ -3768,7 +3783,20 @@ function normalizeNomeAluno(s: string): string {
           <p className="text-xs text-[var(--color-muted)]">
             Mesmos campos que a nova matrícula. A classe é recalculada pela data de nascimento (sistema Congo-Brazzaville: 13 anos → 5ème). Pode alterar manualmente. ID e recibo mantêm-se.
           </p>
-          <MatriculaForm form={form} setForm={setForm} onSave={saveEdit} onCancel={() => { setEditing(null); clearDeepLink(); }} />
+          <MatriculaForm
+            form={form}
+            setForm={setForm}
+            onSave={saveEdit}
+            onCancel={() => { setEditing(null); clearDeepLink(); }}
+            protegerLiquidacaoPaga={
+              Boolean(
+                editing &&
+                  (editing.statusPag === "pago" ||
+                    (Number(editing.liquido) > 0 &&
+                      (Boolean(editing.dataPag) || Boolean(editing.recibo)))),
+              )
+            }
+          />
         </DialogContent>
       </Dialog>
 
