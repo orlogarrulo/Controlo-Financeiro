@@ -1386,6 +1386,8 @@ function Salarios() {
   const [adiantValor, setAdiantValor] = useState("");
   const [adiantData, setAdiantData] = useState(todayIso());
   const [adiantNota, setAdiantNota] = useState("");
+  /** Mês da folha em que o adiantamento será descontado (escolhido no formulário). */
+  const [adiantMesKey, setAdiantMesKey] = useState("");
   const [genMes, setGenMes] = useState("");
   const [genMesKey, setGenMesKey] = useState("");
   /** Diálogo «Imprimir lista»: escolher quem entra na listagem + total do mês. */
@@ -1874,6 +1876,7 @@ function Salarios() {
                     setAdiantValor("");
                     setAdiantData(todayIso());
                     setAdiantNota("");
+                    setAdiantMesKey(mesActivoKey);
                     setAdiantOpen(true);
                   }}
                 >
@@ -2021,6 +2024,7 @@ function Salarios() {
                             setAdiantValor("");
                             setAdiantData(todayIso());
                             setAdiantNota("");
+                            setAdiantMesKey(mesActivoKey);
                             setAdiantOpen(true);
                           }}
                         >
@@ -2695,6 +2699,20 @@ function Salarios() {
               <Input type="date" value={adiantData} onChange={(e) => setAdiantData(e.target.value)} />
             </div>
             <div className="space-y-1.5">
+              <Label>Mês a descontar na folha</Label>
+              <select
+                className="h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                value={adiantMesKey || mesActivoKey}
+                onChange={(e) => setAdiantMesKey(e.target.value)}
+              >
+                {opcoesMesReferencia().map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
               <Label>Nota (opcional)</Label>
               <Input
                 value={adiantNota}
@@ -2703,8 +2721,8 @@ function Salarios() {
               />
             </div>
             <p className="text-[11px] text-[var(--color-muted)]">
-              O valor sai já no Banco BAI e é descontado automaticamente na próxima folha
-              («Gerar recibos») do mês de competência {mesActivoLabel}.
+              O valor sai já no Banco BAI e é descontado na folha do mês escolhido
+              («Gerar recibos»). Por defeito: {mesActivoLabel}.
             </p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setAdiantOpen(false)}>
@@ -2718,12 +2736,16 @@ function Salarios() {
                       toast.error("Escolha o funcionário.");
                       return;
                     }
+                    const mesKeySel = adiantMesKey || mesActivoKey;
+                    const mesLabelSel =
+                      opcoesMesReferencia().find((o) => o.key === mesKeySel)?.label ||
+                      mesActivoLabel;
                     const row = addAdiantamentoSalario({
                       funcionarioId: adiantFuncId,
                       valor: Number(String(adiantValor).replace(/\s/g, "").replace(",", ".")) || 0,
                       dataPag: adiantData || todayIso(),
-                      mesKey: mesActivoKey,
-                      mesLabel: mesActivoLabel,
+                      mesKey: mesKeySel,
+                      mesLabel: mesLabelSel,
                       nota: adiantNota.trim() || undefined,
                     });
                     setAdiantOpen(false);
