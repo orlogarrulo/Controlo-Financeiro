@@ -283,6 +283,14 @@ type Store = ExtraState & {
     patch: Partial<Pick<ReciboSalario, "mes" | "mesKey" | "dataPag" | "diasTrab" | "diasUteis" | "liquido">>,
   ) => void;
   setReciboSalarioPago: (id: string, pago: boolean, dataPag?: string) => void;
+  addAdiantamentoSalario: (input: {
+    funcionarioId: string;
+    valor: number;
+    dataPag: string;
+    mesKey: string;
+    mesLabel: string;
+    nota?: string;
+  }) => ReciboSalario;
   /** Alinha botões pago com movimentos BAI já existentes (multi-PC / cloud). */
   reconcileSalariosBai: () => boolean;
   /** Recria no BAI os débitos em falta para recibos já marcados como pagos. */
@@ -1972,6 +1980,57 @@ export const useFinance = create<Store>()(
           }
         }
         get().pushAudit("recibo_salario_pago", `${id} · ${pago}`);
+      },
+      addAdiantamentoSalario: ({ funcionarioId, valor, dataPag, mesKey, mesLabel, nota }) => {
+        requireEdit(get);
+        const v = Math.round(Number(valor) || 0);
+        if (v <= 0) throw new Error("Indique o valor do adiantamento.");
+        const staff = salariosAll(
+          get().salariosExtra || [],
+          get().salariosOverrides || {},
+          get().salariosDeletedIds || [],
+        ).find((s) => s.id === funcionarioId);
+        if (!staff) throw new Error("Funcionário não encontrado.");
+        const id = `AD-${funcionarioId}-${Date.now().toString(36)}`;
+        const row: ReciboSalario = {
+          id,
+          funcionarioId,
+          nome: staff.nome,
+          funcao: staff.funcao,
+          mes: `Adiantamento · ${mesLabel}`,
+          mesKey,
+          diasUteis: 0,
+          diasTrab: 0,
+          salarioBruto: v,
+          descontoDias: 0,
+          outrosDesc: 0,
+          liquido: v,
+          dataPag: dataPag || new Date().toISOString().slice(0, 10),
+          pago: true,
+          iban: staff.iban,
+          criadoEm: new Date().toISOString(),
+          tipo: "adiantamento",
+        };
+        set({ recibosSalario: [...(get().recibosSalario || []), row] });
+        const movId = `APP-SAL-${id}`;
+        const mov: MovimentoBai = {
+          id: movId,
+          linha: 0,
+          data: row.dataPag,
+          banco: "SALARIO-APP",
+          descricao: `Adiantamento honorários · ${staff.nome} · ${mesLabel}`,
+          entrada: 0,
+          saida: v,
+          saldo: 0,
+          observacoes: nota
+            ? `Adiantamento ${id} · ${nota}`
+            : `Adiantamento ${id} · descontar na folha de ${mesLabel}`,
+        };
+        set({
+          movimentosBaiExtra: sortAndRecalcBai([...(get().movimentosBaiExtra || []), mov]),
+        });
+        get().pushAudit("adiantamento_salario", `${staff.nome} · ${v} · ${mesLabel}`);
+        return row;
       },
       reconcileSalariosBai: () => {
         const recibos = get().recibosSalario || [];

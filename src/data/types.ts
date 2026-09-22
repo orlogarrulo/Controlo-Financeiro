@@ -408,6 +408,10 @@ export type ReciboSalario = {
   pago: boolean;
   iban?: string;
   criadoEm: string;
+  /** Recibo mensal (omisso) ou adiantamento pago fora da folha. */
+  tipo?: "recibo" | "adiantamento";
+  /** Recibo mensal onde o adiantamento foi descontado. */
+  aplicadoEm?: string;
 };
 
 export type Escola = {

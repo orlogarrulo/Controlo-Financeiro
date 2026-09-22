@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FileText, Pencil, Plus, Printer, Trash2, UserPlus } from "lucide-react";
+import { FileText, Pencil, Plus, Printer, Trash2, UserPlus, Wallet } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -1318,6 +1318,7 @@ function Salarios() {
   const limparDebitosSalarioBai = useFinance((s) => s.limparDebitosSalarioBai);
   const restaurarRecibosPagos = useFinance((s) => s.restaurarRecibosPagos);
   const removeReciboSalario = useFinance((s) => s.removeReciboSalario);
+  const addAdiantamentoSalario = useFinance((s) => s.addAdiantamentoSalario);
   const rows = salariosAll(salariosExtra, salariosOverrides, salariosDeletedIds);
 
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -1325,6 +1326,11 @@ function Salarios() {
   const [editing, setEditing] = useState<Salario | null>(null);
   const [viewing, setViewing] = useState<Salario | null>(null);
   const [genOpen, setGenOpen] = useState(false);
+  const [adiantOpen, setAdiantOpen] = useState(false);
+  const [adiantFuncId, setAdiantFuncId] = useState("");
+  const [adiantValor, setAdiantValor] = useState("");
+  const [adiantData, setAdiantData] = useState(todayIso());
+  const [adiantNota, setAdiantNota] = useState("");
   const [genMes, setGenMes] = useState("");
   const [genMesKey, setGenMesKey] = useState("");
   /** Diálogo «Imprimir lista»: escolher quem entra na listagem + total do mês. */
@@ -1656,7 +1662,16 @@ function Salarios() {
       const f = rows.find((r) => r.id === id);
       if (!f) continue;
       const diasT = Number(diasMap[id] ?? diasU) || 0;
-      const { descontoDias, liquido } = liquidoCalc(f.salario, diasU, diasT, f.outrosDesc || 0);
+      const adiantAbertos = (recibosSalario || []).filter(
+        (r) =>
+          r.tipo === "adiantamento" &&
+          r.funcionarioId === id &&
+          r.pago &&
+          !r.aplicadoEm,
+      );
+      const adiantSoma = adiantAbertos.reduce((s, r) => s + (Number(r.liquido) || 0), 0);
+      const outros = (f.outrosDesc || 0) + adiantSoma;
+      const { descontoDias, liquido } = liquidoCalc(f.salario, diasU, diasT, outros);
       const rid = `RS-${id}-${genMesKey}`;
       created.push({
         id: rid,
@@ -1669,7 +1684,7 @@ function Salarios() {
         diasTrab: diasT,
         salarioBruto: f.salario,
         descontoDias,
-        outrosDesc: f.outrosDesc || 0,
+        outrosDesc: outros,
         liquido,
         dataPag: genDataPag || todayIso(),
         pago: false,
@@ -1683,6 +1698,20 @@ function Salarios() {
       id: `RH-${genMesKey}-${String(i + 1).padStart(3, "0")}`,
     }));
     addRecibosSalario(numbered);
+    const aplicados: ReciboSalario[] = [];
+    for (const rec of numbered) {
+      for (const ad of recibosSalario || []) {
+        if (
+          ad.tipo === "adiantamento" &&
+          ad.funcionarioId === rec.funcionarioId &&
+          ad.pago &&
+          !ad.aplicadoEm
+        ) {
+          aplicados.push({ ...ad, aplicadoEm: rec.id });
+        }
+      }
+    }
+    if (aplicados.length) addRecibosSalario(aplicados);
     setFilterMes(genMesKey);
     setUiPrefs({
       salariosMesKey: genMesKey,
@@ -1779,6 +1808,22 @@ function Salarios() {
                 </Button>
                 <Button className="shrink-0" type="button" variant="secondary" onClick={openGerarRecibos}>
                   Gerar recibos
+                </Button>
+                <Button
+                  className="shrink-0"
+                  type="button"
+                  variant="secondary"
+                  title="Pagar um adiantamento agora e descontar na folha do mês"
+                  onClick={() => {
+                    setAdiantFuncId(rows[0]?.id || "");
+                    setAdiantValor("");
+                    setAdiantData(todayIso());
+                    setAdiantNota("");
+                    setAdiantOpen(true);
+                  }}
+                >
+                  <Wallet className="mr-1 size-4" />
+                  Adiantamento
                 </Button>
               </>
             ) : null}
@@ -1910,6 +1955,21 @@ function Salarios() {
                       <>
                         <Button type="button" size="sm" variant="secondary" onClick={() => openEdit(r)}>
                           <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          title="Registar adiantamento"
+                          onClick={() => {
+                            setAdiantFuncId(r.id);
+                            setAdiantValor("");
+                            setAdiantData(todayIso());
+                            setAdiantNota("");
+                            setAdiantOpen(true);
+                          }}
+                        >
+                          Adiant.
                         </Button>
                         {canEdit ? (
                           <Button
@@ -2092,7 +2152,12 @@ function Salarios() {
               ) : (
                 recibosFiltrados.map((r) => (
                   <tr key={r.id} className="border-t border-[var(--color-line)]">
-                    <td className="px-3 py-2 font-medium">{r.nome}</td>
+                    <td className="px-3 py-2 font-medium">
+                      {r.nome}
+                      {r.tipo === "adiantamento" ? (
+                        <span className="ml-2 text-[11px] font-semibold text-amber-800">Adiantamento</span>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatKz(r.liquido)}</td>
                     <td className="px-3 py-2">
                       {r.diasTrab}/{r.diasUteis}
@@ -2537,6 +2602,86 @@ function Salarios() {
               </div>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={adiantOpen} onOpenChange={setAdiantOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adiantamento de honorários</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="space-y-1.5">
+              <Label>Funcionário</Label>
+              <select
+                className="h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
+                value={adiantFuncId}
+                onChange={(e) => setAdiantFuncId(e.target.value)}
+              >
+                <option value="">Seleccione…</option>
+                {rows.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome} · {formatKz(f.salario)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Valor (Kz)</Label>
+              <Input
+                inputMode="decimal"
+                value={adiantValor}
+                onChange={(e) => setAdiantValor(e.target.value)}
+                placeholder="Ex. 50000"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Data do pagamento</Label>
+              <Input type="date" value={adiantData} onChange={(e) => setAdiantData(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nota (opcional)</Label>
+              <Input
+                value={adiantNota}
+                onChange={(e) => setAdiantNota(e.target.value)}
+                placeholder="Motivo do adiantamento"
+              />
+            </div>
+            <p className="text-[11px] text-[var(--color-muted)]">
+              O valor sai já no Banco BAI e é descontado automaticamente na próxima folha
+              («Gerar recibos») do mês de competência {mesActivoLabel}.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setAdiantOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  try {
+                    if (!adiantFuncId) {
+                      toast.error("Escolha o funcionário.");
+                      return;
+                    }
+                    addAdiantamentoSalario({
+                      funcionarioId: adiantFuncId,
+                      valor: Number(String(adiantValor).replace(/\s/g, "").replace(",", ".")) || 0,
+                      dataPag: adiantData || todayIso(),
+                      mesKey: mesActivoKey,
+                      mesLabel: mesActivoLabel,
+                      nota: adiantNota.trim() || undefined,
+                    });
+                    toast.success("Adiantamento registado e debitado no BAI.");
+                    setAdiantOpen(false);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Não foi possível registar");
+                  }
+                }}
+              >
+                Registar e debitar BAI
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
