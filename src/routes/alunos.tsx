@@ -706,8 +706,30 @@ function MatriculaForm({
   protegerLiquidacaoPaga?: boolean;
 }) {
   const totais = calcTotais(form);
+  const docsFaltaLabels = (
+    [
+      ["fotos4", "4 fotografias"],
+      ["boletimVacinas", "Boletim de vacinas"],
+      ["boletimNotas", "Boletim de notas"],
+      ["biAluno", "B.I. do aluno"],
+      ["biPais", "B.I. dos pais / encarregado"],
+      ["seguro", "Seguro (comprovativo)"],
+      ["atestadoMedico", "Atestado médico"],
+    ] as const
+  )
+    .filter(([key]) => !form.docsEntregues?.[key])
+    .map(([, label]) => label);
+
   return (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
+      {docsFaltaLabels.length > 0 && (
+        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-red-300 bg-red-50 px-3 py-2 text-[12px] font-semibold text-red-700">
+          ⚠ Documentos em falta: {docsFaltaLabels.join(", ")}
+          <span className="mt-0.5 block text-[11px] font-normal text-red-600/90">
+            Marque abaixo na checklist «Documentos entregues» — o alerta no CRM desaparece automaticamente.
+          </span>
+        </div>
+      )}
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Nome do aluno *</Label>
         <Input

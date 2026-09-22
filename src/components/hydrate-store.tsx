@@ -10,12 +10,16 @@ import {
 } from "@/lib/finance-cloud";
 import {
   useFinance,
+  alunosAll,
+  persistAlunosCensoLocal,
+  SEED_ALUNO_IDS,
   recalcularClassesMatriculas,
   reporPropinasFromMatriculas,
   sanearAlunosDuplicados,
   reabrirAlunosUnicos,
 } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
+import type { Aluno } from "@/data/types";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
@@ -302,7 +306,7 @@ function applyPayload(p: FinanceCloudPayload) {
     // CRÍTICO: não esvaziar alunosExtra — senão matrículas novas nunca chegam ao telemóvel
     alunosExtra: alunosMerged.filter((a) => {
       const id = (a as { id?: string }).id;
-      return id && !deletedAlunos.has(id);
+      return Boolean(id && !deletedAlunos.has(id) && !SEED_ALUNO_IDS.has(id));
     }) as never[],
     alunosOverrides: mergeAlunoOverrides(
       local.alunosOverrides || {},
@@ -373,6 +377,17 @@ function applyPayload(p: FinanceCloudPayload) {
       (p.contaCorrente as never[]) || [],
     ) as never[],
   });
+  try {
+    persistAlunosCensoLocal(
+      alunosAll(
+        useFinance.getState().alunosExtra || [],
+        useFinance.getState().alunosOverrides || {},
+        useFinance.getState().alunosDeletedIds || [],
+      ),
+    );
+  } catch (e) {
+    console.warn("[censo-local] apply", e);
+  }
   // Alinha botões com extrato após aplicar nuvem
   try {
     useFinance.getState().reconcileSalariosBai?.();
@@ -390,7 +405,19 @@ export async function pushFinanceNow() {
 
 async function pushCloud() {
   try {
-    const { payload } = sliceFromStoreDetailed(useFinance.getState());
+    const state = useFinance.getState();
+    const { payload } = sliceFromStoreDetailed(state);
+    const censo = alunosAll(
+      state.alunosExtra || [],
+      state.alunosOverrides || {},
+      state.alunosDeletedIds || [],
+    ).map((a) => {
+      const { foto: _omit, ...rest } = a as Aluno & { foto?: string };
+      return rest;
+    });
+    payload.alunosCenso = censo;
+    payload.alunosExtra = censo.filter((a) => a.id && !SEED_ALUNO_IDS.has(a.id));
+    persistAlunosCensoLocal(censo as never);
     const res = await saveFinanceCloud({ data: payload });
     if (res?.updatedAt) {
       localStorage.setItem(LOCAL_TS_KEY, String(Date.parse(res.updatedAt) || Date.now()));
@@ -440,6 +467,7 @@ function mergeAlunoOverrides(
     "obs",
     "dataPag",
     "nome",
+    "docsEntregues",
   ];
   const ts = (o: Record<string, unknown>) => {
     const v = o.updatedAt;

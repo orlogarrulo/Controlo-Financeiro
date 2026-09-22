@@ -367,6 +367,26 @@ function resumoTaxasMatricula(a: Aluno): {
   return { inscricao, seguro, manuais, propinaAdiantada, mesesPropina, soTaxasSemPropina };
 }
 
+/** Labels dos documentos obrigatórios na matrícula (checklist em Matrículas). */
+const DOC_ENTREGUE_LABELS: { key: keyof NonNullable<Aluno["docsEntregues"]>; label: string }[] = [
+  { key: "fotos4", label: "4 fotografias" },
+  { key: "boletimVacinas", label: "Boletim de vacinas" },
+  { key: "boletimNotas", label: "Boletim de notas" },
+  { key: "biAluno", label: "B.I. do aluno" },
+  { key: "biPais", label: "B.I. dos pais / encarregado" },
+  { key: "seguro", label: "Seguro (comprovativo)" },
+  { key: "atestadoMedico", label: "Atestado médico" },
+];
+
+/**
+ * Documentos ainda não marcados como entregues na ficha do aluno (separador Matrículas).
+ * O alerta desaparece assim que o utilizador marca a entrega no checklist.
+ */
+function docsEmFalta(a: Aluno): string[] {
+  const d = a.docsEntregues || {};
+  return DOC_ENTREGUE_LABELS.filter(({ key }) => !d[key]).map(({ label }) => label);
+}
+
 function CrmPage() {
   const escola = getSeed().escola;
   const extraA = useFinance((s) => s.alunosExtra);
@@ -1537,6 +1557,25 @@ Cordiais cumprimentos,
                       <div className="text-xs text-[var(--color-muted)]">
                         {a.id} · {a.turma || "—"}
                       </div>
+                      {(() => {
+                        const faltaDocs = docsEmFalta(a);
+                        const propinaEmFalta = !row.jaPagoNaMatricula;
+                        if (!faltaDocs.length && !propinaEmFalta) return null;
+                        return (
+                          <div className="mt-1.5 space-y-0.5 text-[11px] font-semibold leading-snug text-red-600">
+                            {faltaDocs.length > 0 && (
+                              <div title="Marque a entrega no separador Matrículas para o alerta desaparecer">
+                                ⚠ Documentos em falta: {faltaDocs.join(", ")}
+                              </div>
+                            )}
+                            {propinaEmFalta && (
+                              <div title="O alerta desaparece quando a propina deste mês for paga (Matrículas ou Propinas)">
+                                ⚠ Propina de {mesLabel(mesKey)} por pagar
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-2">
                       {a.encarregado || a.pai || a.mae || (

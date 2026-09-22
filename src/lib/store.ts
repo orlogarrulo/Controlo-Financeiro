@@ -31,6 +31,33 @@ import {
 } from "@/lib/classe-congo";
 
 const seed = seedJson as Seed;
+export const SEED_ALUNO_IDS = new Set((seed.alunos || []).map((a) => a.id));
+
+/** Censo local (nuvem → seed virtual). Sem isto, um PC novo só vê os 19 do seed.json. */
+export const ALUNOS_CENSO_LOCAL_KEY = "ecc-alunos-censo-v1";
+
+function alunosCensoLocal(): Aluno[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(ALUNOS_CENSO_LOCAL_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Aluno[];
+    return Array.isArray(parsed) ? parsed.filter((a) => a && typeof a.id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function persistAlunosCensoLocal(alunos: Aluno[]) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const seedIds = new Set((seed.alunos || []).map((a) => a.id));
+    const extras = (alunos || []).filter((a) => a?.id && !seedIds.has(a.id));
+    localStorage.setItem(ALUNOS_CENSO_LOCAL_KEY, JSON.stringify(extras));
+  } catch (e) {
+    console.warn("[censo-local]", e);
+  }
+}
 
 /** Bloqueia mutações para Colaboradores 2–5 (só C1 edita). */
 function requireEdit(get: () => { activeOperator: string; operators: string[] }) {
@@ -1054,7 +1081,9 @@ export const useFinance = create<Store>()(
         requireEdit(get);
         const by = get().activeOperator || "—";
         const row = { ...aluno, criadoPor: by, createdAt: new Date().toISOString() };
-        set({ alunosExtra: [...get().alunosExtra, row] });
+        const extras = [...get().alunosExtra, row];
+        set({ alunosExtra: extras });
+        persistAlunosCensoLocal(extras);
         get().pushAudit("criar_aluno", `${row.id} · ${row.nome}`);
 
         // Sincronizar com Propinas: criar linha de mensalidade se ainda não existir
@@ -2699,7 +2728,28 @@ export const useFinance = create<Store>()(
 );
 
 export function getSeed(): Seed {
-  return seed;
+  const extra = alunosCensoLocal();
+  if (!extra.length) return seed;
+  const ids = new Set((seed.alunos || []).map((a) => a.id));
+  const more = extra.filter((a) => a?.id && !ids.has(a.id));
+  if (!more.length) return seed;
+  const mensExtra: Mensalidade[] = more.map((a) => ({
+    id: a.id,
+    nome: a.nome,
+    turma: a.turma || "",
+    propina: Number(a.propina) || 0,
+    pagamentos: {},
+    obs: "",
+  }));
+  const mensIds = new Set((seed.mensalidades || []).map((m) => m.id));
+  return {
+    ...seed,
+    alunos: [...seed.alunos, ...more],
+    mensalidades: [
+      ...(seed.mensalidades || []),
+      ...mensExtra.filter((m) => !mensIds.has(m.id)),
+    ],
+  };
 }
 
 /** Card invoices already booked as socio FAT (avoid double-count). */
@@ -4032,7 +4082,8 @@ export function alunosAll(
     out.push(apply(a));
   };
 
-  for (const a of seed.alunos) push(a);
+  const seedNow = getSeed();
+  for (const a of seedNow.alunos) push(a);
   for (const a of extras) push(a);
   return out;
 }
