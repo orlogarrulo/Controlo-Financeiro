@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useEffect, useState } from "react";
-import { Pencil, Plus, Landmark, Trash2, Printer } from "lucide-react";
+import { Pencil, Plus, Landmark, Trash2, Printer, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { fundoAtmAll, fundoPagAll, useFinance, getSeed, movimentosAll } from "@/lib/store";
 import { escolaLogoSrc } from "@/lib/logo-escola";
-import { formatDate, formatKz, todayIso } from "@/lib/format";
+import { formatDate, formatDateLong, formatKz, todayIso, extensoKz } from "@/lib/format";
+import { openPrintHtml } from "@/lib/declaracao-matricula";
 import { isCollaborator1 } from "@/lib/can-edit";
 import type { FundoPagamento } from "@/data/types";
 import { PrintActions } from "@/components/print-actions";
@@ -22,6 +23,90 @@ export const Route = createFileRoute("/fundo")({
     focus: typeof s.focus === "string" ? s.focus : undefined,
   }),
 });
+
+
+/** Comprovativo de entrega de dinheiro em mão (fundo de maneio) — uma via. */
+function comprovativoEntregaFundoHtml(
+  escola: { nome: string; nomeCurto?: string; subtitulo?: string; ano?: string },
+  p: FundoPagamento,
+  via: string,
+): string {
+  const logo = escolaLogoSrc();
+  const dataLong = formatDateLong(p.data) || formatDate(p.data);
+  const origem =
+    !p.atm || p.atm === "SOCIO"
+      ? "Sócio (origem do dinheiro)"
+      : `Bloco ATM ${p.atm}`;
+  const valorExt = (() => {
+    try {
+      return extensoKz(p.valor);
+    } catch {
+      return "";
+    }
+  })();
+  return `<article class="recibo">
+  <header class="rh">
+    <img src="${logo}" alt=""/>
+    <div>
+      <strong>${escola.nome}</strong><br/>
+      <span class="mu">${escola.subtitulo || escola.nomeCurto || ""} · ${escola.ano || ""}</span>
+    </div>
+  </header>
+  <p class="ki" style="text-align:center">Comprovativo de entrega de dinheiro em mão</p>
+  <p class="mu" style="text-align:center">Fundo de maneio · ${via}</p>
+  <div class="rw"><span>N.º <b>${p.id}</b></span><span>${formatDate(p.data)}</span></div>
+  <p class="tx">Declaro eu, <b>${p.recebeu || "________________"}</b>, ter recebido em mão a quantia de
+  <b>${formatKz(p.valor)}</b>${valorExt ? ` (<i>${valorExt}</i>)` : ""} pertencente ao
+  <b>fundo de maneio</b> da ${escola.nomeCurto || escola.nome}, para o fim abaixo indicado.</p>
+  <table class="tb">
+    <tr><td>Data da entrega</td><td class="n">${dataLong}</td></tr>
+    <tr><td>Valor entregue</td><td class="n">${formatKz(p.valor)}</td></tr>
+    <tr><td>Descrição / finalidade</td><td class="n">${p.descricao || "—"}</td></tr>
+    <tr><td>Origem no fundo</td><td class="n">${origem}</td></tr>
+    ${p.obs ? `<tr><td>Observações</td><td class="n">${p.obs}</td></tr>` : ""}
+    <tr><td>Recebedor</td><td class="n">${p.recebeu || "—"}</td></tr>
+  </table>
+  <p class="tx">O recebedor confirma a recepção do numerário e assume a responsabilidade pela sua utilização conforme a finalidade indicada.</p>
+  <div class="sg">
+    <div><span>Quem entrega (Fundo / Finanças)</span><i></i></div>
+    <div><span>Quem recebe (assinatura)</span><i></i></div>
+  </div>
+  <p class="ft">Documento gerado pelo Departamento de Finanças · Fundo de maneio · ${via} · ${formatDate(p.data)}</p>
+</article>`;
+}
+
+function wrapComprovativoEntregaFundo(
+  escola: { nome: string; nomeCurto?: string; subtitulo?: string; ano?: string },
+  p: FundoPagamento,
+): string {
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
+<title>Entrega fundo · ${p.id}</title>
+<style>
+@page { size: A4; margin: 12mm; }
+body { font-family: "Segoe UI", system-ui, sans-serif; color: #1a1a1a; margin: 0; font-size: 12px; }
+.folha.duas { display: flex; flex-direction: column; gap: 10mm; }
+.folha.duas .recibo { min-height: 120mm; page-break-inside: avoid; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px; }
+.rh { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.rh img { height: 56px; width: 56px; object-fit: contain; }
+.ki { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #14532d; margin: 6px 0 2px; }
+.mu { color: #64748b; font-size: 11px; margin: 0 0 8px; }
+.rw { display: flex; justify-content: space-between; margin: 8px 0; font-size: 12px; }
+.tx { line-height: 1.45; margin: 8px 0; }
+.tb { width: 100%; border-collapse: collapse; margin: 10px 0; }
+.tb td { border-bottom: 1px solid #e2e8f0; padding: 6px 4px; vertical-align: top; }
+.tb td.n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.sg { display: flex; gap: 24px; margin-top: 28px; }
+.sg div { flex: 1; text-align: center; }
+.sg span { display: block; font-size: 10px; color: #64748b; margin-bottom: 36px; }
+.sg i { display: block; border-top: 1px solid #334155; margin: 0 8px; height: 0; }
+.ft { margin-top: 16px; font-size: 9px; color: #94a3b8; text-align: center; }
+</style></head><body>
+<div class="folha duas">
+  ${comprovativoEntregaFundoHtml(escola, p, "Via do recebedor — assinar e devolver")}
+  ${comprovativoEntregaFundoHtml(escola, p, "Via do arquivo — fundo de maneio")}
+</div>
+</body></html>`;
+}
 
 function Fundo() {
   const search = Route.useSearch();
@@ -112,13 +197,17 @@ function Fundo() {
       toast.error("Escolha a origem do dinheiro (Sócio ou bloco ATM).");
       return;
     }
-    add(form);
+    const row = add(form);
     toast.success(
       form.atm === "SOCIO"
         ? "Pagamento registado · origem Sócio"
         : "Pagamento em dinheiro registado · bloco ATM",
     );
     setCreating(false);
+    // Se já indicou quem recebeu, oferece o comprovativo de assinatura
+    if (form.recebeu?.trim() && row) {
+      window.setTimeout(() => abrirComprovativo(row), 200);
+    }
   }
 
   function saveNewAtm() {
@@ -163,6 +252,13 @@ function Fundo() {
     });
     toast.success("Actualizado");
     setEditing(null);
+  }
+
+  function abrirComprovativo(p: FundoPagamento) {
+    if (!p.recebeu?.trim()) {
+      toast.message("Indique quem recebeu (edite o pagamento) antes de emitir o comprovativo.");
+    }
+    openPrintHtml(wrapComprovativoEntregaFundo(escola, p));
   }
 
 
@@ -343,26 +439,36 @@ function Fundo() {
                 <td className="px-3 py-2">{p.recebeu || "—"}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatKz(p.valor)}</td>
                 <td className="no-print px-3 py-2 text-right">
-                  {canEdit ? (
-                    <div className="inline-flex gap-1">
-                      <Button size="sm" variant="secondary" onClick={() => setEditing(p)}>
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="text-red-700 hover:bg-red-50"
-                        title="Apagar pagamento"
-                        onClick={() => {
-                          if (!confirm(`Apagar pagamento ${p.id} · ${formatKz(p.valor)}?`)) return;
-                          removePag(p.id);
-                          toast.success("Pagamento apagado · restante do fundo recalculado");
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
-                  ) : null}
+                  <div className="inline-flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Comprovativo de entrega (assinatura)"
+                      onClick={() => abrirComprovativo(p)}
+                    >
+                      <FileText className="size-3.5" />
+                    </Button>
+                    {canEdit ? (
+                      <>
+                        <Button size="sm" variant="secondary" title="Editar" onClick={() => setEditing(p)}>
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="text-red-700 hover:bg-red-50"
+                          title="Apagar pagamento"
+                          onClick={() => {
+                            if (!confirm(`Apagar pagamento ${p.id} · ${formatKz(p.valor)}?`)) return;
+                            removePag(p.id);
+                            toast.success("Pagamento apagado · restante do fundo recalculado");
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -487,17 +593,21 @@ function Fundo() {
             <div className="grid gap-3">
               <div>
                 <Label>Data</Label>
-                <Input value={editing.data} onChange={(e) => setEditing({ ...editing, data: e.target.value })} />
+                <Input
+                  type="date"
+                  value={editing.data}
+                  onChange={(e) => setEditing({ ...editing, data: e.target.value })}
+                />
               </div>
               <div>
-                <Label>Descrição</Label>
+                <Label>Descrição / finalidade</Label>
                 <Input
                   value={editing.descricao}
                   onChange={(e) => setEditing({ ...editing, descricao: e.target.value })}
                 />
               </div>
               <div>
-                <Label>Valor</Label>
+                <Label>Valor (Kz)</Label>
                 <Input
                   type="number"
                   value={editing.valor}
@@ -505,13 +615,59 @@ function Fundo() {
                 />
               </div>
               <div>
-                <Label>Recebeu</Label>
+                <Label>Quem recebeu (nome para assinatura)</Label>
                 <Input
                   value={editing.recebeu}
                   onChange={(e) => setEditing({ ...editing, recebeu: e.target.value })}
+                  placeholder="Nome completo de quem recebe o dinheiro"
                 />
               </div>
-              <Button onClick={saveEdit}>Guardar</Button>
+              <div>
+                <Label>Origem no fundo</Label>
+                <select
+                  className="h-10 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] px-2 text-sm"
+                  value={editing.atm || "SOCIO"}
+                  onChange={(e) => setEditing({ ...editing, atm: e.target.value })}
+                >
+                  <option value="SOCIO">Sócio (origem do dinheiro)</option>
+                  {atms.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      ATM {a.id} · {formatDate(a.data)} · {formatKz(a.valor)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Observações</Label>
+                <Input
+                  value={editing.obs || ""}
+                  onChange={(e) => setEditing({ ...editing, obs: e.target.value })}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (!editing) return;
+                    update(editing.id, {
+                      data: editing.data,
+                      descricao: editing.descricao,
+                      valor: editing.valor,
+                      recebeu: editing.recebeu,
+                      obs: editing.obs,
+                      atm: editing.atm,
+                    });
+                    toast.success("Guardado");
+                    abrirComprovativo(editing);
+                  }}
+                >
+                  <FileText className="mr-1 size-4" />
+                  Guardar e imprimir comprovativo
+                </Button>
+                <Button onClick={saveEdit}>Guardar</Button>
+              </div>
             </div>
           ) : null}
         </DialogContent>

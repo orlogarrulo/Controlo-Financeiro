@@ -256,7 +256,7 @@ type Store = ExtraState & {
   setOperatorName: (index: number, name: string) => void;
   pushAudit: (action: string, detail: string) => void;
   pushSession: (action: "entrada" | "saida", detail?: string) => void;
-  addFundoPagamento: (p: Omit<import("@/data/types").FundoPagamento, "id"> & { id?: string }) => void;
+  addFundoPagamento: (p: Omit<import("@/data/types").FundoPagamento, "id"> & { id?: string }) => import("@/data/types").FundoPagamento;
   updateFundoPagamento: (id: string, patch: Partial<import("@/data/types").FundoPagamento>) => void;
   removeFundoPagamento: (id: string) => void;
   /**
@@ -886,6 +886,7 @@ export const useFinance = create<Store>()(
         };
         set({ fundoExtra: [...get().fundoExtra, row] });
         get().pushAudit("fundo_criar", id);
+        return row;
       },
       updateFundoPagamento: (id, patch) => {
         requireEdit(get);
