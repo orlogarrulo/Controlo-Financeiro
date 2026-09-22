@@ -2010,6 +2010,7 @@ export const useFinance = create<Store>()(
           iban: staff.iban,
           criadoEm: new Date().toISOString(),
           tipo: "adiantamento",
+          nota: nota || undefined,
         };
         set({ recibosSalario: [...(get().recibosSalario || []), row] });
         const movId = `APP-SAL-${id}`;
@@ -4191,11 +4192,13 @@ export function idsApagadosSemSubstituto(): string[] {
     if (prev) replaced.add(prev);
   }
   return deleted.filter((id) => {
-    if (visibleIds.has(id) || replaced.has(id)) return false;
+    // IDs antigos (P1-07, 4E-02, …) já não existem no seed oficial — não são «faltas».
     const seedHit = seed.alunos.find((a) => a.id === id);
+    if (!seedHit) return false;
+    if (visibleIds.has(id) || replaced.has(id)) return false;
     const extra = extras.find((a) => a.id === id);
     const nome = normalizeNomeAluno(
-      extra?.nome || seedHit?.nome || String((overrides[id] as { nome?: string } | undefined)?.nome || ""),
+      extra?.nome || seedHit.nome || String((overrides[id] as { nome?: string } | undefined)?.nome || ""),
     );
     if (nome && visibleNames.has(nome)) return false;
     return true;

@@ -1092,9 +1092,64 @@ function wrapReciboPage(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
+  if (r.tipo === "adiantamento") return wrapReciboAdiantamento(escola, r);
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
 <style>${cssImpressaoRecibos()}</style></head><body>
 <div class="folha single">${reciboHonorarioHtml(escola, r)}</div>
+</body></html>`;
+}
+
+function reciboAdiantamentoHtml(
+  escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
+  r: ReciboSalario,
+  via: string,
+) {
+  const logo = escolaLogoSrc();
+  const dataDoc = dataDocFinancas(r.dataPag || todayIso());
+  const nota = r.nota;
+  return `<article class="recibo">
+  <header class="rh">
+    <img src="${logo}" alt=""/>
+    <div>
+      <strong>${escola.nome}</strong><br/>
+      <span class="mu">${escola.subtitulo || "Luanda"} · ${escola.ano || ""}</span>
+    </div>
+  </header>
+  <p class="ki" style="text-align:center">Recibo de adiantamento de honorários</p>
+  <p class="mu" style="text-align:center">${via}</p>
+  <div class="rw"><span>N.º <b>${r.id}</b></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
+  <p class="tx">Declaro eu, <b>${r.nome}</b>${r.funcao ? `, na qualidade de <b>${r.funcao}</b>` : ""},
+  ter recebido da ${escola.nomeCurto || escola.nome} a quantia de <b>${formatKz(r.liquido)}</b>
+  a título de <b>adiantamento de honorários</b>, a descontar na folha de
+  <b>${(r.mes || "").replace(/^Adiantamento · /, "") || r.mesKey}</b>.</p>
+  <table class="tb">
+    <tr><td>Valor recebido</td><td class="n">${formatKz(r.liquido)}</td></tr>
+    <tr><td>Data do pagamento</td><td class="n">${r.dataPag ? formatDate(r.dataPag) : "—"}</td></tr>
+    ${r.iban ? `<tr><td>IBAN</td><td class="n">${r.iban}</td></tr>` : ""}
+    ${nota ? `<tr><td>Nota</td><td class="n">${nota}</td></tr>` : ""}
+  </table>
+  <p class="tx">O prestador confirma a recepção do valor e autoriza o desconto na remuneração do mês indicado.</p>
+  <div class="sg">
+    <div><span>O prestador (assinatura)</span><i></i></div>
+    <div><span>Departamento de Finanças</span><i></i></div>
+  </div>
+  <p class="ft">Documento gerado pelo Departamento de Finanças, ${dataDoc} · ${via}</p>
+</article>`;
+}
+
+function wrapReciboAdiantamento(
+  escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
+  r: ReciboSalario,
+) {
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title>Recibo adiantamento ${r.nome}</title>
+<style>${cssImpressaoRecibos()}
+.folha.duas { display:flex; flex-direction:column; gap:10mm; }
+.folha.duas .recibo { min-height: 128mm; page-break-inside: avoid; }
+</style></head><body>
+<div class="folha duas">
+  ${reciboAdiantamentoHtml(escola, r, "Via do prestador — assinar e devolver")}
+  ${reciboAdiantamentoHtml(escola, r, "Via da escola — arquivo")}
+</div>
 </body></html>`;
 }
 
@@ -2663,7 +2718,7 @@ function Salarios() {
                       toast.error("Escolha o funcionário.");
                       return;
                     }
-                    addAdiantamentoSalario({
+                    const row = addAdiantamentoSalario({
                       funcionarioId: adiantFuncId,
                       valor: Number(String(adiantValor).replace(/\s/g, "").replace(",", ".")) || 0,
                       dataPag: adiantData || todayIso(),
@@ -2671,8 +2726,12 @@ function Salarios() {
                       mesLabel: mesActivoLabel,
                       nota: adiantNota.trim() || undefined,
                     });
-                    toast.success("Adiantamento registado e debitado no BAI.");
                     setAdiantOpen(false);
+                    verDocumento(
+                      `Recibo de adiantamento — ${row.nome}`,
+                      wrapReciboAdiantamento(escola, row),
+                    );
+                    toast.success("Adiantamento registado. Peça a assinatura do prestador no recibo.");
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : "Não foi possível registar");
                   }

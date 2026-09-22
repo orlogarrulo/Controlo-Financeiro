@@ -167,11 +167,12 @@ function Rastreio() {
       </div>
 
       <div className="mb-4 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm">
-        <p className="font-medium">Cadastro deste PC → nuvem</p>
+        <p className="font-medium">Cadastro oficial</p>
         <p className="mt-1 text-xs text-[var(--color-muted)]">
-          Este computador tem <strong>{alunos.length}</strong> ficha(s) visíveis.
-          O ficheiro do projecto (seed) só traz 19; as restantes estão neste browser.
-          Publique para a Neon e grave o censo JSON — noutros PCs a lista deixa de cair nos 19.
+          Lista de referência no projecto: <strong>{getSeed().alunos.length}</strong> aluno(s).
+          Neste dispositivo: <strong>{alunos.length}</strong>.
+          IDs antigos após mudança de turma não entram na conta e não precisam de ser restaurados.
+          Publique na nuvem só quando quiser sincronizar edições novas com outros PCs.
         </p>
         {canEdit && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -211,57 +212,60 @@ function Rastreio() {
             >
               {pubBusy ? "A publicar…" : `Publicar ${alunos.length} alunos na nuvem + censo`}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                const r = recuperarAlunosOcultos();
-                syncPropinasFromMatriculas();
-                if (r.restaurados) toast.success(`${r.restaurados} ficha(s) reposta(s).`);
-                else toast.message("Nenhum aluno em falta nos rastos BAI / propinas deste dispositivo.");
-              }}
-            >
-              Repor aluno em falta (BAI / rastos)
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                const r = sanearAlunosDuplicados();
-                syncPropinasFromMatriculas();
-                if (r.removidos) toast.success(`${r.removidos} duplicado(s) escondido(s).`);
-                else toast.message("Nenhum duplicado exacto de nome.");
-              }}
-            >
-              Sanear duplicados
-            </Button>
           </div>
         )}
-        {orfaos.length > 0 ? (
-          <ul className="mt-3 list-disc pl-5 text-amber-900">
-            {orfaos.map((id) => (
-              <li key={id} className="flex flex-wrap items-center gap-2">
-                <span className="font-mono">{id}</span>
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => {
-                      restoreAluno(id);
-                      toast.success(`Reposto ${id}`);
-                    }}
-                  >
-                    Restaurar
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-xs text-[var(--color-muted)]">
-            Nenhum ID órfão por restaurar. Os IDs reaisinhados ficam no histórico e não voltam à lista.
-          </p>
-        )}
+        {canEdit ? (
+          <details className="mt-3 text-xs text-[var(--color-muted)]">
+            <summary className="cursor-pointer select-none">Manutenção excepcional (não usar no dia-a-dia)</summary>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const r = recuperarAlunosOcultos();
+                  syncPropinasFromMatriculas();
+                  if (r.restaurados) toast.success(`${r.restaurados} ficha(s) reposta(s).`);
+                  else toast.message("Nada em falta nos rastos BAI / propinas.");
+                }}
+              >
+                Repor a partir do BAI
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const r = sanearAlunosDuplicados();
+                  syncPropinasFromMatriculas();
+                  if (r.removidos) toast.success(`${r.removidos} duplicado(s) escondido(s).`);
+                  else toast.message("Nenhum duplicado exacto de nome.");
+                }}
+              >
+                Sanear duplicados
+              </Button>
+            </div>
+            {orfaos.length > 0 ? (
+              <ul className="mt-2 list-disc pl-5 text-amber-900">
+                {orfaos.map((id) => (
+                  <li key={id} className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono">{id}</span>
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => {
+                        restoreAluno(id);
+                        toast.success(`Reposto ${id}`);
+                      }}
+                    >
+                      Restaurar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2">Sem fichas do seed oficial escondidas.</p>
+            )}
+          </details>
+        ) : null}
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">

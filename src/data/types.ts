@@ -412,6 +412,7 @@ export type ReciboSalario = {
   tipo?: "recibo" | "adiantamento";
   /** Recibo mensal onde o adiantamento foi descontado. */
   aplicadoEm?: string;
+  nota?: string;
 };
 
 export type Escola = {
