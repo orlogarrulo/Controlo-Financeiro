@@ -83,12 +83,33 @@ function Mensalidades() {
   }, [syncPropinasFromMatriculas, reporPropinasFromMatriculas]);
 
   const alunoMetaById = useMemo(() => {
-    const map = new Map<string, { familia?: string; transferidoCampusCidade?: boolean; nome?: string }>();
+    const map = new Map<
+      string,
+      {
+        familia?: string;
+        transferidoCampusCidade?: boolean;
+        nome?: string;
+        irmaosNivel?: 0 | 2 | 3;
+        campanhaPromoSetembro?: boolean;
+        descPct?: number;
+        obs?: string;
+        propina?: number;
+        mensalidade1?: number;
+        mesesPropina?: number;
+      }
+    >();
     for (const a of alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds)) {
       map.set(a.id, {
         familia: a.familia,
         transferidoCampusCidade: a.transferidoCampusCidade,
         nome: a.nome,
+        irmaosNivel: a.irmaosNivel,
+        campanhaPromoSetembro: a.campanhaPromoSetembro,
+        descPct: a.descPct,
+        obs: a.obs,
+        propina: a.propina,
+        mensalidade1: a.mensalidade1,
+        mesesPropina: a.mesesPropina,
       });
     }
     return map;
@@ -336,9 +357,15 @@ function Mensalidades() {
                       <td className="px-3 py-2 tabular-nums text-xs">
                         {formatKz(
                           tarifaPropinaAluno({
-                            propina: r.propina,
+                            propina: alunoMetaById.get(r.id)?.propina ?? r.propina,
                             turma: r.turma,
                             transferidoCampusCidade: alunoMetaById.get(r.id)?.transferidoCampusCidade,
+                            irmaosNivel: alunoMetaById.get(r.id)?.irmaosNivel,
+                            campanhaPromoSetembro: alunoMetaById.get(r.id)?.campanhaPromoSetembro,
+                            descPct: alunoMetaById.get(r.id)?.descPct,
+                            obs: alunoMetaById.get(r.id)?.obs,
+                            mensalidade1: alunoMetaById.get(r.id)?.mensalidade1,
+                            mesesPropina: alunoMetaById.get(r.id)?.mesesPropina,
                           }),
                         )}
                       </td>
