@@ -221,49 +221,6 @@ function Mensalidades() {
       <PageHeader
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {canEdit ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    try {
-                      const rec = useFinance.getState().reabrirAlunosUnicos();
-                      const r = reporPropinasFromMatriculas();
-                      toast.success(
-                        rec.restaurados
-                          ? `Encontrado(s) ${rec.restaurados}: ${rec.detalhes.slice(0, 3).join(" · ")}. Cadastro ${r.alunos}.`
-                          : `Cadastro ${r.alunos} aluno(s). Nenhum ID extra único por reabrir.`,
-                      );
-                    } catch (e) {
-                      toast.error(e instanceof Error ? e.message : "Falha ao procurar");
-                    }
-                  }}
-                >
-                  Procurar o 51.º
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    try {
-                      const r = reporPropinasFromMatriculas();
-                      toast.success(
-                        `Propinas repostas: ${r.alunos} aluno(s)${
-                          r.removidos ? ` · ${r.removidos} extra(s) removido(s)` : ""
-                        }.`,
-                      );
-                    } catch (e) {
-                      toast.error(e instanceof Error ? e.message : "Falha ao repor");
-                    }
-                  }}
-                >
-                  Repor (= Matrículas)
-                </Button>
-              </>
-            ) : null}
             <PrintActions
               targetRef={printRef}
               filename="propinas.pdf"

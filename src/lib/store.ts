@@ -3765,6 +3765,12 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
     list.sort((a, b) => score(b) - score(a));
     const keep = list[0];
     for (const dup of list.slice(1)) {
+      const stub =
+        !dup.dataNascimento &&
+        !(dup.telefone || "").trim() &&
+        !(dup.encarregado || "").trim();
+      const cadeia = Boolean(keep.idAnterior === dup.id || dup.idAnterior === keep.id);
+      if (!stub && !cadeia) continue;
       toDelete.add(dup.id);
       detalhes.push(`Duplicado «${nome}»: manter ${keep.id}, esconder ${dup.id}`);
     }
@@ -4092,14 +4098,10 @@ export function alunosAll(
   };
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
-  const seenNomes = new Set<string>();
 
   const push = (a: Aluno) => {
     if (!a?.id || deleted.has(a.id) || seenIds.has(a.id)) return;
-    const nn = normalizeNomeAluno(a.nome);
-    if (nn && seenNomes.has(nn)) return;
     seenIds.add(a.id);
-    if (nn) seenNomes.add(nn);
     out.push(apply(a));
   };
 
@@ -4107,6 +4109,38 @@ export function alunosAll(
   for (const a of seedNow.alunos) push(a);
   for (const a of extras) push(a);
   return out;
+}
+
+/**
+ * IDs em alunosDeletedIds que NÃO têm substituto (idAnterior) nem homónimo visível.
+ * IDs reaisinhados (P1-07→CM2-xx) não devem aparecer como «repor».
+ */
+export function idsApagadosSemSubstituto(): string[] {
+  const state = useFinance.getState();
+  const extras = state.alunosExtra || [];
+  const overrides = state.alunosOverrides || {};
+  const deleted = state.alunosDeletedIds || [];
+  const visible = alunosAll(extras, overrides, deleted);
+  const visibleIds = new Set(visible.map((a) => a.id));
+  const visibleNames = new Set(visible.map((a) => normalizeNomeAluno(a.nome)).filter(Boolean));
+  const replaced = new Set<string>();
+  for (const a of extras) {
+    if (a.idAnterior && a.idAnterior !== a.id) replaced.add(a.idAnterior);
+  }
+  for (const ov of Object.values(overrides)) {
+    const prev = (ov as { idAnterior?: string } | undefined)?.idAnterior;
+    if (prev) replaced.add(prev);
+  }
+  return deleted.filter((id) => {
+    if (visibleIds.has(id) || replaced.has(id)) return false;
+    const seedHit = seed.alunos.find((a) => a.id === id);
+    const extra = extras.find((a) => a.id === id);
+    const nome = normalizeNomeAluno(
+      extra?.nome || seedHit?.nome || String((overrides[id] as { nome?: string } | undefined)?.nome || ""),
+    );
+    if (nome && visibleNames.has(nome)) return false;
+    return true;
+  });
 }
 
 export function salariosAll(

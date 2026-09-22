@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, recuperarAlunosOcultos } from "@/lib/store";
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas } from "@/lib/store";
 import { resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -706,30 +706,8 @@ function MatriculaForm({
   protegerLiquidacaoPaga?: boolean;
 }) {
   const totais = calcTotais(form);
-  const docsFaltaLabels = (
-    [
-      ["fotos4", "4 fotografias"],
-      ["boletimVacinas", "Boletim de vacinas"],
-      ["boletimNotas", "Boletim de notas"],
-      ["biAluno", "B.I. do aluno"],
-      ["biPais", "B.I. dos pais / encarregado"],
-      ["seguro", "Seguro (comprovativo)"],
-      ["atestadoMedico", "Atestado médico"],
-    ] as const
-  )
-    .filter(([key]) => !form.docsEntregues?.[key])
-    .map(([, label]) => label);
-
   return (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
-      {docsFaltaLabels.length > 0 && (
-        <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-red-300 bg-red-50 px-3 py-2 text-[12px] font-semibold text-red-700">
-          ⚠ Documentos em falta: {docsFaltaLabels.join(", ")}
-          <span className="mt-0.5 block text-[11px] font-normal text-red-600/90">
-            Marque abaixo na checklist «Documentos entregues» — o alerta no CRM desaparece automaticamente.
-          </span>
-        </div>
-      )}
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Nome do aluno *</Label>
         <Input
@@ -1649,6 +1627,21 @@ function MatriculaForm({
     </div>
   );
   }
+
+const DOC_ENTREGUE_LABELS: { key: keyof NonNullable<Aluno["docsEntregues"]>; label: string }[] = [
+  { key: "fotos4", label: "4 fotografias" },
+  { key: "boletimVacinas", label: "Boletim de vacinas" },
+  { key: "boletimNotas", label: "Boletim de notas" },
+  { key: "biAluno", label: "B.I. do aluno" },
+  { key: "biPais", label: "B.I. dos pais / encarregado" },
+  { key: "seguro", label: "Seguro (comprovativo)" },
+  { key: "atestadoMedico", label: "Atestado médico" },
+];
+
+function docsEmFaltaLista(a: Aluno): string[] {
+  const d = a.docsEntregues || {};
+  return DOC_ENTREGUE_LABELS.filter(({ key }) => !d[key]).map(({ label }) => label);
+}
 
 function Alunos() {
   const extraA = useFinance((s) => s.alunosExtra);
@@ -3960,37 +3953,13 @@ function Alunos() {
         >
           Sem telefone{semTelefoneCount ? ` (${semTelefoneCount})` : ""}
         </Button>
-        {canEdit ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="shrink-0"
-            title="Recria fichas em falta a partir do extrato BAI (ex. Otchaly P2-03) sem novo lançamento"
-            onClick={() => {
-              const r = recuperarAlunosOcultos();
-              if (r.restaurados) {
-                toast.success(
-                  `${r.restaurados} ficha(s) reposta(s): ${r.detalhes.slice(0, 3).join(" · ")}`,
-                );
-                setTurmaFiltro("todas");
-                setSoSemTelefone(false);
-              } else {
-                toast.message(
-                  "Nenhuma ficha em falta encontrada no BAI deste dispositivo. Confirme o movimento no extrato BAI.",
-                );
-              }
-            }}
-          >
-            Repor do BAI
-          </Button>
-        ) : null}
       </div>
 
       {q.trim() && filtered.length === 0 ? (
         <div className="no-print mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p>
-            Nenhum aluno com «{q.trim()}». Se o pagamento está no BAI (ex. Matrícula … (P2-03)), use{" "}
-            <strong>Repor do BAI</strong> — recria a ficha sem duplicar o extrato.
+            Nenhum aluno com «{q.trim()}». Para repor uma ficha a partir do BAI, use o separador{" "}
+            <strong>Rastreio</strong> → «Repor aluno em falta».
           </p>
         </div>
       ) : null}
@@ -4000,6 +3969,11 @@ function Alunos() {
         {semTelefoneCount > 0 ? (
           <span className="ml-2 text-amber-800 dark:text-amber-300">
             · {semTelefoneCount} sem contacto telefónico na matrícula
+          </span>
+        ) : null}
+        {alunos.filter((a) => docsEmFaltaLista(a).length > 0).length > 0 ? (
+          <span className="ml-2 text-red-700">
+            · {alunos.filter((a) => docsEmFaltaLista(a).length > 0).length} com documentos em falta
           </span>
         ) : null}
       </p>
@@ -4050,6 +4024,11 @@ function Alunos() {
                     </span>
                   ) : a.encarregado ? (
                     <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">{a.encarregado}</span>
+                  ) : null}
+                  {docsEmFaltaLista(a).length > 0 ? (
+                    <span className="mt-1 block text-[11px] font-semibold leading-snug text-red-600">
+                      ⚠ Documentos em falta: {docsEmFaltaLista(a).join(", ")}
+                    </span>
                   ) : null}
                 </td>
                 <td className="px-3 py-2">{a.turma}</td>

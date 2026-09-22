@@ -16,8 +16,6 @@ import {
   normalizeNomeAluno,
   recalcularClassesMatriculas,
   reporPropinasFromMatriculas,
-  sanearAlunosDuplicados,
-  reabrirAlunosUnicos,
 } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 import type { Aluno } from "@/data/types";
@@ -78,9 +76,6 @@ export function HydrateStore() {
           applyAlunoFotos(remoteFotos);
         }
         try {
-          // Não ressuscitar stubs a partir de propinas/BAI (inflava 51 → 64).
-          reabrirAlunosUnicos();
-          sanearAlunosDuplicados();
           reporPropinasFromMatriculas();
         } catch (e) {
           console.warn("[propinas-dedupe]", e);
@@ -129,18 +124,7 @@ export function HydrateStore() {
             );
           }
         }
-        try {
-          const rec = reabrirAlunosUnicos();
-          if (rec.restaurados > 0) {
-            toast.message(`${rec.restaurados} aluno(s) reaberto(s) neste dispositivo.`);
-          }
-          const dups = sanearAlunosDuplicados();
-          if (dups.removidos > 0) {
-            toast.message(`${dups.removidos} ficha(s) duplicada(s) escondida(s).`);
-          }
-        } catch (e) {
-          console.warn("[sanear-duplicados]", e);
-        }
+        /* Reabrir / sanear só no separador Rastreio — evita o KPI 53→51 ao arrancar. */
         try {
           useFinance.getState().syncPropinasFromMatriculas?.();
           const r = reporPropinasFromMatriculas();

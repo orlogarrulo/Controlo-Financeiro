@@ -11,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PrintActions } from "@/components/print-actions";
 import { formatKz } from "@/lib/format";
 import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
-import { alunosAll, getSeed, useFinance } from "@/lib/store";
+import { alunosAll, getSeed, idsApagadosSemSubstituto, persistAlunosCensoLocal, useFinance } from "@/lib/store";
+import { pushFinanceNow } from "@/components/hydrate-store";
 import {
   downloadTextFile,
   linhasAlunos,
@@ -40,6 +41,7 @@ function Rastreio() {
   const operators = useFinance((s) => s.operators);
   const canEdit = isCollaborator1(activeOperator, operators);
   const [tab, setTab] = useState<"campus" | "outros" | "divida">("campus");
+  const [pubBusy, setPubBusy] = useState(false);
 
   const alunos = useMemo(
     () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
@@ -103,10 +105,7 @@ function Rastreio() {
     reader.readAsText(f);
   }
 
-  // Sem meta numérica: falta/excesso desactivados (matrículas livres)
-  const falta = 0;
-  const excesso = 0;
-  const apagados = alunosDeletedIds;
+  const orfaos = idsApagadosSemSubstituto();
 
   return (
     <div>
@@ -167,99 +166,103 @@ function Rastreio() {
         />
       </div>
 
-      {excesso > 0 && (
-        <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-950">
-          <p>
-            Cadastro com <strong>{alunos.length}</strong> aluno(s). Há{" "}
-            <strong>{excesso}</strong> ficha(s) a mais (duplicados por realinhamento de IDs ou
-            recuperação de rastos).
-          </p>
-          <p className="mt-1 text-xs opacity-90">
-            Se um aluno pago no BAI não aparece em Matrículas (ex. Otchaly P2-03), use primeiro{" "}
-            <strong>Repor a partir do BAI / rastos</strong> — não saneie antes, senão pode perder a ficha certa.
-          </p>
-          {canEdit && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  const r = recuperarAlunosOcultos();
-                  syncPropinasFromMatriculas();
-                  if (r.restaurados) toast.success(`${r.restaurados} ficha(s) reposta(s). Pesquise o nome em Matrículas.`);
-                  else toast.message("Nenhum rasto extra neste dispositivo (BAI / propinas / IDs).");
-                }}
-              >
-                Repor a partir do BAI / rastos
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  const r = sanearAlunosDuplicados();
-                  syncPropinasFromMatriculas();
-                  if (r.removidos) toast.success(`${r.removidos} duplicado(s) removido(s).`);
-                  else toast.message("Nenhum duplicado por nome detectado.");
-                }}
-              >
-                Sanear só duplicados exactos de nome (opcional)
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {(falta > 0 || excesso === 0) && (
-        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p>
-            {falta > 0 ? (
-              <>
-                Cadastro com <strong>{alunos.length}</strong> aluno(s). O sistema varre
-                propinas, BAI, fotos e IDs antigos para repor o aluno em falta.
-              </>
-            ) : (
-              <>
-                Repor fichas em falta a partir do extrato BAI (ex. matrícula paga cujo nome não
-                aparece na lista). Não cria novo lançamento no BAI.
-              </>
-            )}
-          </p>
-          {canEdit && (
+      <div className="mb-4 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm">
+        <p className="font-medium">Cadastro deste PC → nuvem</p>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">
+          Este computador tem <strong>{alunos.length}</strong> ficha(s) visíveis.
+          O ficheiro do projecto (seed) só traz 19; as restantes estão neste browser.
+          Publique para a Neon e grave o censo JSON — noutros PCs a lista deixa de cair nos 19.
+        </p>
+        {canEdit && (
+          <div className="mt-2 flex flex-wrap gap-2">
             <Button
               type="button"
-              className="mt-2"
+              disabled={pubBusy}
+              onClick={() => {
+                setPubBusy(true);
+                try {
+                  persistAlunosCensoLocal(alunos);
+                  syncPropinasFromMatriculas();
+                  const censo = montarCenso(alunos, mensalidades, escola.nome);
+                  downloadTextFile(
+                    `Censo_alunos_${new Date().toISOString().slice(0, 10)}.json`,
+                    JSON.stringify(censo, null, 2),
+                    "application/json",
+                  );
+                  void pushFinanceNow()
+                    .then(() => {
+                      toast.success(
+                        `${alunos.length} aluno(s) publicados na nuvem e censo JSON descarregado.`,
+                      );
+                    })
+                    .catch((e) => {
+                      toast.error(
+                        e instanceof Error
+                          ? e.message
+                          : "Censo gravado neste PC, mas a nuvem falhou. Confirme DATABASE_URL no Vercel.",
+                      );
+                    })
+                    .finally(() => setPubBusy(false));
+                } catch (e) {
+                  setPubBusy(false);
+                  toast.error(e instanceof Error ? e.message : "Falha ao publicar");
+                }
+              }}
+            >
+              {pubBusy ? "A publicar…" : `Publicar ${alunos.length} alunos na nuvem + censo`}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => {
                 const r = recuperarAlunosOcultos();
                 syncPropinasFromMatriculas();
                 if (r.restaurados) toast.success(`${r.restaurados} ficha(s) reposta(s).`);
-                else toast.message("Nenhum rasto extra neste dispositivo — veja IDs apagados abaixo.");
+                else toast.message("Nenhum aluno em falta nos rastos BAI / propinas deste dispositivo.");
               }}
             >
-              Repor aluno em falta
+              Repor aluno em falta (BAI / rastos)
             </Button>
-          )}
-          {apagados.length > 0 && (
-            <ul className="mt-2 list-disc pl-5">
-              {apagados.map((id) => (
-                <li key={id} className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono">{id}</span>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      className="underline"
-                      onClick={() => {
-                        restoreAluno(id);
-                        toast.success(`Reposto ${id}`);
-                      }}
-                    >
-                      Restaurar
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const r = sanearAlunosDuplicados();
+                syncPropinasFromMatriculas();
+                if (r.removidos) toast.success(`${r.removidos} duplicado(s) escondido(s).`);
+                else toast.message("Nenhum duplicado exacto de nome.");
+              }}
+            >
+              Sanear duplicados
+            </Button>
+          </div>
+        )}
+        {orfaos.length > 0 ? (
+          <ul className="mt-3 list-disc pl-5 text-amber-900">
+            {orfaos.map((id) => (
+              <li key={id} className="flex flex-wrap items-center gap-2">
+                <span className="font-mono">{id}</span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => {
+                      restoreAluno(id);
+                      toast.success(`Reposto ${id}`);
+                    }}
+                  >
+                    Restaurar
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-xs text-[var(--color-muted)]">
+            Nenhum ID órfão por restaurar. Os IDs reaisinhados ficam no histórico e não voltam à lista.
+          </p>
+        )}
+      </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
         <TabBtn active={tab === "campus"} onClick={() => setTab("campus")}>
