@@ -52,7 +52,20 @@ export function persistAlunosCensoLocal(alunos: Aluno[]) {
   if (typeof localStorage === "undefined") return;
   try {
     const seedIds = new Set((seed.alunos || []).map((a) => a.id));
-    const extras = (alunos || []).filter((a) => a?.id && !seedIds.has(a.id));
+    const seedNomes = new Set(
+      (seed.alunos || []).map((a) => normalizeNomeAluno(a.nome)).filter(Boolean),
+    );
+    const seenIds = new Set<string>();
+    const seenNomes = new Set<string>(seedNomes);
+    const extras: Aluno[] = [];
+    for (const a of alunos || []) {
+      if (!a?.id || seedIds.has(a.id) || seenIds.has(a.id)) continue;
+      const nn = normalizeNomeAluno(a.nome);
+      if (nn && seenNomes.has(nn)) continue;
+      seenIds.add(a.id);
+      if (nn) seenNomes.add(nn);
+      extras.push(a);
+    }
     localStorage.setItem(ALUNOS_CENSO_LOCAL_KEY, JSON.stringify(extras));
   } catch (e) {
     console.warn("[censo-local]", e);
@@ -2731,7 +2744,17 @@ export function getSeed(): Seed {
   const extra = alunosCensoLocal();
   if (!extra.length) return seed;
   const ids = new Set((seed.alunos || []).map((a) => a.id));
-  const more = extra.filter((a) => a?.id && !ids.has(a.id));
+  const nomes = new Set(
+    (seed.alunos || []).map((a) => normalizeNomeAluno(a.nome)).filter(Boolean),
+  );
+  const more = extra.filter((a) => {
+    if (!a?.id || ids.has(a.id)) return false;
+    const nn = normalizeNomeAluno(a.nome);
+    if (nn && nomes.has(nn)) return false;
+    ids.add(a.id);
+    if (nn) nomes.add(nn);
+    return true;
+  });
   if (!more.length) return seed;
   const mensExtra: Mensalidade[] = more.map((a) => ({
     id: a.id,
@@ -3742,12 +3765,6 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
     list.sort((a, b) => score(b) - score(a));
     const keep = list[0];
     for (const dup of list.slice(1)) {
-      const stub =
-        !dup.dataNascimento &&
-        !(dup.telefone || "").trim() &&
-        !(dup.encarregado || "").trim();
-      const cadeia = Boolean(keep.idAnterior === dup.id || dup.idAnterior === keep.id);
-      if (!stub && !cadeia) continue;
       toDelete.add(dup.id);
       detalhes.push(`Duplicado «${nome}»: manter ${keep.id}, esconder ${dup.id}`);
     }
@@ -4075,10 +4092,14 @@ export function alunosAll(
   };
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
+  const seenNomes = new Set<string>();
 
   const push = (a: Aluno) => {
-    if (deleted.has(a.id) || seenIds.has(a.id)) return;
+    if (!a?.id || deleted.has(a.id) || seenIds.has(a.id)) return;
+    const nn = normalizeNomeAluno(a.nome);
+    if (nn && seenNomes.has(nn)) return;
     seenIds.add(a.id);
+    if (nn) seenNomes.add(nn);
     out.push(apply(a));
   };
 

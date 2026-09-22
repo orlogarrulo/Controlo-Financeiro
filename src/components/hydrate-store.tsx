@@ -13,6 +13,7 @@ import {
   alunosAll,
   persistAlunosCensoLocal,
   SEED_ALUNO_IDS,
+  normalizeNomeAluno,
   recalcularClassesMatriculas,
   reporPropinasFromMatriculas,
   sanearAlunosDuplicados,
@@ -307,6 +308,13 @@ function applyPayload(p: FinanceCloudPayload) {
     alunosExtra: alunosMerged.filter((a) => {
       const id = (a as { id?: string }).id;
       return Boolean(id && !deletedAlunos.has(id) && !SEED_ALUNO_IDS.has(id));
+    }).filter((a, _i, arr) => {
+      const nn = normalizeNomeAluno(String((a as { nome?: string }).nome || ""));
+      if (!nn) return true;
+      const first = arr.findIndex(
+        (x) => normalizeNomeAluno(String((x as { nome?: string }).nome || "")) === nn,
+      );
+      return arr.indexOf(a) === first;
     }) as never[],
     alunosOverrides: mergeAlunoOverrides(
       local.alunosOverrides || {},
