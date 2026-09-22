@@ -4158,15 +4158,26 @@ export function alunosAll(
   };
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
 
-  const push = (a: Aluno) => {
-    if (!a?.id || deleted.has(a.id) || seenIds.has(a.id)) return;
+  const push = (a: Aluno, fromSeed: boolean) => {
+    if (!a?.id || seenIds.has(a.id)) return;
+    if (!fromSeed && deleted.has(a.id)) return;
+    const nn = normalizeNomeAluno(a.nome);
+    if (!fromSeed && nn && seenNames.has(nn)) return;
+    if (!fromSeed) {
+      const obs = String(a.obs || "");
+      if (/reposto a partir de rasto|ficha mínima|52\.º aluno/i.test(obs)) return;
+      const ts = Date.parse(String(a.updatedAt || ""));
+      if (!Number.isFinite(ts) || ts < Date.parse("2026-09-23T00:00:00.000Z")) return;
+    }
     seenIds.add(a.id);
+    if (nn) seenNames.add(nn);
     out.push(apply(a));
   };
 
-  for (const a of seed.alunos) push(a);
-  for (const a of extras) push(a);
+  for (const a of seed.alunos) push(a, true);
+  for (const a of extras) push(a, false);
   return out;
 }
 
