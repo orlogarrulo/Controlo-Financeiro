@@ -304,7 +304,7 @@ function applyPayload(p: FinanceCloudPayload) {
       local.alunosOverrides || {},
       (p.alunosOverrides as Record<string, Record<string, unknown>>) || {},
     ) as never,
-    alunosDeletedIds: Array.from(deletedAlunos),
+    alunosDeletedIds: Array.from(deletedAlunos).filter((id) => !SEED_ALUNO_IDS.has(id)),
     mensalidades: mensMerged as never[],
     fundoExtra: mergeById(
       (local.fundoExtra as never[]) || [],

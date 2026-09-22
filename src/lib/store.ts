@@ -4142,7 +4142,7 @@ export function alunosAll(
   overrides: Record<string, Partial<Aluno>> = {},
   deletedIds: string[] = [],
 ): Aluno[] {
-  const deleted = new Set(deletedIds);
+  const deleted = new Set(deletedIds.filter((id) => !SEED_ALUNO_IDS.has(id)));
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
     const merged = o ? { ...a, ...o, id: a.id } : { ...a };
@@ -4165,8 +4165,7 @@ export function alunosAll(
     out.push(apply(a));
   };
 
-  const seedNow = getSeed();
-  for (const a of seedNow.alunos) push(a);
+  for (const a of seed.alunos) push(a);
   for (const a of extras) push(a);
   return out;
 }
