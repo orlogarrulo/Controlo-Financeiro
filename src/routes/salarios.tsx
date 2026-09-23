@@ -1421,6 +1421,8 @@ function Salarios() {
   const [genDiasUteis, setGenDiasUteis] = useState("22");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [diasMap, setDiasMap] = useState<Record<string, string>>({});
+  /** Honorário editável por funcionário (pré-preenchido com o valor gravado). */
+  const [valorMap, setValorMap] = useState<Record<string, string>>({});
   const [filterRec, setFilterRec] = useState<"todos" | "pagos" | "por_pagar">("todos");
   /** Pesquisa por nome / função / IBAN no cadastro de funcionários. */
   const [searchNome, setSearchNome] = useState("");
@@ -1597,10 +1599,13 @@ function Salarios() {
     setGenDiasUteis("22");
     setSelected(new Set(rows.map((r) => r.id)));
     const dm: Record<string, string> = {};
+    const vm: Record<string, string> = {};
     rows.forEach((r) => {
       dm[r.id] = String(r.diasTrab || 22);
+      vm[r.id] = String(r.salario || 0);
     });
     setDiasMap(dm);
+    setValorMap(vm);
     setUiPrefs({
       salariosMesKey: mesKey,
       salariosMesLabel: mesLabel,
@@ -1719,6 +1724,13 @@ function Salarios() {
       const f = rows.find((r) => r.id === id);
       if (!f) continue;
       const diasT = Number(diasMap[id] ?? diasU) || 0;
+      // Valor digitado no formulário (ou o honorário gravado)
+      const bruto = Math.max(
+        0,
+        Number(String(valorMap[id] ?? f.salario).replace(/\s/g, "").replace(",", ".")) ||
+          Number(f.salario) ||
+          0,
+      );
       const adiantAbertos = (recibosSalario || []).filter(
         (r) =>
           r.tipo === "adiantamento" &&
@@ -1728,7 +1740,7 @@ function Salarios() {
       );
       const adiantSoma = adiantAbertos.reduce((s, r) => s + (Number(r.liquido) || 0), 0);
       const outros = (f.outrosDesc || 0) + adiantSoma;
-      const { descontoDias, liquido } = liquidoCalc(f.salario, diasU, diasT, outros);
+      const { descontoDias, liquido } = liquidoCalc(bruto, diasU, diasT, outros);
       const rid = `RS-${id}-${genMesKey}`;
       created.push({
         id: rid,
@@ -1739,7 +1751,7 @@ function Salarios() {
         mesKey: genMesKey,
         diasUteis: diasU,
         diasTrab: diasT,
-        salarioBruto: f.salario,
+        salarioBruto: bruto,
         descontoDias,
         outrosDesc: outros,
         liquido,
@@ -2819,7 +2831,7 @@ function Salarios() {
               </div>
             </div>
             <p className="text-xs text-[var(--color-muted)]">
-              Seleccione os funcionários e, se necessário, ajuste os dias trabalhados (proporcional).
+              Seleccione os funcionários e, se necessário, ajuste o honorário (valor gravado ou outro) e os dias trabalhados (proporcional).
             </p>
             <div className="flex gap-2">
               <Button type="button" size="sm" variant="secondary" onClick={() => setSelected(new Set(rows.map((r) => r.id)))}>
@@ -2842,8 +2854,20 @@ function Salarios() {
                       setSelected(n);
                     }}
                   />
-                  <span className="min-w-[8rem] flex-1 text-sm font-medium">{r.nome}</span>
-                  <span className="text-xs text-[var(--color-muted)]">{formatKz(r.salario)}</span>
+                  <span className="min-w-[7rem] flex-1 text-sm font-medium">{r.nome}</span>
+                  <label className="flex items-center gap-1 text-xs">
+                    Honorário
+                    <Input
+                      className="h-8 w-24 tabular-nums"
+                      inputMode="decimal"
+                      title="Valor gravado por defeito — pode alterar só para este recibo"
+                      value={valorMap[r.id] ?? String(r.salario || 0)}
+                      onChange={(e) =>
+                        setValorMap({ ...valorMap, [r.id]: e.target.value })
+                      }
+                    />
+                    <span className="text-[var(--color-muted)]">Kz</span>
+                  </label>
                   <label className="flex items-center gap-1 text-xs">
                     Dias
                     <Input
