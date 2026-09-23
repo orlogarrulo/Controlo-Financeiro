@@ -4297,11 +4297,57 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     );
   }
 
-  if (detalhes.length) {
+  // Materializar TODOS os IDs do Arquivo em alunosExtra com nome do recibo
+  let materializados = 0;
+  for (const d of docs) {
+    const id = String(d.alunoId || "").trim();
+    if (!id) continue;
+    deleted = deleted.filter((x) => x !== id);
+    const nomeDoc = String(d.alunoNome || "").trim();
+    const exIdx = extras.findIndex((a) => a.id === id);
+    if (exIdx >= 0) {
+      const cur = extras[exIdx];
+      const nomeCur = String(cur.nome || "").trim();
+      if (nomeDoc && (!nomeCur || nomeCur === id || /^aluno\s/i.test(nomeCur) || nomeDoc.length > nomeCur.length)) {
+        extras[exIdx] = {
+          ...cur,
+          nome: nomeDoc,
+          liquido: Number(cur.liquido) > 0 ? cur.liquido : Number(d.valor) || 0,
+          bruto: Number(cur.bruto) > 0 ? cur.bruto : Number(d.valor) || 0,
+          recibo: cur.recibo || d.numero || d.codigoVerificacao || "",
+          dataPag: cur.dataPag || d.pagoEm || d.emitidoEm || "",
+          statusPag: cur.statusPag || "pago",
+          turma: cur.turma || turmaFromId(id) || "",
+          updatedAt: new Date().toISOString(),
+        };
+        materializados += 1;
+        detalhes.push(`Nome actualizado do Arquivo: ${id} → ${nomeDoc}`);
+      }
+    } else if (!seed.alunos.some((a) => a.id === id)) {
+      const stub = stubAlunoFromTrace(id, overrides[id], mensalidades.find((m) => m.id === id), nomeDoc, {
+        nome: nomeDoc,
+        liquido: Number(d.valor) || 0,
+        dataPag: d.pagoEm || d.emitidoEm,
+        recibo: d.numero || d.codigoVerificacao,
+      });
+      stub.turma = stub.turma || turmaFromId(id) || "";
+      stub.statusPag = "pago";
+      extras.push(stub);
+      materializados += 1;
+      detalhes.push(`Materializado do Arquivo: ${id} · ${nomeDoc}`);
+    }
+  }
+
+  if (detalhes.length || materializados) {
     useFinance.setState({
       alunosExtra: extras,
       alunosDeletedIds: deleted,
     });
+    try {
+      persistAlunosCensoLocal(extras);
+    } catch {
+      /* ignore */
+    }
     try {
       useFinance.getState().pushAudit?.(
         "recuperar_alunos",
@@ -4363,9 +4409,8 @@ export function alunosAll(
   for (const a of seed.alunos) push(a);
   for (const a of extras) push(a);
 
-  // Matrículas só no Arquivo (Nildo 4E-04, etc.) → entram na contagem e nas listas
+  // Arquivo: criar ficha em falta OU enriquecer ficha incompleta (nome vazio / sem líquido)
   for (const [id, d] of docsByAluno) {
-    if (seenIds.has(id)) continue;
     const mens = (() => {
       try {
         return (useFinance.getState().mensalidades || []).find((m) => m.id === id);
@@ -4373,6 +4418,36 @@ export function alunosAll(
         return undefined;
       }
     })();
+    const fromDoc = {
+      nome: (d.alunoNome || "").trim(),
+      liquido: Number(d.valor) || 0,
+      dataPag: d.pagoEm || d.emitidoEm,
+      recibo: d.numero || d.codigoVerificacao,
+    };
+    const idx = out.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      const cur = out[idx];
+      const nomeCur = String(cur.nome || "").trim();
+      const precisaNome =
+        !nomeCur ||
+        /^aluno\s/i.test(nomeCur) ||
+        nomeCur === id ||
+        (fromDoc.nome && normalizeNomeAluno(nomeCur) !== normalizeNomeAluno(fromDoc.nome) && fromDoc.nome.length > nomeCur.length);
+      const precisaValor = !(Number(cur.liquido) > 0) && fromDoc.liquido > 0;
+      if (precisaNome || precisaValor || !cur.recibo) {
+        out[idx] = apply({
+          ...cur,
+          nome: precisaNome && fromDoc.nome ? fromDoc.nome : cur.nome,
+          liquido: precisaValor ? fromDoc.liquido : cur.liquido,
+          bruto: precisaValor ? fromDoc.liquido : cur.bruto || cur.liquido,
+          recibo: cur.recibo || fromDoc.recibo || "",
+          dataPag: cur.dataPag || String(fromDoc.dataPag || ""),
+          statusPag: cur.statusPag || (fromDoc.liquido > 0 ? "pago" : cur.statusPag),
+          turma: cur.turma || turmaFromId(id) || "",
+        } as Aluno);
+      }
+      continue;
+    }
     const stub = stubAlunoFromTrace(id, overrides[id], mens, d.alunoNome, {
       nome: d.alunoNome,
       liquido: Number(d.valor) || 0,
@@ -4384,6 +4459,7 @@ export function alunosAll(
       stub.liquido = Number(d.valor) || stub.liquido || 0;
       stub.bruto = stub.bruto || stub.liquido;
     }
+    if (!stub.turma) stub.turma = turmaFromId(id) || "";
     push(stub);
   }
 

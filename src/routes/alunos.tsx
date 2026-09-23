@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas } from "@/lib/store";
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store";
 import { resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -1648,6 +1648,7 @@ function Alunos() {
   const overrides = useFinance((s) => s.alunosOverrides);
   const addAluno = useFinance((s) => s.addAluno);
   const updateAluno = useFinance((s) => s.updateAluno);
+  const recuperarAlunosOcultos = useFinance((s) => s.recuperarAlunosOcultos);
   const purgeAlunoCompleto = useFinance((s) => s.purgeAlunoCompleto);
   const alinharCampusPorFamilia = useFinance((s) => s.alinharCampusPorFamilia);
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
@@ -1663,6 +1664,22 @@ function Alunos() {
   const canEdit = isCollaborator1(activeOperator, operators);
   const deletedAlunos = useFinance((s) => s.alunosDeletedIds || []);
   const alunos = alunosAll(extraA, overrides, deletedAlunos);
+  // Ao abrir Matrículas: garantir fichas do Arquivo (Nildo, etc.) com nome correcto
+  useEffect(() => {
+    try {
+      const r = recuperarAlunosOcultos?.();
+      if (r && r.restaurados > 0) {
+        try {
+          reporPropinasFromMatriculas();
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch (e) {
+      console.warn("[matriculas] materializar arquivo", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const escola = getSeed().escola;
   const printRef = useRef<HTMLDivElement>(null);
   const search = Route.useSearch();
