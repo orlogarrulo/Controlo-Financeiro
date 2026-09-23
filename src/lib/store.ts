@@ -2400,9 +2400,20 @@ export const useFinance = create<Store>()(
         }
 
         get().pushAudit("purge_aluno", `${idTrim} · eliminação definitiva`);
+        // Recontar Propinas / lista alinhada com Matrículas
+        try {
+          reporPropinasFromMatriculas();
+        } catch {
+          /* ignore */
+        }
+        const n = alunosAll(
+          get().alunosExtra || [],
+          get().alunosOverrides || {},
+          get().alunosDeletedIds || [],
+        ).length;
         return {
           ok: true,
-          message: `Aluno ${idTrim} eliminado por completo (ficha, propinas, documentos, recibos, BAI da matrícula).`,
+          message: `Aluno ${idTrim} eliminado por completo. Cadastro activo: ${n} aluno(s).`,
         };
       },
       restoreAluno: (id) => {
@@ -4280,28 +4291,18 @@ export function alunosAll(
   const seenIds = new Set<string>();
   const seenNames = new Set<string>();
 
-  const push = (a: Aluno, fromSeed: boolean) => {
+  const push = (a: Aluno, _fromSeed: boolean) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    // Apagados (incluindo seed) não entram na lista nem nos KPIs
+    // Só exclusão: ID explicitamente eliminado
     if (deleted.has(a.id)) return;
     const nn = normalizeNomeAluno(a.nome);
-    // Homónimo vazio (stub sem pagamento/recibo): omitir.
-    // Matrículas reais (com liquidação, recibo, inscrição, etc.) aparecem sempre.
-    if (!fromSeed && nn && seenNames.has(nn)) {
-      const vazio =
-        !(Number(a.liquido) > 0) &&
-        !(Number(a.inscricao) > 0) &&
-        !(Number(a.mensalidade1) > 0) &&
-        !a.recibo &&
-        !a.dataPag &&
-        !(a.statusPag && a.statusPag !== "pendente");
-      if (vazio) return;
-    }
     seenIds.add(a.id);
     if (nn) seenNames.add(nn);
     out.push(apply(a));
   };
 
+  // Seed primeiro; depois extras (matrículas novas). Sem filtro por nome —
+  // cada ID conta 1 vez. Total = alunos activos (ex.: 53).
   for (const a of seed.alunos) push(a, true);
   for (const a of extras) push(a, false);
   return out;

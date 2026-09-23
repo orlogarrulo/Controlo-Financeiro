@@ -11,8 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PrintActions } from "@/components/print-actions";
 import { formatKz } from "@/lib/format";
 import { isCollaborator1, VIEW_ONLY_MSG } from "@/lib/can-edit";
-import { alunosAll, getSeed, idsApagadosSemSubstituto, persistAlunosCensoLocal, useFinance } from "@/lib/store";
-import { pushFinanceNow } from "@/components/hydrate-store";
+import { alunosAll, getSeed, idsApagadosSemSubstituto, useFinance } from "@/lib/store";
 import {
   downloadTextFile,
   linhasAlunos,
@@ -41,7 +40,6 @@ function Rastreio() {
   const operators = useFinance((s) => s.operators);
   const canEdit = isCollaborator1(activeOperator, operators);
   const [tab, setTab] = useState<"campus" | "outros" | "divida">("campus");
-  const [pubBusy, setPubBusy] = useState(false);
 
   const alunos = useMemo(
     () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
@@ -169,51 +167,11 @@ function Rastreio() {
       <div className="mb-4 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-sm">
         <p className="font-medium">Cadastro oficial</p>
         <p className="mt-1 text-xs text-[var(--color-muted)]">
-          Lista de referência no projecto: <strong>{getSeed().alunos.length}</strong> aluno(s).
-          Neste dispositivo: <strong>{alunos.length}</strong>.
-          IDs antigos após mudança de turma não entram na conta e não precisam de ser restaurados.
-          Publique na nuvem só quando quiser sincronizar edições novas com outros PCs.
+          Alunos activos neste dispositivo: <strong>{alunos.length}</strong>
+          (Matrículas, Quadro e Propinas usam a mesma lista).
+          IDs eliminados ou antigos após mudança de turma não entram na conta.
+          A sincronização com outros PCs faz-se automaticamente pela nuvem.
         </p>
-        {canEdit && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              disabled={pubBusy}
-              onClick={() => {
-                setPubBusy(true);
-                try {
-                  persistAlunosCensoLocal(alunos);
-                  syncPropinasFromMatriculas();
-                  const censo = montarCenso(alunos, mensalidades, escola.nome);
-                  downloadTextFile(
-                    `Censo_alunos_${new Date().toISOString().slice(0, 10)}.json`,
-                    JSON.stringify(censo, null, 2),
-                    "application/json",
-                  );
-                  void pushFinanceNow()
-                    .then(() => {
-                      toast.success(
-                        `${alunos.length} aluno(s) publicados na nuvem e censo JSON descarregado.`,
-                      );
-                    })
-                    .catch((e) => {
-                      toast.error(
-                        e instanceof Error
-                          ? e.message
-                          : "Censo gravado neste PC, mas a nuvem falhou. Confirme DATABASE_URL no Vercel.",
-                      );
-                    })
-                    .finally(() => setPubBusy(false));
-                } catch (e) {
-                  setPubBusy(false);
-                  toast.error(e instanceof Error ? e.message : "Falha ao publicar");
-                }
-              }}
-            >
-              {pubBusy ? "A publicar…" : `Publicar ${alunos.length} alunos na nuvem + censo`}
-            </Button>
-          </div>
-        )}
         {canEdit ? (
           <details className="mt-3 text-xs text-[var(--color-muted)]">
             <summary className="cursor-pointer select-none">Manutenção excepcional (não usar no dia-a-dia)</summary>

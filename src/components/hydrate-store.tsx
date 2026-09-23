@@ -138,9 +138,10 @@ export function HydrateStore() {
         try {
           useFinance.getState().syncPropinasFromMatriculas?.();
           const r = reporPropinasFromMatriculas();
+          // r.alunos = total activo alinhado Matrículas ↔ Propinas (ex.: 53)
           if (r.removidos > 0) {
             toast.message(
-              `Propinas repostas: ${r.alunos} aluno(s) · ${r.removidos} linha(s) duplicada(s)/órfã(s) removida(s).`,
+              `Propinas alinhadas: ${r.alunos} aluno(s) · ${r.removidos} linha(s) órfã(s) removida(s).`,
             );
           }
         } catch (e) {
