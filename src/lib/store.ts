@@ -4179,11 +4179,8 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
           "",
       ),
     );
-    if (stubNome && visibleNames.has(stubNome)) {
-      // Homónimo já visível — não criar stub duplicado
-      if (!deleted.includes(id)) deleted.push(id);
-      continue;
-    }
+    // Homónimo com outro ID: mesmo assim repor ESTE id (Nildo 4E-04 ≠ outro aluno).
+    // Nunca meter na lista de apagados por coincidência de nome.
     const nomeFonte =
       fat?.alunoNome || docAluno?.alunoNome || baiInfo.nome;
     const baiMerged = {
@@ -4234,7 +4231,7 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
       continue;
     }
     const nn = normalizeNomeAluno(b.nome);
-    if (nn && visibleNames.has(nn)) continue;
+    // Não saltar por nome — IDs distintos (ex.: 4E-04) têm de existir
     extras.push(
       stubAlunoFromTrace(b.id, undefined, undefined, undefined, {
         nome: b.nome,
@@ -4248,6 +4245,45 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     visible.add(b.id);
     if (nn) visibleNames.add(nn);
     detalhes.push(`ID ${b.id} reconstruído do BAI (${b.nome} · ${b.recibo || "sem EF"})`);
+  }
+
+  // ——— Rede de segurança: todo recibo/fatura no Arquivo com alunoId sem ficha → recriar ———
+  for (const d of docs) {
+    const id = String(d.alunoId || "").trim();
+    if (!id || visible.has(id)) continue;
+    if (seed.alunos.some((a) => a.id === id) && !deleted.includes(id)) {
+      visible.add(id);
+      continue;
+    }
+    // Tirar de apagados: tem documento oficial, não pode ficar oculto
+    deleted = deleted.filter((x) => x !== id);
+    if (extras.some((a) => a.id === id)) {
+      visible.add(id);
+      detalhes.push(`ID ${id} reaberto (existia em extras + Arquivo)`);
+      continue;
+    }
+    const stub = stubAlunoFromTrace(
+      id,
+      overrides[id],
+      mensalidades.find((m) => m.id === id),
+      d.alunoNome,
+      {
+        nome: d.alunoNome,
+        liquido: Number(d.valor) || 0,
+        dataPag: d.pagoEm || d.emitidoEm,
+        recibo: d.numero || d.codigoVerificacao,
+      },
+    );
+    if ((Number(d.valor) || 0) > 0 || d.modelo === "liquidacao_matricula") {
+      stub.statusPag = "pago";
+      stub.liquido = Number(d.valor) || stub.liquido || 0;
+      stub.bruto = stub.bruto || stub.liquido;
+    }
+    extras.push(stub);
+    visible.add(id);
+    detalhes.push(
+      `ID ${id} reposto do Arquivo (${d.alunoNome || "?"} · ${d.numero || d.id})`,
+    );
   }
 
   if (detalhes.length) {

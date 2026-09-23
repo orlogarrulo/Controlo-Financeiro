@@ -129,8 +129,13 @@ export function HydrateStore() {
           const r0 = useFinance.getState().recuperarAlunosOcultos?.();
           if (r0 && r0.restaurados > 0) {
             toast.success(
-              `Matrículas restauradas: ${r0.restaurados} aluno(s) a partir do Arquivo/BAI/propinas.`,
+              `Matrículas restauradas: ${r0.restaurados} aluno(s) a partir do Arquivo.`,
             );
+            try {
+              window.dispatchEvent(new CustomEvent("ecc-finance-push"));
+            } catch {
+              /* ignore */
+            }
           }
         } catch (e) {
           console.warn("[recuperar] alunos ocultos", e);
@@ -300,16 +305,10 @@ function applyPayload(p: FinanceCloudPayload) {
   useFinance.setState({
     extras: extrasMerged as never[],
     // CRÍTICO: não esvaziar alunosExtra — senão matrículas novas nunca chegam ao telemóvel
+    // Um registo por ID — NÃO deduplicar por nome (senão Nildo/novos somem na nuvem)
     alunosExtra: alunosMerged.filter((a) => {
       const id = (a as { id?: string }).id;
       return Boolean(id && !deletedAlunos.has(id) && !SEED_ALUNO_IDS.has(id));
-    }).filter((a, _i, arr) => {
-      const nn = normalizeNomeAluno(String((a as { nome?: string }).nome || ""));
-      if (!nn) return true;
-      const first = arr.findIndex(
-        (x) => normalizeNomeAluno(String((x as { nome?: string }).nome || "")) === nn,
-      );
-      return arr.indexOf(a) === first;
     }) as never[],
     alunosOverrides: mergeAlunoOverrides(
       local.alunosOverrides || {},
