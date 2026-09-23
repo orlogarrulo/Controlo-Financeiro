@@ -1102,7 +1102,13 @@ export const useFinance = create<Store>()(
       addAluno: (aluno) => {
         requireEdit(get);
         const by = get().activeOperator || "—";
-        const row = { ...aluno, criadoPor: by, createdAt: new Date().toISOString() };
+        const now = new Date().toISOString();
+        const row = {
+          ...aluno,
+          criadoPor: by,
+          createdAt: aluno.createdAt || now,
+          updatedAt: now,
+        };
         const extras = [...get().alunosExtra, row];
         set({ alunosExtra: extras });
         persistAlunosCensoLocal(extras);
@@ -4165,12 +4171,36 @@ export function alunosAll(
     if (!a?.id || seenIds.has(a.id)) return;
     if (!fromSeed && deleted.has(a.id)) return;
     const nn = normalizeNomeAluno(a.nome);
-    if (!fromSeed && nn && seenNames.has(nn)) return;
+    // Homónimo: só esconder se for stub de recuperação; matrículas reais com
+    // dados financeiros ou recibo mantêm-se (evita sumir Anildo / novos alunos).
+    if (!fromSeed && nn && seenNames.has(nn)) {
+      const obs = String(a.obs || "");
+      const isStub = /reposto a partir de rasto|ficha mínima|52\.º aluno/i.test(obs);
+      const temDados =
+        Number(a.liquido) > 0 ||
+        Number(a.inscricao) > 0 ||
+        Boolean(a.recibo) ||
+        Boolean(a.dataPag) ||
+        (a.statusPag && a.statusPag !== "pendente");
+      if (isStub || !temDados) return;
+    }
     if (!fromSeed) {
       const obs = String(a.obs || "");
+      // Stubs antigos de recuperação — nunca mostrar na lista
       if (/reposto a partir de rasto|ficha mínima|52\.º aluno/i.test(obs)) return;
-      const ts = Date.parse(String(a.updatedAt || ""));
-      if (!Number.isFinite(ts) || ts < Date.parse("2026-09-23T00:00:00.000Z")) return;
+      // Aceitar updatedAt OU createdAt (addAluno só gravava createdAt → alunos novos sumiam)
+      const ts = Date.parse(String(a.updatedAt || a.createdAt || ""));
+      // Matrícula com movimento real: mostrar sempre, mesmo sem timestamp
+      const temDados =
+        Number(a.liquido) > 0 ||
+        Number(a.inscricao) > 0 ||
+        Boolean(a.recibo) ||
+        Boolean(a.dataPag) ||
+        (a.statusPag && a.statusPag !== "pendente") ||
+        Boolean(a.nome && a.turma);
+      if (!temDados && (!Number.isFinite(ts) || ts < Date.parse("2026-09-01T00:00:00.000Z"))) {
+        return;
+      }
     }
     seenIds.add(a.id);
     if (nn) seenNames.add(nn);
