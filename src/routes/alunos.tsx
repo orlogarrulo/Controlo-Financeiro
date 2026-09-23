@@ -1648,6 +1648,7 @@ function Alunos() {
   const overrides = useFinance((s) => s.alunosOverrides);
   const addAluno = useFinance((s) => s.addAluno);
   const updateAluno = useFinance((s) => s.updateAluno);
+  const purgeAlunoCompleto = useFinance((s) => s.purgeAlunoCompleto);
   const alinharCampusPorFamilia = useFinance((s) => s.alinharCampusPorFamilia);
   const nextFaturaNumero = useFinance((s) => s.nextFaturaNumero);
   const addFaturaPropina = useFinance((s) => s.addFaturaPropina);
@@ -2054,6 +2055,38 @@ function Alunos() {
     } catch (e) {
       console.warn("[saveNew] abrirRecibo", e);
       toast.message(`Aluna gravada: ${id}. Pesquise «${aluno.nome.split(" ")[0]}» na lista para abrir o recibo.`);
+    }
+  }
+
+
+  async function eliminarAlunoDefinitivo(a: Aluno) {
+    if (!canEdit || !a?.id) return;
+    const ok1 = confirm(
+      `ELIMINAR DEFINITIVAMENTE ${a.nome} (${a.id})?\n\n` +
+        `Isto remove a ficha, propinas, documentos do Arquivo, códigos de recibo, faturas, conta corrente e movimentos BAI desta matrícula.\n\n` +
+        `Não fica apenas oculto — não volta a aparecer pelo Rastreio.\n\n` +
+        `Os lançamentos BAI manuais (extrato) não relacionados com APP-MAT-${a.id} mantêm-se.`,
+    );
+    if (!ok1) return;
+    const ok2 = confirm(`Confirme de novo: apagar ${a.id} para sempre?`);
+    if (!ok2) return;
+    try {
+      const r = purgeAlunoCompleto(a.id);
+      if (!r.ok) {
+        toast.error(r.message);
+        return;
+      }
+      try {
+        const { pushFinanceNow } = await import("@/components/hydrate-store");
+        if (typeof pushFinanceNow === "function") await pushFinanceNow();
+      } catch {
+        /* ignore */
+      }
+      toast.success(r.message);
+      setEditing(null);
+      clearDeepLink();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao eliminar");
     }
   }
 
@@ -4185,6 +4218,22 @@ function Alunos() {
               )
             }
           />
+          {canEdit && editing ? (
+            <div className="mt-4 border-t border-red-200 pt-3">
+              <p className="mb-2 text-[11px] text-red-700">
+                Zona perigosa — remove o aluno de Matrículas, Propinas, Arquivo, recibos e BAI da matrícula.
+                Não fica só oculto.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="text-red-700 hover:bg-red-50"
+                onClick={() => void eliminarAlunoDefinitivo(editing)}
+              >
+                Eliminar aluno definitivamente
+              </Button>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 

@@ -270,6 +270,12 @@ type Store = ExtraState & {
   /** Apaga um movimento do extrato BAI e recalcula saldos em cadeia. */
   deleteBaiMovimento: (id: string) => void;
   removeAluno: (id: string) => void;
+  /**
+   * Eliminação definitiva: remove ficha, propinas, documentos, códigos de recibo,
+   * faturas, conta corrente, CRM, foto e movimentos BAI gerados pela matrícula.
+   * Não fica só “oculto” — não volta pelo recuperarAlunosOcultos.
+   */
+  purgeAlunoCompleto: (id: string) => { ok: boolean; message: string };
   /** Tira o ID da lista de apagados e reconstroi a ficha se ainda houver rasto. */
   restoreAluno: (id: string) => boolean;
   /** Varre propinas, BAI, overrides e IDs apagados; repõe fichas ocultas. */
@@ -2340,6 +2346,64 @@ export const useFinance = create<Store>()(
         delete ov[id];
         set({ alunosOverrides: ov });
         get().pushAudit("apagar_aluno", id);
+      },
+      purgeAlunoCompleto: (id) => {
+        requireEdit(get);
+        const ops = get().operators;
+        const by = get().activeOperator || "—";
+        if (by !== ops[0]) {
+          return { ok: false, message: "Apenas o Colaborador 1 pode eliminar alunos definitivamente." };
+        }
+        const idTrim = String(id || "").trim();
+        if (!idTrim) return { ok: false, message: "ID em falta." };
+
+        const idUp = idTrim.toUpperCase();
+        const fotos = { ...(get().fotos || {}) };
+        delete fotos[idTrim];
+
+        const ov = { ...(get().alunosOverrides || {}) };
+        delete ov[idTrim];
+
+        // Marcar como apagado para seed não voltar; extras removidos de vez
+        const deleted = Array.from(
+          new Set([...(get().alunosDeletedIds || []).filter((x) => x !== idTrim), idTrim]),
+        );
+
+        const baiExtra = (get().movimentosBaiExtra || []).filter((m) => {
+          const blob = `${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`.toUpperCase();
+          // Só remove movimentos gerados pela app para esta matrícula
+          if (String(m.id || "").toUpperCase().startsWith(`APP-MAT-${idUp}`)) return false;
+          if (blob.includes(`(${idUp})`) && /MATR[IÍ]CULA/i.test(blob)) return false;
+          return true;
+        });
+
+        set({
+          alunosExtra: (get().alunosExtra || []).filter((a) => a.id !== idTrim),
+          alunosOverrides: ov,
+          alunosDeletedIds: deleted,
+          mensalidades: (get().mensalidades || []).filter((m) => m.id !== idTrim),
+          fotos,
+          documentosAluno: (get().documentosAluno || []).filter((d) => d.alunoId !== idTrim),
+          codigosRecibo: (get().codigosRecibo || []).filter((c) => c.alunoId !== idTrim),
+          faturasPropina: (get().faturasPropina || []).filter((f) => f.alunoId !== idTrim),
+          contaCorrente: (get().contaCorrente || []).filter((c) => c.alunoId !== idTrim),
+          crmEnvios: (get().crmEnvios || []).filter((r) => r.alunoId !== idTrim),
+          movimentosBaiExtra: baiExtra,
+        });
+
+        // Censo local: tirar este ID
+        try {
+          const still = (get().alunosExtra || []).filter((a) => a.id !== idTrim);
+          persistAlunosCensoLocal(still);
+        } catch {
+          /* ignore */
+        }
+
+        get().pushAudit("purge_aluno", `${idTrim} · eliminação definitiva`);
+        return {
+          ok: true,
+          message: `Aluno ${idTrim} eliminado por completo (ficha, propinas, documentos, recibos, BAI da matrícula).`,
+        };
       },
       restoreAluno: (id) => {
         requireEdit(get);
