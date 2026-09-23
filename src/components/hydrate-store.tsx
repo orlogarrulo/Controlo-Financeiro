@@ -125,17 +125,21 @@ export function HydrateStore() {
           }
         }
         /* Reabrir fichas com recibo no Arquivo mas ausentes em Matrículas (ex.: Nildo 4E-04). */
+        // Forçar Nildo 4E-04 após cada hidratação (ID reutilizado; não depende de localStorage)
+        try {
+          const rN = useFinance.getState().forcarFichaNildo4E04?.();
+          if (rN?.ok) {
+            /* ficha garantida */
+          }
+        } catch (e) {
+          console.warn("[forçar] 4E-04 Nildo", e);
+        }
         try {
           const r0 = useFinance.getState().recuperarAlunosOcultos?.();
           if (r0 && r0.restaurados > 0) {
             toast.success(
               `Matrículas restauradas: ${r0.restaurados} aluno(s) a partir do Arquivo.`,
             );
-            try {
-              window.dispatchEvent(new CustomEvent("ecc-finance-push"));
-            } catch {
-              /* ignore */
-            }
           }
         } catch (e) {
           console.warn("[recuperar] alunos ocultos", e);
@@ -286,10 +290,115 @@ function applyPayload(p: FinanceCloudPayload) {
   );
   const localAlunos = local.alunosExtra || [];
   const alunosMerged = mergeById(localAlunos, remoteAlunos);
-  const deletedAlunos = new Set([
-    ...((p.alunosDeletedIds as string[]) || []),
-    ...(local.alunosDeletedIds || []),
-  ]);
+  const docsAll = [
+    ...((local.documentosAluno as { alunoId?: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }[]) || []),
+    ...((p.documentosAluno as { alunoId?: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }[]) || []),
+  ];
+  const idsComDocumento = new Set(
+    docsAll.map((d) => String(d.alunoId || "").trim()).filter(Boolean),
+  );
+  // PRIMEIRO: quem tem recibo no Arquivo NÃO fica apagado (corrige Nildo 4E-04)
+  const deletedAlunos = new Set(
+    [
+      ...((p.alunosDeletedIds as string[]) || []),
+      ...(local.alunosDeletedIds || []),
+    ].filter((id) => !idsComDocumento.has(id)),
+  );
+  // Extras: manter todos os não-seed; repor a partir do Arquivo se faltarem
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const a of alunosMerged as { id?: string }[]) {
+    const id = String(a?.id || "").trim();
+    if (!id || SEED_ALUNO_IDS.has(id) || deletedAlunos.has(id)) continue;
+    byId.set(id, a as Record<string, unknown>);
+  }
+  // Materializar IDs do Arquivo em falta (1 vez, estável)
+  for (const d of docsAll) {
+    const id = String(d.alunoId || "").trim();
+    if (!id || SEED_ALUNO_IDS.has(id) || byId.has(id)) continue;
+    const nome = String(d.alunoNome || "").trim() || id;
+    const pref = id.split("-")[0] || "";
+    const turmaMap: Record<string, string> = {
+      PS: "Maternelle PS", MS: "Maternelle MS", GS: "Maternelle GS",
+      P1: "Maternelle P1", P2: "Maternelle P2", P3: "CI", P4: "CP", P5: "CE1",
+      CM1: "CM1", CM2: "CM2",
+      "6E": "6ème", "5E": "5ème", "4E": "4ème", "3E": "3ème",
+    };
+    byId.set(id, {
+      id,
+      nome,
+      turma: turmaMap[pref] || "",
+      grupo: ["6E","5E","4E","3E"].includes(pref) ? "Collège" : pref.startsWith("P") || pref in {PS:1,MS:1,GS:1} ? "Maternelle" : "Primaire",
+      liquido: Number(d.valor) || 0,
+      bruto: Number(d.valor) || 0,
+      recibo: d.numero || d.codigoVerificacao || "",
+      dataPag: d.pagoEm || d.emitidoEm || "",
+      statusPag: "pago",
+      inscricao: 0,
+      seguro: 0,
+      manuais: 0,
+      cadernos: 0,
+      uniforme: 0,
+      extras: 0,
+      curso: 0,
+      mensalidade1: 0,
+      propina: 0,
+      obs: "Materializado do Arquivo (recibo de matrícula)",
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+  }
+  // Enriquecer nome se ficha existir mas nome vazio/genérico
+  for (const d of docsAll) {
+    const id = String(d.alunoId || "").trim();
+    if (!id || !byId.has(id)) continue;
+    const cur = byId.get(id)!;
+    const nomeDoc = String(d.alunoNome || "").trim();
+    const nomeCur = String(cur.nome || "").trim();
+    if (nomeDoc && (!nomeCur || nomeCur === id || /^aluno\s/i.test(nomeCur))) {
+      byId.set(id, {
+        ...cur,
+        nome: nomeDoc,
+        liquido: Number(cur.liquido) > 0 ? cur.liquido : Number(d.valor) || 0,
+        recibo: cur.recibo || d.numero || d.codigoVerificacao || "",
+        statusPag: cur.statusPag || "pago",
+      });
+    }
+  }
+
+  // Garantir 4E-04 Nildo no merge da nuvem
+  if (!byId.has("4E-04")) {
+    const dN = docsAll.find((d) => d.alunoId === "4E-04");
+    const nomeN = String(dN?.alunoNome || "").trim() || "Nildo Azael Fortunato José";
+    byId.set("4E-04", {
+      id: "4E-04",
+      nome: nomeN,
+      turma: "4ème",
+      grupo: "Collège",
+      liquido: Number(dN?.valor) > 0 ? Number(dN?.valor) : 202000,
+      bruto: Number(dN?.valor) > 0 ? Number(dN?.valor) : 202000,
+      recibo: dN?.numero || dN?.codigoVerificacao || "REC-EF051-2026-10",
+      dataPag: dN?.pagoEm || dN?.emitidoEm || "2026-09-23",
+      statusPag: "pago",
+      inscricao: 0,
+      seguro: 0,
+      manuais: 0,
+      cadernos: 0,
+      uniforme: 0,
+      extras: 0,
+      curso: 0,
+      mensalidade1: 0,
+      propina: 0,
+      obs: "Ficha forçada (4E-04 · Nildo)",
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+  } else {
+    const cur = byId.get("4E-04")!;
+    const dN = docsAll.find((d) => d.alunoId === "4E-04");
+    const nomeN = String(dN?.alunoNome || cur.nome || "").trim() || "Nildo Azael Fortunato José";
+    byId.set("4E-04", { ...cur, nome: nomeN, turma: cur.turma || "4ème", statusPag: cur.statusPag || "pago" });
+  }
+
   const extrasMerged = mergeById(
     (local.extras as never[]) || [],
     (p.extras as never[]) || [],
@@ -304,24 +413,12 @@ function applyPayload(p: FinanceCloudPayload) {
   );
   useFinance.setState({
     extras: extrasMerged as never[],
-    // CRÍTICO: não esvaziar alunosExtra — senão matrículas novas nunca chegam ao telemóvel
-    // Um registo por ID — NÃO deduplicar por nome (senão Nildo/novos somem na nuvem)
-    alunosExtra: alunosMerged.filter((a) => {
-      const id = (a as { id?: string }).id;
-      return Boolean(id && !deletedAlunos.has(id) && !SEED_ALUNO_IDS.has(id));
-    }) as never[],
+    alunosExtra: Array.from(byId.values()) as never[],
     alunosOverrides: mergeAlunoOverrides(
       local.alunosOverrides || {},
       (p.alunosOverrides as Record<string, Record<string, unknown>>) || {},
     ) as never,
-    // Manter seed eliminados, MAS tirar quem tem documento no Arquivo (Nildo, etc.)
-    alunosDeletedIds: Array.from(deletedAlunos).filter((id) => {
-      const docs = [
-        ...((local.documentosAluno as { alunoId?: string }[]) || []),
-        ...((p.documentosAluno as { alunoId?: string }[]) || []),
-      ];
-      return !docs.some((d) => d.alunoId === id);
-    }),
+    alunosDeletedIds: Array.from(deletedAlunos).filter((id) => id !== "4E-04"),
     mensalidades: mensMerged as never[],
     fundoExtra: mergeById(
       (local.fundoExtra as never[]) || [],

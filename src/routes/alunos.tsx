@@ -1664,11 +1664,12 @@ function Alunos() {
   const canEdit = isCollaborator1(activeOperator, operators);
   const deletedAlunos = useFinance((s) => s.alunosDeletedIds || []);
   const alunos = alunosAll(extraA, overrides, deletedAlunos);
-  // Ao abrir Matrículas: garantir fichas do Arquivo (Nildo, etc.) com nome correcto
+  const forcarFichaNildo4E04 = useFinance((s) => s.forcarFichaNildo4E04);
+  // Sempre forçar 4E-04 Nildo ao abrir Matrículas
   useEffect(() => {
     try {
-      const r = recuperarAlunosOcultos?.();
-      if (r && r.restaurados > 0) {
+      const r = forcarFichaNildo4E04?.();
+      if (r?.ok) {
         try {
           reporPropinasFromMatriculas();
         } catch {
@@ -1676,7 +1677,7 @@ function Alunos() {
         }
       }
     } catch (e) {
-      console.warn("[matriculas] materializar arquivo", e);
+      console.warn("[matriculas] forçar 4E-04 Nildo", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

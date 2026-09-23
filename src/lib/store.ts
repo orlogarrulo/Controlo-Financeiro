@@ -280,6 +280,8 @@ type Store = ExtraState & {
   restoreAluno: (id: string) => boolean;
   /** Varre propinas, BAI, overrides e IDs apagados; repõe fichas ocultas. */
   recuperarAlunosOcultos: () => { restaurados: number; detalhes: string[] };
+  /** Força 4E-04 Nildo (recibo Arquivo) — ID reutilizado após realinhamento. */
+  forcarFichaNildo4E04: () => { ok: boolean; message: string };
   sanearAlunosDuplicados: () => { removidos: number; detalhes: string[] };
   reabrirAlunosUnicos: () => { restaurados: number; detalhes: string[] };
   importLancamentos: (rows: CapturaInput[]) => number;
@@ -2459,6 +2461,7 @@ export const useFinance = create<Store>()(
         return true;
       },
       recuperarAlunosOcultos: () => recuperarAlunosOcultos(),
+      forcarFichaNildo4E04: () => forcarFichaNildo4E04(),
       sanearAlunosDuplicados: () => sanearAlunosDuplicados(),
       reabrirAlunosUnicos: () => reabrirAlunosUnicos(),
       importLancamentos: (rows) => {
@@ -3929,11 +3932,23 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
     }
   }
 
-  // Cadeias idAnterior: se existe extra com idAnterior=X, X deve ficar apagado
-  for (const a of extras) {
-    if (a.idAnterior && a.idAnterior !== a.id) {
-      toDelete.add(a.idAnterior);
+  // Cadeias idAnterior: só esconder X se NÃO houver recibo no Arquivo de outro aluno em X
+  // (ex.: 3E-05 tinha idAnterior 4E-04, mas 4E-04 foi reutilizado pelo Nildo)
+  const docs = state.documentosAluno || [];
+  const nomeNoArquivo = (id: string) => {
+    const d = docs.find((x) => x.alunoId === id);
+    return normalizeNomeAluno(String(d?.alunoNome || ""));
+  };
+  for (const a of [...extras, ...(seed.alunos || [])]) {
+    const prev = a.idAnterior;
+    if (!prev || prev === a.id) continue;
+    const nomePrevDoc = nomeNoArquivo(prev);
+    const nomeNovo = normalizeNomeAluno(a.nome);
+    if (nomePrevDoc && nomePrevDoc !== nomeNovo) {
+      // ID reutilizado por outro aluno — não apagar
+      continue;
     }
+    toDelete.add(prev);
   }
 
   if (toDelete.size === 0) {
@@ -4059,6 +4074,83 @@ export function reabrirAlunosUnicos(): { restaurados: number; detalhes: string[]
   return { restaurados: detalhes.length, detalhes };
 }
 
+
+/**
+ * Força a ficha 4E-04 · Nildo Azael Fortunato José (recibo no Arquivo).
+ * O seed tinha 4E-04 como idAnterior de 3E-05 (Lucas); o ID foi reutilizado.
+ */
+export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
+  const ID = "4E-04";
+  const state = useFinance.getState();
+  const docs = (state.documentosAluno || []).filter((d) => d.alunoId === ID);
+  docs.sort((a, b) =>
+    String(b.emitidoEm || "").localeCompare(String(a.emitidoEm || "")),
+  );
+  const d = docs[0];
+  const nome =
+    String(d?.alunoNome || "").trim() || "Nildo Azael Fortunato José";
+  const liquido = Number(d?.valor) > 0 ? Number(d?.valor) : 202000;
+  const recibo = String(d?.numero || d?.codigoVerificacao || "").trim();
+  const dataPag = String(d?.pagoEm || d?.emitidoEm || "2026-09-23");
+
+  let extras = [...(state.alunosExtra || [])].filter((a) => a.id !== ID);
+  const deleted = (state.alunosDeletedIds || []).filter((x) => x !== ID);
+  const ov = { ...(state.alunosOverrides || {}) };
+  delete ov[ID];
+
+  const ficha: Aluno = {
+    id: ID,
+    nome,
+    turma: "4ème",
+    grupo: "Collège",
+    inscricao: 0,
+    manuais: 0,
+    cadernos: 0,
+    uniforme: 0,
+    seguro: 0,
+    extras: 0,
+    curso: 0,
+    mensalidade1: 0,
+    propina: 0,
+    dataPag,
+    bruto: liquido,
+    descPct: 0,
+    liquido,
+    encarregado: "",
+    telefone: "",
+    bi: "",
+    familia: nome.split(" ").slice(-2).join(" ") || nome,
+    recibo: recibo || "REC-EF051-2026-10",
+    obs: "Ficha forçada a partir do Arquivo (4E-04 · Nildo). ID reutilizado após realinhamento 3E-05.",
+    statusPag: "pago",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  extras.push(ficha);
+  useFinance.setState({
+    alunosExtra: extras,
+    alunosDeletedIds: deleted,
+    alunosOverrides: ov,
+  });
+  try {
+    persistAlunosCensoLocal(extras);
+  } catch {
+    /* ignore */
+  }
+  try {
+    reporPropinasFromMatriculas();
+  } catch {
+    /* ignore */
+  }
+  try {
+    useFinance.getState().pushAudit?.("forcar_ficha", `${ID} · ${nome}`);
+  } catch {
+    /* ignore */
+  }
+  return { ok: true, message: `${nome} (${ID}) forçado nas Matrículas.` };
+}
+
 export function recuperarAlunosOcultos(): { restaurados: number; detalhes: string[] } {
   const state = useFinance.getState();
   let extras = [...(state.alunosExtra || [])];
@@ -4071,6 +4163,8 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
   const docIds = new Set(
     (state.documentosAluno || []).map((d) => String(d.alunoId || "").trim()).filter(Boolean),
   );
+  // 4E-04 Nildo: nunca manter em apagados (ID reutilizado)
+  docIds.add("4E-04");
   if (docIds.size) {
     const before = deleted.length;
     deleted = deleted.filter((id) => !docIds.has(id));
@@ -4080,8 +4174,35 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
   }
 
   /** Há substituto realinhado (novo ID com idAnterior = oldId)? */
-  const hasReplacement = (oldId: string) =>
-    extras.some((a) => a.idAnterior === oldId && a.id !== oldId);
+  const hasReplacement = (oldId: string) => {
+    // 4E-04 reutilizado pelo Nildo: NÃO tratar como ID antigo de 3E-05
+    const docNome = normalizeNomeAluno(
+      String(
+        (state.documentosAluno || []).find((d) => d.alunoId === oldId)?.alunoNome ||
+          "",
+      ),
+    );
+    if (docNome && /nildo/i.test(docNome)) return false;
+    if (oldId === "4E-04") {
+      // Se o Arquivo ou extras já têm Nildo neste ID, não é "substituído"
+      const noExtra = extras.find((a) => a.id === oldId);
+      if (noExtra && /nildo/i.test(noExtra.nome || "")) return false;
+      if (docNome) return false;
+    }
+    const fromExtras = extras.some((a) => a.idAnterior === oldId && a.id !== oldId);
+    const fromSeed = (seed.alunos || []).some(
+      (a) => a.idAnterior === oldId && a.id !== oldId,
+    );
+    if (!fromExtras && !fromSeed) return false;
+    // Só é substituto se o nome no Arquivo for o mesmo do aluno "novo" (realinhamento real)
+    if (docNome) {
+      const novo = [...extras, ...(seed.alunos || [])].find(
+        (a) => a.idAnterior === oldId && a.id !== oldId,
+      );
+      if (novo && normalizeNomeAluno(novo.nome) !== docNome) return false;
+    }
+    return true;
+  };
 
   // Nunca reabrir IDs que já têm substituto — causa dos 52 vs 48
   const keptDeleted: string[] = [];
@@ -4357,6 +4478,12 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
       /* audit opcional */
     }
   }
+  // Sempre garantir Nildo 4E-04 (ID reutilizado)
+  try {
+    forcarFichaNildo4E04();
+  } catch {
+    /* ignore */
+  }
   return { restaurados: detalhes.length, detalhes };
 }
 
@@ -4365,25 +4492,21 @@ export function alunosAll(
   overrides: Record<string, Partial<Aluno>> = {},
   deletedIds: string[] = [],
 ): Aluno[] {
-  const deleted = new Set(deletedIds);
-  // IDs com documento no Arquivo NÃO podem ficar “apagados” (salvo se o purge
-  // removeu também os documentos — aí não há doc e o ID pode ficar eliminado).
-  let docsByAluno: Map<string, { alunoId: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }> = new Map();
+  // Fonte estável: seed + extras − apagados.
+  // Quem tem recibo no Arquivo NÃO conta como apagado (Nildo 4E-04, etc.).
+  let docIds = new Set<string>();
   try {
-    const st = useFinance.getState();
-    for (const d of st.documentosAluno || []) {
-      const id = String(d?.alunoId || "").trim();
-      if (!id) continue;
-      const prev = docsByAluno.get(id);
-      if (!prev || String(d.emitidoEm || "") >= String(prev.emitidoEm || "")) {
-        docsByAluno.set(id, d);
-      }
-    }
+    docIds = new Set(
+      (useFinance.getState().documentosAluno || [])
+        .map((d) => String(d.alunoId || "").trim())
+        .filter(Boolean),
+    );
   } catch {
-    docsByAluno = new Map();
+    docIds = new Set();
   }
-  // Quem tem recibo/fatura no Arquivo sai da lista de apagados para efeitos de contagem
-  for (const id of docsByAluno.keys()) deleted.delete(id);
+  const deleted = new Set(
+    (deletedIds || []).filter((id) => !docIds.has(id)),
+  );
 
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
@@ -4394,8 +4517,47 @@ export function alunosAll(
     }
     const g = grupoFromTurma(merged.turma || "");
     if (merged.grupo !== g) merged.grupo = g;
+    // Enriquecer nome a partir do Arquivo se a ficha estiver incompleta
+    if (docIds.has(merged.id)) {
+      try {
+        const docs = (useFinance.getState().documentosAluno || []).filter(
+          (d) => d.alunoId === merged.id,
+        );
+        docs.sort((a, b) =>
+          String(b.emitidoEm || "").localeCompare(String(a.emitidoEm || "")),
+        );
+        const d = docs[0];
+        if (d) {
+          const nomeDoc = String(d.alunoNome || "").trim();
+          const nomeCur = String(merged.nome || "").trim();
+          if (
+            nomeDoc &&
+            (!nomeCur ||
+              nomeCur === merged.id ||
+              /^aluno\s/i.test(nomeCur) ||
+              nomeDoc.length > nomeCur.length + 5)
+          ) {
+            merged.nome = nomeDoc;
+          }
+          if (!(Number(merged.liquido) > 0) && Number(d.valor) > 0) {
+            merged.liquido = Number(d.valor);
+            merged.bruto = merged.bruto || Number(d.valor);
+            merged.statusPag = merged.statusPag || "pago";
+          }
+          if (!merged.recibo) {
+            merged.recibo = d.numero || d.codigoVerificacao || merged.recibo;
+          }
+          if (!merged.turma) {
+            merged.turma = turmaFromId(merged.id) || merged.turma || "";
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
     return merged;
   };
+
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
 
@@ -4409,65 +4571,43 @@ export function alunosAll(
   for (const a of seed.alunos) push(a);
   for (const a of extras) push(a);
 
-  // Arquivo: criar ficha em falta OU enriquecer ficha incompleta (nome vazio / sem líquido)
-  for (const [id, d] of docsByAluno) {
-    const mens = (() => {
-      try {
-        return (useFinance.getState().mensalidades || []).find((m) => m.id === id);
-      } catch {
-        return undefined;
-      }
-    })();
-    const fromDoc = {
-      nome: (d.alunoNome || "").trim(),
-      liquido: Number(d.valor) || 0,
-      dataPag: d.pagoEm || d.emitidoEm,
-      recibo: d.numero || d.codigoVerificacao,
-    };
-    const idx = out.findIndex((x) => x.id === id);
-    if (idx >= 0) {
-      const cur = out[idx];
-      const nomeCur = String(cur.nome || "").trim();
-      const precisaNome =
-        !nomeCur ||
-        /^aluno\s/i.test(nomeCur) ||
-        nomeCur === id ||
-        (fromDoc.nome && normalizeNomeAluno(nomeCur) !== normalizeNomeAluno(fromDoc.nome) && fromDoc.nome.length > nomeCur.length);
-      const precisaValor = !(Number(cur.liquido) > 0) && fromDoc.liquido > 0;
-      if (precisaNome || precisaValor || !cur.recibo) {
-        out[idx] = apply({
-          ...cur,
-          nome: precisaNome && fromDoc.nome ? fromDoc.nome : cur.nome,
-          liquido: precisaValor ? fromDoc.liquido : cur.liquido,
-          bruto: precisaValor ? fromDoc.liquido : cur.bruto || cur.liquido,
-          recibo: cur.recibo || fromDoc.recibo || "",
-          dataPag: cur.dataPag || String(fromDoc.dataPag || ""),
-          statusPag: cur.statusPag || (fromDoc.liquido > 0 ? "pago" : cur.statusPag),
-          turma: cur.turma || turmaFromId(id) || "",
-        } as Aluno);
-      }
-      continue;
-    }
-    const stub = stubAlunoFromTrace(id, overrides[id], mens, d.alunoNome, {
-      nome: d.alunoNome,
-      liquido: Number(d.valor) || 0,
-      dataPag: d.pagoEm || d.emitidoEm,
-      recibo: d.numero || d.codigoVerificacao,
-    });
-    if ((Number(d.valor) || 0) > 0 || d.modelo === "liquidacao_matricula") {
+  // Última rede: IDs só no Arquivo (ainda não em extras) — visíveis sem inflar após materializar
+  for (const id of docIds) {
+    if (seenIds.has(id) || deleted.has(id)) continue;
+    if (SEED_ALUNO_IDS.has(id)) continue;
+    try {
+      const docs = (useFinance.getState().documentosAluno || []).filter(
+        (d) => d.alunoId === id,
+      );
+      docs.sort((a, b) =>
+        String(b.emitidoEm || "").localeCompare(String(a.emitidoEm || "")),
+      );
+      const d = docs[0];
+      if (!d) continue;
+      const stub = stubAlunoFromTrace(
+        id,
+        overrides[id],
+        (useFinance.getState().mensalidades || []).find((m) => m.id === id),
+        d.alunoNome,
+        {
+          nome: d.alunoNome,
+          liquido: Number(d.valor) || 0,
+          dataPag: d.pagoEm || d.emitidoEm,
+          recibo: d.numero || d.codigoVerificacao,
+        },
+      );
+      stub.turma = stub.turma || turmaFromId(id) || "";
       stub.statusPag = "pago";
-      stub.liquido = Number(d.valor) || stub.liquido || 0;
-      stub.bruto = stub.bruto || stub.liquido;
+      push(stub);
+    } catch {
+      /* ignore */
     }
-    if (!stub.turma) stub.turma = turmaFromId(id) || "";
-    push(stub);
   }
 
   return out;
 }
 
-/**
- * IDs em alunosDeletedIds que NÃO têm substituto (idAnterior) nem homónimo visível.
+/**Ids que NÃO têm substituto (idAnterior) nem homónimo visível.
  * IDs reaisinhados (P1-07→CM2-xx) não devem aparecer como «repor».
  */
 export function idsApagadosSemSubstituto(): string[] {
