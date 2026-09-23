@@ -4069,19 +4069,9 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
       continue;
     }
     const isSeed = seed.alunos.some((a) => a.id === id);
-    // Seed apagado sem substituto: só reabrir se não existir ficha extra com o mesmo nome
+    // Seed eliminado definitivamente: manter apagado (não ressuscitar P1-05 se 4E-05 existe ou foi purged)
     if (isSeed) {
-      const seedNome = normalizeNomeAluno(
-        seed.alunos.find((a) => a.id === id)?.nome || "",
-      );
-      const nomeJaVisivel = alunosAll(extras, overrides, keptDeleted).some(
-        (a) => normalizeNomeAluno(a.nome) === seedNome && a.id !== id,
-      );
-      if (nomeJaVisivel) {
-        keptDeleted.push(id);
-        continue;
-      }
-      detalhes.push(`Seed ${id} estava escondido sem substituto — reaberto`);
+      keptDeleted.push(id);
       continue;
     }
     if (extras.some((a) => a.id === id)) {
@@ -4125,8 +4115,12 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     codigosRecibo: codigos,
   });
 
+  // IDs que o utilizador eliminou de vez — nunca reabrir neste ciclo
+  const purgedLocked = new Set(keptDeleted);
+
   for (const id of traces) {
     if (visible.has(id)) continue;
+    if (purgedLocked.has(id)) continue;
     if (deleted.includes(id) && hasReplacement(id)) continue;
     if (seed.alunos.some((a) => a.id === id) && !deleted.includes(id)) {
       visible.add(id);
@@ -4267,7 +4261,8 @@ export function alunosAll(
   overrides: Record<string, Partial<Aluno>> = {},
   deletedIds: string[] = [],
 ): Aluno[] {
-  const deleted = new Set(deletedIds.filter((id) => !SEED_ALUNO_IDS.has(id)));
+  // Incluir IDs do seed: eliminação definitiva (ex.: P1-05 Rockia) tem de ocultar também o seed
+  const deleted = new Set(deletedIds);
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
     const merged = o ? { ...a, ...o, id: a.id } : { ...a };
@@ -4287,8 +4282,8 @@ export function alunosAll(
 
   const push = (a: Aluno, fromSeed: boolean) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    // Só esconder se estiver explicitamente apagado (e não for seed)
-    if (!fromSeed && deleted.has(a.id)) return;
+    // Apagados (incluindo seed) não entram na lista nem nos KPIs
+    if (deleted.has(a.id)) return;
     const nn = normalizeNomeAluno(a.nome);
     // Homónimo vazio (stub sem pagamento/recibo): omitir.
     // Matrículas reais (com liquidação, recibo, inscrição, etc.) aparecem sempre.
