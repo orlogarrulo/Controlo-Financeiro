@@ -1021,9 +1021,9 @@ function MatriculaForm({
 
       {protegerLiquidacaoPaga ? (
         <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-amber-300 bg-amber-50 p-3 text-[12px] leading-relaxed text-amber-950">
-          <strong>Liquidação já paga (valores na conta da escola).</strong> Pode marcar Campus Cidade e
-          fixar a propina mensal em <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong> para cobranças futuras.
-          As taxas e o total já liquidados <strong>não são recalculados</strong> nem alterados no BAI.
+          <strong>Liquidação já paga (valores na conta da escola).</strong> Pode marcar Campus Cidade,
+          escolher o pacote (82 / 99 / 127 mil Kz) e fixar a propina mensal em <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong> para cobranças futuras.
+          A alteração do <strong>pacote</strong> grava-se na ficha (recibo correcto). O BAI não é duplicado automaticamente.
         </div>
       ) : null}
       <div className="sm:col-span-2 rounded-[var(--radius-md)] border border-[var(--color-forest)]/40 bg-[var(--color-forest-soft)]/40 p-3">
@@ -2092,29 +2092,56 @@ function Alunos() {
         alimentacao: t.alimentacao,
         curso: t.curso,
         cartaoEstudante: t.cartaoEstudante || 0,
-        // Se liquidação já paga: preservar taxas/líquido/recibo; só actualizar propina + estatuto Campus
+        // Se liquidação já paga: preservar taxas/líquido/recibo por defeito;
+        // EXCEPÇÃO Campus Cidade: o pacote 82/99/127 escolhido no formulário DEVE gravar-se
+        // (antes ficava sempre o valor antigo — bug Kaela / outros transferidos).
         ...(
           editing.statusPag === "pago" ||
           (Number(editing.liquido) > 0 && (Boolean(editing.dataPag) || Boolean(editing.recibo)))
-            ? {
-                inscricao: Number(editing.inscricao) || 0,
-                seguro: Number(editing.seguro) || 0,
-                manuais: Number(editing.manuais) || 0,
-                cadernos: Number(editing.cadernos) || 0,
-                uniforme: Number(editing.uniforme) || 0,
-                extras: Number(editing.extras) || 0,
-                curso: Number(editing.curso) || 0,
-                cartaoEstudante: Number(editing.cartaoEstudante) || 0,
-                mensalidade1: Number(editing.mensalidade1) || 0,
-                mesesPropina: Number(editing.mesesPropina) || 0,
-                propina: num(form.propina),
-                dataPag: editing.dataPag || form.dataPag.trim(),
-                bruto: Number(editing.bruto) || Number(editing.liquido) || 0,
-                descPct: Number(editing.descPct) || 0,
-                liquido: Number(editing.liquido) || 0,
-                statusPag: editing.statusPag,
-                recibo: editing.recibo,
-              }
+            ? (() => {
+                const inscForm = num(form.inscricao);
+                const pacoteCampus =
+                  Boolean(form.transferidoCampusCidade) &&
+                  (CAMPUS_CIDADE_PACOTES as readonly number[]).includes(inscForm);
+                const inscFinal = pacoteCampus
+                  ? inscForm
+                  : Number(editing.inscricao) || 0;
+                const seguroFinal = pacoteCampus
+                  ? num(form.seguro)
+                  : Number(editing.seguro) || 0;
+                const cartaoFinal = pacoteCampus
+                  ? num(form.cartaoEstudante)
+                  : Number(editing.cartaoEstudante) || 0;
+                // Se o pacote mudou, actualizar bruto/líquido para reflectir o pacote correcto
+                // (sem voltar a debitar BAI — só corrige a ficha e o recibo).
+                const pacoteMudou =
+                  pacoteCampus &&
+                  Math.round(inscForm) !== Math.round(Number(editing.inscricao) || 0);
+                const liquidoBase = Number(editing.liquido) || 0;
+                const brutoBase = Number(editing.bruto) || liquidoBase || 0;
+                const deltaPacote = pacoteMudou
+                  ? inscForm - (Number(editing.inscricao) || 0)
+                  : 0;
+                return {
+                  inscricao: inscFinal,
+                  seguro: seguroFinal,
+                  manuais: Number(editing.manuais) || 0,
+                  cadernos: Number(editing.cadernos) || 0,
+                  uniforme: Number(editing.uniforme) || 0,
+                  extras: Number(editing.extras) || 0,
+                  curso: Number(editing.curso) || 0,
+                  cartaoEstudante: cartaoFinal,
+                  mensalidade1: Number(editing.mensalidade1) || 0,
+                  mesesPropina: Number(editing.mesesPropina) || 0,
+                  propina: num(form.propina),
+                  dataPag: editing.dataPag || form.dataPag.trim(),
+                  bruto: pacoteMudou ? Math.max(0, brutoBase + deltaPacote) : brutoBase,
+                  descPct: Number(editing.descPct) || 0,
+                  liquido: pacoteMudou ? Math.max(0, liquidoBase + deltaPacote) : liquidoBase,
+                  statusPag: editing.statusPag,
+                  recibo: editing.recibo,
+                };
+              })()
             : {
                 mensalidade1: t.mensalidade1,
                 mesesPropina: num(form.mesesPropina) || 0,
