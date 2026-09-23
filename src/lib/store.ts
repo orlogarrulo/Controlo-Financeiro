@@ -4067,6 +4067,17 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
   const mensalidades = state.mensalidades || [];
   const faturas = state.faturasPropina || [];
   const detalhes: string[] = [];
+  // Arquivo manda: IDs com documento saem de apagados imediatamente
+  const docIds = new Set(
+    (state.documentosAluno || []).map((d) => String(d.alunoId || "").trim()).filter(Boolean),
+  );
+  if (docIds.size) {
+    const before = deleted.length;
+    deleted = deleted.filter((id) => !docIds.has(id));
+    if (deleted.length < before) {
+      detalhes.push(`IDs com recibo no Arquivo removidos da lista de apagados (${before - deleted.length})`);
+    }
+  }
 
   /** Há substituto realinhado (novo ID com idAnterior = oldId)? */
   const hasReplacement = (oldId: string) =>
@@ -4308,13 +4319,29 @@ export function alunosAll(
   overrides: Record<string, Partial<Aluno>> = {},
   deletedIds: string[] = [],
 ): Aluno[] {
-  // Incluir IDs do seed: eliminação definitiva (ex.: P1-05 Rockia) tem de ocultar também o seed
   const deleted = new Set(deletedIds);
+  // IDs com documento no Arquivo NÃO podem ficar “apagados” (salvo se o purge
+  // removeu também os documentos — aí não há doc e o ID pode ficar eliminado).
+  let docsByAluno: Map<string, { alunoId: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }> = new Map();
+  try {
+    const st = useFinance.getState();
+    for (const d of st.documentosAluno || []) {
+      const id = String(d?.alunoId || "").trim();
+      if (!id) continue;
+      const prev = docsByAluno.get(id);
+      if (!prev || String(d.emitidoEm || "") >= String(prev.emitidoEm || "")) {
+        docsByAluno.set(id, d);
+      }
+    }
+  } catch {
+    docsByAluno = new Map();
+  }
+  // Quem tem recibo/fatura no Arquivo sai da lista de apagados para efeitos de contagem
+  for (const id of docsByAluno.keys()) deleted.delete(id);
+
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
     const merged = o ? { ...a, ...o, id: a.id } : { ...a };
-    // Turma oficial: idade prevalece se o prefixo do ID for incompatível
-    // (P1-07 com 11 anos → CM2, não Maternelle P1).
     const resolved = resolveTurmaOficial(merged);
     if (resolved && merged.turma !== resolved) {
       merged.turma = resolved;
@@ -4325,22 +4352,41 @@ export function alunosAll(
   };
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
-  const seenNames = new Set<string>();
 
-  const push = (a: Aluno, _fromSeed: boolean) => {
+  const push = (a: Aluno) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    // Só exclusão: ID explicitamente eliminado
     if (deleted.has(a.id)) return;
-    const nn = normalizeNomeAluno(a.nome);
     seenIds.add(a.id);
-    if (nn) seenNames.add(nn);
     out.push(apply(a));
   };
 
-  // Seed primeiro; depois extras (matrículas novas). Sem filtro por nome —
-  // cada ID conta 1 vez. Total = alunos activos (ex.: 53).
-  for (const a of seed.alunos) push(a, true);
-  for (const a of extras) push(a, false);
+  for (const a of seed.alunos) push(a);
+  for (const a of extras) push(a);
+
+  // Matrículas só no Arquivo (Nildo 4E-04, etc.) → entram na contagem e nas listas
+  for (const [id, d] of docsByAluno) {
+    if (seenIds.has(id)) continue;
+    const mens = (() => {
+      try {
+        return (useFinance.getState().mensalidades || []).find((m) => m.id === id);
+      } catch {
+        return undefined;
+      }
+    })();
+    const stub = stubAlunoFromTrace(id, overrides[id], mens, d.alunoNome, {
+      nome: d.alunoNome,
+      liquido: Number(d.valor) || 0,
+      dataPag: d.pagoEm || d.emitidoEm,
+      recibo: d.numero || d.codigoVerificacao,
+    });
+    if ((Number(d.valor) || 0) > 0 || d.modelo === "liquidacao_matricula") {
+      stub.statusPag = "pago";
+      stub.liquido = Number(d.valor) || stub.liquido || 0;
+      stub.bruto = stub.bruto || stub.liquido;
+    }
+    push(stub);
+  }
+
   return out;
 }
 

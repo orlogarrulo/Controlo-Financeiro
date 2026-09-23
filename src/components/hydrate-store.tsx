@@ -314,8 +314,14 @@ function applyPayload(p: FinanceCloudPayload) {
       local.alunosOverrides || {},
       (p.alunosOverrides as Record<string, Record<string, unknown>>) || {},
     ) as never,
-    // Manter IDs do seed eliminados (ex.: P1-05) — senão a nuvem “ressuscita” o aluno
-    alunosDeletedIds: Array.from(deletedAlunos),
+    // Manter seed eliminados, MAS tirar quem tem documento no Arquivo (Nildo, etc.)
+    alunosDeletedIds: Array.from(deletedAlunos).filter((id) => {
+      const docs = [
+        ...((local.documentosAluno as { alunoId?: string }[]) || []),
+        ...((p.documentosAluno as { alunoId?: string }[]) || []),
+      ];
+      return !docs.some((d) => d.alunoId === id);
+    }),
     mensalidades: mensMerged as never[],
     fundoExtra: mergeById(
       (local.fundoExtra as never[]) || [],
