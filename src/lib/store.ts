@@ -1109,8 +1109,13 @@ export const useFinance = create<Store>()(
           createdAt: aluno.createdAt || now,
           updatedAt: now,
         };
-        const extras = [...get().alunosExtra, row];
-        set({ alunosExtra: extras });
+        // Garantir que o novo ID não fica na lista de apagados
+        const deleted = (get().alunosDeletedIds || []).filter((id) => id !== row.id);
+        const extras = [
+          ...(get().alunosExtra || []).filter((a) => a.id !== row.id),
+          row,
+        ];
+        set({ alunosExtra: extras, alunosDeletedIds: deleted });
         persistAlunosCensoLocal(extras);
         get().pushAudit("criar_aluno", `${row.id} · ${row.nome}`);
 
@@ -3492,6 +3497,8 @@ function collectTraceIds(state: {
   faturasPropina?: FaturaPropina[];
   movimentosBaiExtra?: MovimentoBai[];
   alunosDeletedIds?: string[];
+  documentosAluno?: { alunoId?: string }[];
+  codigosRecibo?: { alunoId?: string }[];
 }): string[] {
   const ids = new Set<string>();
   const add = (raw?: string) => {
@@ -3506,6 +3513,8 @@ function collectTraceIds(state: {
   for (const m of state.mensalidades || []) add(m.id);
   for (const id of Object.keys(state.fotos || {})) add(id);
   for (const f of state.faturasPropina || []) add(f.alunoId);
+  for (const d of state.documentosAluno || []) add(d.alunoId);
+  for (const c of state.codigosRecibo || []) add(c.alunoId);
   for (const id of state.alunosDeletedIds || []) add(id);
   const bai = [...(seed.movimentosBai || []), ...(state.movimentosBaiExtra || [])];
   for (const m of bai) {
@@ -3658,13 +3667,15 @@ function stubAlunoFromTrace(
     obs:
       ov?.obs ||
       (bai?.nome
-        ? `Reposto a partir do extrato BAI (matrícula ${id}${bai.recibo ? ` · ${bai.recibo}` : ""})`
-        : "Reposto a partir de rasto (propinas / BAI / ID antigo)"),
+        ? `Recuperado do extrato BAI (matrícula ${id}${bai.recibo ? ` · ${bai.recibo}` : ""})`
+        : "Recuperado automaticamente (propinas / arquivo / BAI)"),
     propina: Number(ov?.propina || mens?.propina || 0),
     statusPag: (ov?.statusPag as Aluno["statusPag"]) || (liquido > 0 ? "pago" : "registado"),
     dataNascimento: ov?.dataNascimento,
     idAnterior: ov?.idAnterior,
     transferidoCampusCidade: ov?.transferidoCampusCidade,
+    createdAt: ov?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -4036,6 +4047,8 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
 
   // Traces: NÃO incluir alunosDeletedIds como fonte de reconstrução
   // (IDs apagados com substituto voltavam como stubs fantasma)
+  const docs = state.documentosAluno || [];
+  const codigos = state.codigosRecibo || [];
   const traces = collectTraceIds({
     alunosExtra: extras,
     alunosOverrides: overrides,
@@ -4044,6 +4057,8 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     faturasPropina: faturas,
     movimentosBaiExtra: state.movimentosBaiExtra,
     alunosDeletedIds: [], // crítico: não ressuscitar a partir da lista de apagados
+    documentosAluno: docs,
+    codigosRecibo: codigos,
   });
 
   for (const id of traces) {
@@ -4067,32 +4082,71 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     const ov = overrides[id];
     const mens = mensalidades.find((m) => m.id === id);
     const fat = faturas.find((f) => f.alunoId === id);
+    const docAluno = docs
+      .filter((d) => d.alunoId === id)
+      .sort((a, b) => String(b.emitidoEm || "").localeCompare(String(a.emitidoEm || "")))[0];
     const baiAll = [
       ...(seed.movimentosBai || []),
       ...(state.movimentosBaiExtra || []),
     ];
     const baiInfo = parseBaiMatricula(id, baiAll);
-    if (!ov && !mens && !fat && !baiInfo.nome && !(baiInfo.liquido && baiInfo.liquido > 0)) {
+    if (
+      !ov &&
+      !mens &&
+      !fat &&
+      !docAluno &&
+      !baiInfo.nome &&
+      !(baiInfo.liquido && baiInfo.liquido > 0)
+    ) {
       continue;
     }
     const stubNome = normalizeNomeAluno(
-      String(ov?.nome || mens?.nome || fat?.alunoNome || baiInfo.nome || ""),
+      String(
+        ov?.nome ||
+          mens?.nome ||
+          fat?.alunoNome ||
+          docAluno?.alunoNome ||
+          baiInfo.nome ||
+          "",
+      ),
     );
     if (stubNome && visibleNames.has(stubNome)) {
       // Homónimo já visível — não criar stub duplicado
       if (!deleted.includes(id)) deleted.push(id);
       continue;
     }
-    extras.push(stubAlunoFromTrace(id, ov, mens, fat?.alunoNome, baiInfo));
+    const nomeFonte =
+      fat?.alunoNome || docAluno?.alunoNome || baiInfo.nome;
+    const baiMerged = {
+      ...baiInfo,
+      nome: baiInfo.nome || docAluno?.alunoNome || fat?.alunoNome,
+      liquido: baiInfo.liquido || (docAluno?.valor ? Number(docAluno.valor) : undefined),
+      dataPag: baiInfo.dataPag || docAluno?.pagoEm || docAluno?.emitidoEm,
+      recibo: baiInfo.recibo || docAluno?.numero || docAluno?.codigoVerificacao,
+    };
+    const stub = stubAlunoFromTrace(id, ov, mens, nomeFonte, baiMerged);
+    if (docAluno?.modelo === "liquidacao_matricula" || (docAluno?.valor || 0) > 0) {
+      stub.statusPag = "pago";
+      if (!stub.liquido && docAluno?.valor) stub.liquido = Number(docAluno.valor) || 0;
+      if (!stub.bruto) stub.bruto = stub.liquido;
+    }
+    extras.push(stub);
     deleted = deleted.filter((x) => x !== id);
     visible.add(id);
     if (stubNome) visibleNames.add(stubNome);
     const label =
-      ov?.nome || mens?.nome || fat?.alunoNome || baiInfo.nome || "sem nome";
+      ov?.nome ||
+      mens?.nome ||
+      fat?.alunoNome ||
+      docAluno?.alunoNome ||
+      baiInfo.nome ||
+      "sem nome";
     detalhes.push(
-      baiInfo.nome && !ov && !mens
-        ? `ID ${id} reconstruído a partir do BAI (${label})`
-        : `ID ${id} reconstruído (${label})`,
+      docAluno
+        ? `ID ${id} reconstruído a partir do Arquivo (${label} · ${docAluno.numero || ""})`
+        : baiInfo.nome && !ov && !mens
+          ? `ID ${id} reconstruído a partir do BAI (${label})`
+          : `ID ${id} reconstruído (${label})`,
     );
   }
 
@@ -4169,38 +4223,20 @@ export function alunosAll(
 
   const push = (a: Aluno, fromSeed: boolean) => {
     if (!a?.id || seenIds.has(a.id)) return;
+    // Só esconder se estiver explicitamente apagado (e não for seed)
     if (!fromSeed && deleted.has(a.id)) return;
     const nn = normalizeNomeAluno(a.nome);
-    // Homónimo: só esconder se for stub de recuperação; matrículas reais com
-    // dados financeiros ou recibo mantêm-se (evita sumir Anildo / novos alunos).
+    // Homónimo vazio (stub sem pagamento/recibo): omitir.
+    // Matrículas reais (com liquidação, recibo, inscrição, etc.) aparecem sempre.
     if (!fromSeed && nn && seenNames.has(nn)) {
-      const obs = String(a.obs || "");
-      const isStub = /reposto a partir de rasto|ficha mínima|52\.º aluno/i.test(obs);
-      const temDados =
-        Number(a.liquido) > 0 ||
-        Number(a.inscricao) > 0 ||
-        Boolean(a.recibo) ||
-        Boolean(a.dataPag) ||
-        (a.statusPag && a.statusPag !== "pendente");
-      if (isStub || !temDados) return;
-    }
-    if (!fromSeed) {
-      const obs = String(a.obs || "");
-      // Stubs antigos de recuperação — nunca mostrar na lista
-      if (/reposto a partir de rasto|ficha mínima|52\.º aluno/i.test(obs)) return;
-      // Aceitar updatedAt OU createdAt (addAluno só gravava createdAt → alunos novos sumiam)
-      const ts = Date.parse(String(a.updatedAt || a.createdAt || ""));
-      // Matrícula com movimento real: mostrar sempre, mesmo sem timestamp
-      const temDados =
-        Number(a.liquido) > 0 ||
-        Number(a.inscricao) > 0 ||
-        Boolean(a.recibo) ||
-        Boolean(a.dataPag) ||
-        (a.statusPag && a.statusPag !== "pendente") ||
-        Boolean(a.nome && a.turma);
-      if (!temDados && (!Number.isFinite(ts) || ts < Date.parse("2026-09-01T00:00:00.000Z"))) {
-        return;
-      }
+      const vazio =
+        !(Number(a.liquido) > 0) &&
+        !(Number(a.inscricao) > 0) &&
+        !(Number(a.mensalidade1) > 0) &&
+        !a.recibo &&
+        !a.dataPag &&
+        !(a.statusPag && a.statusPag !== "pendente");
+      if (vazio) return;
     }
     seenIds.add(a.id);
     if (nn) seenNames.add(nn);

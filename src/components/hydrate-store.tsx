@@ -124,7 +124,17 @@ export function HydrateStore() {
             );
           }
         }
-        /* Reabrir / sanear só no separador Rastreio — evita o KPI 53→51 ao arrancar. */
+        /* Reabrir fichas com recibo no Arquivo mas ausentes em Matrículas (ex.: Nildo 4E-04). */
+        try {
+          const r0 = useFinance.getState().recuperarAlunosOcultos?.();
+          if (r0 && r0.restaurados > 0) {
+            toast.success(
+              `Matrículas restauradas: ${r0.restaurados} aluno(s) a partir do Arquivo/BAI/propinas.`,
+            );
+          }
+        } catch (e) {
+          console.warn("[recuperar] alunos ocultos", e);
+        }
         try {
           useFinance.getState().syncPropinasFromMatriculas?.();
           const r = reporPropinasFromMatriculas();

@@ -2030,6 +2030,17 @@ function Alunos() {
     } as Aluno;
     addAluno(aluno);
     await syncFotoToCloud(id, foto);
+    // Sincronizar de imediato com a nuvem para outros PCs e para não perder a ficha
+    try {
+      const { pushFinanceNow } = await import("@/components/hydrate-store");
+      if (typeof pushFinanceNow === "function") await pushFinanceNow();
+    } catch {
+      try {
+        window.dispatchEvent(new CustomEvent("ecc-finance-push"));
+      } catch {
+        /* ignore */
+      }
+    }
     toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
     setCreating(false);
     setForm(emptyForm());
