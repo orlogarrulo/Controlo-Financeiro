@@ -4143,12 +4143,258 @@ export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
   } catch {
     /* ignore */
   }
+  // Garantir Outubro pago nas propinas do Nildo
+  try {
+    const st = useFinance.getState();
+    const prop = 75000;
+    const mens = [...(st.mensalidades || [])];
+    const ix = mens.findIndex((m) => m.id === ID);
+    const pag = { out: prop, nov: 0, dez: 0, jan: 0, fev: 0, mar: 0, abr: 0, mai: 0, jun: 0 };
+    const pagEm = { out: dataPag.slice(0, 10) };
+    if (ix >= 0) {
+      mens[ix] = {
+        ...mens[ix],
+        nome,
+        turma: "4ème",
+        propina: Number(mens[ix].propina) || prop,
+        pagamentos: { ...(mens[ix].pagamentos || {}), ...pag },
+        pagamentosEm: { ...(mens[ix].pagamentosEm || {}), ...pagEm },
+      };
+    } else {
+      mens.push({
+        id: ID,
+        nome,
+        turma: "4ème",
+        propina: prop,
+        pagamentos: pag,
+        pagamentosEm: pagEm,
+        obs: "Outubro pago na matrícula",
+      } as Mensalidade);
+    }
+    useFinance.setState({ mensalidades: mens });
+  } catch {
+    /* ignore */
+  }
   try {
     useFinance.getState().pushAudit?.("forcar_ficha", `${ID} · ${nome}`);
   } catch {
     /* ignore */
   }
-  return { ok: true, message: `${nome} (${ID}) forçado nas Matrículas.` };
+  return { ok: true, message: `${nome} (${ID}) forçado nas Matrículas · Outubro pago.` };
+}
+
+/** Meses correctos a marcar pagos (matrícula liquidada + mesesPropina). */
+const MESES_PAGOS_MATRICULA: Record<string, string[]> = {
+  "P3-02": ["out"],
+  "P3-03": ["out"],
+  "P2-01": ["out"],
+  "P1-01": ["out"],
+  "P1-04": ["out"],
+  "P1-03": ["out"],
+  "4E-04": ["out"],
+  "P1-06": ["out", "nov", "dez"],
+  "CP2-01": ["out", "nov", "dez"],
+  "CM2-06": ["out", "nov", "dez"],
+  "5E-03": ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai"],
+  "3E-05": ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai"],
+  "CP2-04": ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"],
+  "CE1-02": ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"],
+};
+
+const TODOS_MESES_PROP = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"] as const;
+
+/**
+ * Acerto definitivo:
+ * - Remove Rockia P1-05 de tudo
+ * - Alinha Propinas aos meses realmente pagos na matrícula
+ * - Garante Nildo 4E-04 + Outubro pago
+ */
+export function acertarPropinasECenso(): { ok: boolean; message: string } {
+  const st = useFinance.getState();
+
+  // 1) Eliminar P1-05 Rockia
+  const idRock = "P1-05";
+  const deleted = Array.from(
+    new Set([...(st.alunosDeletedIds || []).filter((x) => x !== idRock), idRock]),
+  );
+  const ov = { ...(st.alunosOverrides || {}) };
+  delete ov[idRock];
+  const fotos = { ...(st.fotos || {}) };
+  delete fotos[idRock];
+
+  let mens = (st.mensalidades || []).filter((m) => m.id !== idRock);
+  let extras = (st.alunosExtra || []).filter((a) => a.id !== idRock);
+
+  // 2) Forçar Nildo
+  try {
+    forcarFichaNildo4E04();
+  } catch {
+    /* ignore */
+  }
+  const st2 = useFinance.getState();
+  mens = (st2.mensalidades || []).filter((m) => m.id !== idRock);
+  extras = (st2.alunosExtra || []).filter((a) => a.id !== idRock);
+
+  // 3a) William P3-07: NÃO tem 9 meses adiantados (erro grave no seed) — zerar
+  mens = mens.map((m) => {
+    if (m.id !== "P3-07") return m;
+    const z: Record<string, number> = {};
+    for (const k of TODOS_MESES_PROP) z[k] = 0;
+    return { ...m, pagamentos: z, pagamentosEm: {}, obs: (m.obs || "") + " · Adiantamento 9 meses corrigido (não aplicável)" };
+  });
+  // Override aluno mesesPropina se estiver em extras/overrides
+  try {
+    const ovW = { ...(useFinance.getState().alunosOverrides || {}) };
+    const prev = ovW["P3-07"] || {};
+    ovW["P3-07"] = { ...prev, mesesPropina: 0, mensalidade1: 0 };
+    useFinance.setState({ alunosOverrides: ovW });
+  } catch { /* ignore */ }
+
+  // 3) Alinhar pagamentos de propina
+  const alunosMap = new Map<string, Aluno>();
+  try {
+    for (const a of alunosAll(st2.alunosExtra || [], st2.alunosOverrides || {}, deleted)) {
+      alunosMap.set(a.id, a);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  mens = mens.map((m) => {
+    const should = MESES_PAGOS_MATRICULA[m.id];
+    const prop = Number(m.propina) || Number(alunosMap.get(m.id)?.propina) || 0;
+    const oldPag = m.pagamentos || {};
+    const oldEm = m.pagamentosEm || {};
+    const dataRef = String(alunosMap.get(m.id)?.dataPag || oldEm.out || "").slice(0, 10);
+    const newPag: Record<string, number> = {};
+    const newEm: Record<string, string> = {};
+    for (const k of TODOS_MESES_PROP) {
+      if (should && should.includes(k)) {
+        let val = Number(oldPag[k]) || 0;
+        if (val <= 0) val = prop;
+        // descontos família Mutapayi
+        if (m.id === "CM2-06" || m.id === "CP2-01") val = val > 0 ? val : 63750;
+        if (m.id === "P1-06") val = val > 0 ? val : 144500;
+        newPag[k] = val;
+        newEm[k] = oldEm[k] || dataRef || "";
+      } else {
+        newPag[k] = 0;
+      }
+    }
+    // Se não está na lista de pagos correctos → zerar todos (não inventar Outubro)
+    if (!should) {
+      for (const k of TODOS_MESES_PROP) newPag[k] = 0;
+    }
+    return { ...m, pagamentos: newPag, pagamentosEm: newEm };
+  });
+
+  // Garantir linha de propinas para quem está na lista e falta
+  for (const [id, months] of Object.entries(MESES_PAGOS_MATRICULA)) {
+    if (mens.some((m) => m.id === id)) continue;
+    const a = alunosMap.get(id);
+    const prop = Number(a?.propina) || 0;
+    const pag: Record<string, number> = {};
+    const pagEm: Record<string, string> = {};
+    for (const k of TODOS_MESES_PROP) {
+      pag[k] = months.includes(k) ? prop : 0;
+      if (months.includes(k)) pagEm[k] = String(a?.dataPag || "").slice(0, 10);
+    }
+    mens.push({
+      id,
+      nome: a?.nome || id,
+      turma: a?.turma || "",
+      propina: prop,
+      pagamentos: pag,
+      pagamentosEm: pagEm,
+      obs: "Acerto automático meses pagos na matrícula",
+    } as Mensalidade);
+  }
+
+  useFinance.setState({
+    alunosDeletedIds: deleted,
+    alunosOverrides: ov,
+    alunosExtra: extras,
+    mensalidades: mens,
+    fotos,
+    documentosAluno: (st2.documentosAluno || []).filter((d) => d.alunoId !== idRock),
+    codigosRecibo: (st2.codigosRecibo || []).filter((c) => c.alunoId !== idRock),
+    faturasPropina: (st2.faturasPropina || []).filter((f) => f.alunoId !== idRock),
+    contaCorrente: (st2.contaCorrente || []).filter((c) => c.alunoId !== idRock),
+    crmEnvios: (st2.crmEnvios || []).filter((r) => r.alunoId !== idRock),
+  });
+
+  try {
+    persistAlunosCensoLocal(extras);
+  } catch {
+    /* ignore */
+  }
+  try {
+    useFinance.getState().pushAudit?.(
+      "acertar_propinas_censo",
+      `P1-05 removida · Nildo Outubro · ${Object.keys(MESES_PAGOS_MATRICULA).length} fichas alinhadas`,
+    );
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    ok: true,
+    message: `Acerto: Rockia P1-05 eliminada · Nildo Outubro pago · ${Object.keys(MESES_PAGOS_MATRICULA).length} alunos com meses correctos em Propinas.`,
+  };
+}
+
+/**
+ * Remove extras criados por recuperação agressiva (stubs) que inflavam o censo 53→56.
+ * Mantém 4E-04 Nildo e qualquer extra com dados reais de matrícula.
+ */
+export function pruneExtrasFantasma(): { removidos: number } {
+  const state = useFinance.getState();
+  const docs = state.documentosAluno || [];
+  const hasLiq = (id: string) =>
+    docs.some(
+      (d) =>
+        d.alunoId === id &&
+        (d.modelo === "liquidacao_matricula" ||
+          /REC-EF|liquidacao|matr/i.test(String(d.numero || "") + String(d.modelo || ""))),
+    );
+  const seedIds = new Set((seed.alunos || []).map((a) => a.id));
+  const replaced = new Set<string>();
+  for (const a of [...(state.alunosExtra || []), ...(seed.alunos || [])]) {
+    if (a.idAnterior && a.idAnterior !== a.id) replaced.add(a.idAnterior);
+  }
+  // 4E-04 Nildo: não é fantasma
+  replaced.delete("4E-04");
+
+  let removidos = 0;
+  const next = (state.alunosExtra || []).filter((a) => {
+    if (a.id === "4E-04") return true;
+    if (seedIds.has(a.id)) return false; // não deve estar em extras
+    const obs = String(a.obs || "");
+    const stub =
+      /Materializado|Recuperado do extrato|Recuperado automaticamente|reposto a partir/i.test(
+        obs,
+      );
+    if (!stub) return true;
+    // Stub sem liquidação de matrícula, ou ID "substituído" por realinhamento
+    if (replaced.has(a.id) && !hasLiq(a.id)) {
+      removidos += 1;
+      return false;
+    }
+    if (stub && !hasLiq(a.id) && !(Number(a.liquido) > 0 && a.recibo)) {
+      removidos += 1;
+      return false;
+    }
+    return true;
+  });
+  if (removidos > 0) {
+    useFinance.setState({ alunosExtra: next });
+    try {
+      persistAlunosCensoLocal(next);
+    } catch {
+      /* ignore */
+    }
+  }
+  return { removidos };
 }
 
 export function recuperarAlunosOcultos(): { restaurados: number; detalhes: string[] } {
@@ -4348,7 +4594,8 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     );
   }
 
-  // Força: qualquer «Matrícula Nome (ID)» no BAI sem ficha visível → recria
+  // BAI: NÃO recriar fichas em massa (causava 53→56 com IDs antigos).
+  // Apenas reabrir se já existir em extras.
   const baiMovs = movimentosAll(
     state.movimentosBaiExtra || [],
     state.baiOverride,
@@ -4359,24 +4606,7 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     if (extras.some((a) => a.id === b.id)) {
       deleted = deleted.filter((x) => x !== b.id);
       visible.add(b.id);
-      detalhes.push(`ID ${b.id} reaberto (existia em extras)`);
-      continue;
     }
-    const nn = normalizeNomeAluno(b.nome);
-    // Não saltar por nome — IDs distintos (ex.: 4E-04) têm de existir
-    extras.push(
-      stubAlunoFromTrace(b.id, undefined, undefined, undefined, {
-        nome: b.nome,
-        liquido: b.liquido,
-        dataPag: b.dataPag,
-        recibo: b.recibo,
-        metodo: b.metodo,
-      }),
-    );
-    deleted = deleted.filter((x) => x !== b.id);
-    visible.add(b.id);
-    if (nn) visibleNames.add(nn);
-    detalhes.push(`ID ${b.id} reconstruído do BAI (${b.nome} · ${b.recibo || "sem EF"})`);
   }
 
   // ——— Rede de segurança: todo recibo/fatura no Arquivo com alunoId sem ficha → recriar ———
@@ -4418,11 +4648,16 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
     );
   }
 
-  // Materializar TODOS os IDs do Arquivo em alunosExtra com nome do recibo
+  // Materializar só liquidação de matrícula; não recriar propinas/faturas avulsas (inflava o censo)
   let materializados = 0;
   for (const d of docs) {
     const id = String(d.alunoId || "").trim();
     if (!id) continue;
+    const isMat =
+      d.modelo === "liquidacao_matricula" ||
+      /liquidacao|matr[ií]cula|REC-EF/i.test(String(d.numero || "") + String(d.modelo || ""));
+    if (!isMat && id !== "4E-04") continue;
+    if (hasReplacement(id) && id !== "4E-04") continue;
     deleted = deleted.filter((x) => x !== id);
     const nomeDoc = String(d.alunoNome || "").trim();
     const exIdx = extras.findIndex((a) => a.id === id);
@@ -4442,7 +4677,6 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
           updatedAt: new Date().toISOString(),
         };
         materializados += 1;
-        detalhes.push(`Nome actualizado do Arquivo: ${id} → ${nomeDoc}`);
       }
     } else if (!seed.alunos.some((a) => a.id === id)) {
       const stub = stubAlunoFromTrace(id, overrides[id], mensalidades.find((m) => m.id === id), nomeDoc, {
@@ -4455,7 +4689,7 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
       stub.statusPag = "pago";
       extras.push(stub);
       materializados += 1;
-      detalhes.push(`Materializado do Arquivo: ${id} · ${nomeDoc}`);
+      detalhes.push(`Materializado: ${id} · ${nomeDoc}`);
     }
   }
 
@@ -4570,40 +4804,8 @@ export function alunosAll(
 
   for (const a of seed.alunos) push(a);
   for (const a of extras) push(a);
-
-  // Última rede: IDs só no Arquivo (ainda não em extras) — visíveis sem inflar após materializar
-  for (const id of docIds) {
-    if (seenIds.has(id) || deleted.has(id)) continue;
-    if (SEED_ALUNO_IDS.has(id)) continue;
-    try {
-      const docs = (useFinance.getState().documentosAluno || []).filter(
-        (d) => d.alunoId === id,
-      );
-      docs.sort((a, b) =>
-        String(b.emitidoEm || "").localeCompare(String(a.emitidoEm || "")),
-      );
-      const d = docs[0];
-      if (!d) continue;
-      const stub = stubAlunoFromTrace(
-        id,
-        overrides[id],
-        (useFinance.getState().mensalidades || []).find((m) => m.id === id),
-        d.alunoNome,
-        {
-          nome: d.alunoNome,
-          liquido: Number(d.valor) || 0,
-          dataPag: d.pagoEm || d.emitidoEm,
-          recibo: d.numero || d.codigoVerificacao,
-        },
-      );
-      stub.turma = stub.turma || turmaFromId(id) || "";
-      stub.statusPag = "pago";
-      push(stub);
-    } catch {
-      /* ignore */
-    }
-  }
-
+  // Sem stubs sintéticos a partir de todos os documentos (isso inflava 53→56).
+  // Nildo 4E-04 entra só via forcarFichaNildo4E04 → alunosExtra.
   return out;
 }
 
