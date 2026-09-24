@@ -4184,7 +4184,7 @@ export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
 }
 
 /** Meses correctos a marcar pagos (matrícula liquidada + mesesPropina). */
-const MESES_PAGOS_MATRICULA: Record<string, string[]> = {
+export const MESES_PAGOS_MATRICULA: Record<string, string[]> = {
   "P3-02": ["out"],
   "P3-03": ["out"],
   "P2-01": ["out"],
@@ -4204,6 +4204,13 @@ const MESES_PAGOS_MATRICULA: Record<string, string[]> = {
   "CP2-04": ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"],
   "CE1-02": ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"],
 };
+
+/** IDs com excedente real (valor acima da tarifa). */
+export const IDS_EXCEDENTE_REAL = new Set<string>(["P1-04"]);
+
+export function mesesOficiaisPagos(id: string): string[] | null {
+  return MESES_PAGOS_MATRICULA[id] ? [...MESES_PAGOS_MATRICULA[id]] : null;
+}
 
 const TODOS_MESES_PROP = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"] as const;
 
