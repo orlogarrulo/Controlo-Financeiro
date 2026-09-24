@@ -4191,6 +4191,10 @@ const MESES_PAGOS_MATRICULA: Record<string, string[]> = {
   "P1-01": ["out"],
   "P1-04": ["out"],
   "P1-03": ["out"],
+  "CM1-01": ["out"],
+  "P3-07": ["out"],
+  "5E-02": ["out"],
+  "6E-01": ["out"],
   "4E-04": ["out"],
   "P1-06": ["out", "nov", "dez"],
   "CP2-01": ["out", "nov", "dez"],
@@ -4235,18 +4239,30 @@ export function acertarPropinasECenso(): { ok: boolean; message: string } {
   mens = (st2.mensalidades || []).filter((m) => m.id !== idRock);
   extras = (st2.alunosExtra || []).filter((a) => a.id !== idRock);
 
-  // 3a) William P3-07: NÃO tem 9 meses adiantados (erro grave no seed) — zerar
+  // 3a) William P3-07 e irmão Manuel 5E-02: só 1 mês (Outubro)
+  const soOutubroIds = new Set(["P3-07", "5E-02"]);
   mens = mens.map((m) => {
-    if (m.id !== "P3-07") return m;
+    if (!soOutubroIds.has(m.id)) return m;
+    const prop = Number(m.propina) || 170000;
+    const oldPag = m.pagamentos || {};
+    const oldEm = m.pagamentosEm || {};
+    const outVal = Number(oldPag.out) > 0 ? Number(oldPag.out) : prop;
     const z: Record<string, number> = {};
     for (const k of TODOS_MESES_PROP) z[k] = 0;
-    return { ...m, pagamentos: z, pagamentosEm: {}, obs: (m.obs || "") + " · Adiantamento 9 meses corrigido (não aplicável)" };
+    z.out = outVal;
+    return {
+      ...m,
+      pagamentos: z,
+      pagamentosEm: { out: oldEm.out || "" },
+      obs: ((m.obs || "") + " · Corrigido: só Outubro pago").trim(),
+    };
   });
-  // Override aluno mesesPropina se estiver em extras/overrides
   try {
     const ovW = { ...(useFinance.getState().alunosOverrides || {}) };
-    const prev = ovW["P3-07"] || {};
-    ovW["P3-07"] = { ...prev, mesesPropina: 0, mensalidade1: 0 };
+    for (const id of soOutubroIds) {
+      const prev = ovW[id] || {};
+      ovW[id] = { ...prev, mesesPropina: 1 };
+    }
     useFinance.setState({ alunosOverrides: ovW });
   } catch { /* ignore */ }
 
@@ -4310,6 +4326,15 @@ export function acertarPropinasECenso(): { ok: boolean; message: string } {
     } as Mensalidade);
   }
 
+  // Crédito/excedente real confirmado: só Hallan P1-04 (5 000 Kz).
+  // Irmãos Bunga/Janota/Mutapayi têm MESES ADIANTADOS (tarifa × N), não excedente.
+  const EXCEDENTE_REAL = new Set(["P1-04"]);
+  const ccLimpa = (st2.contaCorrente || []).filter((c) => {
+    if (c.alunoId === idRock) return false;
+    if (c.tipo === "credito" && !EXCEDENTE_REAL.has(c.alunoId)) return false;
+    return true;
+  });
+
   useFinance.setState({
     alunosDeletedIds: deleted,
     alunosOverrides: ov,
@@ -4319,7 +4344,7 @@ export function acertarPropinasECenso(): { ok: boolean; message: string } {
     documentosAluno: (st2.documentosAluno || []).filter((d) => d.alunoId !== idRock),
     codigosRecibo: (st2.codigosRecibo || []).filter((c) => c.alunoId !== idRock),
     faturasPropina: (st2.faturasPropina || []).filter((f) => f.alunoId !== idRock),
-    contaCorrente: (st2.contaCorrente || []).filter((c) => c.alunoId !== idRock),
+    contaCorrente: ccLimpa,
     crmEnvios: (st2.crmEnvios || []).filter((r) => r.alunoId !== idRock),
   });
 

@@ -21,6 +21,7 @@ type RowCC = {
   detalheCreditos: { mes?: string; valor: number; descricao?: string; data?: string }[];
   temExcedente: boolean;
   totalExcedente: number;
+  temAdiantado: boolean;
 };
 
 const MES_LABEL: Record<string, string> = {
@@ -176,6 +177,7 @@ function ContaCorrentePage() {
   const [q, setQ] = useState("");
   const [soComCredito, setSoComCredito] = useState(false);
   const [soComExcedente, setSoComExcedente] = useState(false);
+  const [soComAdiantado, setSoComAdiantado] = useState(false);
 
   const alunos = useMemo(
     () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
@@ -226,12 +228,14 @@ function ContaCorrentePage() {
           if (tarifa > 0 && n > tarifa) totalExcedente += n - tarifa;
         }
       }
-      const creditosExcedente = detalheCreditos.reduce((s, d) => s + (d.valor || 0), 0);
+      // Excedente = valor ACIMA da tarifa num mês (ex.: Hallan 175k vs 170k).
+      // Meses adiantados (Bunga, Janota, Mutapayi) NÃO são excedente.
+      const creditosExcedente = detalheCreditos
+        .filter((d) => /excedente/i.test(d.descricao || ""))
+        .reduce((s, d) => s + (d.valor || 0), 0);
       if (creditosExcedente > 0) totalExcedente = Math.max(totalExcedente, creditosExcedente);
-      const temExcedente =
-        creditosExcedente > 0 ||
-        detalheCreditos.some((d) => /excedente/i.test(d.descricao || "")) ||
-        totalExcedente > 0;
+      const temExcedente = totalExcedente > 0;
+      const temAdiantado = mesesPago.length > 1;
 
       mesesPago.sort();
 
@@ -247,6 +251,7 @@ function ContaCorrentePage() {
         detalheCreditos,
         temExcedente,
         totalExcedente,
+        temAdiantado,
       });
     }
 
@@ -267,8 +272,9 @@ function ContaCorrentePage() {
         mesesPago: [],
         nMesesPago: 0,
         detalheCreditos: det,
-        temExcedente: cred > 0 || /excedente/i.test(m.descricao || ""),
-        totalExcedente: cred,
+        temExcedente: cred > 0 && /excedente/i.test(m.descricao || ""),
+        totalExcedente: /excedente/i.test(m.descricao || "") ? cred : 0,
+        temAdiantado: false,
       });
     }
 
@@ -284,6 +290,7 @@ function ContaCorrentePage() {
     }
     if (soComCredito) list = list.filter((r) => r.saldo > 0);
     if (soComExcedente) list = list.filter((r) => r.temExcedente);
+    if (soComAdiantado) list = list.filter((r) => r.temAdiantado);
 
     list.sort((a, b) => {
       const ca = a.saldo > 0 ? 0 : 1;
@@ -293,10 +300,13 @@ function ContaCorrentePage() {
       const ea = a.temExcedente ? 0 : 1;
       const eb = b.temExcedente ? 0 : 1;
       if (ea !== eb) return ea - eb;
+      const aa = a.temAdiantado ? 0 : 1;
+      const ab = b.temAdiantado ? 0 : 1;
+      if (aa !== ab) return aa - ab;
       return a.nome.localeCompare(b.nome, "pt");
     });
     return list;
-  }, [alunos, contaCorrente, mensalidades, q, soComCredito, soComExcedente]);
+  }, [alunos, contaCorrente, mensalidades, q, soComCredito, soComExcedente, soComAdiantado]);
 
   const totalCredito = rows.reduce((s, r) => s + Math.max(0, r.saldo), 0);
   const comCredito = rows.filter((r) => r.saldo > 0).length;
@@ -393,6 +403,18 @@ function ContaCorrentePage() {
           />
           Só com excedente de propina
         </label>
+        <label
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+            soComAdiantado ? "border-amber-600 bg-amber-50 text-amber-950" : ""
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={soComAdiantado}
+            onChange={(e) => setSoComAdiantado(e.target.checked)}
+          />
+          Só com meses adiantados
+        </label>
       </div>
 
       <div className="overflow-x-auto rounded-lg border">
@@ -461,6 +483,7 @@ function ContaCorrentePage() {
                           >
                             {r.nMesesPago} mês(es)
                             {multi ? " · adiantado" : ""}
+                            {exc ? " · excedente" : ""}
                           </span>
                           <div className="mt-0.5 text-xs text-[var(--color-muted)]">
                             {r.mesesPago.map(labelMes).join(", ")}
@@ -530,8 +553,9 @@ function ContaCorrentePage() {
       </div>
 
       <p className="text-xs text-[var(--color-muted)]">
-        Botão <b>PDF</b> em cada linha: folha de conta corrente (excedente/crédito) para imprimir ou
-        guardar. <b>PDF lista</b> emite todas as folhas com crédito ou excedente. Saldo a receber em{" "}
+        <b>Excedente</b> = valor acima da tarifa (ex.: Hallan 5 000 Kz). <b>Adiantado</b> = mais do
+        que 1 mensalidade paga à tarifa (irmãos Bunga, Janota, Mutapayi) — não é crédito a receber.
+        PDF em cada linha. Saldo a receber em{" "}
         <span className="font-medium text-emerald-700">verde</span>.
       </p>
     </div>
