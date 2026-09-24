@@ -18,7 +18,7 @@ const NAV = [
   { to: "/alunos", label: "Matrículas", icon: Users },
   { to: "/rastreio", label: "Rastreio", icon: ListChecks },
   { to: "/mensalidades", label: "Propinas", icon: Receipt },
-  { to: "/conta-corrente", label: "Créditos", icon: Wallet },
+  { to: "/conta-corrente", label: "Conta Corrente", icon: Wallet },
   { to: "/crm", label: "CRM", icon: Contact },
   { to: "/recibos", label: "Recibos", icon: FileSpreadsheet },
   { to: "/banco", label: "Banco BAI", icon: Landmark },

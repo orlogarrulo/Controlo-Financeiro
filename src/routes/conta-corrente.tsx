@@ -17,6 +17,9 @@ type RowCC = {
   mesesPago: string[];
   nMesesPago: number;
   detalheCreditos: { mes?: string; valor: number; descricao?: string; data?: string }[];
+  /** Teve pagamento de propina acima da tarifa (crédito / excedente). */
+  temExcedente: boolean;
+  totalExcedente: number;
 };
 
 function ContaCorrentePage() {
@@ -31,6 +34,7 @@ function ContaCorrentePage() {
   const canEdit = isCollaborator1(activeOperator, operators);
   const [q, setQ] = useState("");
   const [soComCredito, setSoComCredito] = useState(false);
+  const [soComExcedente, setSoComExcedente] = useState(false);
 
   const alunos = useMemo(
     () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
@@ -58,27 +62,60 @@ function ContaCorrentePage() {
           data: m.data,
         }));
 
-      const prop = mensalidades.find((p) => p.alunoId === a.id || p.id === a.id);
+      const prop = mensalidades.find((p) => (p as { alunoId?: string }).alunoId === a.id || p.id === a.id) as
+        | {
+            propina?: number;
+            pagamentos?: Record<string, number>;
+            pagamentosEm?: Record<string, string>;
+            [k: string]: unknown;
+          }
+        | undefined;
       const mesesPago: string[] = [];
+      const MES_LABEL: Record<string, string> = {
+        out: "2026-10",
+        nov: "2026-11",
+        dez: "2026-12",
+        jan: "2027-01",
+        fev: "2027-02",
+        mar: "2027-03",
+        abr: "2027-04",
+        mai: "2027-05",
+        jun: "2027-06",
+      };
+      let totalExcedente = 0;
       if (prop) {
+        const tarifa = Number(prop.propina) || 0;
+        const pags = prop.pagamentos || {};
+        for (const [k, v] of Object.entries(pags)) {
+          const n = Number(v) || 0;
+          if (n <= 0) continue;
+          const key = MES_LABEL[k] || (/^20\d{2}-\d{2}$/.test(k) ? k : k);
+          if (!mesesPago.includes(key)) mesesPago.push(key);
+          if (tarifa > 0 && n > tarifa) totalExcedente += n - tarifa;
+        }
         for (const [k, v] of Object.entries(prop as Record<string, unknown>)) {
           if (!/^20\d{2}-\d{2}$/.test(k)) continue;
           const cell = v as { pago?: boolean; valorPago?: number } | number | boolean | undefined;
           if (cell && typeof cell === "object" && (cell.pago || (Number(cell.valorPago) || 0) > 0)) {
-            mesesPago.push(k);
+            if (!mesesPago.includes(k)) mesesPago.push(k);
+            const vp = Number(cell.valorPago) || 0;
+            if (tarifa > 0 && vp > tarifa) totalExcedente += vp - tarifa;
           } else if (typeof cell === "number" && cell > 0) {
-            mesesPago.push(k);
+            if (!mesesPago.includes(k)) mesesPago.push(k);
+            if (tarifa > 0 && cell > tarifa) totalExcedente += cell - tarifa;
           } else if (cell === true) {
-            mesesPago.push(k);
+            if (!mesesPago.includes(k)) mesesPago.push(k);
           }
         }
       }
-      // Meses referidos nos movimentos de crédito/aplicação
-      for (const m of movs) {
-        if (m.mes && !mesesPago.includes(m.mes)) {
-          // não força como "pago", só detalhe
-        }
-      }
+      // Créditos na conta corrente = excedente registado (ex.: «Excedente propina out»)
+      const creditosExcedente = detalheCreditos.reduce((s, d) => s + (d.valor || 0), 0);
+      if (creditosExcedente > 0) totalExcedente = Math.max(totalExcedente, creditosExcedente);
+      const temExcedente =
+        creditosExcedente > 0 ||
+        detalheCreditos.some((d) => /excedente/i.test(d.descricao || "")) ||
+        totalExcedente > 0;
+
       mesesPago.sort();
 
       byId.set(a.id, {
@@ -91,6 +128,8 @@ function ContaCorrentePage() {
         mesesPago,
         nMesesPago: mesesPago.length,
         detalheCreditos,
+        temExcedente,
+        totalExcedente,
       });
     }
 
@@ -98,18 +137,22 @@ function ContaCorrentePage() {
     for (const m of contaCorrente) {
       if (byId.has(m.alunoId)) continue;
       const saldo = saldoCreditoDe(contaCorrente, m.alunoId);
+      const det =
+        m.tipo === "credito"
+          ? [{ mes: m.mes, valor: Number(m.valor) || 0, descricao: m.descricao, data: m.data }]
+          : [];
+      const cred = m.tipo === "credito" ? Number(m.valor) || 0 : 0;
       byId.set(m.alunoId, {
         alunoId: m.alunoId,
         nome: m.nome || m.alunoId,
         saldo,
-        creditos: m.tipo === "credito" ? Number(m.valor) || 0 : 0,
+        creditos: cred,
         aplicacoes: 0,
         mesesPago: [],
         nMesesPago: 0,
-        detalheCreditos:
-          m.tipo === "credito"
-            ? [{ mes: m.mes, valor: Number(m.valor) || 0, descricao: m.descricao, data: m.data }]
-            : [],
+        detalheCreditos: det,
+        temExcedente: cred > 0 || /excedente/i.test(m.descricao || ""),
+        totalExcedente: cred,
       });
     }
 
@@ -124,6 +167,7 @@ function ContaCorrentePage() {
       );
     }
     if (soComCredito) list = list.filter((r) => r.saldo > 0);
+    if (soComExcedente) list = list.filter((r) => r.temExcedente);
 
     // Créditos a receber (saldo > 0) primeiro; depois quem pagou >1 mensalidade; depois nome
     list.sort((a, b) => {
@@ -131,15 +175,20 @@ function ContaCorrentePage() {
       const cb = b.saldo > 0 ? 0 : 1;
       if (ca !== cb) return ca - cb;
       if (a.saldo !== b.saldo) return b.saldo - a.saldo;
+      const ea = a.temExcedente ? 0 : 1;
+      const eb = b.temExcedente ? 0 : 1;
+      if (ea !== eb) return ea - eb;
+      if (a.totalExcedente !== b.totalExcedente) return b.totalExcedente - a.totalExcedente;
       if (a.nMesesPago !== b.nMesesPago) return b.nMesesPago - a.nMesesPago;
       return a.nome.localeCompare(b.nome, "pt");
     });
     return list;
-  }, [alunos, contaCorrente, mensalidades, q, soComCredito]);
+  }, [alunos, contaCorrente, mensalidades, q, soComCredito, soComExcedente]);
 
   const totalCredito = rows.reduce((s, r) => s + Math.max(0, r.saldo), 0);
   const comCredito = rows.filter((r) => r.saldo > 0).length;
   const multiMes = rows.filter((r) => r.nMesesPago > 1).length;
+  const comExcedente = rows.filter((r) => r.temExcedente).length;
 
   return (
     <div className="space-y-4 p-4 md:p-6">
@@ -163,6 +212,9 @@ function ContaCorrentePage() {
           <span className="rounded-md border px-2 py-1">
             &gt;1 mensalidade paga: <b>{multiMes}</b>
           </span>
+          <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-900">
+            Com excedente: <b>{comExcedente}</b>
+          </span>
         </div>
       </div>
 
@@ -180,6 +232,18 @@ function ContaCorrentePage() {
             onChange={(e) => setSoComCredito(e.target.checked)}
           />
           Só com saldo a receber
+        </label>
+        <label
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+            soComExcedente ? "border-emerald-600 bg-emerald-50 text-emerald-900" : ""
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={soComExcedente}
+            onChange={(e) => setSoComExcedente(e.target.checked)}
+          />
+          Só com excedente de propina
         </label>
       </div>
 
@@ -206,10 +270,11 @@ function ContaCorrentePage() {
               rows.map((r) => {
                 const verde = r.saldo > 0;
                 const multi = r.nMesesPago > 1;
+                const exc = r.temExcedente;
                 return (
                   <tr
                     key={r.alunoId}
-                    className={`border-b last:border-0 ${verde ? "bg-emerald-50/80 dark:bg-emerald-950/20" : ""}`}
+                    className={`border-b last:border-0 ${verde ? "bg-emerald-50/80 dark:bg-emerald-950/20" : exc ? "bg-sky-50/80 dark:bg-sky-950/20" : ""}`}
                   >
                     <td className="px-3 py-2">
                       <div className="font-medium">{r.nome}</div>
@@ -321,9 +386,10 @@ function ContaCorrentePage() {
 
       <p className="text-xs text-[var(--color-muted)]">
         Saldo a receber em <span className="font-medium text-emerald-700">verde</span> e no topo da
-        lista. Alunos com mais de uma mensalidade paga são marcados como{" "}
-        <span className="rounded bg-amber-100 px-1 text-amber-900">adiantado</span> com os meses e
-        montantes de crédito.
+        lista. Use <b>Só com excedente de propina</b> para ver alunos como o Hallan (pagamento acima
+        da tarifa, crédito na conta corrente — mesmo com saldo 0). Alunos com mais de uma
+        mensalidade paga:{" "}
+        <span className="rounded bg-amber-100 px-1 text-amber-900">adiantado</span>.
       </p>
     </div>
   );
