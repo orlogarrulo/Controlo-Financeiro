@@ -703,11 +703,16 @@ function autorizacaoPagamentoHtml(
 function reciboHonorarioHtml(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
+  via?: string,
 ) {
   const logo = escolaLogoSrc();
   const descricao = descricaoPrestacaoPorFuncao(r.funcao);
   const { ini, fim } = periodoPrestacaoMes(r.mesKey, r.mes);
   const dataDoc = dataDocFinancas(r.dataPag || todayIso());
+  const viaLine = via
+    ? `<p class="mu" style="text-align:center;font-weight:700;margin:0 0 1.5mm">${via}</p>`
+    : "";
+  const viaFt = via ? ` · ${via}` : "";
   return `<article class="recibo">
   <header class="rh">
     <img src="${logo}" alt=""/>
@@ -717,6 +722,7 @@ function reciboHonorarioHtml(
     </div>
   </header>
   <p class="ki" style="text-align:center">Recibo de honorários / prestação de serviços</p>
+  ${viaLine}
   <div class="rw"><span>N.º <b>${r.id}</b></span><span>${r.dataPag ? formatDate(r.dataPag) : "—"}</span></div>
   <p class="tx">Pagámos a <b>${r.nome}</b> a quantia de <b>${formatKz(r.liquido)}</b> referente a ${descricao}, durante o período <b>${ini}</b> a <b>${fim}</b>.</p>
   <table class="tb">
@@ -730,7 +736,7 @@ function reciboHonorarioHtml(
     <div><span>O prestador</span><i></i></div>
     <div><span>Departamento de Finanças</span><i></i></div>
   </div>
-  <p class="ft">Documento gerado pelo Departamento de Finanças, ${dataDoc}</p>
+  <p class="ft">Documento gerado pelo Departamento de Finanças, ${dataDoc}${viaFt}</p>
 </article>`;
 }
 
@@ -832,10 +838,19 @@ function pacoteRecibosComAutorizacaoHtml(
   recibos: ReciboSalario[],
 ) {
   const folhas: string[] = [];
-  for (let i = 0; i < recibos.length; i += 2) {
-    const r1 = reciboHonorarioHtml(escola, recibos[i]);
-    const r2 = recibos[i + 1] ? reciboHonorarioHtml(escola, recibos[i + 1]) : "";
-    folhas.push(`<div class="folha">${r1}${r2}</div>`);
+  /* Uma página A4 por prestador: 2 vias (funcionário + empresa) — sem desperdício */
+  for (const r of recibos) {
+    if (r.tipo === "adiantamento") {
+      folhas.push(`<div class="folha duas">
+  ${reciboAdiantamentoHtml(escola, r, "Via do prestador — assinar e devolver")}
+  ${reciboAdiantamentoHtml(escola, r, "Via da escola — arquivo")}
+</div>`);
+    } else {
+      folhas.push(`<div class="folha duas">
+  ${reciboHonorarioHtml(escola, r, "Via do funcionário / prestador")}
+  ${reciboHonorarioHtml(escola, r, "Via da empresa — arquivo")}
+</div>`);
+    }
   }
   // Autorização: extrair só o miolo do HTML completo
   const authFull = autorizacaoPagamentoHtml(escola, recibos);
@@ -972,6 +987,16 @@ html, body {
   border-bottom: 1px dashed #94a3b8;
 }
 .folha .recibo:last-child { border-bottom: none; }
+.folha.duas {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6mm;
+}
+.folha.duas .recibo {
+  max-height: 118mm;
+  min-height: 0;
+}
 .folha.single .recibo {
   max-height: none;
   height: auto;
@@ -1087,15 +1112,21 @@ html, body {
 `;
 }
 
-/** HTML completo para pré-visualizar recibo individual */
+/** HTML completo: 2 vias do mesmo recibo numa página A4 (funcionário + empresa). */
 function wrapReciboPage(
   escola: { nome: string; subtitulo?: string; ano?: string; nomeCurto?: string; notaFiscal?: string },
   r: ReciboSalario,
 ) {
   if (r.tipo === "adiantamento") return wrapReciboAdiantamento(escola, r);
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><title></title>
-<style>${cssImpressaoRecibos()}</style></head><body>
-<div class="folha single">${reciboHonorarioHtml(escola, r)}</div>
+<style>${cssImpressaoRecibos()}
+.folha.duas { display:flex; flex-direction:column; gap:8mm; }
+.folha.duas .recibo { min-height: 118mm; page-break-inside: avoid; }
+</style></head><body>
+<div class="folha duas">
+  ${reciboHonorarioHtml(escola, r, "Via do funcionário / prestador")}
+  ${reciboHonorarioHtml(escola, r, "Via da empresa — arquivo")}
+</div>
 </body></html>`;
 }
 
