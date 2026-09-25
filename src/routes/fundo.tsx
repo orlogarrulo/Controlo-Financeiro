@@ -82,27 +82,80 @@ function wrapComprovativoEntregaFundo(
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
 <title>Entrega fundo · ${p.id}</title>
 <style>
-@page { size: A4; margin: 12mm; }
-body { font-family: "Segoe UI", system-ui, sans-serif; color: #1a1a1a; margin: 0; font-size: 12px; }
-.folha.duas { display: flex; flex-direction: column; gap: 10mm; }
-.folha.duas .recibo { min-height: 120mm; page-break-inside: avoid; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px; }
-.rh { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.rh img { height: 56px; width: 56px; object-fit: contain; }
-.ki { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #14532d; margin: 6px 0 2px; }
-.mu { color: #64748b; font-size: 11px; margin: 0 0 8px; }
-.rw { display: flex; justify-content: space-between; margin: 8px 0; font-size: 12px; }
-.tx { line-height: 1.45; margin: 8px 0; }
-.tb { width: 100%; border-collapse: collapse; margin: 10px 0; }
-.tb td { border-bottom: 1px solid #e2e8f0; padding: 6px 4px; vertical-align: top; }
+@page { size: A4; margin: 8mm 10mm; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #1a1a1a;
+  margin: 0;
+  font-size: 11px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+/* Uma única folha A4: duas vias empilhadas, com faixa de corte no meio */
+.folha.duas {
+  display: flex;
+  flex-direction: column;
+  height: 281mm; /* A4 útil com margens ~8mm */
+  gap: 0;
+}
+.folha.duas .recibo {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 132mm;
+  overflow: hidden;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+}
+/* Faixa central para corte (não sobrepõe o conteúdo) */
+.corte {
+  flex: 0 0 12mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 2mm 0;
+}
+.corte::before, .corte::after {
+  content: "";
+  flex: 1;
+  border-top: 1.5px dashed #64748b;
+}
+.corte span {
+  font-size: 9px;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.rh { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-shrink: 0; }
+.rh img { height: 44px; width: 44px; object-fit: contain; }
+.ki { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #14532d; margin: 4px 0 1px; }
+.mu { color: #64748b; font-size: 10px; margin: 0 0 4px; }
+.rw { display: flex; justify-content: space-between; margin: 4px 0; font-size: 11px; }
+.tx { line-height: 1.35; margin: 4px 0; }
+.tb { width: 100%; border-collapse: collapse; margin: 6px 0; }
+.tb td { border-bottom: 1px solid #e2e8f0; padding: 4px 3px; vertical-align: top; font-size: 11px; }
 .tb td.n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-.sg { display: flex; gap: 24px; margin-top: 28px; }
+.sg { display: flex; gap: 20px; margin-top: auto; padding-top: 10px; flex-shrink: 0; }
 .sg div { flex: 1; text-align: center; }
-.sg span { display: block; font-size: 10px; color: #64748b; margin-bottom: 36px; }
-.sg i { display: block; border-top: 1px solid #334155; margin: 0 8px; height: 0; }
-.ft { margin-top: 16px; font-size: 9px; color: #94a3b8; text-align: center; }
+.sg span { display: block; font-size: 9px; color: #64748b; margin-bottom: 22px; }
+.sg i { display: block; border-top: 1px solid #334155; margin: 0 6px; height: 0; }
+.ft { margin-top: 8px; font-size: 8px; color: #94a3b8; text-align: center; flex-shrink: 0; }
+@media print {
+  .folha.duas { height: auto; min-height: 0; }
+  .folha.duas .recibo { max-height: none; }
+}
 </style></head><body>
 <div class="folha duas">
   ${comprovativoEntregaFundoHtml(escola, p, "Via do recebedor — assinar e devolver")}
+  <div class="corte" aria-hidden="true"><span>✂ cortar aqui</span></div>
   ${comprovativoEntregaFundoHtml(escola, p, "Via do arquivo — fundo de maneio")}
 </div>
 </body></html>`;
