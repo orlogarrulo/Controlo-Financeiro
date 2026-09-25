@@ -82,78 +82,79 @@ function wrapComprovativoEntregaFundo(
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
 <title>Entrega fundo · ${p.id}</title>
 <style>
-@page { size: A4; margin: 8mm 10mm; }
+@page { size: A4 portrait; margin: 8mm 10mm; }
 * { box-sizing: border-box; }
-html, body { height: 100%; }
-body {
+html, body {
+  margin: 0;
+  padding: 0;
   font-family: "Segoe UI", system-ui, sans-serif;
   color: #1a1a1a;
-  margin: 0;
   font-size: 11px;
+  background: #fff;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
-/* Uma única folha A4: duas vias empilhadas, com faixa de corte no meio */
-.folha.duas {
-  display: flex;
-  flex-direction: column;
-  height: 281mm; /* A4 útil com margens ~8mm */
-  gap: 0;
+/* Empilhamento simples: via 1 + corte + via 2 — sem flex/height que cause sobreposição */
+.folha {
+  width: 100%;
 }
-.folha.duas .recibo {
-  flex: 1 1 0;
-  min-height: 0;
-  max-height: 132mm;
-  overflow: hidden;
-  page-break-inside: avoid;
-  break-inside: avoid;
+.recibo {
+  display: block;
+  position: relative;
   border: 1px solid #94a3b8;
   border-radius: 6px;
-  padding: 10px 12px 8px;
-  display: flex;
-  flex-direction: column;
+  padding: 8px 12px 6px;
+  margin: 0;
+  background: #fff;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
-/* Faixa central para corte (não sobrepõe o conteúdo) */
+.recibo + .corte + .recibo {
+  margin-top: 0;
+}
 .corte {
-  flex: 0 0 12mm;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 2mm 0;
+  display: block;
+  height: 10mm;
+  margin: 3mm 0;
+  text-align: center;
+  position: relative;
+  page-break-inside: avoid;
 }
-.corte::before, .corte::after {
+.corte::before {
   content: "";
-  flex: 1;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
   border-top: 1.5px dashed #64748b;
 }
 .corte span {
+  position: relative;
+  display: inline-block;
+  background: #fff;
+  padding: 0 10px;
   font-size: 9px;
   color: #64748b;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  white-space: nowrap;
+  line-height: 10mm;
 }
-.rh { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-shrink: 0; }
-.rh img { height: 44px; width: 44px; object-fit: contain; }
-.ki { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #14532d; margin: 4px 0 1px; }
-.mu { color: #64748b; font-size: 10px; margin: 0 0 4px; }
+.rh { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.rh img { height: 42px; width: 42px; object-fit: contain; flex-shrink: 0; }
+.ki { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #14532d; margin: 3px 0 1px; text-align: center; }
+.mu { color: #64748b; font-size: 10px; margin: 0 0 4px; text-align: center; }
 .rw { display: flex; justify-content: space-between; margin: 4px 0; font-size: 11px; }
-.tx { line-height: 1.35; margin: 4px 0; }
-.tb { width: 100%; border-collapse: collapse; margin: 6px 0; }
-.tb td { border-bottom: 1px solid #e2e8f0; padding: 4px 3px; vertical-align: top; font-size: 11px; }
+.tx { line-height: 1.35; margin: 4px 0; text-align: left; }
+.tb { width: 100%; border-collapse: collapse; margin: 5px 0; }
+.tb td { border-bottom: 1px solid #e2e8f0; padding: 3px 3px; vertical-align: top; font-size: 10.5px; }
 .tb td.n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-.sg { display: flex; gap: 20px; margin-top: auto; padding-top: 10px; flex-shrink: 0; }
+.sg { display: flex; gap: 20px; margin-top: 14px; }
 .sg div { flex: 1; text-align: center; }
-.sg span { display: block; font-size: 9px; color: #64748b; margin-bottom: 22px; }
+.sg span { display: block; font-size: 9px; color: #64748b; margin-bottom: 20px; }
 .sg i { display: block; border-top: 1px solid #334155; margin: 0 6px; height: 0; }
-.ft { margin-top: 8px; font-size: 8px; color: #94a3b8; text-align: center; flex-shrink: 0; }
-@media print {
-  .folha.duas { height: auto; min-height: 0; }
-  .folha.duas .recibo { max-height: none; }
-}
+.ft { margin-top: 8px; font-size: 8px; color: #94a3b8; text-align: center; }
 </style></head><body>
-<div class="folha duas">
+<div class="folha">
   ${comprovativoEntregaFundoHtml(escola, p, "Via do recebedor — assinar e devolver")}
   <div class="corte" aria-hidden="true"><span>✂ cortar aqui</span></div>
   ${comprovativoEntregaFundoHtml(escola, p, "Via do arquivo — fundo de maneio")}
