@@ -369,12 +369,20 @@ function mapaRecibosPropina(
   return map;
 }
 
-/** Só códigos/números de recibos de PROPINA (já filtrados no mapa). */
+/**
+ * Só códigos de recibos de PROPINA.
+ * Se a ficha não tem mensalidade1/mesesPropina, não mostrar o recibo
+ * (evita RC de matrícula etiquetado como propina — caso Benazir).
+ */
 function refsReciboMes(
   recibosMap: Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>> | undefined,
   alunoId: string,
   mesLetivo: string,
+  opts?: { mensalidade1?: number; mesesPropina?: number },
 ): string {
+  const mens1 = Number(opts?.mensalidade1) || 0;
+  const mesesP = Number(opts?.mesesPropina) || 0;
+  if (mens1 <= 0 && mesesP <= 0) return "—";
   const refs = recibosMap?.get(alunoId)?.get(mesLetivo)?.refs || [];
   if (!refs.length) return "—";
   return refs
@@ -426,8 +434,10 @@ function pagamentosDe(
     const pagoRaw = Number(pags[mesLetivo] || pags[keyIso] || 0);
     const reciboMes = recibosAluno?.get(mesLetivo);
 
-    // 0) RECIBO com rubrica de propina — valor limitado a 1 mês
-    if (reciboMes && reciboMes.valor > 0) {
+    // 0) RECIBO com rubrica de propina — só conta se a ficha tiver propina real
+    //    (mensalidade1 > 0 ou mesesPropina > 0). Evita Benazir e semelhantes:
+    //    recibo de matrícula/pacote etiquetado por engano como "Propina (1 mês)".
+    if (reciboMes && reciboMes.valor > 0 && (mens1 > 0 || mesesP > 0)) {
       out[keyIso] = valorUmaMensalidade(reciboMes.valor, tarifa, mens1, mesesP);
       continue;
     }
@@ -589,7 +599,7 @@ function RelatoriosPage() {
         <tbody>
           ${rows
             .map((r, i) => {
-              const rec = refsReciboMes(recibosMap, r.a.id, mes);
+              const rec = refsReciboMes(recibosMap, r.a.id, mes, { mensalidade1: Number(r.a.mensalidade1)||0, mesesPropina: Number(r.a.mesesPropina)||0 });
               return `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${formatKz(r.valor)}</td><td style="font-size:8pt">${esc(rec)}</td></tr>`;
             })
             .join("") || `<tr><td colspan="5" style="text-align:center;color:#666">Nenhum aluno com propina paga neste mês</td></tr>`}
@@ -648,7 +658,7 @@ function RelatoriosPage() {
         <tbody>
           ${rows
             .map((r, i) => {
-              const rec = refsReciboMes(recibosMap, r.a.id, mes);
+              const rec = refsReciboMes(recibosMap, r.a.id, mes, { mensalidade1: Number(r.a.mensalidade1)||0, mesesPropina: Number(r.a.mesesPropina)||0 });
               return `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${r.tarifa ? formatKz(r.tarifa) : "—"}</td><td>${esc(r.a.telefone || "—")}</td><td style="font-size:8pt">${esc(rec)}</td></tr>`;
             })
             .join("") || `<tr><td colspan="6" style="text-align:center;color:#666">Todos os alunos têm a propina deste mês paga</td></tr>`}
