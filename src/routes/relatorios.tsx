@@ -134,6 +134,155 @@ ${corpo}
  *  3) há valor em Propinas registado manualmente e o líquido da matrícula inclui propina
  *     (líquido ≫ só taxas de inscrição/seguro/manuais).
  */
+/** YYYY-MM ou out/nov → chave letiva (out, nov, …) */
+function mesKeyToLetivo(mesKey: string): string {
+  const k = (mesKey || "").trim().toLowerCase();
+  if (/^(out|nov|dez|jan|fev|mar|abr|mai|jun)$/.test(k)) return k;
+  const map: Record<string, string> = {
+    "2026-10": "out",
+    "2026-11": "nov",
+    "2026-12": "dez",
+    "2027-01": "jan",
+    "2027-02": "fev",
+    "2027-03": "mar",
+    "2027-04": "abr",
+    "2027-05": "mai",
+    "2027-06": "jun",
+    "2026-09": "out", // legado setembro → 1.ª propina = outubro
+  };
+  if (map[k]) return map[k];
+  // 202610 / 2026-10 variants
+  const compact = k.replace(/-/g, "");
+  if (compact.length >= 6) {
+    const y = compact.slice(0, 4);
+    const m = compact.slice(4, 6);
+    return map[`${y}-${m}`] || k;
+  }
+  return k;
+}
+
+type ReciboPropina = {
+  alunoId: string;
+  mesLetivo: string; // out, nov…
+  valor: number;
+  codigo?: string;
+  numero?: string;
+  emitidoEm?: string;
+  fonte: "codigo_recibo" | "documento_recibo";
+};
+
+/** Cruza codigosRecibo + documentosAluno (recibos de propina). */
+function extrairRecibosPropina(
+  codigos: { alunoId?: string; mesKey?: string; valor?: number; codigo?: string; emitidoEm?: string; rubricas?: string }[],
+  docs: {
+    alunoId?: string;
+    tipo?: string;
+    modelo?: string;
+    mesKey?: string;
+    mesRef?: string;
+    valor?: number;
+    numero?: string;
+    emitidoEm?: string;
+    pagoEm?: string;
+    codigoVerificacao?: string;
+    linhas?: { key?: string; label?: string; value?: number; on?: boolean }[];
+  }[],
+): ReciboPropina[] {
+  const out: ReciboPropina[] = [];
+
+  for (const c of codigos || []) {
+    if (!c.alunoId || !c.mesKey) continue;
+    const mesLetivo = mesKeyToLetivo(c.mesKey);
+    const rub = (c.rubricas || "").toLowerCase();
+    // Excluir recibos que sejam só inscrição/seguro sem propina
+    const soTaxas =
+      rub &&
+      !/propina|mensalidade|mens\.|mês|mes /.test(rub) &&
+      /inscri|seguro|manual|uniforme|matr[ií]cula/.test(rub);
+    if (soTaxas) continue;
+    const valor = Number(c.valor) || 0;
+    if (valor <= 0) continue;
+    out.push({
+      alunoId: c.alunoId,
+      mesLetivo,
+      valor,
+      codigo: c.codigo,
+      emitidoEm: c.emitidoEm,
+      fonte: "codigo_recibo",
+    });
+  }
+
+  for (const d of docs || []) {
+    if (!d.alunoId || d.tipo !== "recibo") continue;
+    const modelo = d.modelo || "";
+    // propina_mes = recibo de propina mensal
+    // liquidacao_matricula pode incluir linha de propina
+    let valorPropina = 0;
+    let mesLetivo = mesKeyToLetivo(d.mesKey || d.mesRef || "");
+
+    if (modelo === "propina_mes") {
+      valorPropina = Number(d.valor) || 0;
+      if (!mesLetivo || mesLetivo === (d.mesKey || "").toLowerCase()) {
+        mesLetivo = mesKeyToLetivo(d.mesKey || d.mesRef || "2026-10") || "out";
+      }
+    } else if (modelo === "liquidacao_matricula") {
+      const linhas = d.linhas || [];
+      for (const l of linhas) {
+        if (l.on === false) continue;
+        const lab = (l.label || l.key || "").toLowerCase();
+        if (/propina|mensalidade/.test(lab)) {
+          valorPropina += Number(l.value) || 0;
+        }
+      }
+      if (valorPropina > 0 && !mesLetivo) mesLetivo = "out"; // 1.ª propina na matrícula
+    } else if (modelo === "meio_ano" || modelo === "outro") {
+      // só se linhas mencionarem propina
+      for (const l of d.linhas || []) {
+        if (l.on === false) continue;
+        const lab = (l.label || l.key || "").toLowerCase();
+        if (/propina|mensalidade/.test(lab)) valorPropina += Number(l.value) || 0;
+      }
+    }
+
+    if (valorPropina <= 0) continue;
+    if (!mesLetivo) mesLetivo = "out";
+    out.push({
+      alunoId: d.alunoId,
+      mesLetivo,
+      valor: valorPropina,
+      codigo: d.codigoVerificacao,
+      numero: d.numero,
+      emitidoEm: d.pagoEm || d.emitidoEm,
+      fonte: "documento_recibo",
+    });
+  }
+
+  return out;
+}
+
+/** Mapa alunoId → mesLetivo → { valor, recibos[] } */
+function mapaRecibosPropina(recibos: ReciboPropina[]): Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>> {
+  const map = new Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>>();
+  for (const r of recibos) {
+    if (!map.has(r.alunoId)) map.set(r.alunoId, new Map());
+    const byMes = map.get(r.alunoId)!;
+    const cur = byMes.get(r.mesLetivo) || { valor: 0, refs: [] };
+    // Evitar somar o mesmo recibo duas vezes (codigo_recibo + documento)
+    const dup = cur.refs.some(
+      (x) =>
+        (r.codigo && x.codigo === r.codigo) ||
+        (r.numero && x.numero === r.numero) ||
+        (x.valor === r.valor && x.emitidoEm === r.emitidoEm && x.fonte !== r.fonte),
+    );
+    if (!dup) {
+      cur.valor = Math.max(cur.valor, r.valor); // mesmo pagamento: fica o valor do recibo
+      cur.refs.push(r);
+    }
+    byMes.set(r.mesLetivo, cur);
+  }
+  return map;
+}
+
 function taxasMatricula(a: Aluno): number {
   return (
     (Number(a.inscricao) || 0) +
@@ -149,7 +298,11 @@ function taxasMatricula(a: Aluno): number {
   );
 }
 
-function pagamentosDe(a: Aluno, mensalidades: Mensalidade[]): Record<string, number> {
+function pagamentosDe(
+  a: Aluno,
+  mensalidades: Mensalidade[],
+  recibosMap?: Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>>,
+): Record<string, number> {
   const prop = mensalidades.find(
     (p) => (p as { alunoId?: string }).alunoId === a.id || p.id === a.id,
   );
@@ -162,13 +315,20 @@ function pagamentosDe(a: Aluno, mensalidades: Mensalidade[]): Record<string, num
   const pags = prop?.pagamentos || {};
   const liquido = Number(a.liquido) || 0;
   const taxas = taxasMatricula(a);
-  // O líquido inclui propina se for claramente superior às taxas de matrícula
   const liquidoIncluiPropina = liquido > 0 && liquido > taxas + Math.max(tarifa, mens1, 1) * 0.5;
+  const recibosAluno = recibosMap?.get(a.id);
 
   for (let i = 0; i < ordem.length; i++) {
     const mesLetivo = ordem[i];
     const keyIso = MES_LABEL[mesLetivo] || mesLetivo;
     const pagoRaw = Number(pags[mesLetivo] || pags[keyIso] || 0);
+    const reciboMes = recibosAluno?.get(mesLetivo);
+
+    // 0) RECIBO de propina emitido → prova de pagamento (prioridade)
+    if (reciboMes && reciboMes.valor > 0) {
+      out[keyIso] = Math.max(reciboMes.valor, pagoRaw, tarifa || 0);
+      continue;
+    }
 
     // 1) Adiantamento explícito de propina na matrícula
     if (mens1 > 0 && mesesP > 0 && i < mesesP) {
@@ -176,20 +336,32 @@ function pagamentosDe(a: Aluno, mensalidades: Mensalidade[]): Record<string, num
       out[keyIso] = pagoRaw > 0 ? pagoRaw : valorMes;
       continue;
     }
-    // 2) mensalidade1 > 0 e 1 mês implícito (Outubro) sem mesesPropina preenchido
+    // 2) mensalidade1 > 0 e 1 mês implícito (Outubro)
     if (mens1 > 0 && mesesP === 0 && i === 0) {
       out[keyIso] = pagoRaw > 0 ? pagoRaw : mens1 >= (tarifa || mens1) * 0.5 ? (tarifa || mens1) : mens1;
       continue;
     }
-    // 3) Pagamento em Propinas só conta se houver evidência de propina (não eco de inscrição)
-    if (pagoRaw > 0) {
-      if (mens1 > 0 || liquidoIncluiPropina) {
-        out[keyIso] = pagoRaw;
-      }
-      // senão: só pagou inscrição/taxas → NÃO marcar propina
+    // 3) Pagamento em Propinas com evidência de propina
+    if (pagoRaw > 0 && (mens1 > 0 || liquidoIncluiPropina)) {
+      out[keyIso] = pagoRaw;
     }
   }
   return out;
+}
+
+/** Referências de recibo para um aluno/mês (para impressão). */
+function refsReciboMes(
+  recibosMap: Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>> | undefined,
+  alunoId: string,
+  mesLetivo: string,
+): string {
+  const refs = recibosMap?.get(alunoId)?.get(mesLetivo)?.refs || [];
+  if (!refs.length) return "—";
+  return refs
+    .map((r) => r.codigo || r.numero || r.fonte)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(", ");
 }
 
 function tarifaDe(a: Aluno, mensalidades: Mensalidade[]): number {
@@ -239,12 +411,19 @@ function RelatoriosPage() {
   const alunosOverrides = useFinance((s) => s.alunosOverrides || {});
   const alunosDeletedIds = useFinance((s) => s.alunosDeletedIds || []);
   const documentos = useFinance((s) => s.documentosAluno || []);
+  const codigosRecibo = useFinance((s) => s.codigosRecibo || []);
 
   const [mesFiltro, setMesFiltro] = useState("out");
 
   const alunos = useMemo(
     () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
     [alunosExtra, alunosOverrides, alunosDeletedIds],
+  );
+
+  /** Recibos de propina cruzados (codigosRecibo + documentos tipo recibo). */
+  const recibosMap = useMemo(
+    () => mapaRecibosPropina(extrairRecibosPropina(codigosRecibo, documentos)),
+    [codigosRecibo, documentos],
   );
 
   function printPagosMes() {
@@ -256,7 +435,7 @@ function RelatoriosPage() {
     const mesKey = MES_LABEL[mesFiltro] || mesFiltro;
     const rows = alunos
       .map((a) => {
-        const pags = pagamentosDe(a, mensalidades);
+        const pags = pagamentosDe(a, mensalidades, recibosMap);
         const valor = Number(pags[mesKey] || pags[mesFiltro] || 0);
         return { a, valor };
       })
@@ -268,20 +447,22 @@ function RelatoriosPage() {
       <p>Alunos que <strong>já pagaram a propina mensal</strong> de <strong>${esc(labelMes(mesFiltro))}</strong>
       — <strong>${rows.length}</strong> registo(s). (Não inclui quem só pagou inscrição/matrícula.)</p>
       <table>
-        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Valor pago</th></tr></thead>
+        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Valor pago</th><th>Recibo</th></tr></thead>
         <tbody>
           ${rows
-            .map(
-              (r, i) =>
-                `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${formatKz(r.valor)}</td></tr>`,
-            )
-            .join("") || `<tr><td colspan="4" style="text-align:center;color:#666">Nenhum aluno com propina paga neste mês</td></tr>`}
+            .map((r, i) => {
+              const rec = refsReciboMes(recibosMap, r.a.id, mesFiltro);
+              return `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${formatKz(r.valor)}</td><td style="font-size:8pt">${esc(rec)}</td></tr>`;
+            })
+            .join("") || `<tr><td colspan="5" style="text-align:center;color:#666">Nenhum aluno com propina paga neste mês</td></tr>`}
           <tr style="font-weight:700;background:#f0fdf4">
             <td colspan="3">Total recebido em ${esc(labelMes(mesFiltro))}</td>
             <td class="n">${formatKz(total)}</td>
+            <td></td>
           </tr>
         </tbody>
-      </table>`;
+      </table>
+      <p style="font-size:8pt;color:#555;margin-top:8px">Fonte: Matrículas (mensalidade1) + Propinas + <strong>Recibos</strong> emitidos (código de verificação / arquivo).</p>`;
     openPrintHtml(wrapReport("Mensalidades pagas — só quem já pagou", corpo, labelMes(mesFiltro)));
     toast.success(`Mensalidades pagas · ${labelMes(mesFiltro)} · ${rows.length} aluno(s)`);
   }
@@ -295,7 +476,7 @@ function RelatoriosPage() {
     const mesKey = MES_LABEL[mes] || mes;
     const rows = alunos
       .map((a) => {
-        const pags = pagamentosDe(a, mensalidades);
+        const pags = pagamentosDe(a, mensalidades, recibosMap);
         const valorPago = Number(pags[mesKey] || pags[mes] || 0);
         const tarifa = tarifaDe(a, mensalidades);
         return { a, valorPago, tarifa, pago: valorPago > 0 };
@@ -309,21 +490,22 @@ function RelatoriosPage() {
       — <strong>${rows.length}</strong> aluno(s).
       ${mes === "out" ? "(Outubro é a primeira mensalidade do ano lectivo.)" : ""}</p>
       <table>
-        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Tarifa em dívida</th><th>Contacto</th></tr></thead>
+        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Tarifa em dívida</th><th>Contacto</th><th>Recibo</th></tr></thead>
         <tbody>
           ${rows
-            .map(
-              (r, i) =>
-                `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${r.tarifa ? formatKz(r.tarifa) : "—"}</td><td>${esc(r.a.telefone || "—")}</td></tr>`,
-            )
-            .join("") || `<tr><td colspan="5" style="text-align:center;color:#666">Todos os alunos têm a propina deste mês paga</td></tr>`}
+            .map((r, i) => {
+              const rec = refsReciboMes(recibosMap, r.a.id, mes);
+              return `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${r.tarifa ? formatKz(r.tarifa) : "—"}</td><td>${esc(r.a.telefone || "—")}</td><td style="font-size:8pt">${esc(rec)}</td></tr>`;
+            })
+            .join("") || `<tr><td colspan="6" style="text-align:center;color:#666">Todos os alunos têm a propina deste mês paga</td></tr>`}
           <tr style="font-weight:700;background:#fef2f2">
             <td colspan="3">Total em dívida (${esc(labelMes(mes))})</td>
             <td class="n">${formatKz(totalDivida)}</td>
-            <td></td>
+            <td colspan="2"></td>
           </tr>
         </tbody>
-      </table>`;
+      </table>
+      <p style="font-size:8pt;color:#555;margin-top:8px">Cruzado com recibos: se existir recibo de propina do mês, o aluno <strong>não</strong> entra nesta lista.</p>`;
     openPrintHtml(wrapReport("Mensalidades por pagar", corpo, labelMes(mes)));
     toast.success(`Por pagar · ${labelMes(mes)} · ${rows.length} aluno(s)`);
   }
@@ -558,7 +740,7 @@ function RelatoriosPage() {
 
     const rows = alunos
       .map((a) => {
-        const pags = pagamentosDe(a, mensalidades);
+        const pags = pagamentosDe(a, mensalidades, recibosMap);
         const tarifa = tarifaDe(a, mensalidades);
         const detalhe: { mes: string; valor: number }[] = [];
         let totalPago = 0;
@@ -717,7 +899,7 @@ function RelatoriosPage() {
         <div>
           <h1 className="font-display text-2xl tracking-tight">Relatórios</h1>
           <p className="text-sm text-muted-foreground">
-            Impressão de listagens oficiais — {alunos.length} alunos no censo
+            Matrículas + Propinas + Recibos · {alunos.length} alunos no censo
           </p>
         </div>
         <div className="flex items-center gap-2">
