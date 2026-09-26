@@ -77,24 +77,23 @@ function requireEdit(get: () => { activeOperator: string; operators: string[] })
   assertCanEdit(get().activeOperator || "", get().operators || []);
 }
 
-/** Meses de propina já pagos na ficha (campo ou inferência mensalidade1 / líquido).
- *  Política 2026-27: a 1.ª propina (Outubro) paga-se na matrícula. */
+/** Meses de propina já pagos na ficha (campo ou inferência mensalidade1).
+ *  Política 2026-27: a 1.ª propina (Outubro) SÓ conta se foi paga como propina
+ *  (mensalidade1 > 0), NÃO confundir com taxa de inscrição/matrícula. */
 function inferMesesAdiantados(a: Aluno): number {
   const prop = tarifaPropinaAluno(a);
-  const mens = Number(a.mensalidade1) || 0;
+  const mens = Number(a.mensalidade1) || 0; // valor de PROPINA na liquidação (≠ inscrição)
   const saved = Number(a.mesesPropina) || 0;
-  if (saved > 0) return Math.min(9, saved);
+  // Campo explícito só vale se houver propina na liquidação
+  if (saved > 0 && mens > 0) return Math.min(9, saved);
+  if (saved > 0 && mens <= 0) return 0; // mesesPropina sem mensalidade1 = não é propina
   if (prop > 0 && mens > 0) {
     const ratio = Math.round(mens / prop);
     if (ratio >= 2 && ratio <= 9 && Math.abs(mens - prop * ratio) <= prop * 0.02) return ratio;
-    if (mens + 1 >= prop * 0.5) return 1;
+    if (mens + 1 >= prop * 0.5) return 1; // pelo menos 1 mês (Outubro)
   }
-  const matriculado =
-    (a.statusPag && a.statusPag !== "pendente") ||
-    Number(a.liquido) > 0 ||
-    Boolean(a.dataPag) ||
-    Number(a.inscricao) > 0;
-  if (matriculado) return 1;
+  // NÃO inferir a partir de inscrição / seguro / liquido / dataPag —
+  // isso são taxas de matrícula, não propina mensal.
   return 0;
 }
 

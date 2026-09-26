@@ -125,22 +125,68 @@ ${corpo}
 </body></html>`;
 }
 
+/**
+ * Propinas (mensalidades) realmente pagas — NÃO confundir com inscrição/matrícula.
+ *
+ * Conta como pago um mês se:
+ *  1) mensalidade1 > 0 e o mês está coberto por mesesPropina (adiantado na matrícula), ou
+ *  2) há valor em Propinas (pagamentos[mês]) E mensalidade1 > 0 (propina na liquidação), ou
+ *  3) há valor em Propinas registado manualmente e o líquido da matrícula inclui propina
+ *     (líquido ≫ só taxas de inscrição/seguro/manuais).
+ */
+function taxasMatricula(a: Aluno): number {
+  return (
+    (Number(a.inscricao) || 0) +
+    (Number(a.seguro) || 0) +
+    (Number(a.manuais) || 0) +
+    (Number(a.cadernos) || 0) +
+    (Number(a.uniforme) || 0) +
+    (Number(a.extras) || 0) +
+    (Number(a.curso) || 0) +
+    (Number(a.transporte) || 0) +
+    (Number(a.alimentacao) || 0) +
+    (Number(a.cartaoEstudante) || 0)
+  );
+}
+
 function pagamentosDe(a: Aluno, mensalidades: Mensalidade[]): Record<string, number> {
   const prop = mensalidades.find(
     (p) => (p as { alunoId?: string }).alunoId === a.id || p.id === a.id,
   );
   const out: Record<string, number> = {};
-  if (prop?.pagamentos) {
-    for (const [k, v] of Object.entries(prop.pagamentos)) {
-      const n = Number(v) || 0;
-      if (n > 0) out[MES_LABEL[k] || k] = n;
+  const mens1 = Number(a.mensalidade1) || 0; // propina na liquidação (≠ inscrição)
+  const mesesP = Math.max(0, Math.min(9, Number(a.mesesPropina) || 0));
+  const tarifa =
+    Number(prop?.propina) || Number(a.propina) || (mens1 > 0 && mesesP > 0 ? Math.round(mens1 / mesesP) : 0) || 0;
+  const ordem = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
+  const pags = prop?.pagamentos || {};
+  const liquido = Number(a.liquido) || 0;
+  const taxas = taxasMatricula(a);
+  // O líquido inclui propina se for claramente superior às taxas de matrícula
+  const liquidoIncluiPropina = liquido > 0 && liquido > taxas + Math.max(tarifa, mens1, 1) * 0.5;
+
+  for (let i = 0; i < ordem.length; i++) {
+    const mesLetivo = ordem[i];
+    const keyIso = MES_LABEL[mesLetivo] || mesLetivo;
+    const pagoRaw = Number(pags[mesLetivo] || pags[keyIso] || 0);
+
+    // 1) Adiantamento explícito de propina na matrícula
+    if (mens1 > 0 && mesesP > 0 && i < mesesP) {
+      const valorMes = tarifa > 0 ? tarifa : Math.round(mens1 / mesesP) || mens1;
+      out[keyIso] = pagoRaw > 0 ? pagoRaw : valorMes;
+      continue;
     }
-  }
-  const oficiais = mesesOficiaisPagos(a.id);
-  if (oficiais && Object.keys(out).length === 0) {
-    const tarifa = Number(prop?.propina) || Number(a.propina) || Number(a.mensalidade1) || 0;
-    for (const k of oficiais) {
-      out[MES_LABEL[k] || k] = tarifa;
+    // 2) mensalidade1 > 0 e 1 mês implícito (Outubro) sem mesesPropina preenchido
+    if (mens1 > 0 && mesesP === 0 && i === 0) {
+      out[keyIso] = pagoRaw > 0 ? pagoRaw : mens1 >= (tarifa || mens1) * 0.5 ? (tarifa || mens1) : mens1;
+      continue;
+    }
+    // 3) Pagamento em Propinas só conta se houver evidência de propina (não eco de inscrição)
+    if (pagoRaw > 0) {
+      if (mens1 > 0 || liquidoIncluiPropina) {
+        out[keyIso] = pagoRaw;
+      }
+      // senão: só pagou inscrição/taxas → NÃO marcar propina
     }
   }
   return out;
@@ -219,8 +265,8 @@ function RelatoriosPage() {
 
     const total = rows.reduce((s, r) => s + r.valor, 0);
     const corpo = `
-      <p>Alunos que <strong>já pagaram</strong> a propina de <strong>${esc(labelMes(mesFiltro))}</strong>
-      — <strong>${rows.length}</strong> registo(s). (Só constam quem tem pagamento registado neste mês.)</p>
+      <p>Alunos que <strong>já pagaram a propina mensal</strong> de <strong>${esc(labelMes(mesFiltro))}</strong>
+      — <strong>${rows.length}</strong> registo(s). (Não inclui quem só pagou inscrição/matrícula.)</p>
       <table>
         <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Valor pago</th></tr></thead>
         <tbody>
@@ -259,7 +305,7 @@ function RelatoriosPage() {
 
     const totalDivida = rows.reduce((s, r) => s + (r.tarifa || 0), 0);
     const corpo = `
-      <p>Alunos com propina de <strong>${esc(labelMes(mes))}</strong> <strong>por pagar</strong>
+      <p>Alunos com <strong>propina mensal</strong> de <strong>${esc(labelMes(mes))}</strong> <strong>por pagar</strong> (a inscrição não substitui a propina)
       — <strong>${rows.length}</strong> aluno(s).
       ${mes === "out" ? "(Outubro é a primeira mensalidade do ano lectivo.)" : ""}</p>
       <table>
@@ -590,14 +636,14 @@ function RelatoriosPage() {
   }[] = [
     {
       title: "Mensalidades pagas (por mês)",
-      desc: "Só alunos que já pagaram — seleccione o mês no topo",
+      desc: "Só quem pagou a PROPINA do mês (não a inscrição) — escolha o mês",
       icon: <CalendarDays className="h-5 w-5" />,
       action: printPagosMes,
       needsMes: true,
     },
     {
       title: "Mensalidades por pagar",
-      desc: "Propinas em dívida no mês seleccionado (Outubro = 1.ª mensalidade)",
+      desc: "PROPINA em dívida (≠ inscrição). Outubro = 1.ª mensalidade",
       icon: <AlertTriangle className="h-5 w-5" />,
       action: printPorPagar,
       needsMes: true,

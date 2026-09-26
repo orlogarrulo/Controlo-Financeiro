@@ -402,31 +402,50 @@ function ContaCorrentePage() {
 
       mesesPago.sort();
 
-      // Detalhe de pagamentos por mês (valores reais)
+      // Detalhe de PROPINAS pagas (≠ inscrição/matrícula)
       const pagamentosDetalhe: { mes: string; valor: number; data?: string }[] = [];
       const tarifa =
         Number((prop as { propina?: number } | undefined)?.propina) ||
         Number((a as { propina?: number }).propina) ||
-        Number((a as { mensalidade1?: number }).mensalidade1) ||
         0;
+      const mens1 = Number((a as { mensalidade1?: number }).mensalidade1) || 0;
+      const mesesP = Math.max(0, Math.min(9, Number((a as { mesesPropina?: number }).mesesPropina) || 0));
       const pags = (prop as { pagamentos?: Record<string, number> } | undefined)?.pagamentos || {};
       const pagsEm =
         (prop as { pagamentosEm?: Record<string, string> } | undefined)?.pagamentosEm || {};
-      for (const [k, v] of Object.entries(pags)) {
-        const valor = Number(v) || 0;
-        if (valor <= 0) continue;
-        const mes = MES_LABEL[k] || (/^20\d{2}-\d{2}$/.test(k) ? k : k);
-        pagamentosDetalhe.push({
-          mes,
-          valor,
-          data: pagsEm[k] || "",
-        });
-      }
-      // Se oficiais sem valores em mensalidades, preencher com tarifa
-      if (pagamentosDetalhe.length === 0 && mesesPago.length > 0 && tarifa > 0) {
-        for (const m of mesesPago) {
-          pagamentosDetalhe.push({ mes: m, valor: tarifa, data: "" });
+      const ordemMes = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
+      const taxas =
+        (Number((a as { inscricao?: number }).inscricao) || 0) +
+        (Number((a as { seguro?: number }).seguro) || 0) +
+        (Number((a as { manuais?: number }).manuais) || 0) +
+        (Number((a as { uniforme?: number }).uniforme) || 0) +
+        (Number((a as { extras?: number }).extras) || 0);
+      const liquido = Number((a as { liquido?: number }).liquido) || 0;
+      const liquidoIncluiPropina = liquido > 0 && liquido > taxas + Math.max(tarifa, mens1, 1) * 0.5;
+
+      for (let i = 0; i < ordemMes.length; i++) {
+        const k = ordemMes[i];
+        const pagoRaw = Number(pags[k] || 0);
+        const mesIso = MES_LABEL[k] || k;
+        let valor = 0;
+        if (mens1 > 0 && mesesP > 0 && i < mesesP) {
+          valor = pagoRaw > 0 ? pagoRaw : tarifa || Math.round(mens1 / mesesP) || mens1;
+        } else if (mens1 > 0 && mesesP === 0 && i === 0) {
+          valor = pagoRaw > 0 ? pagoRaw : tarifa || mens1;
+        } else if (pagoRaw > 0 && (mens1 > 0 || liquidoIncluiPropina)) {
+          valor = pagoRaw;
         }
+        if (valor > 0) {
+          pagamentosDetalhe.push({ mes: mesIso, valor, data: pagsEm[k] || "" });
+        }
+      }
+      // Sincronizar mesesPago com propinas reais
+      const mesesPagoReal = pagamentosDetalhe.map((p) => p.mes);
+      if (mesesPagoReal.length) {
+        mesesPago.length = 0;
+        mesesPago.push(...mesesPagoReal);
+      } else {
+        mesesPago.length = 0;
       }
       const totalPago = pagamentosDetalhe.reduce((s, p) => s + p.valor, 0);
 
@@ -442,7 +461,7 @@ function ContaCorrentePage() {
         detalheCreditos,
         temExcedente,
         totalExcedente,
-        temAdiantado,
+        temAdiantado: mesesPago.length > 1,
         tarifa,
         pagamentosDetalhe,
         totalPago,
