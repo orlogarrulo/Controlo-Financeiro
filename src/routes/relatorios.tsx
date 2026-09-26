@@ -499,18 +499,20 @@ function RelatoriosPage() {
   );
 
   function printPagosMes() {
-    // Apenas alunos que JÁ PAGARAM o mês seleccionado (valor > 0)
+    // APENAS o mês seleccionado (ex.: Outubro). Quem adiantou Nov+ só entra quando
+    // seleccionar Novembro — nunca listar outros meses neste relatório.
+    const mes = mesFiltro === "todos" ? "out" : mesFiltro;
     if (mesFiltro === "todos") {
-      toast.message("Seleccione um mês concreto no topo (não «Todos»).");
-      return;
+      toast.message("A usar Outubro. Escolha o mês no topo (um mês de cada vez).");
     }
-    const mesKey = MES_LABEL[mesFiltro] || mesFiltro;
+    const mesKey = MES_LABEL[mes] || mes;
     const seenIds = new Set<string>();
     const seenNomes = new Set<string>();
     const rows = alunos
       .map((a) => {
         const pags = pagamentosDe(a, mensalidades, recibosMap);
-        const valor = Number(pags[mesKey] || pags[mesFiltro] || 0);
+        // Só o valor DESTE mês (não a soma do adiantamento)
+        const valor = Number(pags[mesKey] || pags[mes] || 0);
         return { a, valor };
       })
       .filter((r) => r.valor > 0)
@@ -533,27 +535,27 @@ function RelatoriosPage() {
 
     const total = rows.reduce((s, r) => s + r.valor, 0);
     const corpo = `
-      <p>Alunos que <strong>já pagaram a propina mensal</strong> de <strong>${esc(labelMes(mesFiltro))}</strong>
+      <p>Alunos que <strong>já pagaram a propina mensal</strong> de <strong>${esc(labelMes(mes))}</strong>
       — <strong>${rows.length}</strong> registo(s). (Não inclui quem só pagou inscrição/matrícula.)</p>
       <table>
         <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Valor pago</th><th>Recibo</th></tr></thead>
         <tbody>
           ${rows
             .map((r, i) => {
-              const rec = refsReciboMes(recibosMap, r.a.id, mesFiltro);
+              const rec = refsReciboMes(recibosMap, r.a.id, mes);
               return `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${formatKz(r.valor)}</td><td style="font-size:8pt">${esc(rec)}</td></tr>`;
             })
             .join("") || `<tr><td colspan="5" style="text-align:center;color:#666">Nenhum aluno com propina paga neste mês</td></tr>`}
           <tr style="font-weight:700;background:#f0fdf4">
-            <td colspan="3">Total recebido em ${esc(labelMes(mesFiltro))}</td>
+            <td colspan="3">Total recebido em ${esc(labelMes(mes))}</td>
             <td class="n">${formatKz(total)}</td>
             <td></td>
           </tr>
         </tbody>
       </table>
-      <p style="font-size:8pt;color:#555;margin-top:8px">Fonte: Matrículas (mensalidade1) + Propinas + Recibos com <strong>rubrica de propina</strong> (inscrição/seguro/ATL não contam).</p>`;
-    openPrintHtml(wrapReport("Mensalidades pagas — só quem já pagou", corpo, labelMes(mesFiltro)));
-    toast.success(`Mensalidades pagas · ${labelMes(mesFiltro)} · ${rows.length} aluno(s)`);
+      <p style="font-size:8pt;color:#555;margin-top:8px">Apenas o mês indicado. Quem pagou Outubro + Novembro adiantado aparece em Outubro agora e em Novembro quando seleccionar Novembro. Fonte: Matrículas + Propinas + recibos com rubrica de propina (inscrição não conta).</p>`;
+    openPrintHtml(wrapReport("Propinas pagas — apenas " + labelMes(mes), corpo, "Somente este mês (adiantamentos de outros meses não entram aqui)"));
+    toast.success(`Propinas pagas · só ${labelMes(mes)} · ${rows.length} aluno(s)`);
   }
 
   function printPorPagar() {
@@ -591,7 +593,7 @@ function RelatoriosPage() {
 
     const totalDivida = rows.reduce((s, r) => s + (r.tarifa || 0), 0);
     const corpo = `
-      <p>Alunos com <strong>propina mensal</strong> de <strong>${esc(labelMes(mes))}</strong> <strong>por pagar</strong> (a inscrição não substitui a propina)
+      <p>Alunos com propina de <strong>${esc(labelMes(mes))}</strong> <strong>por pagar</strong>. Quem já pagou este mês (incluindo adiantado) não aparece. Quem só pagou inscrição continua em dívida da propina.
       — <strong>${rows.length}</strong> aluno(s).
       ${mes === "out" ? "(Outubro é a primeira mensalidade do ano lectivo.)" : ""}</p>
       <table>
@@ -611,8 +613,8 @@ function RelatoriosPage() {
         </tbody>
       </table>
       <p style="font-size:8pt;color:#555;margin-top:8px">Só recibos com rubrica de <strong>propina/mensalidade</strong> contam. Recibos só de inscrição, seguro, ATL ou secretaria são ignorados.</p>`;
-    openPrintHtml(wrapReport("Mensalidades por pagar", corpo, labelMes(mes)));
-    toast.success(`Por pagar · ${labelMes(mes)} · ${rows.length} aluno(s)`);
+    openPrintHtml(wrapReport("Propinas por pagar — apenas " + labelMes(mes), corpo, "Somente este mês"));
+    toast.success(`Propinas por pagar · só ${labelMes(mes)} · ${rows.length} aluno(s)`);
   }
 
   function printDocsIncompletos() {
@@ -922,15 +924,15 @@ function RelatoriosPage() {
     needsMes?: boolean;
   }[] = [
     {
-      title: "Mensalidades pagas (por mês)",
-      desc: "Só quem pagou a PROPINA do mês (não a inscrição) — escolha o mês",
+      title: "Propinas pagas (um mês)",
+      desc: "Só o mês seleccionado (ex.: Outubro). Adiantamentos de Nov+ só em Novembro",
       icon: <CalendarDays className="h-5 w-5" />,
       action: printPagosMes,
       needsMes: true,
     },
     {
-      title: "Mensalidades por pagar",
-      desc: "PROPINA em dívida (≠ inscrição). Outubro = 1.ª mensalidade",
+      title: "Propinas por pagar (um mês)",
+      desc: "Só o mês seleccionado. Outubro = 1.ª propina do ano",
       icon: <AlertTriangle className="h-5 w-5" />,
       action: printPorPagar,
       needsMes: true,
