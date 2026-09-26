@@ -393,29 +393,27 @@ function pagamentosDe(
     const pagoRaw = Number(pags[mesLetivo] || pags[keyIso] || 0);
     const reciboMes = recibosAluno?.get(mesLetivo);
 
-    // 0) RECIBO com rubrica de propina → prova (prioridade)
+    // 0) RECIBO com rubrica de propina — valor limitado a 1 mês
     if (reciboMes && reciboMes.valor > 0) {
-      out[keyIso] = reciboMes.valor;
+      out[keyIso] = valorUmaMensalidade(reciboMes.valor, tarifa, mens1, mesesP);
       continue;
     }
 
-    // 1) Adiantamento explícito: mensalidade1 > 0 E mesesPropina cobre o mês
+    // 1) Adiantamento: mensalidade1 > 0 e mesesPropina cobre o mês → 1× tarifa
     if (mens1 > 0 && mesesP > 0 && i < mesesP) {
-      const valorMes = tarifa > 0 ? tarifa : Math.round(mens1 / Math.max(1, mesesP)) || mens1;
-      out[keyIso] = pagoRaw > 0 ? pagoRaw : valorMes;
+      out[keyIso] = valorUmaMensalidade(pagoRaw, tarifa, mens1, mesesP);
       continue;
     }
 
-    // 2) mensalidade1 > 0 sem mesesPropina: só Outubro (1.ª propina na matrícula)
+    // 2) mensalidade1 > 0 sem mesesPropina: só Outubro
     if (mens1 > 0 && mesesP === 0 && i === 0) {
-      out[keyIso] = pagoRaw > 0 ? pagoRaw : (tarifa > 0 ? Math.min(mens1, tarifa) || mens1 : mens1);
+      out[keyIso] = valorUmaMensalidade(pagoRaw, tarifa, mens1, 1);
       continue;
     }
 
-    // 3) Grelha Propinas: SÓ conta se mensalidade1 > 0 (propina real na ficha).
-    //    Nunca usar pagoRaw sozinho — no seed muitos "out" foram eco da tarifa sem propina paga.
+    // 3) Grelha Propinas só com mensalidade1 > 0 — sempre 1 mês
     if (pagoRaw > 0 && mens1 > 0) {
-      out[keyIso] = pagoRaw;
+      out[keyIso] = valorUmaMensalidade(pagoRaw, tarifa, mens1, mesesP);
     }
   }
   return out;
@@ -440,7 +438,36 @@ function tarifaDe(a: Aluno, mensalidades: Mensalidade[]): number {
   const prop = mensalidades.find(
     (p) => (p as { alunoId?: string }).alunoId === a.id || p.id === a.id,
   );
-  return Number(prop?.propina) || Number(a.propina) || Number(a.mensalidade1) || 0;
+  const mens1 = Number(a.mensalidade1) || 0;
+  const mesesP = Math.max(0, Number(a.mesesPropina) || 0);
+  // Adiantamento com descontos (ex.: Janota 1.215.000/9 = 135.000)
+  if (mens1 > 0 && mesesP > 1) return Math.round(mens1 / mesesP);
+  const t = Number(prop?.propina) || Number(a.propina) || 0;
+  if (t > 0) return t;
+  return mens1 > 0 ? mens1 : 0;
+}
+
+/**
+ * Valor de UMA mensalidade (nunca o total adiantado de vários meses).
+ * Ex.: Lucas 600.000 / 8 → 75.000; Janota 1.215.000 / 9 → 135.000
+ * (propina com descontos promo/irmãos já reflectidos em mensalidade1).
+ */
+function valorUmaMensalidade(
+  pagoRaw: number,
+  tarifa: number,
+  mens1: number,
+  mesesP: number,
+): number {
+  // Adiantamento multi-mês: sempre mensalidade1/N (já com promo −40% e irmãos −10%/−15%)
+  // Ex.: Janota 1.215.000 / 9 = 135.000
+  if (mens1 > 0 && mesesP > 1) {
+    return Math.round(mens1 / mesesP);
+  }
+  const ref = tarifa > 0 ? tarifa : mens1 > 0 ? mens1 : 0;
+  if (ref <= 0) return pagoRaw > 0 ? pagoRaw : 0;
+  if (pagoRaw > ref * 1.5) return ref;
+  if (pagoRaw > 0) return pagoRaw;
+  return ref;
 }
 
 function docsIncompletos(a: Aluno): string[] {
@@ -916,6 +943,42 @@ function RelatoriosPage() {
     toast.success("Lista total de mensalidades");
   }
 
+
+  function printUniformesPagos() {
+    const rows = alunos
+      .filter((a) => Number(a.uniforme) > 0)
+      .map((a) => ({ a, valor: Number(a.uniforme) || 0 }))
+      .sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
+
+    const total = rows.reduce((s, r) => s + r.valor, 0);
+    const corpo = `
+      <p><strong>${rows.length}</strong> aluno(s) com <strong>uniforme pago</strong>.</p>
+      <table>
+        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Valor uniforme</th><th>Data inscrição</th></tr></thead>
+        <tbody>
+          ${rows
+            .map((r, i) => {
+              const dataInsc = (r.a.dataPag || r.a.createdAt || "").slice(0, 10);
+              let dataFmt = dataInsc || "—";
+              if (/^\d{4}-\d{2}-\d{2}$/.test(dataInsc)) {
+                const [y, mo, d] = dataInsc.split("-");
+                dataFmt = `${d}/${mo}/${y}`;
+              }
+              return `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${formatKz(r.valor)}</td><td>${esc(dataFmt)}</td></tr>`;
+            })
+            .join("") || `<tr><td colspan="5" style="text-align:center;color:#666">Nenhum uniforme registado como pago</td></tr>`}
+          <tr style="font-weight:700;background:#f0fdf4">
+            <td colspan="3">Total</td>
+            <td class="n">${formatKz(total)}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:8pt;color:#555;margin-top:8px">Fonte: campo <em>uniforme</em> na ficha de matrícula (valor &gt; 0 = pago).</p>`;
+    openPrintHtml(wrapReport("Alunos com uniforme pago", corpo));
+    toast.success(`Uniformes pagos · ${rows.length} aluno(s)`);
+  }
+
   const cards: {
     title: string;
     desc: string;
@@ -966,6 +1029,12 @@ function RelatoriosPage() {
       desc: "Lista de contactos dos encarregados de educação",
       icon: <Phone className="h-5 w-5" />,
       action: printContactos,
+    },
+    {
+      title: "Uniformes pagos",
+      desc: "Alunos com uniforme liquidado na matrícula",
+      icon: <BadgeDollarSign className="h-5 w-5" />,
+      action: printUniformesPagos,
     },
     {
       title: "ATL — Explicação",
