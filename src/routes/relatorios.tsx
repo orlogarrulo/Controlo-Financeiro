@@ -148,10 +148,9 @@ function mesKeyToLetivo(mesKey: string): string {
     "2027-04": "abr",
     "2027-05": "mai",
     "2027-06": "jun",
-    "2026-09": "out", // legado setembro → 1.ª propina = outubro
+    "2026-09": "out",
   };
   if (map[k]) return map[k];
-  // 202610 / 2026-10 variants
   const compact = k.replace(/-/g, "");
   if (compact.length >= 6) {
     const y = compact.slice(0, 4);
@@ -161,19 +160,65 @@ function mesKeyToLetivo(mesKey: string): string {
   return k;
 }
 
+/** Rubrica é propina/mensalidade mensal? (não inscrição, seguro, ATL, secretaria…) */
+function isRubricaPropina(keyOrLabel: string): boolean {
+  const s = (keyOrLabel || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  if (!s) return false;
+  // Exclusões explícitas (taxas de matrícula / outros)
+  if (
+    /inscri|matricula(?!.*propina)|seguro|manual|caderno|uniforme|transporte|alimenta|curso intens|cartao de estudante|cartão de estudante|atl|secretaria|declaracao|certificado|historico|atestado|multa|pacote campus/.test(
+      s,
+    )
+  ) {
+    // Excepção: "propina" no mesmo texto (ex.: "Matrícula + propina Outubro")
+    if (!/propina|mensalidade/.test(s)) return false;
+  }
+  // Chaves e rótulos oficiais
+  if (s === "propinas" || s === "propina" || s === "mensalidade" || s === "mes") return true;
+  if (/^propina\b/.test(s) || /\bpropina\b/.test(s)) return true;
+  if (/\bmensalidade\b/.test(s)) return true;
+  // "Propina Out/26", "Propinas (Outubro)", "1× propina"
+  if (/propinas?\s*\(?/.test(s)) return true;
+  return false;
+}
+
+/** Valor de propina dentro de um texto de rubricas "A, B, C" (sem valores por linha). */
+function rubricasTextoTemPropina(rubricas: string): boolean {
+  if (!rubricas || !rubricas.trim()) return false;
+  const parts = rubricas.split(/[,;|]/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return isRubricaPropina(rubricas);
+  return parts.some((p) => isRubricaPropina(p));
+}
+
 type ReciboPropina = {
   alunoId: string;
-  mesLetivo: string; // out, nov…
+  mesLetivo: string;
   valor: number;
   codigo?: string;
   numero?: string;
   emitidoEm?: string;
   fonte: "codigo_recibo" | "documento_recibo";
+  rubrica?: string;
 };
 
-/** Cruza codigosRecibo + documentosAluno (recibos de propina). */
+/**
+ * Só extrai propina mensal a partir das RUBRICAS do recibo.
+ * Recibo de matrícula (inscrição+seguro+…) sem linha de propina → ignorado.
+ * Recibo ATL / secretaria → ignorado.
+ */
 function extrairRecibosPropina(
-  codigos: { alunoId?: string; mesKey?: string; valor?: number; codigo?: string; emitidoEm?: string; rubricas?: string }[],
+  codigos: {
+    alunoId?: string;
+    mesKey?: string;
+    valor?: number;
+    codigo?: string;
+    emitidoEm?: string;
+    rubricas?: string;
+  }[],
   docs: {
     alunoId?: string;
     tipo?: string;
@@ -190,62 +235,51 @@ function extrairRecibosPropina(
 ): ReciboPropina[] {
   const out: ReciboPropina[] = [];
 
-  for (const c of codigos || []) {
-    if (!c.alunoId || !c.mesKey) continue;
-    const mesLetivo = mesKeyToLetivo(c.mesKey);
-    const rub = (c.rubricas || "").toLowerCase();
-    // Excluir recibos que sejam só inscrição/seguro sem propina
-    const soTaxas =
-      rub &&
-      !/propina|mensalidade|mens\.|mês|mes /.test(rub) &&
-      /inscri|seguro|manual|uniforme|matr[ií]cula/.test(rub);
-    if (soTaxas) continue;
-    const valor = Number(c.valor) || 0;
-    if (valor <= 0) continue;
-    out.push({
-      alunoId: c.alunoId,
-      mesLetivo,
-      valor,
-      codigo: c.codigo,
-      emitidoEm: c.emitidoEm,
-      fonte: "codigo_recibo",
-    });
-  }
-
+  // —— documentosAluno (fonte preferível: linhas com key/label) ——
   for (const d of docs || []) {
     if (!d.alunoId || d.tipo !== "recibo") continue;
     const modelo = d.modelo || "";
-    // propina_mes = recibo de propina mensal
-    // liquidacao_matricula pode incluir linha de propina
+
+    // ATL e secretaria nunca são propina mensal
+    if (
+      modelo === "atl_explicacao" ||
+      modelo === "atl_actividades" ||
+      modelo === "secretaria"
+    ) {
+      continue;
+    }
+
     let valorPropina = 0;
+    let rubricaHit = "";
     let mesLetivo = mesKeyToLetivo(d.mesKey || d.mesRef || "");
 
     if (modelo === "propina_mes") {
+      // Recibo dedicado à propina do mês — o valor total é propina
       valorPropina = Number(d.valor) || 0;
-      if (!mesLetivo || mesLetivo === (d.mesKey || "").toLowerCase()) {
-        mesLetivo = mesKeyToLetivo(d.mesKey || d.mesRef || "2026-10") || "out";
-      }
-    } else if (modelo === "liquidacao_matricula") {
-      const linhas = d.linhas || [];
-      for (const l of linhas) {
-        if (l.on === false) continue;
-        const lab = (l.label || l.key || "").toLowerCase();
-        if (/propina|mensalidade/.test(lab)) {
-          valorPropina += Number(l.value) || 0;
-        }
-      }
-      if (valorPropina > 0 && !mesLetivo) mesLetivo = "out"; // 1.ª propina na matrícula
-    } else if (modelo === "meio_ano" || modelo === "outro") {
-      // só se linhas mencionarem propina
+      rubricaHit = "propina_mes";
+      if (!mesLetivo) mesLetivo = "out";
+    } else {
+      // liquidacao_matricula / meio_ano / outro: SÓ linhas de propina
       for (const l of d.linhas || []) {
         if (l.on === false) continue;
-        const lab = (l.label || l.key || "").toLowerCase();
-        if (/propina|mensalidade/.test(lab)) valorPropina += Number(l.value) || 0;
+        const key = l.key || "";
+        const label = l.label || "";
+        if (isRubricaPropina(key) || isRubricaPropina(label)) {
+          const v = Number(l.value) || 0;
+          if (v > 0) {
+            valorPropina += v;
+            rubricaHit = label || key;
+          }
+        }
       }
+      // Sem linhas com valor: se o texto das labels tiver propina mas value=0 (legado),
+      // não inventar valor — exige valor > 0 na rubrica.
+      if (!mesLetivo && valorPropina > 0) mesLetivo = "out";
     }
 
     if (valorPropina <= 0) continue;
     if (!mesLetivo) mesLetivo = "out";
+
     out.push({
       alunoId: d.alunoId,
       mesLetivo,
@@ -254,28 +288,66 @@ function extrairRecibosPropina(
       numero: d.numero,
       emitidoEm: d.pagoEm || d.emitidoEm,
       fonte: "documento_recibo",
+      rubrica: rubricaHit,
+    });
+  }
+
+  // —— codigosRecibo (string rubricas) ——
+  for (const c of codigos || []) {
+    if (!c.alunoId || !c.mesKey) continue;
+    const rub = (c.rubricas || "").trim();
+    // Sem rubricas → não assumir propina (pode ser só inscrição)
+    if (!rub) continue;
+    if (!rubricasTextoTemPropina(rub)) continue;
+
+    const mesLetivo = mesKeyToLetivo(c.mesKey);
+    // Tentar isolar: se há várias rubricas e o valor é o total do recibo,
+    // só aceitar se a ÚNICA rubrica for propina OU se todas as partes forem propina.
+    const parts = rub.split(/[,;|]/).map((p) => p.trim()).filter(Boolean);
+    const soPropina = parts.length > 0 && parts.every((p) => isRubricaPropina(p));
+    const algumaPropina = parts.some((p) => isRubricaPropina(p));
+    if (!algumaPropina) continue;
+
+    // Se o recibo mistura inscrição+propina no mesmo total, não usar o valor total
+    // como propina (evitar falso positivo). Só conta se for só propina.
+    if (!soPropina) continue;
+
+    const valor = Number(c.valor) || 0;
+    if (valor <= 0) continue;
+
+    // Evitar duplicar se já há documento com o mesmo código
+    const codeU = (c.codigo || "").toUpperCase();
+    if (codeU && out.some((r) => (r.codigo || "").toUpperCase() === codeU)) continue;
+
+    out.push({
+      alunoId: c.alunoId,
+      mesLetivo,
+      valor,
+      codigo: c.codigo,
+      emitidoEm: c.emitidoEm,
+      fonte: "codigo_recibo",
+      rubrica: rub,
     });
   }
 
   return out;
 }
 
-/** Mapa alunoId → mesLetivo → { valor, recibos[] } */
-function mapaRecibosPropina(recibos: ReciboPropina[]): Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>> {
+function mapaRecibosPropina(
+  recibos: ReciboPropina[],
+): Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>> {
   const map = new Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>>();
   for (const r of recibos) {
     if (!map.has(r.alunoId)) map.set(r.alunoId, new Map());
     const byMes = map.get(r.alunoId)!;
     const cur = byMes.get(r.mesLetivo) || { valor: 0, refs: [] };
-    // Evitar somar o mesmo recibo duas vezes (codigo_recibo + documento)
     const dup = cur.refs.some(
       (x) =>
         (r.codigo && x.codigo === r.codigo) ||
-        (r.numero && x.numero === r.numero) ||
-        (x.valor === r.valor && x.emitidoEm === r.emitidoEm && x.fonte !== r.fonte),
+        (r.numero && x.numero === r.numero),
     );
     if (!dup) {
-      cur.valor = Math.max(cur.valor, r.valor); // mesmo pagamento: fica o valor do recibo
+      cur.valor = Math.max(cur.valor, r.valor);
       cur.refs.push(r);
     }
     byMes.set(r.mesLetivo, cur);
@@ -462,7 +534,7 @@ function RelatoriosPage() {
           </tr>
         </tbody>
       </table>
-      <p style="font-size:8pt;color:#555;margin-top:8px">Fonte: Matrículas (mensalidade1) + Propinas + <strong>Recibos</strong> emitidos (código de verificação / arquivo).</p>`;
+      <p style="font-size:8pt;color:#555;margin-top:8px">Fonte: Matrículas (mensalidade1) + Propinas + Recibos com <strong>rubrica de propina</strong> (inscrição/seguro/ATL não contam).</p>`;
     openPrintHtml(wrapReport("Mensalidades pagas — só quem já pagou", corpo, labelMes(mesFiltro)));
     toast.success(`Mensalidades pagas · ${labelMes(mesFiltro)} · ${rows.length} aluno(s)`);
   }
@@ -505,7 +577,7 @@ function RelatoriosPage() {
           </tr>
         </tbody>
       </table>
-      <p style="font-size:8pt;color:#555;margin-top:8px">Cruzado com recibos: se existir recibo de propina do mês, o aluno <strong>não</strong> entra nesta lista.</p>`;
+      <p style="font-size:8pt;color:#555;margin-top:8px">Só recibos com rubrica de <strong>propina/mensalidade</strong> contam. Recibos só de inscrição, seguro, ATL ou secretaria são ignorados.</p>`;
     openPrintHtml(wrapReport("Mensalidades por pagar", corpo, labelMes(mes)));
     toast.success(`Por pagar · ${labelMes(mes)} · ${rows.length} aluno(s)`);
   }
