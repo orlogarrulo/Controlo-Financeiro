@@ -1,0 +1,17 @@
+Repor o aluno em falta (47 → 48)
+
+Copie para o projecto:
+  src/lib/store.ts
+  src/components/hydrate-store.tsx
+  src/routes/rastreio.tsx
+  src/routes/index.tsx
+
+Deploy + Ctrl+Shift+R em cada PC.
+
+No arranque a app procura o aluno escondido em:
+  - lista de IDs apagados (realinhamento P1-07, 4E-02, …)
+  - linhas de propinas sem ficha
+  - movimentos BAI com ID de aluno
+  - overrides e fotos
+
+Em Rastreio, botão «Repor aluno em falta».

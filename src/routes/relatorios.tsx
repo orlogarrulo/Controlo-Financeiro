@@ -202,64 +202,84 @@ function RelatoriosPage() {
   );
 
   function printPagosMes() {
+    // Apenas alunos que JÁ PAGARAM o mês seleccionado (valor > 0)
+    if (mesFiltro === "todos") {
+      toast.message("Seleccione um mês concreto no topo (não «Todos»).");
+      return;
+    }
     const mesKey = MES_LABEL[mesFiltro] || mesFiltro;
     const rows = alunos
       .map((a) => {
         const pags = pagamentosDe(a, mensalidades);
-        const valor = pags[mesKey] || pags[mesFiltro] || 0;
+        const valor = Number(pags[mesKey] || pags[mesFiltro] || 0);
         return { a, valor };
       })
       .filter((r) => r.valor > 0)
       .sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
 
+    const total = rows.reduce((s, r) => s + r.valor, 0);
     const corpo = `
-      <p><strong>${rows.length}</strong> aluno(s) com mensalidade paga em <strong>${esc(labelMes(mesFiltro))}</strong>.</p>
+      <p>Alunos que <strong>já pagaram</strong> a propina de <strong>${esc(labelMes(mesFiltro))}</strong>
+      — <strong>${rows.length}</strong> registo(s). (Só constam quem tem pagamento registado neste mês.)</p>
       <table>
         <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Valor pago</th></tr></thead>
         <tbody>
           ${rows
             .map(
               (r, i) =>
-                `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma)}</td><td class="n">${formatKz(r.valor)}</td></tr>`,
+                `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${formatKz(r.valor)}</td></tr>`,
             )
-            .join("")}
+            .join("") || `<tr><td colspan="4" style="text-align:center;color:#666">Nenhum aluno com propina paga neste mês</td></tr>`}
           <tr style="font-weight:700;background:#f0fdf4">
-            <td colspan="3">Total</td>
-            <td class="n">${formatKz(rows.reduce((s, r) => s + r.valor, 0))}</td>
+            <td colspan="3">Total recebido em ${esc(labelMes(mesFiltro))}</td>
+            <td class="n">${formatKz(total)}</td>
           </tr>
         </tbody>
       </table>`;
-    openPrintHtml(wrapReport("Mensalidades pagas — por mês", corpo, labelMes(mesFiltro)));
-    toast.success("Relatório: mensalidades pagas");
+    openPrintHtml(wrapReport("Mensalidades pagas — só quem já pagou", corpo, labelMes(mesFiltro)));
+    toast.success(`Mensalidades pagas · ${labelMes(mesFiltro)} · ${rows.length} aluno(s)`);
   }
 
   function printPorPagar() {
-    const mesKey = MES_LABEL[mesFiltro] || mesFiltro;
+    // Propinas NÃO pagas no mês seleccionado (por omissão: Outubro = 1.ª mensalidade)
+    const mes = mesFiltro === "todos" ? "out" : mesFiltro;
+    if (mesFiltro === "todos") {
+      toast.message("A usar Outubro (1.ª mensalidade). Escolha outro mês no topo se preferir.");
+    }
+    const mesKey = MES_LABEL[mes] || mes;
     const rows = alunos
       .map((a) => {
         const pags = pagamentosDe(a, mensalidades);
-        const pago = (pags[mesKey] || pags[mesFiltro] || 0) > 0;
+        const valorPago = Number(pags[mesKey] || pags[mes] || 0);
         const tarifa = tarifaDe(a, mensalidades);
-        return { a, pago, tarifa };
+        return { a, valorPago, tarifa, pago: valorPago > 0 };
       })
       .filter((r) => !r.pago)
       .sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
 
+    const totalDivida = rows.reduce((s, r) => s + (r.tarifa || 0), 0);
     const corpo = `
-      <p><strong>${rows.length}</strong> aluno(s) com mensalidade <strong>por pagar</strong> em <strong>${esc(labelMes(mesFiltro))}</strong>.</p>
+      <p>Alunos com propina de <strong>${esc(labelMes(mes))}</strong> <strong>por pagar</strong>
+      — <strong>${rows.length}</strong> aluno(s).
+      ${mes === "out" ? "(Outubro é a primeira mensalidade do ano lectivo.)" : ""}</p>
       <table>
-        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Tarifa</th><th>Contacto</th></tr></thead>
+        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Tarifa em dívida</th><th>Contacto</th></tr></thead>
         <tbody>
           ${rows
             .map(
               (r, i) =>
-                `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma)}</td><td class="n">${r.tarifa ? formatKz(r.tarifa) : "—"}</td><td>${esc(r.a.telefone || "—")}</td></tr>`,
+                `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${r.tarifa ? formatKz(r.tarifa) : "—"}</td><td>${esc(r.a.telefone || "—")}</td></tr>`,
             )
-            .join("")}
+            .join("") || `<tr><td colspan="5" style="text-align:center;color:#666">Todos os alunos têm a propina deste mês paga</td></tr>`}
+          <tr style="font-weight:700;background:#fef2f2">
+            <td colspan="3">Total em dívida (${esc(labelMes(mes))})</td>
+            <td class="n">${formatKz(totalDivida)}</td>
+            <td></td>
+          </tr>
         </tbody>
       </table>`;
-    openPrintHtml(wrapReport("Mensalidades por pagar — por mês", corpo, labelMes(mesFiltro)));
-    toast.success("Relatório: mensalidades por pagar");
+    openPrintHtml(wrapReport("Mensalidades por pagar", corpo, labelMes(mes)));
+    toast.success(`Por pagar · ${labelMes(mes)} · ${rows.length} aluno(s)`);
   }
 
   function printDocsIncompletos() {
@@ -331,22 +351,31 @@ function RelatoriosPage() {
   }
 
   function printSeguroEscola() {
-    const rows = alunos.filter(temSeguroEscola).sort((a, b) => a.nome.localeCompare(b.nome, "pt"));
+    // Apenas: nome, data de inscrição, classe
+    const rows = alunos
+      .filter(temSeguroEscola)
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt"));
+
     const corpo = `
-      <p><strong>${rows.length}</strong> aluno(s) com <strong>seguro da escola</strong>.</p>
+      <p><strong>${rows.length}</strong> aluno(s) com <strong>seguro escolar</strong> da escola.</p>
       <table>
-        <thead><tr><th>#</th><th>Aluno</th><th>Classe</th><th class="n">Valor seguro</th></tr></thead>
+        <thead><tr><th>#</th><th>Nome do aluno</th><th>Data de inscrição</th><th>Classe</th></tr></thead>
         <tbody>
           ${rows
-            .map(
-              (a, i) =>
-                `<tr><td>${i + 1}</td><td>${esc(a.nome)}</td><td>${esc(a.turma)}</td><td class="n">${formatKz(Number(a.seguro) || 0)}</td></tr>`,
-            )
-            .join("")}
+            .map((a, i) => {
+              const dataInsc = (a.dataPag || a.createdAt || "").slice(0, 10);
+              let dataFmt = dataInsc || "—";
+              if (/^\d{4}-\d{2}-\d{2}$/.test(dataInsc)) {
+                const [y, mo, d] = dataInsc.split("-");
+                dataFmt = `${d}/${mo}/${y}`;
+              }
+              return `<tr><td>${i + 1}</td><td>${esc(a.nome)}</td><td>${esc(dataFmt)}</td><td>${esc(a.turma || "—")}</td></tr>`;
+            })
+            .join("") || `<tr><td colspan="4" style="text-align:center;color:#666">Nenhum aluno com seguro escolar</td></tr>`}
         </tbody>
       </table>`;
-    openPrintHtml(wrapReport("Alunos com seguro da escola", corpo));
-    toast.success("Relatório: seguro escola");
+    openPrintHtml(wrapReport("Alunos com seguro escolar", corpo));
+    toast.success(`Seguro escolar · ${rows.length} aluno(s)`);
   }
 
   function printContactos() {
@@ -414,18 +443,18 @@ function RelatoriosPage() {
     const rows = alunos
       .filter((a) => {
         const t = tarifaDe(a, mensalidades);
-        return t === 75000 || t === 75000;
+        return Math.abs(t - 75000) < 1 || (a.transferidoCampusCidade === true && Math.abs(t - 75000) < 1);
       })
-      .sort((a, b) => a.nome.localeCompare(b.nome, "pt"));
-    // also catch near values / campus
-    const rows2 = alunos
-      .filter((a) => {
-        const t = tarifaDe(a, mensalidades);
-        return Math.abs(t - 75000) < 1 || (a.transferidoCampusCidade && t > 0);
-      })
-      .sort((a, b) => a.nome.localeCompare(b.nome, "pt"));
+      .map((a) => ({ a, tarifa: tarifaDe(a, mensalidades) }))
+      .sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
 
-    const list = rows2.length ? rows2 : rows;
+    // Incluir também transferidos Campus Cidade com propina 75.000
+    const extra = alunos
+      .filter((a) => a.transferidoCampusCidade && !rows.some((r) => r.a.id === a.id))
+      .map((a) => ({ a, tarifa: tarifaDe(a, mensalidades) || 75000 }));
+    const list = [...rows, ...extra].sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
+
+    const total = list.reduce((s, r) => s + (r.tarifa || 75000), 0);
     const corpo = `
       <p><strong>${list.length}</strong> aluno(s) com mensalidade de <strong>75.000 Kz</strong>.</p>
       <table>
@@ -433,14 +462,19 @@ function RelatoriosPage() {
         <tbody>
           ${list
             .map(
-              (a, i) =>
-                `<tr><td>${i + 1}</td><td>${esc(a.nome)}</td><td>${esc(a.turma)}</td><td class="n">${formatKz(tarifaDe(a, mensalidades))}</td><td>${a.transferidoCampusCidade ? "Campus Cidade" : ""}</td></tr>`,
+              (r, i) =>
+                `<tr><td>${i + 1}</td><td>${esc(r.a.nome)}</td><td>${esc(r.a.turma || "—")}</td><td class="n">${formatKz(r.tarifa || 75000)}</td><td>${r.a.transferidoCampusCidade ? "Campus Cidade" : ""}</td></tr>`,
             )
-            .join("")}
+            .join("") || `<tr><td colspan="5" style="text-align:center;color:#666">Nenhum aluno com tarifa 75.000 Kz</td></tr>`}
+          <tr style="font-weight:700;background:#f0fdf4">
+            <td colspan="3">Total (propina mensal × alunos)</td>
+            <td class="n">${formatKz(total)}</td>
+            <td>${list.length} aluno(s)</td>
+          </tr>
         </tbody>
       </table>`;
     openPrintHtml(wrapReport("Alunos com mensalidade 75.000 Kz", corpo));
-    toast.success("Relatório: tarifa 75.000");
+    toast.success(`Tarifa 75.000 · ${list.length} aluno(s) · total ${formatKz(total)}`);
   }
 
   function printComDesconto() {
@@ -470,51 +504,81 @@ function RelatoriosPage() {
   }
 
   function printListaTotalMensalidades() {
+    // Meses seleccionáveis: se mesFiltro === "todos", mostra todos; senão só o mês escolhido
+    const mesesSel =
+      mesFiltro === "todos"
+        ? [...MESES_ORDEM]
+        : [mesFiltro];
+
     const rows = alunos
       .map((a) => {
         const pags = pagamentosDe(a, mensalidades);
         const tarifa = tarifaDe(a, mensalidades);
-        const totalPago = Object.values(pags).reduce((s, v) => s + v, 0);
-        const nMeses = Object.keys(pags).length;
-        return { a, tarifa, totalPago, nMeses, pags };
+        const detalhe: { mes: string; valor: number }[] = [];
+        let totalPago = 0;
+        for (const mk of mesesSel) {
+          const key = MES_LABEL[mk] || mk;
+          const v = Number(pags[key] || pags[mk] || 0);
+          if (v > 0 || mesFiltro !== "todos") {
+            detalhe.push({ mes: mk, valor: v });
+            totalPago += v;
+          }
+        }
+        return { a, tarifa, totalPago, detalhe };
       })
+      .filter((r) => mesFiltro === "todos" || r.detalhe.some((d) => d.valor > 0) || true)
       .sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
 
+    const colMeses = mesesSel
+      .map((mk) => `<th class="n">${esc(labelMes(mk).replace(" 2026", "").replace(" 2027", ""))}</th>`)
+      .join("");
+
     const corpo = `
-      <p>Lista completa de mensalidades — <strong>${rows.length}</strong> aluno(s).</p>
+      <p>Lista de mensalidades
+      ${mesFiltro === "todos" ? "(todos os meses)" : `— mês: <strong>${esc(labelMes(mesFiltro))}</strong>`}
+      — <strong>${rows.length}</strong> aluno(s).</p>
       <table>
         <thead>
           <tr>
             <th>#</th><th>Aluno</th><th>Classe</th><th class="n">Tarifa</th>
-            <th class="n">Meses pagos</th><th class="n">Total pago</th><th>Detalhe</th>
+            ${colMeses}
+            <th class="n">Total pago</th>
           </tr>
         </thead>
         <tbody>
           ${rows
             .map((r, i) => {
-              const det = Object.entries(r.pags)
-                .map(([m, v]) => `${labelMes(m)}: ${formatKz(v)}`)
-                .join("; ");
+              const cells = mesesSel
+                .map((mk) => {
+                  const d = r.detalhe.find((x) => x.mes === mk);
+                  const v = d ? d.valor : 0;
+                  return `<td class="n">${v > 0 ? formatKz(v) : "—"}</td>`;
+                })
+                .join("");
               return `<tr>
                 <td>${i + 1}</td>
                 <td>${esc(r.a.nome)}</td>
-                <td>${esc(r.a.turma)}</td>
+                <td>${esc(r.a.turma || "—")}</td>
                 <td class="n">${r.tarifa ? formatKz(r.tarifa) : "—"}</td>
-                <td class="n">${r.nMeses}</td>
-                <td class="n">${formatKz(r.totalPago)}</td>
-                <td style="font-size:8pt">${esc(det || "—")}</td>
+                ${cells}
+                <td class="n">${r.totalPago > 0 ? formatKz(r.totalPago) : "—"}</td>
               </tr>`;
             })
             .join("")}
           <tr style="font-weight:700;background:#f0fdf4">
-            <td colspan="5">Total geral pago</td>
+            <td colspan="${3 + mesesSel.length}">Total geral pago</td>
             <td class="n">${formatKz(rows.reduce((s, r) => s + r.totalPago, 0))}</td>
-            <td></td>
           </tr>
         </tbody>
       </table>`;
-    openPrintHtml(wrapReport("Lista total de mensalidades", corpo));
-    toast.success("Relatório: lista total mensalidades");
+    openPrintHtml(
+      wrapReport(
+        "Lista total de mensalidades",
+        corpo,
+        mesFiltro === "todos" ? "Todos os meses" : labelMes(mesFiltro),
+      ),
+    );
+    toast.success("Lista total de mensalidades");
   }
 
   const cards: {
@@ -526,14 +590,14 @@ function RelatoriosPage() {
   }[] = [
     {
       title: "Mensalidades pagas (por mês)",
-      desc: "Total de alunos discriminados com mensalidades pagas — escolha o mês",
+      desc: "Só alunos que já pagaram — seleccione o mês no topo",
       icon: <CalendarDays className="h-5 w-5" />,
       action: printPagosMes,
       needsMes: true,
     },
     {
-      title: "Mensalidades por pagar (por mês)",
-      desc: "Alunos discriminados com mensalidade em dívida no mês seleccionado",
+      title: "Mensalidades por pagar",
+      desc: "Propinas em dívida no mês seleccionado (Outubro = 1.ª mensalidade)",
       icon: <AlertTriangle className="h-5 w-5" />,
       action: printPorPagar,
       needsMes: true,
@@ -557,8 +621,8 @@ function RelatoriosPage() {
       action: printSeguroProprio,
     },
     {
-      title: "Seguro da escola",
-      desc: "Alunos com seguro escolar pago",
+      title: "Seguro escolar",
+      desc: "Nome, data de inscrição e classe",
       icon: <Shield className="h-5 w-5" />,
       action: printSeguroEscola,
     },
@@ -582,7 +646,7 @@ function RelatoriosPage() {
     },
     {
       title: "Mensalidade 75.000 Kz",
-      desc: "Lista de alunos com tarifa de 75.000 Kz",
+      desc: "Lista + total da propina mensal",
       icon: <BadgeDollarSign className="h-5 w-5" />,
       action: printTarifa75000,
     },
@@ -594,9 +658,10 @@ function RelatoriosPage() {
     },
     {
       title: "Lista total de mensalidades",
-      desc: "Todos os alunos com detalhe mês a mês",
+      desc: "Meses seleccionáveis no topo (ou todos)",
       icon: <ListOrdered className="h-5 w-5" />,
       action: printListaTotalMensalidades,
+      needsMes: true,
     },
   ];
 
@@ -610,15 +675,17 @@ function RelatoriosPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-muted-foreground">Mês (relatórios por mês)</label>
+          <label className="text-xs text-muted-foreground">Mês seleccionado</label>
           <select
             className="rounded-md border bg-background px-3 py-1.5 text-sm"
             value={mesFiltro}
             onChange={(e) => setMesFiltro(e.target.value)}
           >
+            <option value="todos">Todos os meses</option>
             {MESES_ORDEM.map((k) => (
               <option key={k} value={k}>
                 {labelMes(k)}
+                {k === "out" ? " (1.ª mensalidade)" : ""}
               </option>
             ))}
           </select>
@@ -641,7 +708,7 @@ function RelatoriosPage() {
             <div className="text-xs text-muted-foreground">{c.desc}</div>
             {c.needsMes ? (
               <span className="mt-1 rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                Mês: {labelMes(mesFiltro)}
+                Mês: {mesFiltro === "todos" ? "Todos" : labelMes(mesFiltro)}
               </span>
             ) : null}
           </button>

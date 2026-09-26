@@ -1,0 +1,24 @@
+CONTROLO FINANCEIRO · École Consulaire (Nova Vida)
+Pacote completo para deploy no Vercel
+================================================
+
+1. Extrair este zip
+2. Na pasta do projecto:
+     npm install
+     npm run build          # confirma que compila
+3. Deploy no Vercel:
+   - Importar o repositório GitHub OU
+   - vercel --prod  (CLI)
+   - Framework: Vite
+   - Build Command: npm run build
+   - Output Directory: dist
+   - Install Command: npm install
+
+Já inclui:
+  - package.json + vercel.json + vite.config.ts
+  - src/ completo (recibos, CRM, matrículas, store com codigosRecibo)
+  - Código único de verificação nos recibos (RC-YYYYMM-XXXX-NN)
+  - Separador CRM para validar códigos
+  - Scripts, migrations, data-export, public
+
+Não incluir node_modules no Git (já está ausente neste zip).
