@@ -18,6 +18,7 @@ import { Route as GoogleRouteImport } from './routes/google'
 import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as MensalidadesRouteImport } from './routes/mensalidades'
 import { Route as ContaCorrenteRouteImport } from './routes/conta-corrente'
+import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as CrmRouteImport } from './routes/crm'
 import { Route as RecibosRouteImport } from './routes/recibos'
 import { Route as SalariosRouteImport } from './routes/salarios'
@@ -108,6 +109,11 @@ const ContaCorrenteRoute = ContaCorrenteRouteImport.update({
   path: '/conta-corrente',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RelatoriosRoute = RelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CrmRoute = CrmRouteImport.update({
   id: '/crm',
   path: '/crm',
@@ -165,6 +171,7 @@ export interface FileRoutesByFullPath {
   '/lancamentos': typeof LancamentosRoute
   '/mensalidades': typeof MensalidadesRoute
   '/conta-corrente': typeof ContaCorrenteRoute
+  '/relatorios': typeof RelatoriosRoute
   '/crm': typeof CrmRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
@@ -190,6 +197,7 @@ export interface FileRoutesByTo {
   '/lancamentos': typeof LancamentosRoute
   '/mensalidades': typeof MensalidadesRoute
   '/conta-corrente': typeof ContaCorrenteRoute
+  '/relatorios': typeof RelatoriosRoute
   '/crm': typeof CrmRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
@@ -216,6 +224,7 @@ export interface FileRoutesById {
   '/lancamentos': typeof LancamentosRoute
   '/mensalidades': typeof MensalidadesRoute
   '/conta-corrente': typeof ContaCorrenteRoute
+  '/relatorios': typeof RelatoriosRoute
   '/crm': typeof CrmRoute
   '/recibos': typeof RecibosRoute
   '/salarios': typeof SalariosRoute
@@ -319,6 +328,7 @@ export interface RootRouteChildren {
   LancamentosRoute: typeof LancamentosRoute
   MensalidadesRoute: typeof MensalidadesRoute
   ContaCorrenteRoute: typeof ContaCorrenteRoute
+  RelatoriosRoute: typeof RelatoriosRoute
   CrmRoute: typeof CrmRoute
   RecibosRoute: typeof RecibosRoute
   SalariosRoute: typeof SalariosRoute
@@ -492,6 +502,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ContaCorrenteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/relatorios': {
+      id: '/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof RelatoriosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -511,6 +528,7 @@ const rootRouteChildren: RootRouteChildren = {
   LancamentosRoute: LancamentosRoute,
   MensalidadesRoute: MensalidadesRoute,
   ContaCorrenteRoute: ContaCorrenteRoute,
+  RelatoriosRoute: RelatoriosRoute,
   CrmRoute: CrmRoute,
   RecibosRoute: RecibosRoute,
   SalariosRoute: SalariosRoute,

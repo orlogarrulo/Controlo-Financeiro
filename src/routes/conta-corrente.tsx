@@ -29,6 +29,11 @@ type RowCC = {
   temExcedente: boolean;
   totalExcedente: number;
   temAdiantado: boolean;
+  /** Tarifa mensal de propina (Kz). */
+  tarifa: number;
+  /** Detalhe dos pagamentos por mês: valor efectivo e data. */
+  pagamentosDetalhe: { mes: string; valor: number; data?: string }[];
+  totalPago: number;
 };
 
 const MES_LABEL: Record<string, string> = {
@@ -92,34 +97,64 @@ function folhaCreditoHtml(
 ): string {
   const hoje = new Date().toLocaleDateString("pt-PT");
   const ano = escola.ano || "2026-2027";
+  const logo = escolaLogoSrc();
 
-  type Linha = { data: string; hist: string; deb: number; cred: number };
+  type Linha = { data: string; hist: string; deb: number; cred: number; mes?: string };
   const linhas: Linha[] = [];
 
+  // 1) Créditos explícitos em conta corrente
   for (const d of row.detalheCreditos) {
     linhas.push({
       data: d.data || "",
       hist: (d.descricao || "Crédito em conta").replace(/</g, ""),
       deb: 0,
       cred: Number(d.valor) || 0,
+      mes: d.mes,
     });
   }
-  for (const m of row.mesesPago) {
+
+  // 2) Propinas pagas — mês a mês com montante real
+  const pagos = [...(row.pagamentosDetalhe || [])].sort((a, b) =>
+    (a.mes || "").localeCompare(b.mes || ""),
+  );
+  for (const p of pagos) {
+    const valor = Number(p.valor) || 0;
+    if (valor <= 0) continue;
     linhas.push({
-      data: "",
-      hist: `Propina ${labelMes(m)} — liquidada`,
+      data: p.data || "",
+      hist: `Propina ${labelMes(p.mes)} — liquidada`,
       deb: 0,
-      cred: 0,
+      cred: valor,
+      mes: p.mes,
     });
   }
+
+  // Fallback: meses marcados sem valor (mostrar tarifa se conhecida)
+  if (pagos.length === 0) {
+    for (const m of row.mesesPago) {
+      const valor = row.tarifa > 0 ? row.tarifa : 0;
+      linhas.push({
+        data: "",
+        hist: `Propina ${labelMes(m)} — liquidada`,
+        deb: 0,
+        cred: valor,
+        mes: m,
+      });
+    }
+  }
+
   if (linhas.length === 0) {
     linhas.push({ data: hoje, hist: "Sem movimentos no período", deb: 0, cred: 0 });
   }
 
   let run = 0;
+  let totalCred = 0;
+  let totalDeb = 0;
   const movRows = linhas
     .map((l) => {
       run += l.cred - l.deb;
+      totalCred += l.cred;
+      totalDeb += l.deb;
       return `<tr>
         <td>${l.data || "—"}</td>
         <td>${l.hist}</td>
@@ -130,79 +165,147 @@ function folhaCreditoHtml(
     })
     .join("");
 
+  // Resumo mensal (meses separados)
+  const porMes = new Map<string, number>();
+  for (const p of pagos) {
+    const k = p.mes || "";
+    porMes.set(k, (porMes.get(k) || 0) + (Number(p.valor) || 0));
+  }
+  if (porMes.size === 0) {
+    for (const m of row.mesesPago) {
+      porMes.set(m, row.tarifa > 0 ? row.tarifa : 0);
+    }
+  }
+  const resumoMeses = [...porMes.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(
+      ([m, v]) =>
+        `<tr>
+          <td>${labelMes(m)}</td>
+          <td class="n">${v > 0 ? formatKz(v) : "—"}</td>
+          <td>${v > 0 ? "Liquidado" : "—"}</td>
+        </tr>`,
+    )
+    .join("");
+
   const situacao =
     row.temExcedente && row.totalExcedente > 0
       ? `Excedente ${formatKz(row.totalExcedente)}`
       : row.temAdiantado
         ? `${row.nMesesPago} mensalidades liquidadas (adiantado)`
         : row.nMesesPago
-          ? `${row.nMesesPago} mensalidade liquidada`
-          : "Sem saldo";
+          ? `${row.nMesesPago} mensalidade(s) liquidada(s)`
+          : "Sem movimentos de propina";
+
+  const totalPago =
+    row.totalPago > 0
+      ? row.totalPago
+      : [...porMes.values()].reduce((s, v) => s + v, 0) +
+        row.detalheCreditos.reduce((s, d) => s + (Number(d.valor) || 0), 0);
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
 <title>Extracto de conta corrente — ${row.nome}</title>
 <style>
-@page { size: A4; margin: 16mm 16mm 18mm; }
+@page { size: A4; margin: 14mm 14mm 16mm; }
 * { box-sizing: border-box; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #111; margin: 0; }
-.top { border-bottom: 1.5pt solid #111; padding-bottom: 8px; margin-bottom: 14px; }
-.top .esc { font-size: 9pt; letter-spacing: 0.04em; text-transform: uppercase; }
-.top .tit { font-size: 13pt; font-weight: 700; margin-top: 4px; }
-.top .sub { font-size: 9pt; color: #444; margin-top: 2px; }
-.id { width: 100%; border-collapse: collapse; margin: 0 0 14px; }
-.id td { border: 0.6pt solid #111; padding: 6px 8px; vertical-align: top; }
-.id .lb { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #444; display: block; margin-bottom: 2px; }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #111; margin: 0; }
+.hdr { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #14532d; padding-bottom: 10px; margin-bottom: 12px; }
+.hdr img { height: 56px; width: 56px; object-fit: contain; }
+.hdr .esc { font-size: 9pt; letter-spacing: 0.03em; text-transform: uppercase; color: #14532d; font-weight: 700; }
+.hdr .tit { font-size: 14pt; font-weight: 700; margin-top: 2px; }
+.hdr .sub { font-size: 9pt; color: #555; margin-top: 2px; }
+.id { width: 100%; border-collapse: collapse; margin: 0 0 12px; }
+.id td { border: 0.7pt solid #333; padding: 6px 8px; vertical-align: top; }
+.id .lb { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #555; display: block; margin-bottom: 2px; }
 .id .vl { font-size: 11pt; font-weight: 700; }
-table.mov { width: 100%; border-collapse: collapse; margin-top: 4px; }
-table.mov th { border: 0.6pt solid #111; background: #f3f3f3; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.04em; padding: 5px 6px; text-align: left; }
-table.mov td { border: 0.6pt solid #111; padding: 5px 6px; }
+h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: 0.06em; color: #14532d; margin: 14px 0 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }
+table.mov, table.res { width: 100%; border-collapse: collapse; }
+table.mov th, table.res th {
+  border: 0.7pt solid #333; background: #14532d; color: #fff;
+  font-size: 8pt; text-transform: uppercase; letter-spacing: 0.04em; padding: 5px 6px; text-align: left;
+}
+table.mov td, table.res td { border: 0.7pt solid #333; padding: 5px 6px; }
 .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tot td { font-weight: 700; background: #f3f3f3; }
-.nota { margin-top: 12px; font-size: 8.5pt; color: #333; line-height: 1.35; }
-.emi { margin-top: 28px; font-size: 9pt; }
+.tot td { font-weight: 700; background: #f0fdf4; }
+.nota { margin-top: 14px; font-size: 8.5pt; color: #444; line-height: 1.35; }
+.emi { margin-top: 18px; font-size: 9pt; text-align: right; color: #333; }
+.kpi { display: flex; gap: 10px; margin: 8px 0 12px; }
+.kpi div { flex: 1; border: 0.7pt solid #333; padding: 6px 8px; }
+.kpi .lb { font-size: 7.5pt; text-transform: uppercase; color: #555; }
+.kpi .vl { font-size: 12pt; font-weight: 700; }
 </style></head><body>
-  <header class="top">
-    <div class="esc">${escola.nome || "École Consulaire du Congo"} · ${escola.subtitulo || "Luanda"}</div>
-    <div class="tit">Extracto de conta corrente</div>
-    <div class="sub">Ano lectivo ${ano} · emitido em ${hoje}</div>
-  </header>
+  <div class="hdr">
+    ${logo ? `<img src="${logo}" alt=""/>` : ""}
+    <div>
+      <div class="esc">${(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda").replace(/</g, "")}</div>
+      <div class="tit">Extracto de conta corrente</div>
+      <div class="sub">Ano lectivo ${ano} · emitido em ${hoje}${(escola.subtitulo || "") ? " · " + String(escola.subtitulo).replace(/</g, "") : ""}</div>
+    </div>
+  </div>
 
   <table class="id">
     <tr>
-      <td style="width:70%"><span class="lb">Aluno</span><span class="vl">${row.nome}</span></td>
-      <td><span class="lb">Classe</span><span class="vl">${row.turma || "—"}</span></td>
+      <td style="width:62%"><span class="lb">Aluno</span><span class="vl">${row.nome.replace(/</g, "")}</span></td>
+      <td><span class="lb">Classe</span><span class="vl">${(row.turma || "—").replace(/</g, "")}</span></td>
     </tr>
     <tr>
       <td><span class="lb">Situação</span><span class="vl">${situacao}</span></td>
-      <td><span class="lb">Saldo</span><span class="vl">${formatKz(row.saldo)}</span></td>
+      <td><span class="lb">N.º aluno</span><span class="vl">${row.alunoId.replace(/</g, "")}</span></td>
     </tr>
   </table>
 
+  <div class="kpi">
+    <div><div class="lb">Tarifa mensal</div><div class="vl">${row.tarifa > 0 ? formatKz(row.tarifa) : "—"}</div></div>
+    <div><div class="lb">Total pago (propinas)</div><div class="vl">${formatKz(totalPago)}</div></div>
+    <div><div class="lb">Saldo conta corrente</div><div class="vl">${formatKz(row.saldo)}</div></div>
+  </div>
+
+  <h2>Movimentos</h2>
   <table class="mov">
     <thead>
       <tr>
-        <th style="width:18%">Data</th>
+        <th style="width:16%">Data</th>
         <th>Histórico</th>
-        <th class="n" style="width:16%">Débito</th>
-        <th class="n" style="width:16%">Crédito</th>
-        <th class="n" style="width:16%">Saldo</th>
+        <th class="n" style="width:15%">Débito</th>
+        <th class="n" style="width:15%">Crédito</th>
+        <th class="n" style="width:15%">Saldo</th>
       </tr>
     </thead>
     <tbody>
       ${movRows}
       <tr class="tot">
-        <td colspan="2">Saldo actual</td>
-        <td class="n">—</td>
-        <td class="n">—</td>
-        <td class="n">${formatKz(row.saldo)}</td>
+        <td colspan="2">Totais / saldo actual</td>
+        <td class="n">${totalDeb ? formatKz(totalDeb) : "—"}</td>
+        <td class="n">${totalCred ? formatKz(totalCred) : "—"}</td>
+        <td class="n">${formatKz(row.saldo > 0 ? row.saldo : run)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Resumo por mês (propinas)</h2>
+  <table class="res">
+    <thead>
+      <tr>
+        <th style="width:30%">Mês</th>
+        <th class="n" style="width:30%">Montante pago</th>
+        <th>Situação</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${resumoMeses || `<tr><td colspan="3" style="text-align:center;color:#666">Sem propinas liquidadas</td></tr>`}
+      <tr class="tot">
+        <td>Total</td>
+        <td class="n">${formatKz(totalPago)}</td>
+        <td>${row.nMesesPago} mês(es)</td>
       </tr>
     </tbody>
   </table>
 
   <p class="nota">
     Documento de acompanhamento da conta corrente do aluno (propinas).
-    O excedente é o valor recebido acima da tarifa do mês; as mensalidades
-    adiantadas constam como liquidadas e não constituem crédito adicional.
+    Os montantes por mês correspondem aos valores efectivamente registados no sistema.
+    O excedente é o valor recebido acima da tarifa do mês; as mensalidades adiantadas
+    constam como liquidadas e não constituem crédito adicional no banco.
   </p>
   <p class="emi">Departamento de Finanças</p>
 </body></html>`;
@@ -299,6 +402,34 @@ function ContaCorrentePage() {
 
       mesesPago.sort();
 
+      // Detalhe de pagamentos por mês (valores reais)
+      const pagamentosDetalhe: { mes: string; valor: number; data?: string }[] = [];
+      const tarifa =
+        Number((prop as { propina?: number } | undefined)?.propina) ||
+        Number((a as { propina?: number }).propina) ||
+        Number((a as { mensalidade1?: number }).mensalidade1) ||
+        0;
+      const pags = (prop as { pagamentos?: Record<string, number> } | undefined)?.pagamentos || {};
+      const pagsEm =
+        (prop as { pagamentosEm?: Record<string, string> } | undefined)?.pagamentosEm || {};
+      for (const [k, v] of Object.entries(pags)) {
+        const valor = Number(v) || 0;
+        if (valor <= 0) continue;
+        const mes = MES_LABEL[k] || (/^20\d{2}-\d{2}$/.test(k) ? k : k);
+        pagamentosDetalhe.push({
+          mes,
+          valor,
+          data: pagsEm[k] || "",
+        });
+      }
+      // Se oficiais sem valores em mensalidades, preencher com tarifa
+      if (pagamentosDetalhe.length === 0 && mesesPago.length > 0 && tarifa > 0) {
+        for (const m of mesesPago) {
+          pagamentosDetalhe.push({ mes: m, valor: tarifa, data: "" });
+        }
+      }
+      const totalPago = pagamentosDetalhe.reduce((s, p) => s + p.valor, 0);
+
       byId.set(a.id, {
         alunoId: a.id,
         nome: a.nome || a.id,
@@ -312,6 +443,9 @@ function ContaCorrentePage() {
         temExcedente,
         totalExcedente,
         temAdiantado,
+        tarifa,
+        pagamentosDetalhe,
+        totalPago,
       });
     }
 
@@ -335,6 +469,9 @@ function ContaCorrentePage() {
         temExcedente: cred > 0 && /excedente/i.test(m.descricao || ""),
         totalExcedente: /excedente/i.test(m.descricao || "") ? cred : 0,
         temAdiantado: false,
+        tarifa: 0,
+        pagamentosDetalhe: [],
+        totalPago: 0,
       });
     }
 
