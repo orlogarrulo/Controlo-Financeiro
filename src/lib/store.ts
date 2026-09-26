@@ -2440,7 +2440,7 @@ export const useFinance = create<Store>()(
             seguro: Number(patch.seguro || 0),
             extras: Number(patch.extras || 0),
             curso: Number(patch.curso || 0),
-            mensalidade1: Number(patch.mensalidade1 || m?.propina || 0),
+            mensalidade1: Number(patch.mensalidade1 || 0), // tarifa mens.propina ≠ propina paga
             dataPag: String(patch.dataPag || ""),
             bruto: Number(patch.bruto || 0),
             descPct: Number(patch.descPct || 0),
@@ -3730,7 +3730,7 @@ function stubAlunoFromTrace(
     seguro: Number(ov?.seguro || 0),
     extras: Number(ov?.extras || 0),
     curso: Number(ov?.curso || 0),
-    mensalidade1: Number(ov?.mensalidade1 || mens?.propina || 0),
+    mensalidade1: Number(ov?.mensalidade1 || 0), // NÃO usar mens.propina (é tarifa, não valor pago)
     dataPag: String(ov?.dataPag || bai?.dataPag || ""),
     bruto: Number(ov?.bruto || liquido || 0),
     descPct: Number(ov?.descPct || 0),

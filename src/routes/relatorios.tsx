@@ -385,9 +385,6 @@ function pagamentosDe(
     Number(prop?.propina) || Number(a.propina) || (mens1 > 0 && mesesP > 0 ? Math.round(mens1 / mesesP) : 0) || 0;
   const ordem = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
   const pags = prop?.pagamentos || {};
-  const liquido = Number(a.liquido) || 0;
-  const taxas = taxasMatricula(a);
-  const liquidoIncluiPropina = liquido > 0 && liquido > taxas + Math.max(tarifa, mens1, 1) * 0.5;
   const recibosAluno = recibosMap?.get(a.id);
 
   for (let i = 0; i < ordem.length; i++) {
@@ -396,25 +393,28 @@ function pagamentosDe(
     const pagoRaw = Number(pags[mesLetivo] || pags[keyIso] || 0);
     const reciboMes = recibosAluno?.get(mesLetivo);
 
-    // 0) RECIBO de propina emitido → prova de pagamento (prioridade)
+    // 0) RECIBO com rubrica de propina → prova (prioridade)
     if (reciboMes && reciboMes.valor > 0) {
-      out[keyIso] = Math.max(reciboMes.valor, pagoRaw, tarifa || 0);
+      out[keyIso] = reciboMes.valor;
       continue;
     }
 
-    // 1) Adiantamento explícito de propina na matrícula
+    // 1) Adiantamento explícito: mensalidade1 > 0 E mesesPropina cobre o mês
     if (mens1 > 0 && mesesP > 0 && i < mesesP) {
-      const valorMes = tarifa > 0 ? tarifa : Math.round(mens1 / mesesP) || mens1;
+      const valorMes = tarifa > 0 ? tarifa : Math.round(mens1 / Math.max(1, mesesP)) || mens1;
       out[keyIso] = pagoRaw > 0 ? pagoRaw : valorMes;
       continue;
     }
-    // 2) mensalidade1 > 0 e 1 mês implícito (Outubro)
+
+    // 2) mensalidade1 > 0 sem mesesPropina: só Outubro (1.ª propina na matrícula)
     if (mens1 > 0 && mesesP === 0 && i === 0) {
-      out[keyIso] = pagoRaw > 0 ? pagoRaw : mens1 >= (tarifa || mens1) * 0.5 ? (tarifa || mens1) : mens1;
+      out[keyIso] = pagoRaw > 0 ? pagoRaw : (tarifa > 0 ? Math.min(mens1, tarifa) || mens1 : mens1);
       continue;
     }
-    // 3) Pagamento em Propinas com evidência de propina
-    if (pagoRaw > 0 && (mens1 > 0 || liquidoIncluiPropina)) {
+
+    // 3) Grelha Propinas: SÓ conta se mensalidade1 > 0 (propina real na ficha).
+    //    Nunca usar pagoRaw sozinho — no seed muitos "out" foram eco da tarifa sem propina paga.
+    if (pagoRaw > 0 && mens1 > 0) {
       out[keyIso] = pagoRaw;
     }
   }
@@ -505,6 +505,8 @@ function RelatoriosPage() {
       return;
     }
     const mesKey = MES_LABEL[mesFiltro] || mesFiltro;
+    const seenIds = new Set<string>();
+    const seenNomes = new Set<string>();
     const rows = alunos
       .map((a) => {
         const pags = pagamentosDe(a, mensalidades, recibosMap);
@@ -512,6 +514,21 @@ function RelatoriosPage() {
         return { a, valor };
       })
       .filter((r) => r.valor > 0)
+      .filter((r) => {
+        // Evitar duplicados (mesmo ID ou mesmo nome normalizado)
+        const id = (r.a.id || "").trim();
+        const nome = (r.a.nome || "")
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+        if (id && seenIds.has(id)) return false;
+        if (nome && seenNomes.has(nome)) return false;
+        if (id) seenIds.add(id);
+        if (nome) seenNomes.add(nome);
+        return true;
+      })
       .sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
 
     const total = rows.reduce((s, r) => s + r.valor, 0);
@@ -546,6 +563,8 @@ function RelatoriosPage() {
       toast.message("A usar Outubro (1.ª mensalidade). Escolha outro mês no topo se preferir.");
     }
     const mesKey = MES_LABEL[mes] || mes;
+    const seenIds = new Set<string>();
+    const seenNomes = new Set<string>();
     const rows = alunos
       .map((a) => {
         const pags = pagamentosDe(a, mensalidades, recibosMap);
@@ -554,6 +573,20 @@ function RelatoriosPage() {
         return { a, valorPago, tarifa, pago: valorPago > 0 };
       })
       .filter((r) => !r.pago)
+      .filter((r) => {
+        const id = (r.a.id || "").trim();
+        const nome = (r.a.nome || "")
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+        if (id && seenIds.has(id)) return false;
+        if (nome && seenNomes.has(nome)) return false;
+        if (id) seenIds.add(id);
+        if (nome) seenNomes.add(nome);
+        return true;
+      })
       .sort((x, y) => x.a.nome.localeCompare(y.a.nome, "pt"));
 
     const totalDivida = rows.reduce((s, r) => s + (r.tarifa || 0), 0);

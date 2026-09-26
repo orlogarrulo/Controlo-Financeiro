@@ -6334,19 +6334,17 @@
       "turma": "CM2",
       "propina": 250000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 250000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-07-27"
-      },
+      "pagamentosEm": {},
       "obs": ""
     },
     {
@@ -6355,19 +6353,17 @@
       "turma": "CM2",
       "propina": 75000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 75000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-07-25"
-      },
+      "pagamentosEm": {},
       "obs": "pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6376,19 +6372,17 @@
       "turma": "4ème",
       "propina": 260000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 260000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-07-25"
-      },
+      "pagamentosEm": {},
       "obs": "Desconto inscrição (valor 135000)"
     },
     {
@@ -6397,19 +6391,17 @@
       "turma": "Maternelle P3",
       "propina": 170000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 170000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-07-25"
-      },
+      "pagamentosEm": {},
       "obs": "Desconto inscrição (valor 135000)"
     },
     {
@@ -6502,19 +6494,17 @@
       "turma": "CM2",
       "propina": 250000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 250000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-06"
-      },
+      "pagamentosEm": {},
       "obs": "Inscrição+Curso 06-08 · Seguro+ATL pagos 26-08-2026 por transferência"
     },
     {
@@ -6523,19 +6513,17 @@
       "turma": "Maternelle P2",
       "propina": 170000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 170000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-21"
-      },
+      "pagamentosEm": {},
       "obs": "Inscrição paga 21-08 · Seguro pago 26-08-2026"
     },
     {
@@ -6544,19 +6532,17 @@
       "turma": "Maternelle P3",
       "propina": 170000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 170000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-07"
-      },
+      "pagamentosEm": {},
       "obs": ""
     },
     {
@@ -6565,19 +6551,17 @@
       "turma": "Maternelle P1",
       "propina": 170000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 170000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-07"
-      },
+      "pagamentosEm": {},
       "obs": ""
     },
     {
@@ -6586,19 +6570,17 @@
       "turma": "CM2",
       "propina": 250000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 250000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-12"
-      },
+      "pagamentosEm": {},
       "obs": "Seguro próprio (externo)"
     },
     {
@@ -6607,19 +6589,17 @@
       "turma": "Maternelle P3",
       "propina": 170000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 170000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-12"
-      },
+      "pagamentosEm": {},
       "obs": "Seguro próprio (externo)"
     },
     {
@@ -6628,19 +6608,17 @@
       "turma": "6ème",
       "propina": 260000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 260000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-18"
-      },
+      "pagamentosEm": {},
       "obs": "Campanha promo até 10/set (−40% propinas) · Campanha promo até 10/set (−40% propinas)"
     },
     {
@@ -6649,19 +6627,17 @@
       "turma": "CM1",
       "propina": 250000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 250000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-18"
-      },
+      "pagamentosEm": {},
       "obs": "Campanha promo até 10/set (−40% propinas · 2 250 000,00 Kz → 1 215 000,00 Kz (−40% campanha (até 10/set), −10% 2 irmãos)) · Campanha promo até 10/set (−40% propinas) · Campanha promo até 10/set (−40% propinas) · Campanha promo até 10/set (−40% propinas)"
     },
     {
@@ -6670,19 +6646,17 @@
       "turma": "3ème",
       "propina": 260000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 260000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-20"
-      },
+      "pagamentosEm": {},
       "obs": "Seguro próprio (externo)"
     },
     {
@@ -6691,19 +6665,17 @@
       "turma": "3ème",
       "propina": 260000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 260000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-08-26"
-      },
+      "pagamentosEm": {},
       "obs": ""
     },
     {
@@ -6712,19 +6684,17 @@
       "turma": "Maternelle P3",
       "propina": 170000,
       "pagamentos": {
-        "abr": 0,
-        "dez": 0,
-        "fev": 0,
-        "jan": 0,
-        "jun": 0,
-        "mai": 0,
-        "mar": 0,
+        "out": 0,
         "nov": 0,
-        "out": 170000
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2021-04-25"
-      },
+      "pagamentosEm": {},
       "obs": "Seguro próprio (externo)"
     },
     {
@@ -6759,11 +6729,17 @@
       "turma": "5ème",
       "propina": 260000,
       "pagamentos": {
-        "out": 260000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-05"
-      },
+      "pagamentosEm": {},
       "obs": "Campanha promo até 10/set (−40% propinas) · Campanha promo até 10/set (−40% propinas) · Campanha promo até 10/set (−40% propinas) · Campanha promo até 10/set (−40% propinas)"
     },
     {
@@ -6801,11 +6777,17 @@
       "turma": "CM1",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-02"
-      },
+      "pagamentosEm": {},
       "obs": "pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Seguro próprio (externo)"
     },
     {
@@ -6814,11 +6796,17 @@
       "turma": "CM1",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-02"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6878,11 +6866,17 @@
       "turma": "5ème",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-04"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6891,11 +6885,17 @@
       "turma": "3ème",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-04"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6904,11 +6904,17 @@
       "turma": "CE1",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-04"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6917,11 +6923,17 @@
       "turma": "CE2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-07-21"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6930,11 +6942,17 @@
       "turma": "CE2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-07"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6943,11 +6961,17 @@
       "turma": "CM2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-07-23"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6956,11 +6980,17 @@
       "turma": "CM2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-07"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6969,11 +6999,17 @@
       "turma": "CP1",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-07-07"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -6982,11 +7018,17 @@
       "turma": "3ème",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-08"
-      },
+      "pagamentosEm": {},
       "obs": "pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Seguro próprio (externo)"
     },
     {
@@ -6995,11 +7037,17 @@
       "turma": "CM2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-08"
-      },
+      "pagamentosEm": {},
       "obs": "pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Seguro próprio (externo)"
     },
     {
@@ -7008,11 +7056,17 @@
       "turma": "4ème",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-07"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -7021,11 +7075,17 @@
       "turma": "CP2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-10"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -7034,11 +7094,17 @@
       "turma": "CP2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-10"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -7047,11 +7113,17 @@
       "turma": "CM2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-10"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -7118,11 +7190,17 @@
       "turma": "6ème",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-08"
-      },
+      "pagamentosEm": {},
       "obs": "pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Seguro próprio (externo)"
     },
     {
@@ -7131,11 +7209,17 @@
       "turma": "Maternelle P3",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-08"
-      },
+      "pagamentosEm": {},
       "obs": "Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027"
     },
     {
@@ -7144,11 +7228,17 @@
       "turma": "CE1",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0,
+        "nov": 0,
+        "dez": 0,
+        "jan": 0,
+        "fev": 0,
+        "mar": 0,
+        "abr": 0,
+        "mai": 0,
+        "jun": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-08"
-      },
+      "pagamentosEm": {},
       "obs": "pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Seguro próprio (externo)"
     },
     {
@@ -7157,12 +7247,10 @@
       "turma": "CE2",
       "propina": 75000,
       "pagamentos": {
-        "out": 75000
+        "out": 0
       },
-      "pagamentosEm": {
-        "out": "2026-09-16"
-      },
-      "obs": "Reposto a partir de rasto (propinas / BAI / ID antigo)· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Seguro próprio (externo)"
+      "pagamentosEm": {},
+      "obs": "Reposto a partir de rasto (propinas / BAI / ID antigo)· pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Transferido do Campus Cidade · pacote 82.000 / 99.000 / 127.000 Kz (matrícula+seguro+cartão) · propina 75.000 Kz · desconto irmãos 10%/15% · 2026-2027 · Seguro próprio (externo) · Corrigido: sem propina Outubro (só pacote matrícula)"
     },
     {
       "id": "5E-03",
