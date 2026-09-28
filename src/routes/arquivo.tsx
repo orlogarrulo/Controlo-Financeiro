@@ -19,6 +19,7 @@ import {
   Receipt,
   Search,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Kpi } from "@/components/kpi";
@@ -159,6 +160,7 @@ function ArquivoPage() {
   const deleted = useFinance((s) => s.alunosDeletedIds);
   const gerarReciboDeFatura = useFinance((s) => s.gerarReciboDeFatura);
   const updateDocumentoAluno = useFinance((s) => s.updateDocumentoAluno);
+  const removeDocumentoAluno = useFinance((s) => s.removeDocumentoAluno);
   const findDocumentoPorNumero = useFinance((s) => s.findDocumentoPorNumero);
 
   const seedLanc = getSeed().lancamentosSocio || [];
@@ -608,6 +610,26 @@ function ArquivoPage() {
                               <Archive className="size-3.5" />
                             </Button>
                           ) : null}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Apagar documento (irreversível)"
+                            className="text-red-700 hover:bg-red-50"
+                            onClick={() => {
+                              if (
+                                !confirm(
+                                  `Apagar ${d.tipo} ${d.numero} de ${d.alunoNome}?\nValor: ${formatKz(d.valor)}\n\nEsta acção não pode ser desfeita.`,
+                                )
+                              ) {
+                                return;
+                              }
+                              removeDocumentoAluno?.(d.id);
+                              if (detalhe?.id === d.id) setDetalhe(null);
+                              toast.success(`${d.tipo} ${d.numero} apagado.`);
+                            }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
                         </div>
                       </td>
                     </tr>

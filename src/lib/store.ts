@@ -352,6 +352,8 @@ type Store = ExtraState & {
     },
   ) => DocumentoAluno;
   updateDocumentoAluno: (id: string, patch: Partial<DocumentoAluno>) => void;
+  /** Remove documento do Arquivo (fatura ou recibo) e códigos de recibo associados. */
+  removeDocumentoAluno: (id: string) => void;
   findDocumentoPorNumero: (numero: string) => DocumentoAluno | undefined;
   /** Cria recibo a partir do n.º de fatura (Arquivo). */
   gerarReciboDeFatura: (faturaNumero: string) => DocumentoAluno | undefined;
@@ -2683,6 +2685,61 @@ export const useFinance = create<Store>()(
             r.id === id ? { ...r, ...patch } : r,
           ),
         });
+      },
+      removeDocumentoAluno: (id) => {
+        requireEdit(get);
+        const docs = get().documentosAluno || [];
+        const doc = docs.find((r) => r.id === id);
+        // Pode ser documento real ou legado sintético (faturasPropina / codigosRecibo)
+        const faturas = get().faturasPropina || [];
+        const codigos = get().codigosRecibo || [];
+        const fatLegacy = faturas.find(
+          (f) => f.id === id || `fat-legacy-${f.numero}` === id || f.numero === doc?.numero,
+        );
+        const codLegacy = codigos.find(
+          (c) =>
+            c.id === id ||
+            `rc-legacy-${c.codigo}` === id ||
+            (doc?.codigoVerificacao && c.codigo === doc.codigoVerificacao),
+        );
+
+        const label =
+          doc?.numero ||
+          fatLegacy?.numero ||
+          codLegacy?.codigo ||
+          id;
+        const alunoNome =
+          doc?.alunoNome || fatLegacy?.alunoNome || codLegacy?.alunoNome || "";
+        const valor = doc?.valor ?? fatLegacy?.valor ?? codLegacy?.valor ?? 0;
+        const tipo = doc?.tipo || (fatLegacy ? "fatura" : "recibo");
+
+        set({
+          documentosAluno: docs.filter((r) => r.id !== id),
+          faturasPropina: faturas.filter((f) => {
+            if (fatLegacy && (f.id === fatLegacy.id || f.numero === fatLegacy.numero))
+              return false;
+            if (doc && f.numero === doc.numero) return false;
+            return true;
+          }),
+          codigosRecibo: codigos.filter((c) => {
+            if (codLegacy && (c.id === codLegacy.id || c.codigo === codLegacy.codigo))
+              return false;
+            if (doc?.codigoVerificacao && c.codigo === doc.codigoVerificacao) return false;
+            if (
+              doc?.tipo === "recibo" &&
+              c.alunoId === doc.alunoId &&
+              c.mesKey === doc.mesKey &&
+              Number(c.valor) === Number(doc.valor)
+            ) {
+              return false;
+            }
+            return true;
+          }),
+        });
+        get().pushAudit(
+          "documento_aluno_apagar",
+          `Apagado ${tipo} ${label} · ${alunoNome} · ${valor}`,
+        );
       },
       findDocumentoPorNumero: (numero) => {
         const k = (numero || "").trim().toUpperCase().replace(/\s+/g, "");
