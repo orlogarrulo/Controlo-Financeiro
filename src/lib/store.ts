@@ -184,6 +184,11 @@ type ExtraState = {
   alunosDeletedIds: string[];
   /** IDs de movimentos BAI apagados (seed ou extra) — exclusão estável sem congelar o extrato. */
   movimentosBaiDeletedIds: string[];
+  /**
+   * Tombstones do Arquivo: ids, `num:NUMERO`, `cod:CODIGO`.
+   * Impede que o merge da nuvem volte a trazer documentos apagados.
+   */
+  documentosAlunoDeletedIds: string[];
   recibosSalario: ReciboSalario[];
   faturasPropina: { numero: string; alunoId?: string; mes?: string; valor?: number }[];
   /** Sobrescritas de salários do seed (por id). */
@@ -208,6 +213,49 @@ type ExtraState = {
   /** Créditos / aplicações / reembolsos por aluno (conta corrente). */
   contaCorrente: ContaCorrenteMov[];
 };
+
+/** Chaves de tombstone para um documento / fatura / código de recibo. */
+export function documentoTombstoneKeys(row: {
+  id?: string;
+  numero?: string;
+  codigoVerificacao?: string;
+  codigo?: string;
+  faturaNumero?: string;
+}): string[] {
+  const keys: string[] = [];
+  if (row.id) keys.push(String(row.id));
+  const num = (row.numero || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (num) {
+    keys.push(`num:${num}`);
+    keys.push(`fat-legacy-${row.numero}`);
+  }
+  const cod = (row.codigoVerificacao || row.codigo || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  if (cod) {
+    keys.push(`cod:${cod}`);
+    keys.push(`rc-legacy-${row.codigoVerificacao || row.codigo}`);
+  }
+  const fatNum = (row.faturaNumero || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (fatNum) keys.push(`num:${fatNum}`);
+  return keys.filter(Boolean);
+}
+
+export function isDocumentoApagado(
+  row: {
+    id?: string;
+    numero?: string;
+    codigoVerificacao?: string;
+    codigo?: string;
+    faturaNumero?: string;
+  },
+  deletedIds: string[] | undefined,
+): boolean {
+  if (!deletedIds?.length) return false;
+  const set = new Set(deletedIds);
+  return documentoTombstoneKeys(row).some((k) => set.has(k));
+}
 
 type Store = ExtraState & {
   addCaptura: (input: CapturaInput) => Lancamento;
@@ -563,6 +611,7 @@ export const useFinance = create<Store>()(
       salariosDeletedIds: [],
       alunosDeletedIds: [],
       movimentosBaiDeletedIds: [],
+      documentosAlunoDeletedIds: [],
       recibosSalario: [],
       faturasPropina: [],
       salariosOverrides: {},
@@ -2848,13 +2897,18 @@ export const useFinance = create<Store>()(
         const faturas = get().faturasPropina || [];
         const codigos = get().codigosRecibo || [];
         const fatLegacy = faturas.find(
-          (f) => f.id === id || `fat-legacy-${f.numero}` === id || f.numero === doc?.numero,
+          (f) =>
+            f.id === id ||
+            `fat-legacy-${f.numero}` === id ||
+            (doc?.numero && f.numero === doc.numero) ||
+            String(f.numero || "").toUpperCase() === String(id || "").toUpperCase(),
         );
         const codLegacy = codigos.find(
           (c) =>
             c.id === id ||
             `rc-legacy-${c.codigo}` === id ||
-            (doc?.codigoVerificacao && c.codigo === doc.codigoVerificacao),
+            (doc?.codigoVerificacao && c.codigo === doc.codigoVerificacao) ||
+            String(c.codigo || "").toUpperCase() === String(id || "").toUpperCase(),
         );
 
         const label =
@@ -2867,12 +2921,43 @@ export const useFinance = create<Store>()(
         const valor = doc?.valor ?? fatLegacy?.valor ?? codLegacy?.valor ?? 0;
         const tipo = doc?.tipo || (fatLegacy ? "fatura" : "recibo");
 
+        // Tombstones: id + número + código — a nuvem deixa de repor estes documentos
+        const tombstones = new Set([
+          ...(get().documentosAlunoDeletedIds || []),
+          ...documentoTombstoneKeys({
+            id,
+            numero: doc?.numero || fatLegacy?.numero,
+            codigoVerificacao: doc?.codigoVerificacao || codLegacy?.codigo,
+            faturaNumero: doc?.faturaNumero,
+          }),
+          ...(fatLegacy
+            ? documentoTombstoneKeys({
+                id: fatLegacy.id,
+                numero: fatLegacy.numero,
+              })
+            : []),
+          ...(codLegacy
+            ? documentoTombstoneKeys({
+                id: codLegacy.id,
+                codigo: codLegacy.codigo,
+                numero: codLegacy.codigo,
+              })
+            : []),
+        ]);
+
+        const deletedList = Array.from(tombstones);
+
         set({
-          documentosAluno: docs.filter((r) => r.id !== id),
+          documentosAlunoDeletedIds: deletedList,
+          documentosAluno: docs.filter(
+            (r) => r.id !== id && !isDocumentoApagado(r, deletedList),
+          ),
           faturasPropina: faturas.filter((f) => {
             if (fatLegacy && (f.id === fatLegacy.id || f.numero === fatLegacy.numero))
               return false;
             if (doc && f.numero === doc.numero) return false;
+            if (isDocumentoApagado({ id: f.id, numero: f.numero }, deletedList))
+              return false;
             return true;
           }),
           codigosRecibo: codigos.filter((c) => {
@@ -2887,6 +2972,8 @@ export const useFinance = create<Store>()(
             ) {
               return false;
             }
+            if (isDocumentoApagado({ id: c.id, codigo: c.codigo, numero: c.codigo }, deletedList))
+              return false;
             return true;
           }),
         });
@@ -3043,6 +3130,7 @@ export const useFinance = create<Store>()(
           crmEnvios: [],
           codigosRecibo: [],
           documentosAluno: [],
+          documentosAlunoDeletedIds: [],
           contaCorrente: [],
         });
       },
@@ -3156,6 +3244,7 @@ export const useFinance = create<Store>()(
         crmEnvios: s.crmEnvios || [],
         codigosRecibo: s.codigosRecibo || [],
         documentosAluno: s.documentosAluno || [],
+        documentosAlunoDeletedIds: s.documentosAlunoDeletedIds || [],
         contaCorrente: s.contaCorrente || [],
       }),
     },

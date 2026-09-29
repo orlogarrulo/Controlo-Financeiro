@@ -457,7 +457,33 @@ function applyPayload(p: FinanceCloudPayload) {
       ]),
     ),
     recibosSalario: mergeRecibosPreferPago(local.recibosSalario || [], p.recibosSalario || []),
-    faturasPropina: mergeById(local.faturasPropina || [], (p.faturasPropina as never[]) || []) as never[],
+    documentosAlunoDeletedIds: Array.from(
+      new Set([
+        ...((local.documentosAlunoDeletedIds as string[]) || []),
+        ...((p.documentosAlunoDeletedIds as string[]) || []),
+      ]),
+    ),
+    faturasPropina: (() => {
+      const deleted = Array.from(
+        new Set([
+          ...((local.documentosAlunoDeletedIds as string[]) || []),
+          ...((p.documentosAlunoDeletedIds as string[]) || []),
+        ]),
+      );
+      const merged = mergeById(
+        local.faturasPropina || [],
+        (p.faturasPropina as never[]) || [],
+      ) as { id?: string; numero?: string }[];
+      if (!deleted.length) return merged as never[];
+      const set = new Set(deleted);
+      return merged.filter((f) => {
+        if (f.id && set.has(f.id)) return false;
+        const num = (f.numero || "").trim().toUpperCase().replace(/\s+/g, "");
+        if (num && set.has(`num:${num}`)) return false;
+        if (f.numero && set.has(`fat-legacy-${f.numero}`)) return false;
+        return true;
+      }) as never[];
+    })(),
     uiPrefs: {
       ...(local.uiPrefs || {}),
       ...((p.uiPrefs as Record<string, string>) || {}),
@@ -470,14 +496,58 @@ function applyPayload(p: FinanceCloudPayload) {
       (local.crmEnvios as never[]) || [],
       (p.crmEnvios as never[]) || [],
     ) as never[],
-    codigosRecibo: mergeById(
-      (local.codigosRecibo as never[]) || [],
-      (p.codigosRecibo as never[]) || [],
-    ) as never[],
-    documentosAluno: mergeById(
-      (local.documentosAluno as never[]) || [],
-      (p.documentosAluno as never[]) || [],
-    ) as never[],
+    codigosRecibo: (() => {
+      const deleted = Array.from(
+        new Set([
+          ...((local.documentosAlunoDeletedIds as string[]) || []),
+          ...((p.documentosAlunoDeletedIds as string[]) || []),
+        ]),
+      );
+      const merged = mergeById(
+        (local.codigosRecibo as never[]) || [],
+        (p.codigosRecibo as never[]) || [],
+      ) as { id?: string; codigo?: string }[];
+      if (!deleted.length) return merged as never[];
+      const set = new Set(deleted);
+      return merged.filter((c) => {
+        if (c.id && set.has(c.id)) return false;
+        const cod = (c.codigo || "").trim().toUpperCase().replace(/\s+/g, "");
+        if (cod && set.has(`cod:${cod}`)) return false;
+        if (c.codigo && set.has(`rc-legacy-${c.codigo}`)) return false;
+        return true;
+      }) as never[];
+    })(),
+    documentosAluno: (() => {
+      const deleted = Array.from(
+        new Set([
+          ...((local.documentosAlunoDeletedIds as string[]) || []),
+          ...((p.documentosAlunoDeletedIds as string[]) || []),
+        ]),
+      );
+      const merged = mergeById(
+        (local.documentosAluno as never[]) || [],
+        (p.documentosAluno as never[]) || [],
+      ) as {
+        id?: string;
+        numero?: string;
+        codigoVerificacao?: string;
+        faturaNumero?: string;
+      }[];
+      if (!deleted.length) return merged as never[];
+      const set = new Set(deleted);
+      return merged.filter((d) => {
+        if (d.id && set.has(d.id)) return false;
+        const num = (d.numero || "").trim().toUpperCase().replace(/\s+/g, "");
+        if (num && set.has(`num:${num}`)) return false;
+        if (d.numero && set.has(`fat-legacy-${d.numero}`)) return false;
+        const cod = (d.codigoVerificacao || "").trim().toUpperCase().replace(/\s+/g, "");
+        if (cod && set.has(`cod:${cod}`)) return false;
+        if (d.codigoVerificacao && set.has(`rc-legacy-${d.codigoVerificacao}`)) return false;
+        const fatNum = (d.faturaNumero || "").trim().toUpperCase().replace(/\s+/g, "");
+        if (fatNum && set.has(`num:${fatNum}`)) return false;
+        return true;
+      }) as never[];
+    })(),
     contaCorrente: mergeById(
       (local.contaCorrente as never[]) || [],
       (p.contaCorrente as never[]) || [],

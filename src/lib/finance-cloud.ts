@@ -35,6 +35,8 @@ export type FinanceCloudPayload = {
   crmEnvios?: unknown[];
   codigosRecibo?: unknown[];
   documentosAluno?: unknown[];
+  /** Tombstones: ids, num:NUMERO, cod:CODIGO — não repor no merge. */
+  documentosAlunoDeletedIds?: string[];
   contaCorrente?: unknown[];
   clientUpdatedAt?: string;
 };
@@ -143,6 +145,39 @@ function mergeById(existing: unknown[] | undefined, incoming: unknown[] | undefi
   return Array.from(map.values());
 }
 
+/** Filtra documentos/faturas/códigos marcados como apagados (tombstones). */
+function filterDocsDeleted(
+  rows: unknown[] | undefined,
+  deletedIds: string[] | undefined,
+): unknown[] {
+  if (!rows?.length) return rows || [];
+  if (!deletedIds?.length) return rows;
+  const set = new Set(deletedIds);
+  return rows.filter((raw) => {
+    const r = raw as {
+      id?: string;
+      numero?: string;
+      codigo?: string;
+      codigoVerificacao?: string;
+      faturaNumero?: string;
+    };
+    if (r.id && set.has(r.id)) return false;
+    const num = (r.numero || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (num && set.has(`num:${num}`)) return false;
+    if (r.numero && set.has(`fat-legacy-${r.numero}`)) return false;
+    const cod = (r.codigoVerificacao || r.codigo || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    if (cod && set.has(`cod:${cod}`)) return false;
+    if ((r.codigoVerificacao || r.codigo) && set.has(`rc-legacy-${r.codigoVerificacao || r.codigo}`))
+      return false;
+    const fatNum = (r.faturaNumero || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (fatNum && set.has(`num:${fatNum}`)) return false;
+    return true;
+  });
+}
+
 function unionIds(a?: string[], b?: string[]): string[] {
   return Array.from(new Set([...(a || []), ...(b || [])]));
 }
@@ -210,11 +245,24 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
       },
       salariosDeletedIds: unionIds(current.salariosDeletedIds, data.salariosDeletedIds),
       recibosSalario: mergeById(current.recibosSalario, data.recibosSalario),
-      faturasPropina: mergeById(current.faturasPropina, data.faturasPropina),
+      documentosAlunoDeletedIds: unionIds(
+        current.documentosAlunoDeletedIds,
+        data.documentosAlunoDeletedIds,
+      ),
+      faturasPropina: filterDocsDeleted(
+        mergeById(current.faturasPropina, data.faturasPropina),
+        unionIds(current.documentosAlunoDeletedIds, data.documentosAlunoDeletedIds),
+      ),
       inboxItems: mergeById(current.inboxItems, data.inboxItems),
       crmEnvios: mergeById(current.crmEnvios, data.crmEnvios),
-      codigosRecibo: mergeById(current.codigosRecibo, data.codigosRecibo),
-      documentosAluno: mergeById(current.documentosAluno, data.documentosAluno),
+      codigosRecibo: filterDocsDeleted(
+        mergeById(current.codigosRecibo, data.codigosRecibo),
+        unionIds(current.documentosAlunoDeletedIds, data.documentosAlunoDeletedIds),
+      ),
+      documentosAluno: filterDocsDeleted(
+        mergeById(current.documentosAluno, data.documentosAluno),
+        unionIds(current.documentosAlunoDeletedIds, data.documentosAlunoDeletedIds),
+      ),
       contaCorrente: mergeById(current.contaCorrente, data.contaCorrente),
       auditLog: mergeById(current.auditLog, data.auditLog).slice(-200),
       sessionLog: (data.sessionLog?.length ? data.sessionLog : current.sessionLog) || [],
@@ -317,6 +365,7 @@ export function sliceFromStoreDetailed(s: {
   crmEnvios?: unknown[];
   codigosRecibo?: unknown[];
   documentosAluno?: unknown[];
+  documentosAlunoDeletedIds?: string[];
   contaCorrente?: unknown[];
 }): SliceCloudResult {
   const { list: alunosExtraSafe, omitted: o1 } = stripLargeFotosFromAlunos(
@@ -355,6 +404,7 @@ export function sliceFromStoreDetailed(s: {
       crmEnvios: s.crmEnvios || [],
       codigosRecibo: s.codigosRecibo || [],
       documentosAluno: s.documentosAluno || [],
+      documentosAlunoDeletedIds: s.documentosAlunoDeletedIds || [],
       contaCorrente: s.contaCorrente || [],
     },
   };

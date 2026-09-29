@@ -80,18 +80,46 @@ function estadoTone(e: DocumentoAlunoEstado): string {
   return "border border-[var(--color-line)]";
 }
 
-/** Une documentos novos + legados (faturasPropina + codigosRecibo). */
+/** Une documentos novos + legados (faturasPropina + codigosRecibo), excluindo tombstones. */
 function buildVistaDocumentos(
   docs: DocumentoAluno[],
   faturas: FaturaPropina[],
   codigos: CodigoRecibo[],
+  deletedIds: string[] = [],
 ): DocumentoAluno[] {
+  const del = new Set(deletedIds || []);
+  const isDeleted = (row: {
+    id?: string;
+    numero?: string;
+    codigoVerificacao?: string;
+    codigo?: string;
+  }) => {
+    if (!del.size) return false;
+    if (row.id && del.has(row.id)) return true;
+    const num = (row.numero || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (num && del.has(`num:${num}`)) return true;
+    if (row.numero && del.has(`fat-legacy-${row.numero}`)) return true;
+    const cod = (row.codigoVerificacao || row.codigo || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    if (cod && del.has(`cod:${cod}`)) return true;
+    if (
+      (row.codigoVerificacao || row.codigo) &&
+      del.has(`rc-legacy-${row.codigoVerificacao || row.codigo}`)
+    )
+      return true;
+    return false;
+  };
+
   const byKey = new Map<string, DocumentoAluno>();
   for (const d of docs) {
+    if (isDeleted(d)) continue;
     byKey.set(`doc:${d.id}`, d);
     byKey.set(`num:${(d.numero || "").toUpperCase()}`, d);
   }
   for (const f of faturas) {
+    if (isDeleted({ id: f.id, numero: f.numero })) continue;
     const num = (f.numero || "").toUpperCase();
     if (byKey.has(`num:${num}`)) continue;
     const synthetic: DocumentoAluno = {
@@ -108,10 +136,12 @@ function buildVistaDocumentos(
       estado: "emitido",
       emitidoEm: f.emitidoEm,
     };
+    if (isDeleted(synthetic)) continue;
     byKey.set(`doc:${synthetic.id}`, synthetic);
     byKey.set(`num:${num}`, synthetic);
   }
   for (const c of codigos) {
+    if (isDeleted({ id: c.id, codigo: c.codigo, numero: c.codigo })) continue;
     const codeU = (c.codigo || "").toUpperCase();
     if ([...byKey.values()].some((d) => (d.codigoVerificacao || "").toUpperCase() === codeU)) {
       continue;
@@ -137,12 +167,14 @@ function buildVistaDocumentos(
       codigoVerificacao: c.codigo,
       emitidoEm: c.emitidoEm,
     };
+    if (isDeleted(synthetic)) continue;
     byKey.set(`rc:${codeU}`, synthetic);
   }
   const seen = new Set<string>();
   const out: DocumentoAluno[] = [];
   for (const d of byKey.values()) {
     if (seen.has(d.id)) continue;
+    if (isDeleted(d)) continue;
     seen.add(d.id);
     out.push(d);
   }
@@ -155,6 +187,7 @@ function ArquivoPage() {
   const faturasPropina = (useFinance((s) => s.faturasPropina || []) || []) as FaturaPropina[];
   const codigosRecibo = (useFinance((s) => s.codigosRecibo || []) || []) as CodigoRecibo[];
   const documentosAluno = (useFinance((s) => s.documentosAluno || []) || []) as DocumentoAluno[];
+  const documentosAlunoDeletedIds = useFinance((s) => s.documentosAlunoDeletedIds || []);
   const extraA = useFinance((s) => s.alunosExtra);
   const overrides = useFinance((s) => s.alunosOverrides);
   const deleted = useFinance((s) => s.alunosDeletedIds);
@@ -179,8 +212,14 @@ function ArquivoPage() {
   const [syncing, setSyncing] = useState(false);
 
   const documentos = useMemo(
-    () => buildVistaDocumentos(documentosAluno, faturasPropina, codigosRecibo),
-    [documentosAluno, faturasPropina, codigosRecibo],
+    () =>
+      buildVistaDocumentos(
+        documentosAluno,
+        faturasPropina,
+        codigosRecibo,
+        documentosAlunoDeletedIds,
+      ),
+    [documentosAluno, faturasPropina, codigosRecibo, documentosAlunoDeletedIds],
   );
 
   const filtrados = useMemo(() => {
