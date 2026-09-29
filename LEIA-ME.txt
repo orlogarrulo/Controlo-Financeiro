@@ -1,0 +1,1 @@
+Matriculas -> Exportar censo JSON. Depois envie o ficheiro para actualizar seed.json (59 alunos).

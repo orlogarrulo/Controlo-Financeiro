@@ -1,6 +1,6 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 // navigate used to clear deep-link search
-import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText, Calendar, IdCard } from "lucide-react";
+import { Pencil, Printer, Plus, UserPlus, Mail, FileText, Receipt, ScrollText, Calendar, IdCard, Download } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
@@ -3748,6 +3748,44 @@ function Alunos() {
                 <UserPlus className="mr-1 size-4" /> Nova matrícula
               </Button>
             ) : null}
+            <Button
+              className="shrink-0"
+              variant="secondary"
+              title="Descarrega JSON com todos os alunos e propinas (para actualizar seed.json no GitHub)"
+              onClick={() => {
+                try {
+                  const stripFoto = (a: (typeof alunos)[0]) => {
+                    const { foto: _f, ...rest } = a as { foto?: string } & typeof a;
+                    return rest;
+                  };
+                  const payload = {
+                    exportadoEm: new Date().toISOString(),
+                    totalAlunos: alunos.length,
+                    alunos: alunos.map(stripFoto),
+                    mensalidades: (mensalidades || []).filter((m) =>
+                      alunos.some((a) => a.id === m.id),
+                    ),
+                    alunosDeletedIds: deletedAlunos || [],
+                  };
+                  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+                    type: "application/json;charset=utf-8",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `censo-matriculas-${alunos.length}-alunos-${new Date().toISOString().slice(0, 10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success(
+                    `Censo exportado · ${alunos.length} aluno(s) · JSON descarregado`,
+                  );
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Falha ao exportar censo");
+                }
+              }}
+            >
+              <Download className="mr-1 size-4" /> Exportar censo JSON
+            </Button>
             <Button
               className="shrink-0"
               variant="secondary"
