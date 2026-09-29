@@ -1,1 +1,15 @@
-Matriculas -> Exportar censo JSON. Depois envie o ficheiro para actualizar seed.json (59 alunos).
+SEED actualizado — 59 alunos (2026-09-29)
+
+1. Substituir no projecto:
+   src/data/seed.json
+
+2. Commit + Push → deploy Vercel
+
+3. Em TODOS os PCs: hard refresh (Ctrl+Shift+R)
+
+4. Confirmar em Matrículas: 59 alunos
+
+Notas:
+- Pedro Canelas (CM2-02): propina 75 000; Out e Nov = 75 000 no seed
+- Hazail (P3-01) e Nathaniel (4E-01): só inscrição no seed (propinas mensais a 0)
+- alunosDeletedIds do censo vivo NÃO vão no seed (ficam na nuvem/local)
