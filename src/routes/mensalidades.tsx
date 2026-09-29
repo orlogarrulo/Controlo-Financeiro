@@ -57,8 +57,12 @@ function Mensalidades() {
   const setMensalidade = useFinance((s) => s.setMensalidade);
   const confirmPropinaBai = useFinance((s) => s.confirmPropinaBai);
   const aplicarCreditoPropina = useFinance((s) => s.aplicarCreditoPropina);
+  const addDocumentoAluno = useFinance((s) => s.addDocumentoAluno);
+  const addCodigoRecibo = useFinance((s) => s.addCodigoRecibo);
+  const documentosAluno = useFinance((s) => s.documentosAluno || []);
   const contaCorrente = useFinance((s) => s.contaCorrente || []);
   const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
+  const syncPropinasFromRecibos = useFinance((s) => s.syncPropinasFromRecibos);
   const reporPropinasFromMatriculas = useFinance((s) => s.reporPropinasFromMatriculas);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
   const activeOperator = useFinance((s) => s.activeOperator);
@@ -183,11 +187,18 @@ function Mensalidades() {
     }
   }
 
-  /** Recibo PDF da propina de um mês (só se valor > 0). */
+  /** Recibo PDF da propina de um mês (só se valor > 0).
+   * Também regista no Arquivo e garante que o mês fica como pago em Propinas. */
   async function abrirReciboPropina(id: string, mes: string, valor: number) {
     if (!(valor > 0)) {
       toast.message("Introduza e confirme o valor do mês (BAI) antes de emitir o recibo.");
       return;
+    }
+    // Garantir que o valor está gravado em pagamentos (pode ter sido só digitado)
+    const rowNow = rows.find((r) => r.id === id);
+    const jaPago = Number(rowNow?.pagamentos?.[mes] || 0);
+    if (jaPago !== valor) {
+      setMensalidade(id, mes, valor);
     }
     const meta = alunoMetaById.get(id);
     const row = rows.find((r) => r.id === id);
@@ -200,7 +211,6 @@ function Mensalidades() {
       recibo: "",
       statusPag: "pago" as const,
     };
-    // Prefer full aluno from alunosAll if available
     const all = alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds);
     const aluno = all.find((a) => a.id === id) || (alunoBase as import("@/data/types").Aluno);
     const mesLabel =
@@ -213,6 +223,7 @@ function Mensalidades() {
       };
       return map[mes] || `2026-${mes}`;
     })();
+    const numeroRecibo = `REC-PROP-${id}-${mes.toUpperCase()}`;
     try {
       const doc = documentoReciboComCodigo(aluno, {
         modo: "recibo",
@@ -220,17 +231,51 @@ function Mensalidades() {
         mesLetivo: mes,
         mesRef: mesLabel,
         mesKey,
-        numero: `REC-PROP-${id}-${mes.toUpperCase()}`,
+        numero: numeroRecibo,
         pagoMes: valor,
         contacto: loadContacto(),
       });
+      // Registar no Arquivo (evita recibo “só PDF” sem histórico)
+      const jaNoArquivo = (documentosAluno as { numero?: string; alunoId?: string; mesKey?: string }[]).some(
+        (d) =>
+          d.numero === numeroRecibo ||
+          (d.alunoId === id && d.mesKey === mesKey && /propina|PROP/i.test(String(d.numero || ""))),
+      );
+      if (!jaNoArquivo && addDocumentoAluno) {
+        const codigo = doc.codigoVerificacao || "";
+        if (codigo && addCodigoRecibo) {
+          addCodigoRecibo({
+            alunoId: id,
+            alunoNome: aluno.nome,
+            mesKey,
+            valor,
+            rubricas: `Propina ${mesLabel}`,
+            codigo,
+          });
+        }
+        addDocumentoAluno({
+          tipo: "recibo",
+          modelo: "propina_mes",
+          numero: numeroRecibo,
+          alunoId: id,
+          alunoNome: aluno.nome,
+          mesKey,
+          mesRef: mesLabel,
+          valor,
+          linhas: [{ key: "propina", label: `Propina ${mesLabel}`, value: valor, on: true }],
+          estado: "emitido",
+          codigoVerificacao: codigo || undefined,
+          pagoEm: new Date().toISOString().slice(0, 10),
+          criadoPor: activeOperator,
+        });
+      }
       const { blob } = await htmlToPdfBlobDuasVias(doc.html, {
         filename: `Recibo-Propina-${id}-${mes}.pdf`,
       });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       toast.success(
-        `Recibo de propina (${mesLabel}) · ${formatKz(valor)} · ${doc.codigoVerificacao}`,
+        `Recibo de propina (${mesLabel}) · ${formatKz(valor)} · ${doc.codigoVerificacao} · Propinas actualizado`,
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar recibo");
@@ -242,6 +287,28 @@ function Mensalidades() {
       <PageHeader
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {canEdit ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                title="Marca em Propinas os meses que já têm recibo/fatura de propina no Arquivo"
+                onClick={() => {
+                  try {
+                    const n = syncPropinasFromRecibos?.() ?? 0;
+                    toast.success(
+                      n > 0
+                        ? `${n} recibo(s)/fatura(s) de propina aplicados ao quadro de Propinas.`
+                        : "Nenhum recibo de propina pendente de sincronizar.",
+                    );
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Falha ao sincronizar");
+                  }
+                }}
+              >
+                <Receipt className="mr-1 size-3.5" />
+                Sincronizar recibos → Propinas
+              </Button>
+            ) : null}
             <PrintActions
               targetRef={printRef}
               filename="propinas.pdf"

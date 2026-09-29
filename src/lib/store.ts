@@ -216,6 +216,8 @@ type Store = ExtraState & {
   setMensalidade: (id: string, mes: string, valor: number) => void;
   /** Garante que todos os alunos activos têm linha em Propinas (backfill). */
   syncPropinasFromMatriculas: () => number;
+  /** Aplica recibos/faturas de propina já no Arquivo ao quadro de Propinas. */
+  syncPropinasFromRecibos: () => number;
   /**
    * Repõe Propinas = 1 linha por aluno activo em Matrículas.
    * Remove órfãos / IDs duplicados e funde pagamentos.
@@ -366,6 +368,113 @@ const initialMensalidades: Mensalidade[] = seed.mensalidades;
 const MES_LETIVO_IDX: Record<string, number> = {
   set: 8, out: 9, nov: 10, dez: 11, jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
 };
+
+/** mesKey civil "2026-10" ou "2026-10-01" → mês lectivo "out". */
+function mesKeyCivilToLetivo(mesKey?: string): string | null {
+  if (!mesKey) return null;
+  const s = String(mesKey).trim();
+  // Já é código lectivo?
+  if (/^(set|out|nov|dez|jan|fev|mar|abr|mai|jun)$/i.test(s)) return s.toLowerCase();
+  const m = s.match(/(?:^|-)(\d{2})(?:-|$)/);
+  // Preferir o mês: YYYY-MM ou YYYY-MM-DD
+  const parts = s.split("-");
+  let mm = "";
+  if (parts.length >= 2 && parts[0].length === 4) mm = parts[1];
+  else if (m) mm = m[1];
+  const map: Record<string, string> = {
+    "09": "set", "10": "out", "11": "nov", "12": "dez",
+    "01": "jan", "02": "fev", "03": "mar", "04": "abr", "05": "mai", "06": "jun",
+  };
+  return map[mm] || null;
+}
+
+/**
+ * Marca propina como paga em mensalidades a partir de um recibo/fatura de propina.
+ * Não cria movimento BAI (só sincroniza o quadro de Propinas).
+ * Setembro → Outubro (política 1.ª propina).
+ */
+function aplicarPagamentoPropinaLocal(
+  get: () => Store,
+  set: (partial: Partial<Store> | ((s: Store) => Partial<Store>)) => void,
+  opts: {
+    alunoId: string;
+    mesLetivo?: string | null;
+    mesKey?: string;
+    valor: number;
+    dataPag?: string;
+  },
+): { ok: boolean; mes?: string; message: string } {
+  const alunoId = String(opts.alunoId || "").trim();
+  if (!alunoId) return { ok: false, message: "Sem alunoId." };
+  let mes =
+    (opts.mesLetivo && String(opts.mesLetivo).toLowerCase()) ||
+    mesKeyCivilToLetivo(opts.mesKey) ||
+    null;
+  if (mes === "set") mes = "out";
+  if (!mes || !(MESES_LETIVOS as readonly string[]).includes(mes)) {
+    return { ok: false, message: `Mês inválido (${opts.mesKey || opts.mesLetivo || "—"}).` };
+  }
+  const valor = Math.round(Number(opts.valor) || 0);
+  if (valor <= 0) return { ok: false, message: "Valor ≤ 0." };
+  const dataPag = (opts.dataPag || new Date().toISOString().slice(0, 10)).slice(0, 10);
+
+  const mens = get().mensalidades || [];
+  const row = mens.find((m) => m.id === alunoId);
+  if (!row) {
+    // Criar linha em Propinas se ainda não existir
+    const alunos = alunosAll(
+      get().alunosExtra || [],
+      get().alunosOverrides || {},
+      get().alunosDeletedIds || [],
+    );
+    const a = alunos.find((x) => x.id === alunoId);
+    const propMes =
+      Number(a?.propina) ||
+      tarifaPropinaAluno({ propina: a?.propina, turma: a?.turma }) ||
+      valor;
+    set({
+      mensalidades: [
+        ...mens,
+        {
+          id: alunoId,
+          nome: a?.nome || alunoId,
+          turma: a?.turma || "",
+          propina: propMes,
+          pagamentos: { [mes]: valor },
+          pagamentosEm: { [mes]: dataPag },
+          obs: a?.obs || "",
+        } as import("@/data/types").Mensalidade,
+      ],
+    });
+    return { ok: true, mes, message: `Propina ${mes} · ${valor} Kz (linha criada).` };
+  }
+
+  const ja = Number(row.pagamentos?.[mes] || 0);
+  // Não reduzir um valor já registado maior; só preencher ou actualizar se igual/maior
+  if (ja > 0 && ja !== valor) {
+    // Se já há pagamento, manter o maior (evita sobrescrever confirmação BAI com recibo parcial)
+    const next = Math.max(ja, valor);
+    if (next === ja) {
+      return { ok: true, mes, message: `Propina ${mes} já tinha ${ja} Kz.` };
+    }
+  }
+  set({
+    mensalidades: mens.map((m) =>
+      m.id === alunoId
+        ? {
+            ...m,
+            pagamentos: { ...m.pagamentos, [mes]: Math.max(ja, valor) },
+            pagamentosEm: { ...(m.pagamentosEm || {}), [mes]: dataPag },
+          }
+        : m,
+    ),
+  });
+  return {
+    ok: true,
+    mes,
+    message: `Propina ${mes} · ${Math.max(ja, valor)} Kz actualizada em Propinas.`,
+  };
+}
 
 /**
  * Prazo de pagamento da propina do mês lectivo:
@@ -1334,12 +1443,57 @@ export const useFinance = create<Store>()(
       setMensalidade: (id, mes, valor) => {
         requireEdit(get);
         const nextVal = Number(valor) || 0;
+        const hoje = new Date().toISOString().slice(0, 10);
         set({
           mensalidades: get().mensalidades.map((m) =>
-            m.id === id ? { ...m, pagamentos: { ...m.pagamentos, [mes]: nextVal } } : m,
+            m.id === id
+              ? {
+                  ...m,
+                  pagamentos: { ...m.pagamentos, [mes]: nextVal },
+                  pagamentosEm: {
+                    ...(m.pagamentosEm || {}),
+                    ...(nextVal > 0 ? { [mes]: m.pagamentosEm?.[mes] || hoje } : {}),
+                  },
+                }
+              : m,
           ),
         });
         get().pushAudit("propina", `${id} · ${mes} · ${nextVal}`);
+      },
+      /** Marca em Propinas os meses que já têm recibo/fatura de propina no Arquivo. */
+      syncPropinasFromRecibos: () => {
+        requireEdit(get);
+        let n = 0;
+        const docs = get().documentosAluno || [];
+        for (const d of docs) {
+          const isPropina =
+            d.modelo === "propina_mes" ||
+            /propina|PROP-/i.test(String(d.numero || "") + String(d.modelo || ""));
+          if (!isPropina) continue;
+          if (!(Number(d.valor) > 0) || !d.alunoId) continue;
+          // Preferir recibos; se só há fatura confirmada/paga, também conta
+          if (d.tipo === "fatura" && d.estado !== "confirmado" && !d.pagoEm) continue;
+          const r = aplicarPagamentoPropinaLocal(get, set, {
+            alunoId: d.alunoId,
+            mesKey: d.mesKey,
+            valor: Number(d.valor) || 0,
+            dataPag: d.pagoEm || (d.emitidoEm || "").slice(0, 10),
+          });
+          if (r.ok) n += 1;
+        }
+        // Faturas legadas PROP-
+        for (const f of get().faturasPropina || []) {
+          if (!(Number(f.valor) > 0) || !f.alunoId) continue;
+          const r = aplicarPagamentoPropinaLocal(get, set, {
+            alunoId: f.alunoId,
+            mesKey: f.mesKey,
+            valor: Number(f.valor) || 0,
+            dataPag: (f.emitidoEm || "").slice(0, 10),
+          });
+          if (r.ok) n += 1;
+        }
+        get().pushAudit("sync_propinas_recibos", `${n} documentos aplicados`);
+        return n;
       },
       /** Cria em Propinas as linhas em falta e marca meses já pagos na matrícula. */
       syncPropinasFromMatriculas: () => {
@@ -2749,15 +2903,59 @@ export const useFinance = create<Store>()(
         );
       },
       gerarReciboDeFatura: (faturaNumero) => {
-        const fat = get().findDocumentoPorNumero(faturaNumero);
+        let fat = get().findDocumentoPorNumero(faturaNumero);
+        // Fallback: faturas legadas PROP- em faturasPropina
+        if (!fat || fat.tipo !== "fatura") {
+          const k = (faturaNumero || "").trim().toUpperCase().replace(/\s+/g, "");
+          const leg = (get().faturasPropina || []).find(
+            (f) => (f.numero || "").toUpperCase().replace(/\s+/g, "") === k,
+          );
+          if (leg) {
+            fat = {
+              id: leg.id || `fat-legacy-${leg.numero}`,
+              tipo: "fatura",
+              modelo: "propina_mes",
+              numero: leg.numero,
+              alunoId: leg.alunoId,
+              alunoNome: leg.alunoNome,
+              mesKey: leg.mesKey,
+              mesRef: leg.mesRef,
+              valor: leg.valor,
+              linhas: [
+                {
+                  key: "propina",
+                  label: `Propina ${leg.mesRef || leg.mesKey}`,
+                  value: leg.valor,
+                  on: true,
+                },
+              ],
+              estado: "emitido",
+              emitidoEm: leg.emitidoEm,
+            } as import("@/data/types").DocumentoAluno;
+          }
+        }
         if (!fat || fat.tipo !== "fatura") return undefined;
         const ja = (get().documentosAluno || []).find(
           (r) =>
             r.tipo === "recibo" &&
-            (r.faturaId === fat.id ||
-              (r.faturaNumero || "").toUpperCase() === fat.numero.toUpperCase()),
+            (r.faturaId === fat!.id ||
+              (r.faturaNumero || "").toUpperCase() === fat!.numero.toUpperCase()),
         );
-        if (ja) return ja;
+        if (ja) {
+          // Mesmo se o recibo já existe, garantir que Propinas reflecte o pagamento
+          if (
+            fat.modelo === "propina_mes" ||
+            /propina|PROP-/i.test(String(fat.numero) + String(fat.modelo))
+          ) {
+            aplicarPagamentoPropinaLocal(get, set, {
+              alunoId: fat.alunoId,
+              mesKey: fat.mesKey,
+              valor: Number(fat.valor) || 0,
+              dataPag: ja.pagoEm || fat.pagoEm,
+            });
+          }
+          return ja;
+        }
         const mes =
           (fat.mesKey || "").replace(/-/g, "").slice(0, 6) ||
           new Date().toISOString().slice(0, 7).replace(/-/g, "");
@@ -2765,7 +2963,6 @@ export const useFinance = create<Store>()(
         let rand = "";
         for (let i = 0; i < 4; i++) rand += alphabet[Math.floor(Math.random() * alphabet.length)];
         const codigo = `RC-${mes}-${rand}-${String((rand.charCodeAt(0) + Math.round(fat.valor || 0)) % 100).padStart(2, "0")}`;
-        // Registar código de verificação
         get().addCodigoRecibo({
           alunoId: fat.alunoId,
           alunoNome: fat.alunoNome,
@@ -2778,6 +2975,7 @@ export const useFinance = create<Store>()(
           codigo,
         });
         const numeroRecibo = `REC-${fat.numero.replace(/[^\w\-]/g, "")}`;
+        const pagoEm = new Date().toISOString().slice(0, 10);
         const recibo = get().addDocumentoAluno({
           tipo: "recibo",
           modelo: fat.modelo,
@@ -2792,13 +2990,31 @@ export const useFinance = create<Store>()(
           faturaId: fat.id,
           faturaNumero: fat.numero,
           codigoVerificacao: codigo,
-          pagoEm: new Date().toISOString().slice(0, 10),
+          pagoEm,
           criadoPor: get().activeOperator,
         });
         get().updateDocumentoAluno(fat.id, {
           estado: fat.estado === "arquivado" ? "arquivado" : "confirmado",
           pagoEm: recibo.pagoEm,
         });
+        // Sincronizar quadro de Propinas quando o recibo é de propina mensal
+        if (
+          fat.modelo === "propina_mes" ||
+          /propina|PROP-/i.test(String(fat.numero) + String(fat.modelo))
+        ) {
+          const sync = aplicarPagamentoPropinaLocal(get, set, {
+            alunoId: fat.alunoId,
+            mesKey: fat.mesKey,
+            valor: Number(fat.valor) || 0,
+            dataPag: pagoEm,
+          });
+          if (sync.ok) {
+            get().pushAudit(
+              "propina_via_recibo",
+              `${fat.alunoId} · ${sync.mes} · ${fat.valor} · recibo ${numeroRecibo}`,
+            );
+          }
+        }
         return recibo;
       },
 
