@@ -63,6 +63,7 @@ function Mensalidades() {
   const contaCorrente = useFinance((s) => s.contaCorrente || []);
   const syncPropinasFromMatriculas = useFinance((s) => s.syncPropinasFromMatriculas);
   const syncPropinasFromRecibos = useFinance((s) => s.syncPropinasFromRecibos);
+  const syncArquivoFromPropinasPagas = useFinance((s) => s.syncArquivoFromPropinasPagas);
   const reporPropinasFromMatriculas = useFinance((s) => s.reporPropinasFromMatriculas);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
   const activeOperator = useFinance((s) => s.activeOperator);
@@ -288,26 +289,48 @@ function Mensalidades() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                title="Marca em Propinas os meses que já têm recibo/fatura de propina no Arquivo"
-                onClick={() => {
-                  try {
-                    const n = syncPropinasFromRecibos?.() ?? 0;
-                    toast.success(
-                      n > 0
-                        ? `${n} recibo(s)/fatura(s) de propina aplicados ao quadro de Propinas.`
-                        : "Nenhum recibo de propina pendente de sincronizar.",
-                    );
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Falha ao sincronizar");
-                  }
-                }}
-              >
-                <Receipt className="mr-1 size-3.5" />
-                Sincronizar recibos → Propinas
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  title="Cria no Arquivo os recibos em falta para meses já pagos (ex.: Pedro Out/Nov no BAI)"
+                  onClick={() => {
+                    try {
+                      const n = syncArquivoFromPropinasPagas?.() ?? 0;
+                      toast.success(
+                        n > 0
+                          ? `${n} recibo(s) de propina criados no Arquivo.`
+                          : "Arquivo já tinha recibos para todos os meses pagos.",
+                      );
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Falha ao criar recibos");
+                    }
+                  }}
+                >
+                  <Receipt className="mr-1 size-3.5" />
+                  Propinas pagas → Arquivo
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Marca em Propinas os meses que já têm recibo/fatura de propina no Arquivo"
+                  onClick={() => {
+                    try {
+                      const n = syncPropinasFromRecibos?.() ?? 0;
+                      toast.success(
+                        n > 0
+                          ? `${n} recibo(s)/fatura(s) de propina aplicados ao quadro de Propinas.`
+                          : "Nenhum recibo de propina pendente de sincronizar.",
+                      );
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Falha ao sincronizar");
+                    }
+                  }}
+                >
+                  <Receipt className="mr-1 size-3.5" />
+                  Sincronizar recibos → Propinas
+                </Button>
+              </>
             ) : null}
             <PrintActions
               targetRef={printRef}

@@ -266,6 +266,8 @@ type Store = ExtraState & {
   syncPropinasFromMatriculas: () => number;
   /** Aplica recibos/faturas de propina já no Arquivo ao quadro de Propinas. */
   syncPropinasFromRecibos: () => number;
+  /** Cria no Arquivo os recibos em falta para meses já pagos em Propinas (ex.: após BAI). */
+  syncArquivoFromPropinasPagas: () => number;
   /**
    * Repõe Propinas = 1 linha por aluno activo em Matrículas.
    * Remove órfãos / IDs duplicados e funde pagamentos.
@@ -434,6 +436,112 @@ function mesKeyCivilToLetivo(mesKey?: string): string | null {
     "01": "jan", "02": "fev", "03": "mar", "04": "abr", "05": "mai", "06": "jun",
   };
   return map[mm] || null;
+}
+
+/** mes lectivo → mesKey civil ano lectivo 2026-27 */
+function mesLetivoToMesKey(mes: string): string {
+  const map: Record<string, string> = {
+    set: "2026-09",
+    out: "2026-10",
+    nov: "2026-11",
+    dez: "2026-12",
+    jan: "2027-01",
+    fev: "2027-02",
+    mar: "2027-03",
+    abr: "2027-04",
+    mai: "2027-05",
+    jun: "2027-06",
+  };
+  return map[mes] || `2026-${mes}`;
+}
+
+const MES_LETIVO_LABEL: Record<string, string> = {
+  set: "Setembro",
+  out: "Outubro",
+  nov: "Novembro",
+  dez: "Dezembro",
+  jan: "Janeiro",
+  fev: "Fevereiro",
+  mar: "Março",
+  abr: "Abril",
+  mai: "Maio",
+  jun: "Junho",
+};
+
+/**
+ * Garante recibo de propina no Arquivo (após BAI ou emissão manual).
+ * Se já existir o mesmo número ou aluno+mês propina, não duplica.
+ */
+function ensureReciboPropinaNoArquivo(
+  get: () => Store,
+  opts: {
+    alunoId: string;
+    alunoNome: string;
+    mesLetivo: string;
+    valor: number;
+    pagoEm?: string;
+  },
+): { created: boolean; numero: string } {
+  const mes = opts.mesLetivo === "set" ? "out" : opts.mesLetivo;
+  const mesKey = mesLetivoToMesKey(mes);
+  const mesLabel = MES_LETIVO_LABEL[mes] || mes;
+  const numero = `REC-PROP-${opts.alunoId}-${mes.toUpperCase()}`;
+  const valor = Math.round(Number(opts.valor) || 0);
+  if (valor <= 0) return { created: false, numero };
+
+  const docs = get().documentosAluno || [];
+  const ja = docs.find(
+    (d) =>
+      d.numero === numero ||
+      (d.alunoId === opts.alunoId &&
+        d.mesKey === mesKey &&
+        d.modelo === "propina_mes" &&
+        d.tipo === "recibo"),
+  );
+  if (ja) {
+    // Actualizar valor se estava errado (ex.: 250000 → 75000)
+    if (Number(ja.valor) !== valor && ja.id) {
+      get().updateDocumentoAluno(ja.id, {
+        valor,
+        linhas: [{ key: "propina", label: `Propina ${mesLabel}`, value: valor, on: true }],
+        pagoEm: opts.pagoEm || ja.pagoEm,
+      });
+    }
+    return { created: false, numero: ja.numero };
+  }
+
+  // Código de verificação simples
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let rand = "";
+  for (let i = 0; i < 4; i++) rand += alphabet[Math.floor(Math.random() * alphabet.length)];
+  const mesCompact = mesKey.replace(/-/g, "");
+  const chk = String((rand.charCodeAt(0) + valor) % 100).padStart(2, "0");
+  const codigo = `RC-${mesCompact}-${rand}-${chk}`;
+
+  get().addCodigoRecibo({
+    alunoId: opts.alunoId,
+    alunoNome: opts.alunoNome,
+    mesKey,
+    valor,
+    rubricas: `Propina ${mesLabel}`,
+    codigo,
+  });
+  get().addDocumentoAluno({
+    tipo: "recibo",
+    modelo: "propina_mes",
+    numero,
+    alunoId: opts.alunoId,
+    alunoNome: opts.alunoNome,
+    mesKey,
+    mesRef: mesLabel,
+    valor,
+    linhas: [{ key: "propina", label: `Propina ${mesLabel}`, value: valor, on: true }],
+    estado: "emitido",
+    codigoVerificacao: codigo,
+    pagoEm: opts.pagoEm || new Date().toISOString().slice(0, 10),
+    criadoPor: get().activeOperator,
+  });
+  return { created: true, numero };
 }
 
 /**
@@ -1509,6 +1617,28 @@ export const useFinance = create<Store>()(
         });
         get().pushAudit("propina", `${id} · ${mes} · ${nextVal}`);
       },
+      /** Cria recibos no Arquivo a partir de meses já pagos em Propinas / BAI. */
+      syncArquivoFromPropinasPagas: () => {
+        requireEdit(get);
+        let n = 0;
+        for (const row of get().mensalidades || []) {
+          const pags = row.pagamentos || {};
+          for (const mes of MESES_LETIVOS as readonly string[]) {
+            const valor = Number(pags[mes] || 0);
+            if (valor <= 0) continue;
+            const r = ensureReciboPropinaNoArquivo(get, {
+              alunoId: row.id,
+              alunoNome: row.nome,
+              mesLetivo: mes,
+              valor,
+              pagoEm: row.pagamentosEm?.[mes],
+            });
+            if (r.created) n += 1;
+          }
+        }
+        get().pushAudit("sync_arquivo_propinas", `${n} recibo(s) criados no Arquivo`);
+        return n;
+      },
       /** Marca em Propinas os meses que já têm recibo/fatura de propina no Arquivo. */
       syncPropinasFromRecibos: () => {
         requireEdit(get);
@@ -2003,6 +2133,18 @@ export const useFinance = create<Store>()(
             excedente > 0 ? ` · crédito ${excedente}` : ""
           }`,
         );
+        // Criar recibo no Arquivo automaticamente (BAI já confirma o pagamento)
+        try {
+          ensureReciboPropinaNoArquivo(get, {
+            alunoId: id,
+            alunoNome: row.nome,
+            mesLetivo: mes,
+            valor: alocado,
+            pagoEm: hoje,
+          });
+        } catch (e) {
+          console.warn("[arquivo] recibo propina", e);
+        }
         const pontual = propinaNoPrazo(mes, hoje);
         const base = pontual
           ? `Propina ${mes} · ${row.nome}: ${alocado} Kz no prazo (Pago).`
@@ -2011,8 +2153,8 @@ export const useFinance = create<Store>()(
           ok: true,
           message:
             excedente > 0
-              ? `${base} Recebido ${valorDigitado} Kz no BAI. Crédito ${excedente} Kz na conta corrente (sem 2.ª entrada).`
-              : `${base} ${valorDigitado} Kz no BAI.`,
+              ? `${base} Recebido ${valorDigitado} Kz no BAI. Crédito ${excedente} Kz na conta corrente (sem 2.ª entrada). Arquivo actualizado.`
+              : `${base} ${valorDigitado} Kz no BAI. Arquivo actualizado.`,
         };
       },
       saldoCreditoAluno: (id) => saldoCreditoDe(get().contaCorrente || [], id),
@@ -2875,7 +3017,20 @@ export const useFinance = create<Store>()(
           estado: d.estado || "emitido",
           linhas: d.linhas || [],
         };
-        set({ documentosAluno: [...(get().documentosAluno || []), row] });
+        // Reemitir após apagar: remover tombstones deste número/código
+        const keys = new Set(
+          documentoTombstoneKeys({
+            id: row.id,
+            numero: row.numero,
+            codigoVerificacao: row.codigoVerificacao,
+            faturaNumero: row.faturaNumero,
+          }),
+        );
+        const deleted = (get().documentosAlunoDeletedIds || []).filter((k) => !keys.has(k));
+        set({
+          documentosAluno: [...(get().documentosAluno || []), row],
+          documentosAlunoDeletedIds: deleted,
+        });
         get().pushAudit(
           "documento_aluno",
           `${row.tipo} ${row.numero} · ${row.alunoNome} · ${row.valor}`,
