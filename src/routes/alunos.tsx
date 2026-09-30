@@ -4508,7 +4508,7 @@ function Alunos() {
             <DialogTitle>Regulamento interno</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-[var(--color-muted)]">
-            Documento oficial (multas, 18h00, vestuário, comportamento, denúncias).
+            Documento oficial actualizado (matrícula não reembolsável, multas 35/50 %, guarda 15 000 Kz/h, feriados Congo+Angola, atendimento sábados).
             Para os pais: envie o link — leem, marcam «Tomei conhecimento», indicam nomes e
             confirmam (sem imprimir). O PDF serve só para arquivo / impressão na escola.
           </p>

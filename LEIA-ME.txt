@@ -1,15 +1,25 @@
-SEED actualizado — 59 alunos (2026-09-29)
+Regulamento interno actualizado — FR + PT
 
-1. Substituir no projecto:
-   src/data/seed.json
+Ficheiros a copiar para o projecto:
 
-2. Commit + Push → deploy Vercel
+1. src/lib/regulamento-interno.ts   (conteúdo HTML FR/PT da app /regulamento e /regras)
+2. src/routes/alunos.tsx            (texto do botão Regulamento)
+3. public/docs/Regulamento-Interno-PT.docx
+4. public/docs/Regulamento-Interno-FR.docx
 
-3. Em TODOS os PCs: hard refresh (Ctrl+Shift+R)
+Após copiar: commit + push → deploy Vercel.
 
-4. Confirmar em Matrículas: 59 alunos
+Links públicos:
+  https://controlo-financeiro-tau.vercel.app/regulamento?lang=pt
+  https://controlo-financeiro-tau.vercel.app/regulamento?lang=fr
+  https://controlo-financeiro-tau.vercel.app/regras
 
-Notas:
-- Pedro Canelas (CM2-02): propina 75 000; Out e Nov = 75 000 no seed
-- Hazail (P3-01) e Nathaniel (4E-01): só inscrição no seed (propinas mensais a 0)
-- alunosDeletedIds do censo vivo NÃO vão no seed (ficam na nuvem/local)
+Alterações principais no texto:
+- Matrícula / renovação não reembolsáveis
+- Recolha 18h00 + 30 min; depois 15 000 Kz/hora
+- Multa propinas 35 % e 50 % (sem referência aos 40 %)
+- Feriados Congo + Angola na tabela
+- Atendimento sábados 9h30–12h30, 20 min, /marca
+- Saúde: formulário /saude
+- Vestuário sem "roupa limpa"; penteados livres se rosto/olhos visíveis
+- Numeração 1–12 (sem 0 nem 6bis)
