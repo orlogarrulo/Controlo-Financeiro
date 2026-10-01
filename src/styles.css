@@ -470,8 +470,21 @@ html.pdf-export [data-pdf-root="1"] {
     max-width: none;
   }
   .mobile-main {
-    overflow-x: clip;
     max-width: 100%;
+  }
+  .propina-input {
+    display: block !important;
+    visibility: visible !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    width: 100% !important;
+    min-width: 5.5rem !important;
+    background: #fff !important;
+    opacity: 1 !important;
+  }
+  .propina-input:disabled {
+    opacity: 0.85 !important;
+    background: #f7f4ee !important;
   }
   .propinas-table {
     border-collapse: separate;

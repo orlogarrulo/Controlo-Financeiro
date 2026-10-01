@@ -489,21 +489,18 @@ function Mensalidades() {
                         return (
                           <td key={m} className="propina-cell col-mes px-1 py-1 align-top">
                             <div className="no-print flex flex-col items-stretch gap-0.5">
-                              {canEdit ? (
-                                <Input
-                                  className="h-9 min-w-20 px-2 text-right text-xs"
-                                  type="number"
-                                  min={0}
-                                  value={val || ""}
-                                  onChange={(e) =>
-                                    setMensalidade(r.id, m, Number(e.target.value) || 0)
-                                  }
-                                />
-                              ) : (
-                                <p className="h-9 min-w-20 px-2 text-right text-xs leading-9 tabular-nums">
-                                  {val ? formatKz(val) : "—"}
-                                </p>
-                              )}
+                              <Input
+                                className="propina-input h-9 w-full min-w-[5.5rem] bg-white px-2 text-right text-xs"
+                                type="number"
+                                inputMode="decimal"
+                                min={0}
+                                disabled={!canEdit}
+                                value={val || ""}
+                                title={canEdit ? "Escreva o valor da propina deste mês" : "Edição reservada ao Colaborador 1"}
+                                onChange={(e) =>
+                                  setMensalidade(r.id, m, Number(e.target.value) || 0)
+                                }
+                              />
                               <span
                                 className={
                                   "text-center text-[9px] font-medium leading-tight " +

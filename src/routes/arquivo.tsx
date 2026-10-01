@@ -171,13 +171,49 @@ function buildVistaDocumentos(
     byKey.set(`rc:${codeU}`, synthetic);
   }
   const seen = new Set<string>();
-  const out: DocumentoAluno[] = [];
+  const brutos: DocumentoAluno[] = [];
   for (const d of byKey.values()) {
     if (seen.has(d.id)) continue;
     if (isDeleted(d)) continue;
     seen.add(d.id);
-    out.push(d);
+    brutos.push(d);
   }
+
+  // Um histórico por aluno + tipo + mês + rubrica. Prefere o documento real (REC-/código).
+  function rubricaDe(d: DocumentoAluno): string {
+    const linhas = (d.linhas || []).filter((l) => l.on !== false);
+    const keys = linhas
+      .map((l) => String(l.key || l.label || "").toLowerCase())
+      .filter(Boolean)
+      .sort();
+    if (keys.some((k) => k.includes("propina"))) return "propina";
+    if (d.modelo === "propina_mes") return "propina";
+    if (d.modelo === "liquidacao_matricula") return "matricula";
+    return keys.join("|") || d.modelo || "doc";
+  }
+  function rank(d: DocumentoAluno): number {
+    let n = 0;
+    if (d.codigoVerificacao) n += 4;
+    if (String(d.numero || "").startsWith("REC-")) n += 3;
+    if (!String(d.id || "").startsWith("fat-legacy") && !String(d.id || "").startsWith("rc-legacy")) n += 2;
+    if (d.tipo === "recibo") n += 1;
+    return n;
+  }
+  const melhor = new Map<string, DocumentoAluno>();
+  for (const d of brutos) {
+    const mes = d.mesKey || d.mesRef || "";
+    const chave = [d.alunoId, d.tipo, mes, rubricaDe(d)].join("|");
+    const prev = melhor.get(chave);
+    if (!prev || rank(d) > rank(prev)) melhor.set(chave, d);
+  }
+  // Se já há recibo da mesma rubrica e mês, não listar a fatura gémea.
+  const recibos = [...melhor.values()].filter((d) => d.tipo === "recibo");
+  const out = [...melhor.values()].filter((d) => {
+    if (d.tipo !== "fatura") return true;
+    return !recibos.some(
+      (r) => r.alunoId === d.alunoId && (r.mesKey || "") === (d.mesKey || "") && rubricaDe(r) === rubricaDe(d),
+    );
+  });
   return out.sort((a, b) => (b.emitidoEm || "").localeCompare(a.emitidoEm || ""));
 }
 
