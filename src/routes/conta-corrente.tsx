@@ -7,12 +7,12 @@ import {
   saldoCreditoDe,
   getSeed,
   alunosAll,
-  mesesOficiaisPagos,
   IDS_EXCEDENTE_REAL,
 } from "@/lib/store";
 import { formatKz } from "@/lib/format";
 import { isCollaborator1 } from "@/lib/can-edit";
 import { escolaLogoSrc } from "@/lib/logo-escola";
+import { mesesPagosPropina, sincronizarPagamentosSeparadores } from "@/lib/propina-estado";
 
 export const Route = createFileRoute("/conta-corrente")({ component: ContaCorrentePage });
 
@@ -33,6 +33,7 @@ type RowCC = {
   tarifa: number;
   /** Detalhe dos pagamentos por mês: valor efectivo e data. */
   pagamentosDetalhe: { mes: string; valor: number; data?: string }[];
+  outubroPago: boolean;
   totalPago: number;
 };
 
@@ -363,22 +364,8 @@ function ContaCorrentePage() {
           }
         | undefined;
 
-      const oficiais = mesesOficiaisPagos(a.id);
       const mesesPago: string[] = [];
       let totalExcedente = 0;
-      if (oficiais) {
-        for (const k of oficiais) {
-          const key = MES_LABEL[k] || k;
-          if (!mesesPago.includes(key)) mesesPago.push(key);
-        }
-      } else if (prop) {
-        const pags = prop.pagamentos || {};
-        for (const [k, v] of Object.entries(pags)) {
-          if ((Number(v) || 0) <= 0) continue;
-          const key = MES_LABEL[k] || (/^20\d{2}-\d{2}$/.test(k) ? k : k);
-          if (!mesesPago.includes(key)) mesesPago.push(key);
-        }
-      }
       // Excedente = só crédito explícito OU aluno na lista oficial (Hallan).
       // Pacote / vários meses à tarifa NÃO conta como excedente.
       const creditosExcedente = detalheCreditos
@@ -403,51 +390,12 @@ function ContaCorrentePage() {
       mesesPago.sort();
 
       // Detalhe de PROPINAS pagas (≠ inscrição/matrícula)
-      const pagamentosDetalhe: { mes: string; valor: number; data?: string }[] = [];
-      const tarifa =
-        Number((prop as { propina?: number } | undefined)?.propina) ||
-        Number((a as { propina?: number }).propina) ||
-        0;
-      const mens1 = Number((a as { mensalidade1?: number }).mensalidade1) || 0;
-      const mesesP = Math.max(0, Math.min(9, Number((a as { mesesPropina?: number }).mesesPropina) || 0));
-      const pags = (prop as { pagamentos?: Record<string, number> } | undefined)?.pagamentos || {};
-      const pagsEm =
-        (prop as { pagamentosEm?: Record<string, string> } | undefined)?.pagamentosEm || {};
-      const ordemMes = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
-      const taxas =
-        (Number((a as { inscricao?: number }).inscricao) || 0) +
-        (Number((a as { seguro?: number }).seguro) || 0) +
-        (Number((a as { manuais?: number }).manuais) || 0) +
-        (Number((a as { uniforme?: number }).uniforme) || 0) +
-        (Number((a as { extras?: number }).extras) || 0);
-      const liquido = Number((a as { liquido?: number }).liquido) || 0;
-      const liquidoIncluiPropina = liquido > 0 && liquido > taxas + Math.max(tarifa, mens1, 1) * 0.5;
-
-      for (let i = 0; i < ordemMes.length; i++) {
-        const k = ordemMes[i];
-        const pagoRaw = Number(pags[k] || 0);
-        const mesIso = MES_LABEL[k] || k;
-        let valor = 0;
-        if (mens1 > 0 && mesesP > 0 && i < mesesP) {
-          valor = pagoRaw > 0 ? pagoRaw : tarifa || Math.round(mens1 / mesesP) || mens1;
-        } else if (mens1 > 0 && mesesP === 0 && i === 0) {
-          valor = pagoRaw > 0 ? pagoRaw : tarifa || mens1;
-        } else if (pagoRaw > 0 && (mens1 > 0 || liquidoIncluiPropina)) {
-          valor = pagoRaw;
-        }
-        if (valor > 0) {
-          pagamentosDetalhe.push({ mes: mesIso, valor, data: pagsEm[k] || "" });
-        }
-      }
-      // Sincronizar mesesPago com propinas reais
-      const mesesPagoReal = pagamentosDetalhe.map((p) => p.mes);
-      if (mesesPagoReal.length) {
-        mesesPago.length = 0;
-        mesesPago.push(...mesesPagoReal);
-      } else {
-        mesesPago.length = 0;
-      }
-      const totalPago = pagamentosDetalhe.reduce((s, p) => s + p.valor, 0);
+      const pagosCanon = mesesPagosPropina(a, prop as never);
+      const pagamentosDetalhe = pagosCanon.map((m) => ({ mes: m.iso, valor: m.valor, data: m.data || "" }));
+      mesesPago.length = 0;
+      mesesPago.push(...pagosCanon.map((m) => m.iso));
+      const outPago = pagosCanon.some((m) => m.mes === "out");
+            const totalPago = pagamentosDetalhe.reduce((s, p) => s + p.valor, 0);
 
       byId.set(a.id, {
         alunoId: a.id,
@@ -462,9 +410,10 @@ function ContaCorrentePage() {
         temExcedente,
         totalExcedente,
         temAdiantado: mesesPago.length > 1,
-        tarifa,
+        tarifa: Number((prop as { propina?: number } | undefined)?.propina) || Number((a as { propina?: number }).propina) || 0,
         pagamentosDetalhe,
         totalPago,
+        outubroPago: outPago,
       });
     }
 
@@ -491,6 +440,7 @@ function ContaCorrentePage() {
         tarifa: 0,
         pagamentosDetalhe: [],
         totalPago: 0,
+        outubroPago: false,
       });
     }
 
@@ -559,7 +509,7 @@ function ContaCorrentePage() {
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Conta Corrente</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Conta Corrente</h1><button type="button" className="ml-2 rounded border px-2 py-1 text-xs" onClick={() => { const r = sincronizarPagamentosSeparadores(); toast.success(`Pagamentos sincronizados · ${r.alunos} aluno(s) · ${r.removidos} duplicado(s)`); }}>Sincronizar pagamentos</button>
           <p className="text-sm text-[var(--color-muted)]">
             Créditos de propina (excedente) e aplicações a meses seguintes.{" "}
             <Link to="/mensalidades" className="underline">
@@ -686,6 +636,7 @@ function ContaCorrentePage() {
                       ) : null}
                     </td>
                     <td className="px-3 py-2">
+                      <span className={`mr-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${r.outubroPago ? "bg-emerald-100 text-emerald-900" : "bg-red-100 text-red-800"}`}>{r.outubroPago ? "Outubro pago" : "Outubro por pagar"}</span>
                       {r.nMesesPago === 0 ? (
                         <span className="text-[var(--color-muted)]">—</span>
                       ) : (

@@ -452,11 +452,40 @@ html.pdf-export [data-pdf-root="1"] {
     line-height: 1.2;
     word-break: break-word;
   }
-  /* Botões e controlos: área de toque ≥ 44px */
+  /* Botões e controlos: área de toque ≥ 44px (não dentro de tabelas — corta o texto) */
   button,
   [role="button"],
   a.inline-flex {
     min-height: 44px;
+  }
+  table button,
+  table [role="button"],
+  .propina-cell button,
+  .propina-cell input {
+    min-height: 32px;
+    min-width: 0;
+    flex: none;
+  }
+  .overflow-x-auto table {
+    max-width: none;
+  }
+  .mobile-main {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+  .print-sheet th:first-child,
+  .print-sheet td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--color-surface);
+    max-width: 11rem;
+    box-shadow: 6px 0 8px -8px rgba(28, 25, 20, 0.45);
+  }
+  .print-sheet td:first-child p,
+  .print-sheet th:first-child {
+    white-space: normal;
+    word-break: break-word;
   }
   input,
   select,
@@ -495,6 +524,11 @@ html.pdf-export [data-pdf-root="1"] {
   .flex.flex-wrap.gap-2 > button {
     flex: 1 1 auto;
     min-width: min(100%, 9rem);
+  }
+  table .flex.flex-wrap.gap-2 > button,
+  .propina-cell button {
+    flex: none;
+    min-width: 0;
   }
   /* Cartões KPI: 2 colunas legíveis */
   .grid.grid-cols-2 {

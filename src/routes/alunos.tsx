@@ -3174,7 +3174,31 @@ function Alunos() {
     }));
     const total = totalLinhas(linhas);
     const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
-    const rubricas = linhas.filter((l) => l.on && l.value > 0).map((l) => l.label).join(", ");
+
+    const rubricasAtivas = linhas.filter((l) => l.on && l.value > 0);
+    const assinaturaRubricas = rubricasAtivas
+      .map((l) => String(l.key || l.label || "").trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join("|");
+    const docsArquivo = useFinance.getState().documentosAluno || [];
+    const jaEmitido = docsArquivo.find((d) => {
+      if (d.tipo !== "recibo" || d.alunoId !== a.id || d.modelo === "propina_mes") return false;
+      const prev = (d.linhas || [])
+        .filter((l) => l.on !== false && Number(l.value) > 0)
+        .map((l) => String(l.key || l.label || "").trim().toLowerCase())
+        .filter(Boolean)
+        .sort()
+        .join("|");
+      return Boolean(assinaturaRubricas) && prev === assinaturaRubricas;
+    });
+    if (jaEmitido) {
+      const nomes = rubricasAtivas.map((l) => l.label).join(", ");
+      toast.warning(
+        `Esta rubrica já foi emitida uma vez (1.ª via)${nomes ? ` · ${nomes}` : ""}${jaEmitido.numero ? ` · ${jaEmitido.numero}` : ""}. Esta emissão será uma nova via.`,
+      );
+    }
+    const rubricas = rubricasAtivas.map((l) => l.label).join(", ");
     let codigoVerificacao = "";
     let viaLabel = "1.ª via";
     try {

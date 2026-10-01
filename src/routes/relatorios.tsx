@@ -17,6 +17,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { useFinance, getSeed, alunosAll, mesesOficiaisPagos } from "@/lib/store";
+import { mesesPagosPropina, fundirMensalidades, sincronizarPagamentosSeparadores } from "@/lib/propina-estado";
 import { formatKz } from "@/lib/format";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Aluno, Mensalidade } from "@/data/types";
@@ -416,48 +417,20 @@ function pagamentosDe(
   mensalidades: Mensalidade[],
   recibosMap?: Map<string, Map<string, { valor: number; refs: ReciboPropina[] }>>,
 ): Record<string, number> {
-  const prop = mensalidades.find(
+  const prop = fundirMensalidades(mensalidades).find(
     (p) => (p as { alunoId?: string }).alunoId === a.id || p.id === a.id,
   );
-  const out: Record<string, number> = {};
-  const mens1 = Number(a.mensalidade1) || 0; // propina na liquidação (≠ inscrição)
-  const mesesP = Math.max(0, Math.min(9, Number(a.mesesPropina) || 0));
-  const tarifa =
-    Number(prop?.propina) || Number(a.propina) || (mens1 > 0 && mesesP > 0 ? Math.round(mens1 / mesesP) : 0) || 0;
-  const ordem = ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"];
-  const pags = prop?.pagamentos || {};
   const recibosAluno = recibosMap?.get(a.id);
-
-  for (let i = 0; i < ordem.length; i++) {
-    const mesLetivo = ordem[i];
-    const keyIso = MES_LABEL[mesLetivo] || mesLetivo;
-    const pagoRaw = Number(pags[mesLetivo] || pags[keyIso] || 0);
-    const reciboMes = recibosAluno?.get(mesLetivo);
-
-    // 0) RECIBO com rubrica de propina — só conta se a ficha tiver propina real
-    //    (mensalidade1 > 0 ou mesesPropina > 0). Evita Benazir e semelhantes:
-    //    recibo de matrícula/pacote etiquetado por engano como "Propina (1 mês)".
-    if (reciboMes && reciboMes.valor > 0 && (mens1 > 0 || mesesP > 0)) {
-      out[keyIso] = valorUmaMensalidade(reciboMes.valor, tarifa, mens1, mesesP);
-      continue;
+  const recibos = new Map<string, number>();
+  if (recibosAluno) {
+    for (const [mes, info] of recibosAluno) {
+      if ((info?.valor || 0) > 0) recibos.set(mes, info.valor);
     }
-
-    // 1) Adiantamento: mensalidade1 > 0 e mesesPropina cobre o mês → 1× tarifa
-    if (mens1 > 0 && mesesP > 0 && i < mesesP) {
-      out[keyIso] = valorUmaMensalidade(pagoRaw, tarifa, mens1, mesesP);
-      continue;
-    }
-
-    // 2) mensalidade1 > 0 sem mesesPropina: só Outubro
-    if (mens1 > 0 && mesesP === 0 && i === 0) {
-      out[keyIso] = valorUmaMensalidade(pagoRaw, tarifa, mens1, 1);
-      continue;
-    }
-
-    // 3) Grelha Propinas só com mensalidade1 > 0 — sempre 1 mês
-    if (pagoRaw > 0 && mens1 > 0) {
-      out[keyIso] = valorUmaMensalidade(pagoRaw, tarifa, mens1, mesesP);
-    }
+  }
+  const out: Record<string, number> = {};
+  for (const m of mesesPagosPropina(a, prop, recibos)) {
+    out[m.iso] = m.valor;
+    out[m.mes] = m.valor;
   }
   return out;
 }
@@ -543,6 +516,12 @@ function RelatoriosPage() {
   const codigosRecibo = useFinance((s) => s.codigosRecibo || []);
 
   const [mesFiltro, setMesFiltro] = useState("out");
+
+  function sincronizar() {
+    const r = sincronizarPagamentosSeparadores();
+    toast.success(`Pagamentos sincronizados · ${r.alunos} aluno(s) · ${r.removidos} duplicado(s) retirado(s)`);
+  }
+
 
   const alunos = useMemo(
     () => alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds),
@@ -1103,7 +1082,7 @@ function RelatoriosPage() {
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl tracking-tight">Relatórios</h1>
+          <h1 className="font-display text-2xl tracking-tight">Relatórios</h1><button type="button" className="ml-2 rounded border px-2 py-1 text-xs font-sans" onClick={sincronizar}>Sincronizar pagamentos</button>
           <p className="text-sm text-muted-foreground">
             Matrículas + Propinas + Recibos · {alunos.length} alunos no censo
           </p>

@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/kpi";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { MESES_LABEL, MESES_LETIVOS } from "@/data/types";
+import { MESES_LABEL, MESES_PROPINA_ADIANTADOS } from "@/data/types";
+const MESES_PROPINA = MESES_PROPINA_ADIANTADOS;
 import {
   alunosAll,
   estadoPropinaMes,
@@ -19,6 +20,7 @@ import {
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatKz } from "@/lib/format";
 import { tarifaPropinaAluno } from "@/lib/classe-congo";
+import { fundirMensalidades } from "@/lib/propina-estado";
 import {
   documentoReciboComCodigo,
   loadContacto,
@@ -121,7 +123,7 @@ function Mensalidades() {
   }, [alunosExtra, alunosOverrides, alunosDeletedIds]);
 
   const filtered = useMemo(() => {
-    const activos = rows.filter((r) => alunoMetaById.has(r.id));
+    const activos = fundirMensalidades(rows).filter((r) => alunoMetaById.has(r.id));
     const seen = new Set<string>();
     const unique = activos.filter((r) => {
       if (seen.has(r.id)) return false;
@@ -146,7 +148,7 @@ function Mensalidades() {
     });
   }, [rows, q, alunoMetaById]);
 
-  const monthTotals = MESES_LETIVOS.map((m) =>
+  const monthTotals = MESES_PROPINA.map((m) =>
     filtered.reduce((s, r) => s + (r.pagamentos[m] || 0), 0),
   );
   const grand = monthTotals.reduce((s, n) => s + n, 0);
@@ -237,11 +239,26 @@ function Mensalidades() {
         contacto: loadContacto(),
       });
       // Registar no Arquivo (evita recibo “só PDF” sem histórico)
-      const jaNoArquivo = (documentosAluno as { numero?: string; alunoId?: string; mesKey?: string }[]).some(
-        (d) =>
-          d.numero === numeroRecibo ||
-          (d.alunoId === id && d.mesKey === mesKey && /propina|PROP/i.test(String(d.numero || ""))),
+      const jaNoArquivo = (documentosAluno as { numero?: string; alunoId?: string; mesKey?: string; linhas?: { key?: string; label?: string; on?: boolean }[] }[]).some(
+        (d) => {
+          const mesmaPropina =
+            d.numero === numeroRecibo ||
+            (d.alunoId === id && d.mesKey === mesKey && /propina|PROP/i.test(String(d.numero || "")));
+          if (!mesmaPropina) return false;
+          const linhas = d.linhas || [];
+          if (!linhas.length) return true;
+          return linhas.some(
+            (l) =>
+              l.on !== false &&
+              /propina/i.test(String(l.key || "") + " " + String(l.label || "")),
+          );
+        },
       );
+      if (jaNoArquivo) {
+        toast.warning(
+          `Esta rubrica já foi emitida uma vez (1.ª via) · Propina ${mesLabel} · ${numeroRecibo}. Esta emissão será uma nova via.`,
+        );
+      }
       if (!jaNoArquivo && addDocumentoAluno) {
         const codigo = doc.codigoVerificacao || "";
         if (codigo && addCodigoRecibo) {
@@ -341,9 +358,9 @@ function Mensalidades() {
             />
           </div>
         }
-        kicker="Setembro a Junho"
+        kicker="Outubro a Junho"
         title="Mensalidades"
-        description="Prazo sem multa: do dia 30 do mês da propina até ao dia 10 do mês seguinte. Valor recebido acima da tarifa → crédito na conta corrente (1 só entrada BAI). Aplicar crédito no mês seguinte não volta a mexer no banco."
+        description="1.ª propina: Outubro (até 20 de setembro). Meses seguintes: do dia 30 até ao dia 10 do mês seguinte. No telemóvel, deslize a grelha para o lado — o nome do aluno fica visível."
       />
 
       <div className="no-print mb-3">
@@ -385,12 +402,12 @@ function Mensalidades() {
           </div>
         </header>
         <div className="overflow-x-auto print-sheet rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-          <table className="w-full min-w-[1100px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
               <tr>
                 <th className="px-3 py-2 font-medium">Aluno</th>
                 <th className="px-3 py-2 font-medium">Propina</th>
-                {MESES_LETIVOS.map((m) => (
+                {MESES_PROPINA.map((m) => (
                   <th key={m} className="px-2 py-2 text-center font-medium">
                     {MESES_LABEL[m]}
                   </th>
@@ -402,7 +419,7 @@ function Mensalidades() {
               {filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={2 + MESES_LETIVOS.length + 1}
+                    colSpan={2 + MESES_PROPINA.length + 1}
                     className="px-3 py-8 text-center text-[var(--color-muted)]"
                   >
                     {q.trim()
@@ -413,9 +430,9 @@ function Mensalidades() {
               ) : (
                 filtered.map((r) => {
                   const cred = creditoDe(r.id);
-                  const paid = MESES_LETIVOS.reduce((s, m) => s + (r.pagamentos[m] || 0), 0);
-                  const monthsPaid = MESES_LETIVOS.filter((m) => (r.pagamentos[m] || 0) > 0).length;
-                  const emAtraso = MESES_LETIVOS.filter((m) => {
+                  const paid = MESES_PROPINA.reduce((s, m) => s + (r.pagamentos[m] || 0), 0);
+                  const monthsPaid = MESES_PROPINA.filter((m) => (r.pagamentos[m] || 0) > 0).length;
+                  const emAtraso = MESES_PROPINA.filter((m) => {
                     const v = r.pagamentos[m] || 0;
                     return estadoPropinaMes(m, v, r.pagamentosEm?.[m]) === "atraso";
                   }).length;
@@ -459,7 +476,7 @@ function Mensalidades() {
                           }),
                         )}
                       </td>
-                      {MESES_LETIVOS.map((m) => {
+                      {MESES_PROPINA.map((m) => {
                         const val = r.pagamentos[m] || 0;
                         const dataPag = r.pagamentosEm?.[m];
                         const synced = jaNoBai(r.id, m);
@@ -470,7 +487,7 @@ function Mensalidades() {
                         );
                         const lab = labelEstado(est);
                         return (
-                          <td key={m} className="px-1 py-1 align-top">
+                          <td key={m} className="propina-cell px-1 py-1 align-top">
                             <div className="no-print flex flex-col items-stretch gap-0.5">
                               {canEdit ? (
                                 <Input
