@@ -614,7 +614,7 @@ export const submitRegulamentoAck = createServerFn({ method: "POST" }).handler(
         text:
           `📄 Regulamento — tomada de conhecimento\n` +
           `Encarregado: ${data.encarregadoNome.trim()}\n` +
-          `Aluno: ${data.alunoNome.trim()}\n` +
+          `Aluno(s): ${alunoNome}\n` +
           `Turma: ${(data.turma || "—").trim()}\n` +
           `Ref: ${id}`,
         data: { id, ...data, signedAt },
@@ -820,7 +820,17 @@ export const submitAgendamento = createServerFn({ method: "POST" }).handler(
     const data = (ctx as { data?: AgendamentoCloud }).data;
     if (!data?.encarregadoNome?.trim()) throw new Error("Nome do encarregado é obrigatório.");
     if (!data?.telefone?.trim()) throw new Error("Telefone é obrigatório.");
-    if (!data?.alunoNome?.trim()) throw new Error("Nome do aluno é obrigatório.");
+    const nomes = (data?.alunos || [])
+      .map((a) => (a?.nome || "").trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    const alunoNome = nomes.length ? nomes.join(" · ") : (data?.alunoNome || "").trim();
+    if (!alunoNome) throw new Error("Nome do aluno é obrigatório.");
+    const turma = (data?.alunos || [])
+      .map((a) => (a?.turma || "").trim())
+      .filter(Boolean)
+      .slice(0, 6)
+      .join(" · ") || (data?.turma || "").trim();
     if (!data?.dia?.trim()) throw new Error("Escolha o sábado (data) do atendimento.");
     if (!data?.hora?.trim()) throw new Error("Escolha a hora do atendimento.");
     const { getSql } = await import("@/lib/db");
@@ -837,8 +847,8 @@ export const submitAgendamento = createServerFn({ method: "POST" }).handler(
         id,
         data.encarregadoNome.trim().slice(0, 200),
         data.telefone.trim().slice(0, 40),
-        data.alunoNome.trim().slice(0, 200),
-        (data.turma || "").trim().slice(0, 80),
+        alunoNome.slice(0, 800),
+        turma.slice(0, 240),
         data.dia.trim().slice(0, 32),
         data.hora.trim().slice(0, 10),
         submittedAt,
@@ -854,7 +864,7 @@ export const submitAgendamento = createServerFn({ method: "POST" }).handler(
         `Encarregado: ${data.encarregadoNome.trim()}\n` +
         `Tel: ${data.telefone.trim()}\n` +
         (email ? `E-mail: ${email}\n` : "") +
-        `Aluno: ${data.alunoNome.trim()}\n` +
+        `Aluno(s): ${alunoNome}\n` +
         `${diaLabel} às ${data.hora.trim()}\n` +
         `Ref: ${id}`,
       data: {
@@ -862,8 +872,8 @@ export const submitAgendamento = createServerFn({ method: "POST" }).handler(
         encarregadoNome: data.encarregadoNome.trim(),
         telefone: data.telefone.trim(),
         email,
-        alunoNome: data.alunoNome.trim(),
-        turma: (data.turma || "").trim(),
+        alunoNome,
+        turma,
         dia: data.dia.trim(),
         hora: data.hora.trim(),
         submittedAt,
@@ -920,6 +930,8 @@ export const listAgendamentos = createServerFn({ method: "GET" }).handler(
 export type AutorizacaoFotosCloud = {
   alunoNome: string;
   turma?: string;
+  /** Até 6 filhos no mesmo formulário. */
+  alunos?: { nome: string; turma?: string }[];
   responsavelNome: string;
   telefone?: string;
   /** sim = autoriza · nao = não autoriza */
@@ -954,7 +966,17 @@ async function ensureAutorizacaoFotosTable(sql: {
 export const submitAutorizacaoFotos = createServerFn({ method: "POST" }).handler(
   async (ctx): Promise<{ ok: boolean; id: string }> => {
     const data = (ctx as { data?: AutorizacaoFotosCloud }).data;
-    if (!data?.alunoNome?.trim()) throw new Error("Nome do aluno é obrigatório.");
+    const nomes = (data?.alunos || [])
+      .map((a) => (a?.nome || "").trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    const alunoNome = nomes.length ? nomes.join(" · ") : (data?.alunoNome || "").trim();
+    if (!alunoNome) throw new Error("Nome do aluno é obrigatório.");
+    const turma = (data?.alunos || [])
+      .map((a) => (a?.turma || "").trim())
+      .filter(Boolean)
+      .slice(0, 6)
+      .join(" · ") || (data?.turma || "").trim();
     if (!data?.responsavelNome?.trim()) throw new Error("Nome do responsável é obrigatório.");
     if (data.decisao !== "sim" && data.decisao !== "nao") {
       throw new Error("Escolha Sim, autorizo ou Não autorizo.");
@@ -971,8 +993,8 @@ export const submitAutorizacaoFotos = createServerFn({ method: "POST" }).handler
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::timestamptz)`,
       [
         id,
-        data.alunoNome.trim().slice(0, 200),
-        (data.turma || "").trim().slice(0, 80),
+        alunoNome.slice(0, 800),
+        turma.slice(0, 240),
         data.responsavelNome.trim().slice(0, 200),
         (data.telefone || "").trim().slice(0, 40),
         data.decisao,
@@ -988,15 +1010,15 @@ export const submitAutorizacaoFotos = createServerFn({ method: "POST" }).handler
       type: "autorizacao-fotos",
       text:
         `📸 Autorização de fotos\n` +
-        `Aluno: ${data.alunoNome.trim()}\n` +
+        `Aluno(s): ${alunoNome}\n` +
         `Responsável: ${data.responsavelNome.trim()}\n` +
         `Decisão: ${decisaoLabel}\n` +
         `Tomei nota: ${data.tomeiNotaNome.trim()}\n` +
         `Ref: ${id}`,
       data: {
         id,
-        alunoNome: data.alunoNome.trim(),
-        turma: (data.turma || "").trim(),
+        alunoNome,
+        turma,
         responsavelNome: data.responsavelNome.trim(),
         telefone: (data.telefone || "").trim(),
         decisao: data.decisao,

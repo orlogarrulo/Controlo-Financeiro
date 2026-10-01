@@ -5,6 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,11 @@ const STORAGE_KEY = "ecole_autorizacoes_fotos_v1";
 
 type Lang = "pt" | "fr";
 type Decisao = "sim" | "nao" | "";
+type Filho = { nome: string; turma: string };
+
+function filhosVazios(n: number): Filho[] {
+  return Array.from({ length: n }, () => ({ nome: "", turma: "" }));
+}
 
 function todayIso(): string {
   const d = new Date();
@@ -51,11 +57,12 @@ function saveLocal(rows: AutorizacaoFotosCloud[]) {
 
 export function AutorizacaoFotosPage() {
   const [lang, setLang] = useState<Lang>("fr");
-  const [alunoNome, setAlunoNome] = useState("");
-  const [turma, setTurma] = useState("");
+  const [nFilhos, setNFilhos] = useState(1);
+  const [filhos, setFilhos] = useState<Filho[]>(() => filhosVazios(1));
   const [responsavelNome, setResponsavelNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [decisao, setDecisao] = useState<Decisao>("");
+  const [tomeiConhecimento, setTomeiConhecimento] = useState(false);
   const [tomeiNotaNome, setTomeiNotaNome] = useState("");
   const [data, setData] = useState(todayIso);
   const [busy, setBusy] = useState(false);
@@ -82,12 +89,16 @@ export function AutorizacaoFotosPage() {
 
   async function onSubmit() {
     const missing: string[] = [];
-    if (!alunoNome.trim()) missing.push(t("nome do aluno", "nom de l'élève"));
+    const preenchidos = filhos.slice(0, nFilhos).map((f) => f.nome.trim());
+    if (preenchidos.some((nome) => !nome))
+      missing.push(t("nome de cada filho", "nom de chaque enfant"));
     if (!responsavelNome.trim())
       missing.push(t("nome do responsável legal", "nom du responsable légal"));
     if (!decisao) missing.push(t("autorização (sim ou não)", "autorisation (oui ou non)"));
+    if (!tomeiConhecimento)
+      missing.push(t("confirmação «Tomei conhecimento»", "confirmation « J'ai pris connaissance »"));
     if (!tomeiNotaNome.trim())
-      missing.push(t("nome em «Tomei nota»", "nom dans « J'ai pris note »"));
+      missing.push(t("nome de quem tomou conhecimento", "nom de la personne qui a pris connaissance"));
     if (missing.length) {
       toast.error(
         t(
@@ -99,9 +110,14 @@ export function AutorizacaoFotosPage() {
     }
     setBusy(true);
     try {
+      const lista = filhos.slice(0, nFilhos).map((f) => ({
+        nome: f.nome.trim(),
+        turma: f.turma.trim(),
+      }));
       const payload: AutorizacaoFotosCloud = {
-        alunoNome: alunoNome.trim(),
-        turma: turma.trim(),
+        alunoNome: lista.map((f) => f.nome).join(" · "),
+        turma: lista.map((f) => f.turma).filter(Boolean).join(" · "),
+        alunos: lista,
         responsavelNome: responsavelNome.trim(),
         telefone: telefone.trim(),
         decisao: decisao as "sim" | "nao",
@@ -139,6 +155,11 @@ export function AutorizacaoFotosPage() {
     <div className="mx-auto min-h-screen max-w-lg bg-[var(--color-bg,#f4f7f5)] px-3 py-6 sm:px-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
+          <img
+            src={escolaLogoSrc()}
+            alt="École Consulaire"
+            className="mb-2 h-16 w-16 rounded-md object-contain"
+          />
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-forest,#1f5c4a)]">
             {ESCOLA}
           </p>
@@ -188,8 +209,8 @@ export function AutorizacaoFotosPage() {
         </p>
         <p className="mt-2">
           {t(
-            "A lei obriga-nos a ter a autorização escrita dos pais para esta utilização. Assim, ficaríamos reconhecidos se preenchessem as casas abaixo:",
-            "La loi nous fait obligation d'avoir l'autorisation écrite des parents pour cette utilisation. Aussi, nous vous serions reconnaissants de bien vouloir remplir les cases ci-dessous :",
+            "A lei obriga-nos a ter a autorização escrita dos pais para esta utilização. Assim, ficaríamos reconhecidos se preenchessem os campos abaixo:",
+            "La loi nous fait obligation d'avoir l'autorisation écrite des parents pour cette utilisation. Aussi, nous vous serions reconnaissants de bien vouloir remplir les champs ci-dessous :",
           )}
         </p>
       </div>
@@ -231,9 +252,10 @@ export function AutorizacaoFotosPage() {
             className="mt-3"
             onClick={() => {
               setDone(false);
-              setAlunoNome("");
-              setTurma("");
+              setNFilhos(1);
+              setFilhos(filhosVazios(1));
               setResponsavelNome("");
+              setTomeiConhecimento(false);
               setTelefone("");
               setDecisao("");
               setTomeiNotaNome("");
@@ -252,22 +274,56 @@ export function AutorizacaoFotosPage() {
           </p>
           <div className="mt-3 space-y-3">
             <div>
-              <Label>{t("Nome do aluno *", "Nom de l'élève *")}</Label>
-              <Input
-                value={alunoNome}
-                onChange={(e) => setAlunoNome(e.target.value)}
-                className="mt-1"
-                autoComplete="name"
-              />
+              <Label>{t("Número de filhos *", "Nombre d'enfants *")}</Label>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`rounded-md border px-3 py-1 text-sm ${nFilhos === n ? "border-[var(--color-forest,#1f5c4a)] bg-[var(--color-forest,#1f5c4a)] text-white" : "border-[var(--color-line,#d5ddd8)] bg-white"}`}
+                    onClick={() => {
+                      setNFilhos(n);
+                      setFilhos((prev) => {
+                        const next = prev.slice(0, n);
+                        while (next.length < n) next.push({ nome: "", turma: "" });
+                        return next;
+                      });
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div>
-              <Label>{t("Turma", "Classe")}</Label>
-              <Input
-                value={turma}
-                onChange={(e) => setTurma(e.target.value)}
-                className="mt-1"
-              />
-            </div>
+            {filhos.slice(0, nFilhos).map((filho, i) => (
+              <div key={i} className="space-y-2 rounded-lg border border-[var(--color-line,#d5ddd8)] p-3">
+                <p className="text-xs font-medium text-[var(--color-muted,#64748b)]">
+                  {t(`Filho ${i + 1}`, `Enfant ${i + 1}`)}
+                </p>
+                <div>
+                  <Label>{t("Nome do aluno *", "Nom de l'élève *")}</Label>
+                  <Input
+                    value={filho.nome}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFilhos((prev) => prev.map((f, idx) => (idx === i ? { ...f, nome: value } : f)));
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>{t("Turma", "Classe")}</Label>
+                  <Input
+                    value={filho.turma}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFilhos((prev) => prev.map((f, idx) => (idx === i ? { ...f, turma: value } : f)));
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            ))}
             <div>
               <Label>{t("Nome do responsável legal *", "Nom du responsable légal *")}</Label>
               <Input
@@ -318,22 +374,31 @@ export function AutorizacaoFotosPage() {
               )}
             </p>
 
-            <div>
-              <Label>
-                {t("Tomei nota — nome *", "J'ai pris note — nom *")}
-              </Label>
-              <Input
-                value={tomeiNotaNome}
-                onChange={(e) => setTomeiNotaNome(e.target.value)}
-                className="mt-1"
-                placeholder={t("Nome de quem toma nota", "Nom de la personne qui prend note")}
-              />
-              <p className="mt-1 text-[11px] text-[var(--color-muted,#64748b)]">
+            <div className="space-y-2 rounded-lg border border-[var(--color-line,#d5ddd8)] p-3">
+              <p className="text-sm leading-relaxed">
                 {t(
-                  "Escreva o nome de quem confirma ter lido e tomado nota desta autorização.",
-                  "Écrivez le nom de la personne qui confirme avoir lu et pris note de cette autorisation.",
+                  "Tomei conhecimento do conteúdo acima e, por ser verdade, confirmo a opção escolhida.",
+                  "J'ai pris connaissance du contenu ci-dessus et, parce que c'est vrai, je confirme l'option choisie.",
                 )}
               </p>
+              <label className="flex cursor-pointer items-start gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={tomeiConhecimento}
+                  onChange={(e) => setTomeiConhecimento(e.target.checked)}
+                />
+                {t("Tomei conhecimento", "J'ai pris connaissance")}
+              </label>
+              <div>
+                <Label>{t("Nome de quem tomou conhecimento *", "Nom de la personne qui a pris connaissance *")}</Label>
+                <Input
+                  value={tomeiNotaNome}
+                  onChange={(e) => setTomeiNotaNome(e.target.value)}
+                  className="mt-1"
+                  placeholder={t("Escreva o nome", "Écrire le nom")}
+                />
+              </div>
             </div>
             <div>
               <Label>{t("Data", "Date")}</Label>

@@ -63,17 +63,28 @@ export function agendamentoPublicUrl(): string {
   return `${location.origin}/marca`;
 }
 
+export function escolaLogoPublicUrl(): string {
+  if (typeof location === "undefined") {
+    return "https://controlo-financeiro-tau.vercel.app/logo-escola.jpg";
+  }
+  return `${location.origin}/logo-escola.jpg`;
+}
+
 export function buildAutorizacaoFotosWhatsApp(opts?: {
   escolaNome?: string;
   linkFormulario?: string;
+  logoUrl?: string;
 }): string {
   const escola =
     opts?.escolaNome ||
     "École Consulaire du Congo (Brazzaville) de Luanda";
   const link = opts?.linkFormulario || autorizacaoFotosPublicUrl();
+  const logo = opts?.logoUrl || escolaLogoPublicUrl();
 
   return `📸 *AUTORISATION DE PRISE DE VUE / AUTORIZAÇÃO DE FOTOS*
 ${escola}
+
+🏫 Logotipo / Logo : ${logo}
 
 Photographies et vidéos à des fins pédagogiques et éducatives.
 Fotografias e vídeos para fins pedagógicos e educativos.
