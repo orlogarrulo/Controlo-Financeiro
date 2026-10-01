@@ -43,7 +43,7 @@ function labelEstado(e: EstadoPropinaMes): {
     case "em_prazo":
       return { text: "Em prazo", variant: "outline" };
     case "atraso":
-      return { text: "Pendente · multa", variant: "danger" };
+      return { text: "Por pagar", variant: "danger" };
     default:
       return { text: "—", variant: "outline" };
   }
@@ -402,17 +402,17 @@ function Mensalidades() {
           </div>
         </header>
         <div className="overflow-x-auto print-sheet rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)]">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="propinas-table w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
               <tr>
-                <th className="px-3 py-2 font-medium">Aluno</th>
-                <th className="px-3 py-2 font-medium">Propina</th>
+                <th className="col-aluno px-3 py-2 font-medium">Aluno</th>
+                <th className="col-propina px-3 py-2 font-medium">Propina</th>
                 {MESES_PROPINA.map((m) => (
-                  <th key={m} className="px-2 py-2 text-center font-medium">
+                  <th key={m} className="col-mes px-2 py-2 text-center font-medium">
                     {MESES_LABEL[m]}
                   </th>
                 ))}
-                <th className="px-3 py-2 font-medium">Estado</th>
+                <th className="col-estado px-3 py-2 font-medium">Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -446,8 +446,8 @@ function Mensalidades() {
                           : "Parcial";
                   return (
                     <tr key={r.id} className="border-t border-[var(--color-line)]">
-                      <td className="px-3 py-2">
-                        <p className="font-medium">
+                      <td className="col-aluno px-3 py-2">
+                        <p className="font-medium leading-snug">
                           <NomeAluno
                             aluno={{
                               nome: r.nome,
@@ -461,7 +461,7 @@ function Mensalidades() {
                           {cred > 0 ? ` · crédito ${formatKz(cred)}` : ""}
                         </p>
                       </td>
-                      <td className="px-3 py-2 tabular-nums text-xs">
+                      <td className="col-propina px-3 py-2 tabular-nums text-xs whitespace-nowrap">
                         {formatKz(
                           tarifaPropinaAluno({
                             propina: alunoMetaById.get(r.id)?.propina ?? r.propina,
@@ -487,7 +487,7 @@ function Mensalidades() {
                         );
                         const lab = labelEstado(est);
                         return (
-                          <td key={m} className="propina-cell px-1 py-1 align-top">
+                          <td key={m} className="propina-cell col-mes px-1 py-1 align-top">
                             <div className="no-print flex flex-col items-stretch gap-0.5">
                               {canEdit ? (
                                 <Input
@@ -570,7 +570,7 @@ function Mensalidades() {
                           </td>
                         );
                       })}
-                      <td className="px-3 py-2">
+                      <td className="col-estado px-3 py-2">
                         <Badge
                           variant={
                             status === "Pago"

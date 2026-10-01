@@ -473,19 +473,31 @@ html.pdf-export [data-pdf-root="1"] {
     overflow-x: clip;
     max-width: 100%;
   }
-  .print-sheet th:first-child,
-  .print-sheet td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    background: var(--color-surface);
-    max-width: 11rem;
-    box-shadow: 6px 0 8px -8px rgba(28, 25, 20, 0.45);
+  .propinas-table {
+    border-collapse: separate;
+    border-spacing: 0;
   }
-  .print-sheet td:first-child p,
-  .print-sheet th:first-child {
+  .propinas-table th,
+  .propinas-table td {
+    vertical-align: top;
     white-space: normal;
-    word-break: break-word;
+  }
+  .propinas-table .col-aluno {
+    min-width: 14rem;
+    width: 14rem;
+  }
+  .propinas-table .col-propina {
+    min-width: 7.5rem;
+    width: 7.5rem;
+    white-space: nowrap;
+  }
+  .propinas-table .col-mes {
+    min-width: 6.5rem;
+    width: 6.5rem;
+  }
+  .propinas-table .col-estado {
+    min-width: 7rem;
+    white-space: nowrap;
   }
   input,
   select,
