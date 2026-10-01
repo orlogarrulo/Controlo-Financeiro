@@ -103,3 +103,9 @@ Após deploy: hard refresh (Ctrl+Shift+R).
   - Corre no arranque (hydrate) após recuperar.
   - Rastreio: aviso vermelho + botão «Sanear duplicados» quando contagem > 48.
 - **Classes:** a distribuição incorrecta vinha do realinhamento idade→turma→novo ID sem esconder o ID antigo de forma estável; o saneamento remove o fantasma.
+
+
+## Autorização de fotos
+- Botão em Matrículas copia mensagem WhatsApp (PT/FR) com o link `/fotos`.
+- Formulário público: Sim, autorizo / Não autorizo, campo Tomei nota (nome), versão PT e FR.
+- Respostas gravadas na nuvem (`autorizacoes_fotos`) e visíveis em Respostas.

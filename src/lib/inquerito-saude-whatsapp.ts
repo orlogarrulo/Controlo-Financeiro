@@ -63,6 +63,38 @@ export function agendamentoPublicUrl(): string {
   return `${location.origin}/marca`;
 }
 
+export function buildAutorizacaoFotosWhatsApp(opts?: {
+  escolaNome?: string;
+  linkFormulario?: string;
+}): string {
+  const escola =
+    opts?.escolaNome ||
+    "École Consulaire du Congo (Brazzaville) de Luanda";
+  const link = opts?.linkFormulario || autorizacaoFotosPublicUrl();
+
+  return `📸 *AUTORISATION DE PRISE DE VUE / AUTORIZAÇÃO DE FOTOS*
+${escola}
+
+Photographies et vidéos à des fins pédagogiques et éducatives.
+Fotografias e vídeos para fins pedagógicos e educativos.
+
+*FR* — Remplir l'autorisation (j'autorise / je n'autorise pas) :
+${link}
+
+*PT* — Preencher a autorização (sim, autorizo / não autorizo) :
+${link}
+
+Merci. / Obrigado.`;
+}
+
+/** Link curto público — só o formulário, sem menu da app. */
+export function autorizacaoFotosPublicUrl(): string {
+  if (typeof location === "undefined") {
+    return "https://controlo-financeiro-tau.vercel.app/fotos";
+  }
+  return `${location.origin}/fotos`;
+}
+
 export function regulamentoPublicUrl(lang: "pt" | "fr" = "fr"): string {
   if (typeof location === "undefined") {
     return `https://controlo-financeiro-tau.vercel.app/regras?lang=${lang}`;

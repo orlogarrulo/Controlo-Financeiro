@@ -35,6 +35,8 @@ export function isPublicParentPath(pathname: string): boolean {
     "/saude",
     "/marca",
     "/regras",
+    "/autorizacao-fotos",
+    "/fotos",
   ];
   return publicPaths.some((base) => p === base || p.startsWith(base + "/"));
 }

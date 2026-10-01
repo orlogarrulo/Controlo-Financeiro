@@ -913,3 +913,141 @@ export const listAgendamentos = createServerFn({ method: "GET" }).handler(
     }
   },
 );
+
+
+/* ─── Autorização de fotografias / prise de vue (nuvem) ─── */
+
+export type AutorizacaoFotosCloud = {
+  alunoNome: string;
+  turma?: string;
+  responsavelNome: string;
+  telefone?: string;
+  /** sim = autoriza · nao = não autoriza */
+  decisao: "sim" | "nao";
+  /** Nome de quem tomou nota (responsável que assina). */
+  tomeiNotaNome: string;
+  data: string;
+  lang?: "pt" | "fr";
+  submittedAt: string;
+};
+
+async function ensureAutorizacaoFotosTable(sql: {
+  query: (text: string, params?: unknown[]) => Promise<unknown[]>;
+}) {
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS autorizacoes_fotos (
+      id TEXT PRIMARY KEY,
+      aluno_nome TEXT NOT NULL,
+      turma TEXT,
+      responsavel_nome TEXT NOT NULL,
+      telefone TEXT,
+      decisao TEXT NOT NULL,
+      tomei_nota_nome TEXT NOT NULL,
+      data TEXT NOT NULL,
+      lang TEXT,
+      submitted_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+export const submitAutorizacaoFotos = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<{ ok: boolean; id: string }> => {
+    const data = (ctx as { data?: AutorizacaoFotosCloud }).data;
+    if (!data?.alunoNome?.trim()) throw new Error("Nome do aluno é obrigatório.");
+    if (!data?.responsavelNome?.trim()) throw new Error("Nome do responsável é obrigatório.");
+    if (data.decisao !== "sim" && data.decisao !== "nao") {
+      throw new Error("Escolha Sim, autorizo ou Não autorizo.");
+    }
+    if (!data?.tomeiNotaNome?.trim()) throw new Error("Escreva o nome em Tomei nota.");
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    await ensureAutorizacaoFotosTable(sql);
+    const id = `af-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const submittedAt = data.submittedAt || new Date().toISOString();
+    await sql.query(
+      `INSERT INTO autorizacoes_fotos
+        (id, aluno_nome, turma, responsavel_nome, telefone, decisao, tomei_nota_nome, data, lang, submitted_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::timestamptz)`,
+      [
+        id,
+        data.alunoNome.trim().slice(0, 200),
+        (data.turma || "").trim().slice(0, 80),
+        data.responsavelNome.trim().slice(0, 200),
+        (data.telefone || "").trim().slice(0, 40),
+        data.decisao,
+        data.tomeiNotaNome.trim().slice(0, 200),
+        (data.data || "").trim().slice(0, 20),
+        data.lang === "fr" ? "fr" : "pt",
+        submittedAt,
+      ],
+    );
+    const { notifyEscola } = await import("@/lib/notify-escola");
+    const decisaoLabel = data.decisao === "sim" ? "SIM, autoriza" : "NÃO autoriza";
+    await notifyEscola({
+      type: "autorizacao-fotos",
+      text:
+        `📸 Autorização de fotos\n` +
+        `Aluno: ${data.alunoNome.trim()}\n` +
+        `Responsável: ${data.responsavelNome.trim()}\n` +
+        `Decisão: ${decisaoLabel}\n` +
+        `Tomei nota: ${data.tomeiNotaNome.trim()}\n` +
+        `Ref: ${id}`,
+      data: {
+        id,
+        alunoNome: data.alunoNome.trim(),
+        turma: (data.turma || "").trim(),
+        responsavelNome: data.responsavelNome.trim(),
+        telefone: (data.telefone || "").trim(),
+        decisao: data.decisao,
+        tomeiNotaNome: data.tomeiNotaNome.trim(),
+        data: (data.data || "").trim(),
+        submittedAt,
+      },
+    });
+    return { ok: true, id };
+  },
+);
+
+export const listAutorizacoesFotos = createServerFn({ method: "GET" }).handler(
+  async (): Promise<AutorizacaoFotosCloud[]> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    try {
+      await ensureAutorizacaoFotosTable(sql);
+      const rows = await sql.query<{
+        aluno_nome: string;
+        turma: string | null;
+        responsavel_nome: string;
+        telefone: string | null;
+        decisao: string;
+        tomei_nota_nome: string;
+        data: string;
+        lang: string | null;
+        submitted_at: string | Date;
+      }>(
+        `SELECT aluno_nome, turma, responsavel_nome, telefone, decisao, tomei_nota_nome, data, lang, submitted_at
+         FROM autorizacoes_fotos
+         ORDER BY submitted_at DESC
+         LIMIT 2000`,
+      );
+      return rows.map((r) => ({
+        alunoNome: r.aluno_nome,
+        turma: r.turma || "",
+        responsavelNome: r.responsavel_nome,
+        telefone: r.telefone || "",
+        decisao: r.decisao === "nao" ? "nao" : "sim",
+        tomeiNotaNome: r.tomei_nota_nome,
+        data: r.data,
+        lang: r.lang === "fr" ? "fr" : "pt",
+        submittedAt:
+          typeof r.submitted_at === "string"
+            ? r.submitted_at
+            : new Date(r.submitted_at).toISOString(),
+      }));
+    } catch (e) {
+      console.error("[autorizacao-fotos] list failed", e);
+      return [];
+    }
+  },
+);

@@ -31,6 +31,8 @@ import { Route as RegulamentoRouteImport } from './routes/regulamento'
 import { Route as AgendamentoRouteImport } from './routes/agendamento'
 import { Route as InqueritoSaudeRouteImport } from './routes/inquerito-saude'
 import { Route as MarcaRouteImport } from './routes/marca'
+import { Route as AutorizacaoFotosRouteImport } from './routes/autorizacao-fotos'
+import { Route as FotosRouteImport } from './routes/fotos'
 import { Route as RegrasRouteImport } from './routes/regras'
 import { Route as SaudeRouteImport } from './routes/saude'
 
@@ -57,6 +59,16 @@ const InqueritoSaudeRoute = InqueritoSaudeRouteImport.update({
 const MarcaRoute = MarcaRouteImport.update({
   id: '/marca',
   path: '/marca',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AutorizacaoFotosRoute = AutorizacaoFotosRouteImport.update({
+  id: '/autorizacao-fotos',
+  path: '/autorizacao-fotos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FotosRoute = FotosRouteImport.update({
+  id: '/fotos',
+  path: '/fotos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegrasRoute = RegrasRouteImport.update({
@@ -161,6 +173,8 @@ export interface FileRoutesByFullPath {
   '/agendamento': typeof AgendamentoRoute
   '/inquerito-saude': typeof InqueritoSaudeRoute
   '/marca': typeof MarcaRoute
+  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
+  '/fotos': typeof FotosRoute
   '/regras': typeof RegrasRoute
   '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
@@ -187,6 +201,8 @@ export interface FileRoutesByTo {
   '/agendamento': typeof AgendamentoRoute
   '/inquerito-saude': typeof InqueritoSaudeRoute
   '/marca': typeof MarcaRoute
+  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
+  '/fotos': typeof FotosRoute
   '/regras': typeof RegrasRoute
   '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
@@ -214,6 +230,8 @@ export interface FileRoutesById {
   '/agendamento': typeof AgendamentoRoute
   '/inquerito-saude': typeof InqueritoSaudeRoute
   '/marca': typeof MarcaRoute
+  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
+  '/fotos': typeof FotosRoute
   '/regras': typeof RegrasRoute
   '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
@@ -242,6 +260,8 @@ export interface FileRouteTypes {
     | '/agendamento'
     | '/inquerito-saude'
     | '/marca'
+    | '/autorizacao-fotos'
+    | '/fotos'
     | '/regras'
     | '/saude'
     | '/alunos'
@@ -267,6 +287,8 @@ export interface FileRouteTypes {
     | '/agendamento'
     | '/inquerito-saude'
     | '/marca'
+    | '/autorizacao-fotos'
+    | '/fotos'
     | '/regras'
     | '/saude'
     | '/alunos'
@@ -292,6 +314,8 @@ export interface FileRouteTypes {
     | '/agendamento'
     | '/inquerito-saude'
     | '/marca'
+    | '/autorizacao-fotos'
+    | '/fotos'
     | '/regras'
     | '/saude'
     | '/alunos'
@@ -318,6 +342,8 @@ export interface RootRouteChildren {
   AgendamentoRoute: typeof AgendamentoRoute
   InqueritoSaudeRoute: typeof InqueritoSaudeRoute
   MarcaRoute: typeof MarcaRoute
+  AutorizacaoFotosRoute: typeof AutorizacaoFotosRoute
+  FotosRoute: typeof FotosRoute
   RegrasRoute: typeof RegrasRoute
   SaudeRoute: typeof SaudeRoute
   AlunosRoute: typeof AlunosRoute
@@ -374,6 +400,20 @@ declare module '@tanstack/react-router' {
       path: '/marca'
       fullPath: '/marca'
       preLoaderRoute: typeof MarcaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/autorizacao-fotos': {
+      id: '/autorizacao-fotos'
+      path: '/autorizacao-fotos'
+      fullPath: '/autorizacao-fotos'
+      preLoaderRoute: typeof AutorizacaoFotosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fotos': {
+      id: '/fotos'
+      path: '/fotos'
+      fullPath: '/fotos'
+      preLoaderRoute: typeof FotosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/regras': {
@@ -518,6 +558,8 @@ const rootRouteChildren: RootRouteChildren = {
   AgendamentoRoute: AgendamentoRoute,
   InqueritoSaudeRoute: InqueritoSaudeRoute,
   MarcaRoute: MarcaRoute,
+  AutorizacaoFotosRoute: AutorizacaoFotosRoute,
+  FotosRoute: FotosRoute,
   RegrasRoute: RegrasRoute,
   SaudeRoute: SaudeRoute,
   AlunosRoute: AlunosRoute,

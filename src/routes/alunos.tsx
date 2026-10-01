@@ -44,6 +44,7 @@ import {
   buildAgendamentoWhatsApp,
   agendamentoPublicUrl,
 } from "@/lib/inquerito-saude-whatsapp";
+import { AutorizacaoFotosButton } from "@/components/autorizacao-fotos-button";
 import type { Aluno, FaturaPropina } from "@/data/types";
 import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
 import { NomeAluno } from "@/components/nome-aluno";
@@ -3821,6 +3822,7 @@ function Alunos() {
             >
               <Calendar className="mr-1 size-4" /> Agendamento
             </Button>
+            <AutorizacaoFotosButton />
             <Button
               className="shrink-0"
               variant="secondary"

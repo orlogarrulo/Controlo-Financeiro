@@ -17,7 +17,7 @@
  * 3) Só log (padrão se nada estiver configurado).
  */
 
-export type NotifyTipo = "inquerito-saude" | "agendamento" | "regulamento" | "outro";
+export type NotifyTipo = "inquerito-saude" | "agendamento" | "regulamento" | "autorizacao-fotos" | "outro";
 
 export type NotifyPayload = {
   type: NotifyTipo;
