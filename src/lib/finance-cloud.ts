@@ -856,7 +856,18 @@ export const submitAgendamento = createServerFn({ method: "POST" }).handler(
       ],
     );
     const { notifyEscola } = await import("@/lib/notify-escola");
-    const diaLabel = data.dia.trim();
+    const diaRaw = data.dia.trim();
+    let diaLabel = diaRaw;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(diaRaw)) {
+      const [y, m, d] = diaRaw.split("-").map(Number);
+      diaLabel = new Date(y, m - 1, d, 12, 0, 0).toLocaleDateString("pt-PT", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    } else if (diaRaw === "4a") diaLabel = "4ª feira (legado)";
+    else if (diaRaw === "5a") diaLabel = "5ª feira (legado)";
     await notifyEscola({
       type: "agendamento",
       text:

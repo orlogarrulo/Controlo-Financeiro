@@ -14,6 +14,8 @@ import {
   listAgendamentos,
   type AgendamentoCloud,
 } from "@/lib/finance-cloud";
+import { deliverOfficialHtml } from "@/lib/pdf-export";
+import { escolaLogoSrc } from "@/lib/logo-escola";
 
 export const Route = createFileRoute("/agendamento")({
   component: AgendamentoPage,
@@ -87,6 +89,106 @@ function formatDiaLabel(dia: string, lang: Lang): string {
   return dia;
 }
 
+function escHtml(s: string): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** PDF de confirmação para o encarregado (PT/FR). */
+function buildConfirmacaoAgendamentoHtml(opts: {
+  lang: Lang;
+  encarregadoNome: string;
+  telefone: string;
+  email?: string;
+  alunoNome: string;
+  turma: string;
+  dia: string;
+  hora: string;
+  refId?: string;
+}): string {
+  const { lang } = opts;
+  const t = (pt: string, fr: string) => (lang === "fr" ? fr : pt);
+  const dataLabel = formatDiaLabel(opts.dia, lang);
+  const logo = escolaLogoSrc();
+  const refLine = opts.refId
+    ? `<tr><td class="k">${escHtml(t("Referência", "Référence"))}</td><td class="v">${escHtml(opts.refId)}</td></tr>`
+    : "";
+  const emailLine = opts.email?.trim()
+    ? `<tr><td class="k">${escHtml(t("E-mail", "E-mail"))}</td><td class="v">${escHtml(opts.email.trim())}</td></tr>`
+    : "";
+  const turmaLine = opts.turma?.trim()
+    ? `<tr><td class="k">${escHtml(t("Turma", "Classe"))}</td><td class="v">${escHtml(opts.turma.trim())}</td></tr>`
+    : "";
+  return `<!DOCTYPE html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8"/>
+<title>${escHtml(t("Confirmação de agendamento", "Confirmation de rendez-vous"))}</title>
+<style>
+  @page { size: A4 portrait; margin: 18mm 16mm; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .head { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #1f5c4a; padding-bottom: 12px; margin-bottom: 18px; }
+  .head img { width: 72px; height: 72px; object-fit: contain; }
+  .head h1 { margin: 0; font-size: 16px; color: #1f5c4a; letter-spacing: 0.02em; }
+  .head p { margin: 4px 0 0; font-size: 12px; color: #475569; }
+  .badge { display: inline-block; margin: 8px 0 16px; padding: 6px 12px; border-radius: 999px;
+    background: #ecfdf5; color: #065f46; font-size: 12px; font-weight: 700; border: 1px solid #a7f3d0; }
+  h2 { margin: 0 0 12px; font-size: 18px; color: #0f172a; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; }
+  td { padding: 8px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; font-size: 13px; }
+  td.k { width: 38%; color: #64748b; font-weight: 600; }
+  td.v { color: #0f172a; font-weight: 600; }
+  .note { font-size: 12px; color: #475569; line-height: 1.45; margin-top: 10px; }
+  .foot { margin-top: 28px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <img src="${logo}" alt="Logo"/>
+      <div>
+        <h1>École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida</h1>
+        <p>${escHtml(t("Agendamento pedagógico · Sábados 09:30–12:30", "Rendez-vous pédagogique · Samedis 09h30–12h30"))}</p>
+      </div>
+    </div>
+    <div class="badge">${escHtml(t("Agendamento confirmado", "Rendez-vous confirmé"))}</div>
+    <h2>${escHtml(t("Comprovativo para o encarregado", "Justificatif pour le responsable"))}</h2>
+    <table>
+      <tr><td class="k">${escHtml(t("Encarregado", "Responsable"))}</td><td class="v">${escHtml(opts.encarregadoNome)}</td></tr>
+      <tr><td class="k">${escHtml(t("Telefone / WhatsApp", "Téléphone / WhatsApp"))}</td><td class="v">${escHtml(opts.telefone)}</td></tr>
+      ${emailLine}
+      <tr><td class="k">${escHtml(t("Aluno", "Élève"))}</td><td class="v">${escHtml(opts.alunoNome)}</td></tr>
+      ${turmaLine}
+      <tr><td class="k">${escHtml(t("Data (sábado)", "Date (samedi)"))}</td><td class="v">${escHtml(dataLabel)}</td></tr>
+      <tr><td class="k">${escHtml(t("Hora", "Heure"))}</td><td class="v">${escHtml(opts.hora)}</td></tr>
+      ${refLine}
+    </table>
+    <p class="note">
+      ${escHtml(t(
+        "Apresente este comprovativo no dia do atendimento. Em caso de impossibilidade, contacte a escola com antecedência.",
+        "Présentez ce justificatif le jour du rendez-vous. En cas d'empêchement, contactez l'école à l'avance.",
+      ))}
+    </p>
+    <p class="note">
+      ${escHtml(t("Contacto escola WhatsApp:", "Contact école WhatsApp :"))} ${ESCOLA_WA}
+    </p>
+    <div class="foot">
+      ${escHtml(t(
+        "Documento gerado automaticamente · Uso exclusivo da gestão escolar · Dados pessoais — Lei n.º 22/11 (Angola).",
+        "Document généré automatiquement · Usage exclusif de la gestion scolaire · Données personnelles.",
+      ))}
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 function loadLocal(): AgendamentoCloud[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -112,7 +214,7 @@ function toCsv(rows: AgendamentoCloud[]): string {
       r.email || "",
       r.alunoNome,
       r.turma,
-      r.dia,
+      formatDiaLabel(r.dia, "pt"),
       r.hora,
       r.submittedAt,
     ]
@@ -251,8 +353,44 @@ export function AgendamentoPage() {
       setLastId(id);
       setDone(true);
       toast.success(
-        t("Agendamento registado.", "Rendez-vous enregistré."),
+        t(
+          "Agendamento registado. Pode descarregar o PDF de confirmação.",
+          "Rendez-vous enregistré. Vous pouvez télécharger le PDF de confirmation.",
+        ),
       );
+      // Oferecer o PDF logo a seguir (partilha no telemóvel / impressão no PC)
+      window.setTimeout(() => {
+        void (async () => {
+          try {
+            const html = buildConfirmacaoAgendamentoHtml({
+              lang,
+              encarregadoNome: payload.encarregadoNome,
+              telefone: payload.telefone,
+              email: payload.email || undefined,
+              alunoNome: payload.alunoNome,
+              turma: payload.turma,
+              dia: payload.dia,
+              hora: payload.hora,
+              refId: id || undefined,
+            });
+            const safeName =
+              payload.alunoNome.replace(/[^\w\u00C0-\u024F\s-]/g, "").slice(0, 40) ||
+              "aluno";
+            await deliverOfficialHtml(html, {
+              filename: `confirmacao-agendamento-${safeName}-${payload.dia}.pdf`,
+              forceSinglePage: true,
+              openPrint: true,
+              shareTitle: t("Confirmação de agendamento", "Confirmation de rendez-vous"),
+              shareText: t(
+                `Agendamento: ${formatDiaLabel(payload.dia, lang)} às ${payload.hora}`,
+                `Rendez-vous : ${formatDiaLabel(payload.dia, lang)} à ${payload.hora}`,
+              ),
+            });
+          } catch {
+            /* o botão Descarregar PDF continua disponível */
+          }
+        })();
+      }, 400);
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {
@@ -265,6 +403,48 @@ export function AgendamentoPage() {
       () => toast.success(t("Link copiado", "Lien copié")),
       () => toast.error(t("Não foi possível copiar", "Impossible de copier")),
     );
+  }
+
+  async function gerarPdfConfirmacao() {
+    if (!dia || !hora || !encarregadoNome.trim() || !alunoNome.trim()) {
+      toast.error(t("Dados incompletos para o PDF.", "Données incomplètes pour le PDF."));
+      return;
+    }
+    try {
+      const html = buildConfirmacaoAgendamentoHtml({
+        lang,
+        encarregadoNome: encarregadoNome.trim(),
+        telefone: telefone.trim(),
+        email: email.trim() || undefined,
+        alunoNome: alunoNome.trim(),
+        turma: turma.trim(),
+        dia,
+        hora,
+        refId: lastId || undefined,
+      });
+      const safeName = alunoNome.trim().replace(/[^\w\u00C0-\u024F\s-]/g, "").slice(0, 40) || "aluno";
+      const filename = `confirmacao-agendamento-${safeName}-${dia}.pdf`;
+      await deliverOfficialHtml(html, {
+        filename,
+        forceSinglePage: true,
+        openPrint: true,
+        shareTitle: t("Confirmação de agendamento", "Confirmation de rendez-vous"),
+        shareText: t(
+          `Agendamento: ${formatDiaLabel(dia, lang)} às ${hora}`,
+          `Rendez-vous : ${formatDiaLabel(dia, lang)} à ${hora}`,
+        ),
+      });
+      toast.success(
+        t("PDF de confirmação pronto.", "PDF de confirmation prêt."),
+      );
+    } catch (e) {
+      toast.error(
+        t(
+          `Não foi possível gerar o PDF: ${e instanceof Error ? e.message : String(e)}`,
+          `Impossible de générer le PDF : ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+    }
   }
 
   return (
@@ -333,6 +513,13 @@ export function AgendamentoPage() {
             {ESCOLA_WA}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void gerarPdfConfirmacao()}
+            >
+              {t("Descarregar PDF", "Télécharger le PDF")}
+            </Button>
             <Button
               type="button"
               size="sm"

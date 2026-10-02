@@ -411,12 +411,7 @@ function ContaCorrentePage() {
         if (!letivo) continue;
         recibosMes.set(letivo, Math.max(recibosMes.get(letivo) || 0, Number(d.valor) || 0));
       }
-      let pagosCanon: { mes: string; iso: string; valor: number; data?: string }[] = [];
-      try {
-        pagosCanon = mesesPagosPropina(a, prop as never, recibosMes);
-      } catch {
-        pagosCanon = [];
-      }
+      const pagosCanon = mesesPagosPropina(a, prop as never, recibosMes);
       const pagamentosDetalhe = pagosCanon.map((m) => ({ mes: m.iso, valor: m.valor, data: m.data || "" }));
       mesesPago.length = 0;
       mesesPago.push(...pagosCanon.map((m) => m.iso));
@@ -470,13 +465,13 @@ function ContaCorrentePage() {
       });
     }
 
-    const porNome = new Map<string, RowCC>();
+    const porNome = new Map<string, (typeof byId extends Map<string, infer V> ? V : never)>();
     for (const row of byId.values()) {
-      const nn = (row.nome || row.alunoId || "").toLowerCase().trim();
+      const nn = (row.nome || row.alunoId).normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
       const prev = porNome.get(nn);
       if (!prev || row.nMesesPago > prev.nMesesPago || row.totalPago > prev.totalPago) porNome.set(nn, row);
     }
-    let list = porNome.size ? [...porNome.values()] : [...byId.values()];
+    let list = [...porNome.values()];
     const qq = q.trim().toLowerCase();
     if (qq) {
       list = list.filter(
@@ -633,7 +628,7 @@ function ContaCorrentePage() {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-[var(--color-muted)]">
-                  Sem alunos para mostrar. Actualize a página. Se continuar vazio, abra Matrículas e volte a Conta corrente.
+                  Sem registos de conta corrente.
                 </td>
               </tr>
             ) : (

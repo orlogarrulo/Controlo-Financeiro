@@ -39,8 +39,10 @@ import {
   listRegulamentoAcks,
   listInqueritoSaude,
   listAgendamentos,
+  listAutorizacoesFotos,
   type InqueritoSaudeCloud,
   type AgendamentoCloud,
+  type AutorizacaoFotosCloud,
 } from "@/lib/finance-cloud";
 import { todayIso, formatKz } from "@/lib/format";
 import type { MovimentoBai } from "@/data/types";
@@ -207,15 +209,32 @@ function GooglePage() {
     return [header, ...lines].join("\n");
   }
 
+  /** Data do atendimento: sábados (ISO) ou legado 4a/5a. */
+  function formatAgendamentoData(dia: string): string {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+      const [y, m, d] = dia.split("-").map(Number);
+      const dt = new Date(y, m - 1, d, 12, 0, 0);
+      return dt.toLocaleDateString("pt-PT", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    }
+    if (dia === "4a") return "4ª feira (legado)";
+    if (dia === "5a") return "5ª feira (legado)";
+    return dia?.trim() || "—";
+  }
+
   function agendamentosToCsv(rows: AgendamentoCloud[]): string {
-    const header = "Encarregado;Telefone;Aluno;Turma;Dia;Hora;Criado em";
+    const header = "Encarregado;Telefone;Aluno;Turma;Data (sábado);Hora;Criado em";
     const lines = rows.map((r) =>
       [
         r.encarregadoNome,
         r.telefone,
         r.alunoNome,
         r.turma,
-        r.dia === "4a" ? "4ª feira" : "5ª feira",
+        formatAgendamentoData(r.dia),
         r.hora,
         r.submittedAt,
       ]
@@ -256,7 +275,9 @@ function GooglePage() {
       }
       if (!rows.length) {
         try {
-          const raw = localStorage.getItem("ecole_agendamentos_pedagogico_v1");
+          const raw =
+            localStorage.getItem("ecole_agendamentos_pedagogico_v2") ||
+            localStorage.getItem("ecole_agendamentos_pedagogico_v1");
           if (raw) rows = JSON.parse(raw);
         } catch { /* */ }
       }
@@ -264,6 +285,61 @@ function GooglePage() {
       if (!rows.length) toast.message("Sem agendamentos ainda");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao exportar agendamentos");
+    }
+  }
+
+  function autorizacoesFotosToCsv(rows: AutorizacaoFotosCloud[]): string {
+    const header =
+      "Aluno(s);Turma(s);Responsável;Telefone;Decisão;Tomei nota (nome);Data;Língua;Submetido em";
+    const lines = rows.map((r) => {
+      const decisao =
+        r.decisao === "sim"
+          ? "Sim, autorizo"
+          : r.decisao === "nao"
+            ? "Não autorizo"
+            : String(r.decisao || "");
+      return [
+        r.alunoNome,
+        r.turma || "",
+        r.responsavelNome,
+        r.telefone || "",
+        decisao,
+        r.tomeiNotaNome,
+        r.data,
+        r.lang === "fr" ? "FR" : "PT",
+        r.submittedAt,
+      ]
+        .map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`)
+        .join(";");
+    });
+    return [header, ...lines].join("\n");
+  }
+
+  async function exportAutorizacoesFotos() {
+    try {
+      let rows: AutorizacaoFotosCloud[] = [];
+      try {
+        rows = await listAutorizacoesFotos();
+      } catch {
+        /* offline */
+      }
+      if (!rows.length) {
+        try {
+          const raw = localStorage.getItem("ecole_autorizacoes_fotos_v1");
+          if (raw) rows = JSON.parse(raw);
+        } catch { /* */ }
+      }
+      runExport(
+        "autorizacao-fotos",
+        "Autorizacao_fotos.csv",
+        () => autorizacoesFotosToCsv(rows),
+        "Autorização de fotos — Respostas",
+      );
+      if (!rows.length) toast.message("Sem autorizações de fotos ainda");
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Falha ao exportar autorizações de fotos",
+      );
     }
   }
 
@@ -278,6 +354,7 @@ function GooglePage() {
       exportRegulamento();
       void exportInqueritoSaude();
       void exportAgendamentos();
+      void exportAutorizacoesFotos();
       setLastExport("tudo");
       toast.message("Exportação de todos os CSV concluída");
     } catch (e) {
@@ -509,6 +586,13 @@ function GooglePage() {
               onClick={() => void exportAgendamentos()}
             >
               Agendamentos pedagógicos
+            </Button>
+            <Button
+              type="button"
+              variant={lastExport === "autorizacao-fotos" ? "default" : "secondary"}
+              onClick={() => void exportAutorizacoesFotos()}
+            >
+              Autorização de fotos
             </Button>
             <Button
               type="button"
