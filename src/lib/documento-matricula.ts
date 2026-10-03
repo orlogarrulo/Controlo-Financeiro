@@ -442,10 +442,18 @@ export function garantirCodigoReciboAluno(opts: {
   return { codigo: reg.codigo, viaLabel: viaLabelFromCount(vias), vias };
 }
 
-/** Recibo oficial COM código de verificação (padronizado). */
+/**
+ * Recibo oficial COM código de verificação.
+ * - Se opts.codigoVerificacao já existir (reimpressão em Arquivo), NÃO gera código novo
+ *   nem grava outro documento — só regenera o PDF (cópia).
+ * - Só em emissão nova (sem código) chama garantirCodigoReciboAluno + Arquivo.
+ */
 export function documentoReciboComCodigo(
   a: Aluno,
-  opts?: Parameters<typeof documentoOficialFromAluno>[1],
+  opts?: Parameters<typeof documentoOficialFromAluno>[1] & {
+    /** Se true, nunca grava código/documento (só PDF). */
+    soImpressao?: boolean;
+  },
 ): {
   html: string;
   linhas: LinhaFat[];
@@ -458,53 +466,76 @@ export function documentoReciboComCodigo(
   const mesKey =
     opts?.mesKey ||
     new Date().toISOString().slice(0, 7);
-  const rubricas = base.linhas
-    .filter((l) => l.on && l.value > 0)
-    .map((l) => l.label)
-    .join(", ");
-  const stamp = garantirCodigoReciboAluno({
-    alunoId: a.id,
-    alunoNome: a.nome,
-    mesKey,
-    valor: base.valor,
-    rubricas,
-  });
+  const codigoExistente = (opts?.codigoVerificacao || "").trim();
+  const soImpressao = Boolean(opts?.soImpressao) || Boolean(codigoExistente);
+
+  let codigo: string;
+  let viaLabel: string;
+
+  if (soImpressao && codigoExistente) {
+    // Reimpressão: manter o mesmo código; marcar como cópia se não houver viaLabel
+    codigo = codigoExistente;
+    viaLabel = (opts?.viaLabel || "").trim() || "Cópia";
+  } else if (soImpressao) {
+    codigo = "";
+    viaLabel = (opts?.viaLabel || "").trim() || "Cópia";
+  } else {
+    const rubricas = base.linhas
+      .filter((l) => l.on && l.value > 0)
+      .map((l) => l.label)
+      .join(", ");
+    const stamp = garantirCodigoReciboAluno({
+      alunoId: a.id,
+      alunoNome: a.nome,
+      mesKey,
+      valor: base.valor,
+      rubricas,
+    });
+    codigo = stamp.codigo;
+    viaLabel = stamp.viaLabel;
+  }
+
   const stamped = documentoOficialFromAluno(a, {
     ...opts,
     modo: "recibo",
-    codigoVerificacao: stamp.codigo,
-    viaLabel: stamp.viaLabel,
+    codigoVerificacao: codigo || undefined,
+    viaLabel,
   });
-  try {
-    const s = useFinance.getState();
-    if (typeof s.addDocumentoAluno === "function") {
-      const numero = opts?.numero || `REC-${a.id}-${mesKey}`;
-      const ja = s.findDocumentoPorNumero?.(numero);
-      if (!ja) {
-        s.addDocumentoAluno({
-          tipo: "recibo",
-          modelo: opts?.ambito === "liquidacao" ? "liquidacao_matricula" : "propina_mes",
-          numero,
-          alunoId: a.id,
-          alunoNome: a.nome,
-          mesKey,
-          mesRef: opts?.mesRef,
-          valor: stamped.valor,
-          linhas: stamped.linhas,
-          estado: "emitido",
-          codigoVerificacao: stamp.codigo,
-          pagoEm: new Date().toISOString().slice(0, 10),
-          criadoPor: s.activeOperator,
-        });
+
+  // Só grava no Arquivo em emissão nova (sem código prévio)
+  if (!soImpressao && codigo) {
+    try {
+      const s = useFinance.getState();
+      if (typeof s.addDocumentoAluno === "function") {
+        const numero = opts?.numero || `REC-${a.id}-${mesKey}`;
+        const ja = s.findDocumentoPorNumero?.(numero);
+        if (!ja) {
+          s.addDocumentoAluno({
+            tipo: "recibo",
+            modelo: opts?.ambito === "liquidacao" ? "liquidacao_matricula" : "propina_mes",
+            numero,
+            alunoId: a.id,
+            alunoNome: a.nome,
+            mesKey,
+            mesRef: opts?.mesRef,
+            valor: stamped.valor,
+            linhas: stamped.linhas,
+            estado: "emitido",
+            codigoVerificacao: codigo,
+            pagoEm: new Date().toISOString().slice(0, 10),
+            criadoPor: s.activeOperator,
+          });
+        }
       }
+    } catch {
+      /* arquivo opcional */
     }
-  } catch {
-    /* arquivo opcional */
   }
+
   return {
     ...stamped,
-    codigoVerificacao: stamp.codigo,
-    viaLabel: stamp.viaLabel,
+    codigoVerificacao: codigo,
+    viaLabel,
   };
 }
 

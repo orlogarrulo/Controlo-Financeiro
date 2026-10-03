@@ -293,6 +293,7 @@ function ArquivoPage() {
         "01": "jan", "02": "fev", "03": "mar", "04": "abr", "05": "mai", "06": "jun",
       };
       const mm = (doc.mesKey || "").split("-")[1] || "";
+      // Reimpressão: NÃO criar código novo nem outro registo no Arquivo
       const stamped =
         doc.tipo === "recibo"
           ? documentoReciboComCodigo(aluno, {
@@ -305,7 +306,9 @@ function ArquivoPage() {
               ambito: ambito as "mensalidade" | "liquidacao",
               liquidacaoCompleta: ambito === "liquidacao",
               contacto: loadContacto(),
-              codigoVerificacao: doc.codigoVerificacao,
+              codigoVerificacao: doc.codigoVerificacao || undefined,
+              viaLabel: "Cópia",
+              soImpressao: true,
             })
           : documentoOficialFromAluno(aluno, {
               modo: "fatura",
@@ -334,7 +337,7 @@ function ArquivoPage() {
       a.download = fname;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("PDF descarregado.");
+      toast.success(doc.tipo === "recibo" ? "PDF descarregado (cópia — sem novo registo no Arquivo)." : "PDF descarregado.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao gerar PDF");
     }
