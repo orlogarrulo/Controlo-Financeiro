@@ -411,7 +411,12 @@ function ContaCorrentePage() {
         if (!letivo) continue;
         recibosMes.set(letivo, Math.max(recibosMes.get(letivo) || 0, Number(d.valor) || 0));
       }
-      const pagosCanon = mesesPagosPropina(a, prop as never, recibosMes);
+      let pagosCanon: { mes: string; iso: string; valor: number; data?: string }[] = [];
+      try {
+        pagosCanon = mesesPagosPropina(a, prop as never, recibosMes);
+      } catch {
+        pagosCanon = [];
+      }
       const pagamentosDetalhe = pagosCanon.map((m) => ({ mes: m.iso, valor: m.valor, data: m.data || "" }));
       mesesPago.length = 0;
       mesesPago.push(...pagosCanon.map((m) => m.iso));
@@ -471,7 +476,7 @@ function ContaCorrentePage() {
       const prev = porNome.get(nn);
       if (!prev || row.nMesesPago > prev.nMesesPago || row.totalPago > prev.totalPago) porNome.set(nn, row);
     }
-    let list = [...porNome.values()];
+    let list = porNome.size ? [...porNome.values()] : [...byId.values()];
     const qq = q.trim().toLowerCase();
     if (qq) {
       list = list.filter(

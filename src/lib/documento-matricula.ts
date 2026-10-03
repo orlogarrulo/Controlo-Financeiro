@@ -55,6 +55,16 @@ export function fmtData(d: Date): string {
   return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
+/** Data de nascimento ISO (YYYY-MM-DD) → DD/MM/YYYY. */
+export function fmtDataNasc(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = String(iso).slice(0, 10);
+  const parts = d.split("-");
+  if (parts.length < 3 || !parts[0]) return "—";
+  const [y, m, day] = parts;
+  return `${day}/${m}/${y}`;
+}
+
 export function prazoFatura(mesLetivo: string): {
   limite: string;
   de11a30: string;
@@ -608,7 +618,8 @@ export function buildInvoiceHtml(opts: {
         ${destNif ? `<p style="margin:2px 0 0;font-size:11px;color:#4b5563;">NIF / Contribuinte: <strong>${destNif}</strong></p>` : ""}
         ${destMorada ? `<p style="margin:2px 0 0;font-size:11px;color:#4b5563;">Morada: ${destMorada}</p>` : ""}
         <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
-        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma} · Sexe / Sexo: <strong style="color:#111827;">${a.sexo === "Masculin" ? "Masculin (M)" : a.sexo === "Féminin" ? "Féminin (F)" : "—"}</strong></p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Date de naissance / Data de nascimento: <strong style="color:#111827;">${fmtDataNasc(a.dataNascimento)}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
         ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#4b5563;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
         <p style="margin:4px 0 0;font-size:10px;color:#6b7280;line-height:1.35;">Pacotes: 82.000 · 99.000 · 127.000 Kz (cada um inclui matrícula + seguro escolar + cartão de estudante). Propina mensal 75.000 Kz.</p>` : ""}

@@ -1,5 +1,6 @@
 import type { Lancamento } from "@/data/types";
 import { formatKz } from "@/lib/format";
+import { nomeComSufixoCampus } from "@/lib/aluno-display";
 
 function esc(v: string | number | undefined | null): string {
   const s = v == null ? "" : String(v);
@@ -329,7 +330,7 @@ export function alunosToCsv(
   const lines = rows.map((a) =>
     [
       a.id,
-      a.nome,
+      nomeComSufixoCampus(a),
       a.dataNascimento || "",
       a.turma,
       a.grupo || "",

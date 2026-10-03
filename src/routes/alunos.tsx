@@ -2383,6 +2383,7 @@ function Alunos() {
   <h2>${L.s1}</h2>
   <table>
     ${row(L.nome, fmt(nomeComSufixoCampus(a)))}
+    ${row("Sexe / Sexo", a.sexo === "Masculin" ? "Masculin (M)" : a.sexo === "Féminin" ? "Féminin (F)" : "—")}
     ${row(L.nasc, a.dataNascimento ? formatDate(a.dataNascimento) : "—")}
     ${row(L.classe, fmt(a.turma))}
     ${row(L.grupo, fmt(a.grupo))}
@@ -2739,7 +2740,8 @@ function Alunos() {
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Facturado a</p>
         <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
         <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
-        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma} · Sexe / Sexo: <strong style="color:#111827;">${a.sexo === "Masculin" ? "Masculin (M)" : a.sexo === "Féminin" ? "Féminin (F)" : "—"}</strong></p>
+        <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Date de naissance / Data de nascimento: <strong style="color:#111827;">${(() => { const d = (a.dataNascimento || "").slice(0, 10); const p = d.split("-"); return p.length >= 3 && p[0] ? `${p[2]}/${p[1]}/${p[0]}` : "—"; })()}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
         ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#4b5563;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
         <p style="margin:4px 0 0;font-size:10px;color:#6b7280;line-height:1.35;">Pacotes: 82.000 · 99.000 · 127.000 Kz (cada um inclui matrícula + seguro escolar + cartão de estudante). Propina mensal 75.000 Kz.</p>` : ""}
@@ -2822,26 +2824,38 @@ function Alunos() {
 
 
   async function imprimirAlunosPorClasse(lang: "pt" | "fr" = "fr") {
-    const lista = filteredByClass;
+    const lista = [...filteredByClass];
     if (lista.length === 0) {
-      toast.error(lang === "fr" ? "Aucun élève à imprimer. Ajustez le filtre." : "Nenhum aluno para imprimir. Ajuste o filtro.");
+      toast.error(
+        lang === "fr"
+          ? "Aucun élève à imprimer. Ajustez le filtre."
+          : "Nenhum aluno para imprimir. Ajuste o filtro.",
+      );
       return;
     }
-    // REGRA: secção do PDF = turma oficial (idade se o ID for incompatível).
-    // P1-07 com 11 anos vai para CM2, não para Maternelle P1.
-    const byClass = new Map<string, typeof lista>();
-    for (const a of lista) {
+
+    // Ordem do ciclo escolar (P1 → 3ème), depois nome
+    const ordemTurmas = [...TURMAS];
+    const rankTurma = (t: string) => {
+      const i = ordemTurmas.indexOf(t as (typeof TURMAS)[number]);
+      return i >= 0 ? i : 900;
+    };
+    const turmaOf = (a: (typeof lista)[0]) => {
       const official = resolveTurmaOficial(a);
       const stored = a.turma && String(a.turma).trim();
       const suggested = a.dataNascimento ? turmaFromDataNascimento(a.dataNascimento) : null;
-      const k =
+      return (
         official ||
         stored ||
         suggested ||
-        (lang === "fr" ? "Sans classe" : "Sem classe");
-      if (!byClass.has(k)) byClass.set(k, []);
-      byClass.get(k)!.push(a);
-    }
+        (lang === "fr" ? "Sans classe" : "Sem classe")
+      );
+    };
+    // Ordem alfabética pelo nome (A→Z)
+    lista.sort((a, b) =>
+      (a.nome || "").localeCompare(b.nome || "", "pt", { sensitivity: "base" }),
+    );
+
     const logoSrc = await loadEscolaLogoDataUrl();
     const locale = lang === "fr" ? "fr-FR" : "pt-PT";
     const fmtDate = (s?: string) => {
@@ -2851,21 +2865,6 @@ function Alunos() {
       const [y, m, day] = d.split("-");
       return `${day}/${m}/${y}`;
     };
-    const calcAge = (s?: string) => {
-      if (!s) return "—";
-      const d = s.slice(0, 10);
-      const parts = d.split("-").map(Number);
-      if (parts.length < 3 || !parts[0]) return "—";
-      const [y, m, day] = parts;
-      const born = new Date(y, (m || 1) - 1, day || 1);
-      if (Number.isNaN(born.getTime())) return "—";
-      // Idade de referência: 1 out 2026 (início das aulas / ano lectivo) — alinhado com classe Congo-Brazzaville
-      const ref = new Date(2026, 9, 1);
-      let age = ref.getFullYear() - born.getFullYear();
-      const md = ref.getMonth() - born.getMonth();
-      if (md < 0 || (md === 0 && ref.getDate() < born.getDate())) age -= 1;
-      return age >= 0 && age < 120 ? String(age) : "—";
-    };
     const esc = (v: unknown) =>
       String(v ?? "")
         .replace(/&/g, "&amp;")
@@ -2873,183 +2872,186 @@ function Alunos() {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
 
+    const sexoLabel = (s?: string) => {
+      if (s === "Masculin") return "M";
+      if (s === "Féminin") return "F";
+      return "—";
+    };
+
     const L =
       lang === "fr"
         ? {
-            title: soSemTelefone ? "Élèves sans contact téléphonique" : "Liste des élèves",
-            year: "Année scolaire",
-            all: soSemTelefone ? "Sans téléphone à l'inscription" : "Toutes les classes",
-            classPref: "Classe",
-            pupils: "élève(s)",
-            colId: "ID",
-            colName: "Nom de l'élève",
-            colBirth: "Date de naissance",
-            colAge: "Âge",
-            colPhone: "Téléphone",
-            foot: "Document généré par le Département des Finances",
+            title: "Liste des élèves — Matrículas",
+            year: "Année",
+            colN: "N°",
+            colId: "Matricule",
+            colName: "Nom et prénom",
+            colBirth: "Date naissance",
+            colPlace: "Lieu de naissance",
+            colSex: "Sexe",
+            colClass: "Classe",
+            foot: "Données personnelles — Loi n° 22/11 (Angola). Usage exclusif de la gestion scolaire.",
             ok: "Document ouvert",
             pdfReady: "PDF prêt",
             share: "Choisissez WhatsApp, Gmail ou une autre app",
             saveHint: "utilisez « Enregistrer au format PDF » si besoin",
+            pupils: "élèves",
           }
         : {
-            title: soSemTelefone ? "Alunos sem contacto telefónico" : "Lista de alunos",
-            year: "Ano lectivo",
-            all: soSemTelefone ? "Sem telefone na matrícula" : "Todas as classes",
-            classPref: "Classe",
-            pupils: "aluno(s)",
-            colId: "ID",
-            colName: "Nome do aluno",
+            title: "Lista de alunos — Matrículas",
+            year: "Ano",
+            colN: "N°",
+            colId: "Matrícula",
+            colName: "Nome e apelido",
             colBirth: "Data de nascimento",
-            colAge: "Idade",
-            colPhone: "Telefone",
-            foot: "Documento gerado pelo Departamento de Finanças",
+            colPlace: "Local de nascimento",
+            colSex: "Sexo",
+            colClass: "Turma",
+            foot: "Dados pessoais — Lei n.º 22/11 (Angola). Uso exclusivo da gestão escolar.",
             ok: "Documento aberto",
             pdfReady: "PDF pronto",
             share: "Escolha WhatsApp, Gmail ou outra app",
             saveHint: "use «Guardar como PDF» se precisar",
+            pupils: "alunos",
           };
 
-    // Ordem cronológica do ciclo escolar Congo-Brazzaville (P1 → 3ème)
-    const ordemTurmas = [
-      ...TURMAS,
-      ...[...byClass.keys()].filter((t) => !(TURMAS as readonly string[]).includes(t)),
-    ];
-    const turmasOrdenadas = ordemTurmas.filter((t) => byClass.has(t));
-
-    let body = "";
-    for (const turma of turmasOrdenadas) {
-      const rows = byClass.get(turma)!;
-      // Alunos por nome dentro de cada classe
-      rows.sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt"));
-      body += `<h2>${esc(turma)} <span class="count">(${rows.length})</span></h2>`;
-      body += `<table>
-        <thead>
-          <tr>
-            <th style="width:10%">${L.colId}</th>
-            <th style="width:32%">${L.colName}</th>
-            <th style="width:18%">${L.colBirth}</th>
-            <th style="width:10%">${L.colAge}</th>
-            <th style="width:30%">${L.colPhone}</th>
-          </tr>
-        </thead>
-        <tbody>`;
-      rows.forEach((a, i) => {
-        const bg = i % 2 ? "#f5f5f5" : "#ffffff";
-        body += `<tr style="background:${bg}">
-          <td>${esc(a.id)}</td>
-          <td>${esc(nomeComSufixoCampus(a) || "—")}</td>
-          <td>${fmtDate(a.dataNascimento)}</td>
-          <td>${calcAge(a.dataNascimento)}</td>
-          <td>${esc(a.telefone || "—")}</td>
-        </tr>`;
-      });
-      body += `</tbody></table>`;
+    // Contagens por turma e sexo
+    const countByClass = new Map<string, number>();
+    let nM = 0;
+    let nF = 0;
+    let nX = 0;
+    for (const a of lista) {
+      const t = turmaOf(a);
+      countByClass.set(t, (countByClass.get(t) || 0) + 1);
+      if (a.sexo === "Masculin") nM += 1;
+      else if (a.sexo === "Féminin") nF += 1;
+      else nX += 1;
     }
+    const classSummary = [...countByClass.entries()]
+      .sort((a, b) => rankTurma(a[0]) - rankTurma(b[0]) || a[0].localeCompare(b[0], "pt"))
+      .map(([t, n]) => `${t}: ${n}`)
+      .join(" · ");
+    const sexSummary =
+      lang === "fr"
+        ? `Sexe — M: ${nM} · F: ${nF} · non renseigné: ${nX}`
+        : `Sexo — M: ${nM} · F: ${nF} · não indicado: ${nX}`;
+
+    const emitido = new Date().toLocaleString(locale, {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    let bodyRows = "";
+    lista.forEach((a, i) => {
+      const bg = i % 2 ? "#f4f7f5" : "#ffffff";
+      const baseNome = esc((a.nome || "").trim() || "—");
+      const nomeCell = a.transferidoCampusCidade
+        ? `${baseNome} <strong style="color:#1f5c4a;">- campus cidade</strong>`
+        : baseNome;
+      const turma = esc(turmaOf(a));
+      bodyRows += `<tr style="background:${bg}">
+        <td class="c">${i + 1}</td>
+        <td class="mono">${esc(a.id)}</td>
+        <td>${nomeCell}</td>
+        <td class="c">${fmtDate(a.dataNascimento)}</td>
+        <td>${esc(a.lugarNascimento || "—")}</td>
+        <td class="c">${sexoLabel(a.sexo)}</td>
+        <td>${turma}</td>
+      </tr>`;
+    });
 
     const filtroLabel =
       turmaFiltro !== "todas"
-        ? ` · ${L.classPref} ${esc(turmaFiltro)}`
-        : ` · ${L.all}`;
-    const hoje = new Date().toLocaleDateString(locale);
+        ? ` · ${esc(turmaFiltro)}`
+        : "";
+
     const inner = `
 <div class="sheet">
   <div class="head">
     <img src="${logoSrc}" width="72" height="72" alt="Logo École Consulaire" />
     <div>
-      <p class="kicker">${esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda")}</p>
+      <p class="kicker">${esc(escola.nome || "École Consulaire du Congo (Brazzaville) de Luanda — Annexe Nova Vida")}</p>
       <p class="title">${L.title}</p>
-      <p class="meta">${L.year} ${esc(escola.ano || "")}${filtroLabel} · ${lista.length} ${L.pupils} · ${hoje}</p>
+      <p class="meta">${L.year} ${esc(escola.ano || "2026/2027")}${filtroLabel} · ${lista.length} ${L.pupils} · Export ${esc(emitido)}</p>
     </div>
   </div>
-  ${body}
-  <p class="foot">${L.foot} · ${hoje}</p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:5%">${L.colN}</th>
+        <th style="width:10%">${L.colId}</th>
+        <th style="width:32%">${L.colName}</th>
+        <th style="width:12%">${L.colBirth}</th>
+        <th style="width:16%">${L.colPlace}</th>
+        <th style="width:7%">${L.colSex}</th>
+        <th style="width:18%">${L.colClass}</th>
+      </tr>
+    </thead>
+    <tbody>${bodyRows}</tbody>
+  </table>
+  <p class="summary">${esc(classSummary)} · Total ${lista.length}</p>
+  <p class="summary">${esc(sexSummary)}</p>
+  <p class="foot">${L.foot}</p>
 </div>`;
 
     const docHtml = `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
 <meta charset="utf-8"/>
-<title>${L.title}</title>
+<title></title>
 <style>
-  /* Margens iguais — listagem centrada na folha A4 (sem deslocar para a direita) */
-  @page { size: A4 portrait; margin: 14mm; }
+  @page { size: A4 landscape; margin: 12mm 10mm; }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; padding: 0; background: #fff; color: #000;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    font-size: 11px; line-height: 1.35;
+    margin: 0; padding: 0; background: #fff; color: #0f172a;
+    font-family: Georgia, "Times New Roman", Times, serif; font-size: 10px; line-height: 1.3;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
-    width: 100%;
   }
-  .sheet {
-    width: 100%;
-    max-width: 182mm; /* 210 − 2×14mm */
-    margin: 0 auto;
-    padding: 0;
-    color: #000;
-    overflow: visible;
-    box-sizing: border-box;
-  }
-  @media print {
-    html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
-    .sheet {
-      margin-left: auto !important;
-      margin-right: auto !important;
-      padding: 0 !important;
-      width: 100% !important;
-      max-width: 100% !important;
-    }
-  }
+  .sheet { padding: 2mm; }
   .head {
-    display: flex; gap: 14px; align-items: center; justify-content: flex-start;
-    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 12px; margin: 0 0 16px 0;
-    page-break-inside: avoid; break-inside: avoid;
-    width: 100%;
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 2.5px solid #1f5c4a; padding-bottom: 10px; margin-bottom: 10px;
   }
-  .head img {
-    width: 72px; height: 72px; object-fit: contain; flex-shrink: 0;
-    display: block; background: #fff;
+  .head img { width: 64px; height: 64px; object-fit: contain; flex-shrink: 0; }
+  .kicker {
+    margin: 0; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: #1f5c4a; font-weight: 700;
   }
-  .kicker { margin: 0; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
-    color: #000; font-weight: 700; }
-  .title { margin: 2px 0 0; font-size: 16px; font-weight: 700; color: #000; }
-  .meta { margin: 2px 0 0; font-size: 10px; color: #000; }
-  h2 { margin: 14px 0 6px; font-size: 12px; color: #000; font-weight: 700;
-    border-bottom: 1px solid #333; padding-bottom: 3px; page-break-after: avoid; }
-  h2 .count { font-weight: 400; color: #333; }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0 0 10px 0;
-    page-break-inside: auto;
-    table-layout: fixed;
-  }
+  .title { margin: 3px 0 0; font-size: 15px; font-weight: 700; color: #0f172a; }
+  .meta { margin: 2px 0 0; font-size: 10px; color: #475569; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #1a4d3e; }
   thead { display: table-header-group; }
   th {
-    background: #fff; color: #000; font-size: 10px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.03em; padding: 7px 6px; text-align: left;
-    border: 1px solid #000;
+    background: #1f5c4a; color: #fff; font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 5px; text-align: left;
+    border: 1px solid #163f33;
   }
   td {
-    padding: 6px 6px; border: 1px solid #ccc; font-size: 11px; vertical-align: top;
-    color: #000; word-break: break-word; overflow-wrap: anywhere;
+    padding: 5px 5px; border: 1px solid #d5ddd8; font-size: 10px; vertical-align: top;
+    color: #0f172a; word-break: break-word; overflow-wrap: anywhere;
   }
+  td.c { text-align: center; }
+  td.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 9.5px; }
   tr { page-break-inside: avoid; break-inside: avoid; }
-  .foot { margin-top: 16px; text-align: right; font-size: 9px; color: #000;
-    border-top: 1px solid #999; padding-top: 6px; }
+  .summary { margin: 8px 0 0; font-size: 9.5px; color: #334155; }
+  .foot { margin-top: 10px; font-size: 9px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 6px; }
   @media screen {
     body { padding: 16px; background: #e8ece9; }
-    .sheet { max-width: 800px; margin: 0 auto; background: #fff; padding: 18px;
+    .sheet { max-width: 1100px; margin: 0 auto; background: #fff; padding: 16px;
       box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   }
 </style>
 </head>
 <body>${inner}</body>
 </html>`;
+
     try {
       const r = await deliverOfficialHtml(docHtml, {
         filename: lang === "fr" ? "liste-eleves.pdf" : "lista-alunos.pdf",
+        landscape: true,
         shareTitle: L.title,
         shareText: `${lista.length} · École Consulaire`,
       });
@@ -3057,7 +3059,13 @@ function Alunos() {
       else if (isMobileDevice()) toast.success(L.pdfReady);
       else toast.success(`${L.ok} · ${lista.length} ${L.pupils} — ${L.saveHint}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : lang === "fr" ? "Erreur d'impression" : "Erro ao imprimir");
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : lang === "fr"
+            ? "Erreur d'impression"
+            : "Erro ao imprimir",
+      );
     }
   }
 
@@ -3668,13 +3676,22 @@ function Alunos() {
     setExportBusy(true);
     try {
       const logoSrc = await loadEscolaLogoDataUrl();
+      const esc = (v: unknown) =>
+        String(v ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
       const rows = selected
         .map(
           (a, i) => {
             const turmaPdf = resolveTurmaOficial(a) || (a.turma && String(a.turma).trim()) || a.turma;
+            const nomeCell = a.transferidoCampusCidade
+              ? `${esc(a.nome || "")} <strong style="color:#1f5c4a;">- campus cidade</strong>`
+              : esc(a.nome || "");
             return `<tr style="background:${i % 2 ? "#f4f7f5" : "#fff"};">
-              <td class="mono">${a.id}</td>
-              <td>${nomeComSufixoCampus(a)}</td>
+              <td class="mono">${esc(a.id)}</td>
+              <td>${nomeCell}</td>
               <td>${turmaPdf}</td>
               <td class="num">${formatKz(a.liquido)}</td>
               <td class="mono">${a.recibo}</td>
@@ -4056,8 +4073,8 @@ function Alunos() {
                 variant="secondary"
                 title={
                   pdfLang === "fr"
-                    ? "PDF A4 — ID, nom, date de naissance, âge, téléphone"
-                    : "PDF A4 — ID, nome, data de nascimento, idade, telefone"
+                    ? "PDF A4 paysage — N°, matricule, nom, naissance, sexe, classe (campus ville marqué)"
+                    : "PDF A4 horizontal — N°, matrícula, nome, nascimento, sexo, turma (campus cidade assinalado)"
                 }
                 onClick={() => void imprimirAlunosPorClasse(pdfLang)}
               >
