@@ -3176,11 +3176,23 @@ function Alunos() {
     // Rubricas da matrícula com valor > 0.
     // Multas ficam desligadas por defeito (on: false em linhasMatriculaBase)
     // — só entram se o utilizador as marcar no diálogo do recibo.
-    linhas = linhas.map((l) => ({
-      ...l,
-      on: Boolean(l.on) && l.value > 0,
-    }));
-    const total = totalLinhas(linhas);
+    // Sem propina na ficha (mensalidade1/mesesPropina = 0): não incluir propinas no recibo.
+    const semPropinaMatricula =
+      !(Number(a.mensalidade1) > 0) && !(Number(a.mesesPropina) > 0);
+    linhas = linhas.map((l) => {
+      if (semPropinaMatricula && l.key === "propinas") {
+        return { ...l, on: false, value: 0 };
+      }
+      return {
+        ...l,
+        on: Boolean(l.on) && l.value > 0,
+      };
+    });
+    let total = totalLinhas(linhas);
+    const liquidoFicha = Number(a.liquido) || 0;
+    if (liquidoFicha > 0 && Math.abs(total - liquidoFicha) > 1) {
+      total = liquidoFicha;
+    }
     const numero = `REC-${(a.recibo || a.id || "X").replace(/[^\w\-]/g, "")}-${mesKey}`;
 
     const rubricasAtivas = linhas.filter((l) => l.on && l.value > 0);

@@ -274,7 +274,12 @@ export function linhasMatriculaFromAluno(
   let propinaLiquida = pc.liquidoPropina;
   const mensSaved = Number(a.mensalidade1) || 0;
   const mesesSaved = Number(a.mesesPropina) || 0;
-  if (mensSaved > 0 && mesesSaved === meses && meses > 0) {
+  // Só há propina na liquidação se a ficha tiver mensalidade1/mesesPropina.
+  // Nunca injectar tarifa de turma quando o aluno só pagou inscrição/seguro/curso
+  // (ex.: Manuel Artur 220 000 Kz — sem propina na matrícula).
+  if (!(mensSaved > 0) && !(mesesSaved > 0)) {
+    propinaLiquida = 0;
+  } else if (mensSaved > 0 && mesesSaved === meses && meses > 0) {
     propinaLiquida = mensSaved;
   } else if (propinaLiquida <= 0 && mensSaved > 0 && meses > 0) {
     propinaLiquida = mensSaved;
@@ -391,7 +396,24 @@ export function documentoOficialFromAluno(
   } else {
     linhas = linhasMatriculaFromAluno(a, mesesProp, { campanha, irmaos });
   }
-  const valor = totalLinhas(linhas);
+  // Liquidação: o líquido da ficha prevalece (evita 391 000 vs 220 000 por propina injectada)
+  let valor = totalLinhas(linhas);
+  if (ambito === "liquidacao") {
+    const liquidoFicha = Number(a.liquido) || 0;
+    if (liquidoFicha > 0) {
+      // Se a ficha não inclui propina, garantir que a linha propinas fica desligada
+      if (!(Number(a.mensalidade1) > 0) && !(Number(a.mesesPropina) > 0)) {
+        linhas = linhas.map((l) =>
+          l.key === "propinas" ? { ...l, on: false, value: 0 } : l,
+        );
+        valor = totalLinhas(linhas);
+      }
+      // Preferir líquido gravado se ainda divergir (dados legados)
+      if (Math.abs(valor - liquidoFicha) > 1) {
+        valor = liquidoFicha;
+      }
+    }
+  }
   const html = buildInvoiceHtml({
     a,
     numero: opts?.numero || "—",

@@ -217,6 +217,38 @@ function buildVistaDocumentos(
   return out.sort((a, b) => (b.emitidoEm || "").localeCompare(a.emitidoEm || ""));
 }
 
+/** Valor a mostrar na lista: preferir líquido da ficha em liquidação se o doc estiver inflado. */
+function valorDocumentoExibido(
+  d: DocumentoAluno,
+  aluno: { liquido?: number; mensalidade1?: number; mesesPropina?: number } | undefined,
+): number {
+  const stored = Number(d.valor) || 0;
+  if (d.modelo === "liquidacao_matricula" && aluno) {
+    const liq = Number(aluno.liquido) || 0;
+    const semPropina = !(Number(aluno.mensalidade1) > 0) && !(Number(aluno.mesesPropina) > 0);
+    if (liq > 0 && semPropina && stored > liq * 1.05) {
+      return liq;
+    }
+    // Soma das linhas guardadas, se existir
+    const linhas = (d.linhas || []).filter((l) => l.on !== false && Number(l.value) > 0);
+    if (linhas.length) {
+      const soma = linhas.reduce((s, l) => s + (Number(l.value) || 0), 0);
+      if (soma > 0 && (semPropina || Math.abs(soma - stored) > 1)) {
+        // Se há propinas na linha mas a ficha não tem, excluir
+        if (semPropina) {
+          const semP = linhas
+            .filter((l) => !/propina/i.test(String(l.key || "") + String(l.label || "")))
+            .reduce((s, l) => s + (Number(l.value) || 0), 0);
+          if (semP > 0) return semP;
+        }
+        if (liq > 0 && Math.abs(soma - liq) <= 1) return liq;
+      }
+    }
+    if (liq > 0 && Math.abs(stored - liq) > 1 && semPropina) return liq;
+  }
+  return stored;
+}
+
 function ArquivoPage() {
   const extras = useFinance((s) => s.extras || []);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
@@ -653,7 +685,7 @@ function ArquivoPage() {
                       <td className="px-3 py-2 text-xs tabular-nums">
                         {d.emitidoEm ? formatDate(d.emitidoEm.slice(0, 10)) : "—"}
                       </td>
-                      <td className="px-3 py-2 tabular-nums">{formatKz(d.valor)}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatKz(valorDocumentoExibido(d, alunos.find((x) => x.id === d.alunoId)))}</td>
                       <td className="px-3 py-2">
                         <Badge className={estadoTone(d.estado)}>
                           {ESTADO_LABEL[d.estado] || d.estado}
@@ -696,7 +728,7 @@ function ArquivoPage() {
                             onClick={() => {
                               if (
                                 !confirm(
-                                  `Apagar ${d.tipo} ${d.numero} de ${d.alunoNome}?\nValor: ${formatKz(d.valor)}\n\nEsta acção não pode ser desfeita.`,
+                                  `Apagar ${d.tipo} ${d.numero} de ${d.alunoNome}?\nValor: ${formatKz(valorDocumentoExibido(d, alunos.find((x) => x.id === d.alunoId)))}\n\nEsta acção não pode ser desfeita.`,
                                 )
                               ) {
                                 return;
