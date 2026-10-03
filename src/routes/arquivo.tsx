@@ -9,7 +9,7 @@
  *   Pagamento → Gerar recibo (n.º fatura) → Arquivo + código RC-
  *   Confirmar no CRM → arquivado (sai da fila, mantém histórico)
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect} from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Archive,
@@ -217,35 +217,76 @@ function buildVistaDocumentos(
   return out.sort((a, b) => (b.emitidoEm || "").localeCompare(a.emitidoEm || ""));
 }
 
-/** Valor a mostrar na lista: preferir líquido da ficha em liquidação se o doc estiver inflado. */
+/**
+ * Valor a mostrar na lista Arquivo.
+ * Liquidação matrícula: se a ficha não tem mensalidade1 (propina na matrícula),
+ * o valor correcto é o líquido da ficha (ex.: William 180 000, não 350 000).
+ */
 function valorDocumentoExibido(
   d: DocumentoAluno,
-  aluno: { liquido?: number; mensalidade1?: number; mesesPropina?: number } | undefined,
+  aluno:
+    | {
+        liquido?: number;
+        mensalidade1?: number;
+        mesesPropina?: number;
+        inscricao?: number;
+        seguro?: number;
+        manuais?: number;
+        cadernos?: number;
+        uniforme?: number;
+        extras?: number;
+        curso?: number;
+        transporte?: number;
+        alimentacao?: number;
+        cartaoEstudante?: number;
+      }
+    | undefined,
 ): number {
   const stored = Number(d.valor) || 0;
-  if (d.modelo === "liquidacao_matricula" && aluno) {
-    const liq = Number(aluno.liquido) || 0;
-    const semPropina = !(Number(aluno.mensalidade1) > 0) && !(Number(aluno.mesesPropina) > 0);
-    if (liq > 0 && semPropina && stored > liq * 1.05) {
-      return liq;
-    }
-    // Soma das linhas guardadas, se existir
+  if (d.modelo !== "liquidacao_matricula" || !aluno) return stored;
+
+  const liq = Number(aluno.liquido) || 0;
+  const temPropinaMatricula = Number(aluno.mensalidade1) > 0;
+
+  // Soma taxas de matrícula (sem propina)
+  const taxas =
+    (Number(aluno.inscricao) || 0) +
+    (Number(aluno.seguro) || 0) +
+    (Number(aluno.manuais) || 0) +
+    (Number(aluno.cadernos) || 0) +
+    (Number(aluno.uniforme) || 0) +
+    (Number(aluno.extras) || 0) +
+    (Number(aluno.curso) || 0) +
+    (Number(aluno.transporte) || 0) +
+    (Number(aluno.alimentacao) || 0) +
+    (Number(aluno.cartaoEstudante) || 0);
+
+  if (!temPropinaMatricula) {
+    // Linhas do doc sem propina
     const linhas = (d.linhas || []).filter((l) => l.on !== false && Number(l.value) > 0);
-    if (linhas.length) {
-      const soma = linhas.reduce((s, l) => s + (Number(l.value) || 0), 0);
-      if (soma > 0 && (semPropina || Math.abs(soma - stored) > 1)) {
-        // Se há propinas na linha mas a ficha não tem, excluir
-        if (semPropina) {
-          const semP = linhas
-            .filter((l) => !/propina/i.test(String(l.key || "") + String(l.label || "")))
-            .reduce((s, l) => s + (Number(l.value) || 0), 0);
-          if (semP > 0) return semP;
-        }
-        if (liq > 0 && Math.abs(soma - liq) <= 1) return liq;
-      }
-    }
-    if (liq > 0 && Math.abs(stored - liq) > 1 && semPropina) return liq;
+    const semP = linhas
+      .filter((l) => !/propina/i.test(String(l.key || "") + " " + String(l.label || "")))
+      .reduce((s, l) => s + (Number(l.value) || 0), 0);
+    if (liq > 0) return liq;
+    if (semP > 0) return semP;
+    if (taxas > 0) return taxas;
   }
+
+  // Com propina na matrícula: se o líquido da ficha for fiável, preferir quando diverge muito
+  if (liq > 0 && stored > 0 && Math.abs(stored - liq) > 1) {
+    // Preferir líquido se estiver alinhado com taxas+mensalidade1
+    const esperado = taxas + (Number(aluno.mensalidade1) || 0);
+    if (esperado > 0 && Math.abs(liq - esperado) <= 1) return liq;
+    if (Math.abs(liq - stored) / stored > 0.05) return liq;
+  }
+
+  // Soma das linhas guardadas
+  const linhas = (d.linhas || []).filter((l) => l.on !== false && Number(l.value) > 0);
+  if (linhas.length) {
+    const soma = linhas.reduce((s, l) => s + (Number(l.value) || 0), 0);
+    if (soma > 0 && liq > 0 && Math.abs(soma - liq) <= 1) return liq;
+  }
+
   return stored;
 }
 
@@ -277,6 +318,7 @@ function ArquivoPage() {
   const [alunoId, setAlunoId] = useState<string>("");
   const [detalhe, setDetalhe] = useState<DocumentoAluno | null>(null);
   const [faturaNumRecibo, setFaturaNumRecibo] = useState("");
+
   const [syncing, setSyncing] = useState(false);
 
   const documentos = useMemo(
@@ -289,6 +331,32 @@ function ArquivoPage() {
       ),
     [documentosAluno, faturasPropina, codigosRecibo, documentosAlunoDeletedIds],
   );
+
+  // Corrige valores inflados de liquidação (ex.: 350 000 → 180 000) uma vez na sessão
+  useEffect(() => {
+    const update = useFinance.getState().updateDocumentoAluno;
+    if (!update) return;
+    let n = 0;
+    for (const d of documentos) {
+      if (d.modelo !== "liquidacao_matricula") continue;
+      const aluno = alunos.find((x) => x.id === d.alunoId);
+      if (!aluno) continue;
+      const correcto = valorDocumentoExibido(d, aluno);
+      const stored = Number(d.valor) || 0;
+      if (correcto > 0 && stored > 0 && Math.abs(correcto - stored) > 1) {
+        try {
+          update(d.id, { valor: correcto });
+          n += 1;
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    if (n > 0) {
+      toast.message(`Arquivo: ${n} recibo(s) de liquidação com valor corrigido (líquido da ficha).`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alunos.length, documentos.length]);
 
   const filtrados = useMemo(() => {
     let list = documentos;

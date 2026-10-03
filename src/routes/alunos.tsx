@@ -3177,8 +3177,8 @@ function Alunos() {
     // Multas ficam desligadas por defeito (on: false em linhasMatriculaBase)
     // — só entram se o utilizador as marcar no diálogo do recibo.
     // Sem propina na ficha (mensalidade1/mesesPropina = 0): não incluir propinas no recibo.
-    const semPropinaMatricula =
-      !(Number(a.mensalidade1) > 0) && !(Number(a.mesesPropina) > 0);
+    // Propina no recibo de liquidação só se mensalidade1 > 0 (não basta mesesPropina)
+    const semPropinaMatricula = !(Number(a.mensalidade1) > 0);
     linhas = linhas.map((l) => {
       if (semPropinaMatricula && l.key === "propinas") {
         return { ...l, on: false, value: 0 };
