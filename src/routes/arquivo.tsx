@@ -179,9 +179,9 @@ function buildVistaDocumentos(
     brutos.push(d);
   }
 
-  // Histórico: permite várias liquidações do mesmo aluno.
-  // Remove só documentos iguais (mesmo aluno + tipo + modelo + mesmas rubricas e montantes).
-  function assinaturaConteudo(d: DocumentoAluno): string {
+  // Histórico: várias liquidações OK se conteúdo diferente.
+  // Duplicado = mesmo aluno + mesmo tipo/modelo + mesmo montante (+ mesmas rubricas se existirem).
+  function linhasAssinatura(d: DocumentoAluno): string {
     const linhas = (d.linhas || [])
       .filter((l) => l.on !== false && Number(l.value) > 0)
       .map((l) => {
@@ -189,28 +189,47 @@ function buildVistaDocumentos(
           .toLowerCase()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
-          .replace(/\s+/g, " ")
+          .replace(/[^a-z0-9]+/g, " ")
           .trim();
+        // Agrupar por tipo de rubrica (ignora texto longo)
+        let tipo = k;
+        if (/propina|mensual/.test(k)) tipo = "propina";
+        else if (/inscri|pacote campus|matricula/.test(k)) tipo = "inscricao";
+        else if (/seguro/.test(k)) tipo = "seguro";
+        else if (/manual/.test(k)) tipo = "manuais";
+        else if (/caderno/.test(k)) tipo = "cadernos";
+        else if (/uniforme/.test(k)) tipo = "uniforme";
+        else if (/\batl\b/.test(k)) tipo = "atl";
+        else if (/transporte/.test(k)) tipo = "transporte";
+        else if (/alimenta/.test(k)) tipo = "alimentacao";
+        else if (/curso/.test(k)) tipo = "curso";
+        else if (/cartao|cartão/.test(k)) tipo = "cartao";
         const v = Math.round(Number(l.value) || 0);
-        return `${k}:${v}`;
+        return `${tipo}:${v}`;
       })
       .sort();
-    const valor = Math.round(Number(d.valor) || 0);
-    // Se não há linhas, usar valor total como assinatura
-    if (!linhas.length) return `total:${valor}`;
-    return linhas.join("|") + `|total:${valor}`;
+    return linhas.join("|");
+  }
+
+  function valorNorm(d: DocumentoAluno): number {
+    return Math.round(Number(d.valor) || 0);
+  }
+
+  function assinaturaDuplicado(d: DocumentoAluno): string {
+    const v = valorNorm(d);
+    const linhas = linhasAssinatura(d);
+    // Com linhas: aluno|tipo|modelo|rubricas|valor
+    // Sem linhas: aluno|tipo|modelo|valor  (dois recibos 320 000 sem detalhe = duplicado)
+    if (linhas) return [d.alunoId, d.tipo, d.modelo || "", linhas, String(v)].join("|");
+    return [d.alunoId, d.tipo, d.modelo || "", `valor:${v}`].join("|");
   }
 
   function rubricaDe(d: DocumentoAluno): string {
     if (d.modelo === "liquidacao_matricula") return "matricula";
     if (d.modelo === "propina_mes") return "propina";
-    const linhas = (d.linhas || []).filter((l) => l.on !== false);
-    const keys = linhas
-      .map((l) => String(l.key || l.label || "").toLowerCase())
-      .filter(Boolean)
-      .sort();
-    if (keys.some((k) => k.includes("propina"))) return "propina";
-    return keys.join("|") || d.modelo || "doc";
+    const sig = linhasAssinatura(d);
+    if (sig.includes("propina:")) return "propina";
+    return d.modelo || "doc";
   }
 
   function mesNorm(d: DocumentoAluno): string {
@@ -239,6 +258,8 @@ function buildVistaDocumentos(
     if (String(d.numero || "").startsWith("REC-")) n += 3;
     if (!String(d.id || "").startsWith("fat-legacy") && !String(d.id || "").startsWith("rc-legacy")) n += 2;
     if (d.tipo === "recibo") n += 1;
+    // Preferir o que tem linhas detalhadas
+    if ((d.linhas || []).some((l) => l.on !== false && Number(l.value) > 0)) n += 2;
     return n;
   }
 
@@ -249,42 +270,57 @@ function buildVistaDocumentos(
     return (a.emitidoEm || "") >= (b.emitidoEm || "");
   }
 
-  // 1) Colapsar só cópias com o mesmo conteúdo (rubricas + montantes)
+  // Passagem 1: colapsar por assinatura de conteúdo
   const melhor = new Map<string, DocumentoAluno>();
   for (const d of brutos) {
-    const chave = [d.alunoId, d.tipo, d.modelo || "", assinaturaConteudo(d)].join("|");
+    const chave = assinaturaDuplicado(d);
     const prev = melhor.get(chave);
     if (!prev || melhorQue(d, prev)) melhor.set(chave, d);
   }
 
-  // 2) Propina do mês: no máximo 1 recibo por aluno+mês (conteúdo pode coincidir em valor)
-  const porPropinaMes = new Map<string, DocumentoAluno>();
+  // Passagem 2: liquidação — mesmo aluno + mesmo valor = duplicado
+  // (mesmo que um tenha linhas e outro não, ou labels diferentes)
+  const porLiqValor = new Map<string, DocumentoAluno>();
   for (const d of melhor.values()) {
-    if (d.tipo !== "recibo" || rubricaDe(d) !== "propina") continue;
-    const k = `${d.alunoId}|propina|${mesNorm(d)}`;
-    const prev = porPropinaMes.get(k);
-    if (!prev || melhorQue(d, prev)) porPropinaMes.set(k, d);
+    if (!(d.tipo === "recibo" && (d.modelo === "liquidacao_matricula" || rubricaDe(d) === "matricula"))) {
+      continue;
+    }
+    const k = `${d.alunoId}|liq|${valorNorm(d)}`;
+    const prev = porLiqValor.get(k);
+    if (!prev || melhorQue(d, prev)) porLiqValor.set(k, d);
   }
   for (const [k, d] of [...melhor.entries()]) {
-    if (d.tipo === "recibo" && rubricaDe(d) === "propina") {
-      const keep = porPropinaMes.get(`${d.alunoId}|propina|${mesNorm(d)}`);
+    if (d.tipo === "recibo" && (d.modelo === "liquidacao_matricula" || rubricaDe(d) === "matricula")) {
+      const keep = porLiqValor.get(`${d.alunoId}|liq|${valorNorm(d)}`);
       if (keep && keep.id !== d.id) melhor.delete(k);
     }
   }
 
-  // 3) Fatura oculta se já existe recibo com o mesmo conteúdo ou mesma propina do mês
+  // Passagem 3: propina mensal — 1 por aluno+mês
+  const porPropMes = new Map<string, DocumentoAluno>();
+  for (const d of melhor.values()) {
+    if (d.tipo !== "recibo" || rubricaDe(d) !== "propina") continue;
+    const k = `${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}`;
+    const prev = porPropMes.get(k);
+    if (!prev || melhorQue(d, prev)) porPropMes.set(k, d);
+  }
+  for (const [k, d] of [...melhor.entries()]) {
+    if (d.tipo === "recibo" && rubricaDe(d) === "propina") {
+      const keep = porPropMes.get(`${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}`);
+      if (keep && keep.id !== d.id) melhor.delete(k);
+    }
+  }
+
+  // Fatura gémea oculta se já há recibo equivalente
   const recibos = [...melhor.values()].filter((d) => d.tipo === "recibo");
   const out = [...melhor.values()].filter((d) => {
     if (d.tipo !== "fatura") return true;
-    const sig = assinaturaConteudo(d);
-    if (recibos.some((r) => r.alunoId === d.alunoId && assinaturaConteudo(r) === sig)) return false;
+    if (recibos.some((r) => r.alunoId === d.alunoId && valorNorm(r) === valorNorm(d) && rubricaDe(r) === rubricaDe(d)))
+      return false;
     if (
       rubricaDe(d) === "propina" &&
       recibos.some(
-        (r) =>
-          r.alunoId === d.alunoId &&
-          rubricaDe(r) === "propina" &&
-          mesNorm(r) === mesNorm(d),
+        (r) => r.alunoId === d.alunoId && rubricaDe(r) === "propina" && mesNorm(r) === mesNorm(d),
       )
     )
       return false;
@@ -366,6 +402,37 @@ function valorDocumentoExibido(
   return stored;
 }
 
+
+/** Rede de segurança na lista: 1 liquidação por aluno+montante. */
+function collapseLiquidacoesDuplicadas(docs: DocumentoAluno[]): DocumentoAluno[] {
+  const rank = (d: DocumentoAluno) => {
+    let n = 0;
+    if (d.codigoVerificacao) n += 4;
+    if (String(d.numero || "").startsWith("REC-")) n += 3;
+    if ((d.linhas || []).some((l) => Number(l.value) > 0)) n += 2;
+    return n;
+  };
+  const keep = new Map<string, DocumentoAluno>();
+  const others: DocumentoAluno[] = [];
+  for (const d of docs) {
+    const isLiq =
+      d.tipo === "recibo" &&
+      (d.modelo === "liquidacao_matricula" ||
+        /liquid/i.test(String(d.modelo || "")) ||
+        /matricula/i.test(String(d.modelo || "")));
+    if (!isLiq) {
+      others.push(d);
+      continue;
+    }
+    const k = `${d.alunoId}|${Math.round(Number(d.valor) || 0)}`;
+    const prev = keep.get(k);
+    if (!prev || rank(d) > rank(prev) || (rank(d) === rank(prev) && (d.emitidoEm || "") > (prev.emitidoEm || ""))) {
+      keep.set(k, d);
+    }
+  }
+  return [...others, ...keep.values()];
+}
+
 function ArquivoPage() {
   const extras = useFinance((s) => s.extras || []);
   const movimentosBaiExtra = useFinance((s) => s.movimentosBaiExtra || []);
@@ -435,7 +502,8 @@ function ArquivoPage() {
   }, [alunos.length, documentos.length]);
 
   const filtrados = useMemo(() => {
-    let list = documentos;
+    // Rede de segurança: liquidação duplicada (mesmo aluno + valor) some da lista
+    let list = collapseLiquidacoesDuplicadas(documentos);
     if (alunoId) list = list.filter((d) => d.alunoId === alunoId);
     if (filtroTipo !== "todos") list = list.filter((d) => d.tipo === filtroTipo);
     const qq = q.trim().toLowerCase();
