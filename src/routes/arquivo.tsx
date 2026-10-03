@@ -403,30 +403,55 @@ function valorDocumentoExibido(
 }
 
 
-/** Rede de segurança na lista: 1 liquidação por aluno+montante. */
-function collapseLiquidacoesDuplicadas(docs: DocumentoAluno[]): DocumentoAluno[] {
+/**
+ * Lista: 1 recibo de liquidação por aluno + montante efectivo (líquido da ficha).
+ * Usa o valor EXIBIDO (não o valor bruto guardado), para colapsar 350 000 e 180 000
+ * que no ecrã aparecem ambos como 180 000.
+ * Propina mensal (propina_mes) não é afectada.
+ */
+function isReciboLiquidacao(d: DocumentoAluno): boolean {
+  if (d.tipo !== "recibo") return false;
+  if (d.modelo === "propina_mes") return false;
+  if (d.modelo === "liquidacao_matricula") return true;
+  const m = String(d.modelo || "").toLowerCase();
+  if (/liquid|matricula/.test(m)) return true;
+  // Sintéticos / legados sem modelo claro: recibo que não é só propina
+  const linhas = (d.linhas || []).filter((l) => l.on !== false && Number(l.value) > 0);
+  if (linhas.length === 0) return true; // legados RC- sem linhas → tratar como liquidação
+  const soPropina = linhas.every((l) => /propina/i.test(String(l.key || "") + String(l.label || "")));
+  return !soPropina;
+}
+
+function collapseLiquidacoesDuplicadas(
+  docs: DocumentoAluno[],
+  alunos: { id: string; liquido?: number; mensalidade1?: number; mesesPropina?: number; inscricao?: number; seguro?: number; manuais?: number; cadernos?: number; uniforme?: number; extras?: number; curso?: number; transporte?: number; alimentacao?: number; cartaoEstudante?: number }[] = [],
+): DocumentoAluno[] {
   const rank = (d: DocumentoAluno) => {
     let n = 0;
     if (d.codigoVerificacao) n += 4;
     if (String(d.numero || "").startsWith("REC-")) n += 3;
     if ((d.linhas || []).some((l) => Number(l.value) > 0)) n += 2;
+    if (d.modelo === "liquidacao_matricula") n += 1;
     return n;
   };
+  const alunoById = new Map(alunos.map((a) => [a.id, a]));
   const keep = new Map<string, DocumentoAluno>();
   const others: DocumentoAluno[] = [];
   for (const d of docs) {
-    const isLiq =
-      d.tipo === "recibo" &&
-      (d.modelo === "liquidacao_matricula" ||
-        /liquid/i.test(String(d.modelo || "")) ||
-        /matricula/i.test(String(d.modelo || "")));
-    if (!isLiq) {
+    if (!isReciboLiquidacao(d)) {
       others.push(d);
       continue;
     }
-    const k = `${d.alunoId}|${Math.round(Number(d.valor) || 0)}`;
+    const aluno = alunoById.get(d.alunoId);
+    const montante = Math.round(valorDocumentoExibido(d, aluno) || Number(d.valor) || 0);
+    // Chave estável: aluno + montante mostrado (180000, não 350000 legado)
+    const k = `${d.alunoId}|liq|${montante}`;
     const prev = keep.get(k);
-    if (!prev || rank(d) > rank(prev) || (rank(d) === rank(prev) && (d.emitidoEm || "") > (prev.emitidoEm || ""))) {
+    if (
+      !prev ||
+      rank(d) > rank(prev) ||
+      (rank(d) === rank(prev) && (d.emitidoEm || "") > (prev.emitidoEm || ""))
+    ) {
       keep.set(k, d);
     }
   }
@@ -475,13 +500,17 @@ function ArquivoPage() {
     [documentosAluno, faturasPropina, codigosRecibo, documentosAlunoDeletedIds],
   );
 
-  // Corrige valores inflados de liquidação (ex.: 350 000 → 180 000) uma vez na sessão
+  // Corrige valores inflados + remove do store recibos de liquidação duplicados (mesmo aluno + montante)
   useEffect(() => {
-    const update = useFinance.getState().updateDocumentoAluno;
+    const st = useFinance.getState();
+    const update = st.updateDocumentoAluno;
+    const remove = st.removeDocumentoAluno;
     if (!update) return;
-    let n = 0;
+    let nVal = 0;
+    let nDup = 0;
+    // 1) corrigir valores
     for (const d of documentos) {
-      if (d.modelo !== "liquidacao_matricula") continue;
+      if (!isReciboLiquidacao(d)) continue;
       const aluno = alunos.find((x) => x.id === d.alunoId);
       if (!aluno) continue;
       const correcto = valorDocumentoExibido(d, aluno);
@@ -489,21 +518,60 @@ function ArquivoPage() {
       if (correcto > 0 && stored > 0 && Math.abs(correcto - stored) > 1) {
         try {
           update(d.id, { valor: correcto });
-          n += 1;
+          nVal += 1;
         } catch {
           /* ignore */
         }
       }
     }
-    if (n > 0) {
-      toast.message(`Arquivo: ${n} recibo(s) de liquidação com valor corrigido (líquido da ficha).`);
+    // 2) apagar duplicados (mantém o melhor por aluno+montante efectivo)
+    const rank = (d: DocumentoAluno) => {
+      let n = 0;
+      if (d.codigoVerificacao) n += 4;
+      if (String(d.numero || "").startsWith("REC-")) n += 3;
+      if ((d.linhas || []).some((l) => Number(l.value) > 0)) n += 2;
+      return n;
+    };
+    const best = new Map<string, DocumentoAluno>();
+    const dups: DocumentoAluno[] = [];
+    for (const d of documentos) {
+      if (!isReciboLiquidacao(d)) continue;
+      const aluno = alunos.find((x) => x.id === d.alunoId);
+      const mont = Math.round(valorDocumentoExibido(d, aluno) || Number(d.valor) || 0);
+      const k = `${d.alunoId}|${mont}`;
+      const prev = best.get(k);
+      if (!prev) {
+        best.set(k, d);
+        continue;
+      }
+      if (rank(d) > rank(prev) || (rank(d) === rank(prev) && (d.emitidoEm || "") > (prev.emitidoEm || ""))) {
+        dups.push(prev);
+        best.set(k, d);
+      } else {
+        dups.push(d);
+      }
+    }
+    if (remove) {
+      for (const d of dups) {
+        try {
+          remove(d.id);
+          nDup += 1;
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    if (nVal > 0 || nDup > 0) {
+      toast.message(
+        `Arquivo: ${nVal > 0 ? `${nVal} valor(es) corrigido(s)` : ""}${nVal && nDup ? " · " : ""}${nDup > 0 ? `${nDup} duplicado(s) removido(s)` : ""}`.trim(),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alunos.length, documentos.length]);
 
   const filtrados = useMemo(() => {
     // Rede de segurança: liquidação duplicada (mesmo aluno + valor) some da lista
-    let list = collapseLiquidacoesDuplicadas(documentos);
+    let list = collapseLiquidacoesDuplicadas(documentos, alunos);
     if (alunoId) list = list.filter((d) => d.alunoId === alunoId);
     if (filtroTipo !== "todos") list = list.filter((d) => d.tipo === filtroTipo);
     const qq = q.trim().toLowerCase();
@@ -514,7 +582,7 @@ function ArquivoPage() {
       });
     }
     return list;
-  }, [documentos, alunoId, filtroTipo, q]);
+  }, [documentos, alunos, alunoId, filtroTipo, q]);
 
   const stats = useMemo(() => {
     const faturas = documentos.filter((d) => d.tipo === "fatura").length;
