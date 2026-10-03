@@ -179,18 +179,60 @@ function buildVistaDocumentos(
     brutos.push(d);
   }
 
-  // Um histórico por aluno + tipo + mês + rubrica. Prefere o documento real (REC-/código).
+  // Histórico: permite várias liquidações do mesmo aluno.
+  // Remove só documentos iguais (mesmo aluno + tipo + modelo + mesmas rubricas e montantes).
+  function assinaturaConteudo(d: DocumentoAluno): string {
+    const linhas = (d.linhas || [])
+      .filter((l) => l.on !== false && Number(l.value) > 0)
+      .map((l) => {
+        const k = String(l.key || l.label || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        const v = Math.round(Number(l.value) || 0);
+        return `${k}:${v}`;
+      })
+      .sort();
+    const valor = Math.round(Number(d.valor) || 0);
+    // Se não há linhas, usar valor total como assinatura
+    if (!linhas.length) return `total:${valor}`;
+    return linhas.join("|") + `|total:${valor}`;
+  }
+
   function rubricaDe(d: DocumentoAluno): string {
+    if (d.modelo === "liquidacao_matricula") return "matricula";
+    if (d.modelo === "propina_mes") return "propina";
     const linhas = (d.linhas || []).filter((l) => l.on !== false);
     const keys = linhas
       .map((l) => String(l.key || l.label || "").toLowerCase())
       .filter(Boolean)
       .sort();
     if (keys.some((k) => k.includes("propina"))) return "propina";
-    if (d.modelo === "propina_mes") return "propina";
-    if (d.modelo === "liquidacao_matricula") return "matricula";
     return keys.join("|") || d.modelo || "doc";
   }
+
+  function mesNorm(d: DocumentoAluno): string {
+    const raw = String(d.mesKey || d.mesRef || "").trim().toLowerCase();
+    if (!raw) return "";
+    const iso = raw.match(/(20\d{2})[-/.](\d{1,2})/);
+    if (iso) return `${iso[1]}-${String(iso[2]).padStart(2, "0")}`;
+    const meses: Record<string, string> = {
+      janeiro: "01", jan: "01", fevereiro: "02", fev: "02",
+      marco: "03", "março": "03", mar: "03", abril: "04", abr: "04",
+      maio: "05", mai: "05", junho: "06", jun: "06",
+      julho: "07", jul: "07", agosto: "08", ago: "08",
+      setembro: "09", set: "09", outubro: "10", out: "10",
+      novembro: "11", nov: "11", dezembro: "12", dez: "12",
+    };
+    const y = raw.match(/20\d{2}/)?.[0] || "2026";
+    for (const [nome, mm] of Object.entries(meses)) {
+      if (raw.includes(nome)) return `${y}-${mm}`;
+    }
+    return raw;
+  }
+
   function rank(d: DocumentoAluno): number {
     let n = 0;
     if (d.codigoVerificacao) n += 4;
@@ -199,20 +241,54 @@ function buildVistaDocumentos(
     if (d.tipo === "recibo") n += 1;
     return n;
   }
+
+  function melhorQue(a: DocumentoAluno, b: DocumentoAluno): boolean {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra > rb;
+    return (a.emitidoEm || "") >= (b.emitidoEm || "");
+  }
+
+  // 1) Colapsar só cópias com o mesmo conteúdo (rubricas + montantes)
   const melhor = new Map<string, DocumentoAluno>();
   for (const d of brutos) {
-    const mes = d.mesKey || d.mesRef || "";
-    const chave = [d.alunoId, d.tipo, mes, rubricaDe(d)].join("|");
+    const chave = [d.alunoId, d.tipo, d.modelo || "", assinaturaConteudo(d)].join("|");
     const prev = melhor.get(chave);
-    if (!prev || rank(d) > rank(prev)) melhor.set(chave, d);
+    if (!prev || melhorQue(d, prev)) melhor.set(chave, d);
   }
-  // Se já há recibo da mesma rubrica e mês, não listar a fatura gémea.
+
+  // 2) Propina do mês: no máximo 1 recibo por aluno+mês (conteúdo pode coincidir em valor)
+  const porPropinaMes = new Map<string, DocumentoAluno>();
+  for (const d of melhor.values()) {
+    if (d.tipo !== "recibo" || rubricaDe(d) !== "propina") continue;
+    const k = `${d.alunoId}|propina|${mesNorm(d)}`;
+    const prev = porPropinaMes.get(k);
+    if (!prev || melhorQue(d, prev)) porPropinaMes.set(k, d);
+  }
+  for (const [k, d] of [...melhor.entries()]) {
+    if (d.tipo === "recibo" && rubricaDe(d) === "propina") {
+      const keep = porPropinaMes.get(`${d.alunoId}|propina|${mesNorm(d)}`);
+      if (keep && keep.id !== d.id) melhor.delete(k);
+    }
+  }
+
+  // 3) Fatura oculta se já existe recibo com o mesmo conteúdo ou mesma propina do mês
   const recibos = [...melhor.values()].filter((d) => d.tipo === "recibo");
   const out = [...melhor.values()].filter((d) => {
     if (d.tipo !== "fatura") return true;
-    return !recibos.some(
-      (r) => r.alunoId === d.alunoId && (r.mesKey || "") === (d.mesKey || "") && rubricaDe(r) === rubricaDe(d),
-    );
+    const sig = assinaturaConteudo(d);
+    if (recibos.some((r) => r.alunoId === d.alunoId && assinaturaConteudo(r) === sig)) return false;
+    if (
+      rubricaDe(d) === "propina" &&
+      recibos.some(
+        (r) =>
+          r.alunoId === d.alunoId &&
+          rubricaDe(r) === "propina" &&
+          mesNorm(r) === mesNorm(d),
+      )
+    )
+      return false;
+    return true;
   });
   return out.sort((a, b) => (b.emitidoEm || "").localeCompare(a.emitidoEm || ""));
 }
