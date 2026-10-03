@@ -186,10 +186,17 @@ export function propinaDefaultFromTurma(turma: string, transferidoCampusCidade =
 }
 
 /**
- * Tarifa mensal efectiva (valor a cobrar por mês).
+ * Tarifa mensal efectiva (valor a cobrar por mês na grelha Propinas).
  * Base: propina da ficha → grelha da turma.
- * Aplica descontos da ficha: campanha −40% e irmãos −10% / −15%.
- * NÃO usa mensalidade1 (é o total da liquidação na matrícula, não a tarifa mensal).
+ *
+ * Descontos mensais:
+ *  - Irmãos: −10% (2) / −15% (3+) — irmaosNivel ou texto na obs
+ *  - Campanha −40%: APENAS se campanhaPromoSetembro === true na ficha.
+ *    NÃO aplica a partir de obs/descPct: a promo era “até 10/set” e não
+ *    deve baixar permanentemente a propina mensal (ex.: 170 000 → 153 000
+ *    com só −10% irmão, e não 91 800 = −40% + −10%).
+ *
+ * NÃO usa mensalidade1 como tarifa (é total da liquidação, não o mês).
  */
 export function tarifaPropinaAluno(a: {
   propina?: number;
@@ -210,12 +217,11 @@ export function tarifaPropinaAluno(a: {
   if (a.transferidoCampusCidade) return Math.round(base);
 
   let factor = 1;
-  // Campanha promo (−40%) — flag na ficha ou indício em obs/descPct
-  const campanha =
-    a.campanhaPromoSetembro === true ||
-    (Number(a.descPct) || 0) >= 40 ||
-    /campanha|−40%|-40%|promo/i.test(a.obs || "");
-  if (campanha) factor *= 0.6;
+
+  // Campanha −40% só com flag explícita (não herdar de obs antiga)
+  if (a.campanhaPromoSetembro === true) {
+    factor *= 0.6;
+  }
 
   // Irmãos: 2 → −10% · 3+ → −15%
   let ir: 0 | 2 | 3 = 0;
@@ -229,16 +235,5 @@ export function tarifaPropinaAluno(a: {
   if (ir === 2) factor *= 0.9;
   else if (ir === 3) factor *= 0.85;
 
-  const comFlags = Math.round(base * factor);
-  if (factor < 1) return comFlags;
-
-  // Fallback: se a liquidação da matrícula já reflectiu descontos
-  // (mensalidade1 = total liquido de N meses), derivar tarifa mensal.
-  const meses = Math.max(0, Math.min(9, Math.round(Number(a.mesesPropina) || 0)));
-  const totalLiq = Number(a.mensalidade1) || 0;
-  if (meses > 0 && totalLiq > 0) {
-    const mensalLiq = Math.round(totalLiq / meses);
-    if (mensalLiq > 0 && mensalLiq < base) return mensalLiq;
-  }
-  return comFlags;
+  return Math.round(base * factor);
 }

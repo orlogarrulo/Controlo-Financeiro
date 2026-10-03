@@ -6,6 +6,7 @@ import type { Aluno } from "@/data/types";
 import { MESES_LABEL, MESES_PROPINA_ADIANTADOS } from "@/data/types";
 import { nomeComSufixoCampus } from "@/lib/aluno-display";
 import { formatKz } from "@/lib/format";
+import { tarifaPropinaAluno } from "@/lib/classe-congo";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import { getSeed, useFinance } from "@/lib/store";
 
@@ -326,27 +327,32 @@ export function totalLinhas(linhas: LinhaFat[]): number {
   return linhas.filter((l) => l.on && l.value > 0).reduce((s, l) => s + l.value, 0);
 }
 
-/** Propina de 1 mês: tarifa da classe + descontos individuais (irmãos / campanha). */
+/** Propina de 1 mês: mesma tarifa da grelha Propinas (irmãos −10%/−15%; campanha só se flag explícita). */
 export function linhaPropinaMensal(a: Aluno, mesLetivo?: string): LinhaFat {
-  const tarifa = Number(a.propina) > 0 ? Number(a.propina) : propinaPorCiclo(a);
-  const campanha = alunoTemCampanha(a);
+  const tarifaBase = Number(a.propina) > 0 ? Number(a.propina) : propinaPorCiclo(a);
+  const valor = tarifaPropinaAluno(a);
   const irmaos = alunoTemIrmaosDesc(a);
-  const pc = calcPropinaComCampanha(tarifa, 1, campanha, irmaos);
+  const campanha = a.campanhaPromoSetembro === true;
+  const parts: string[] = [];
+  if (campanha) parts.push("−40% campanha");
+  if (irmaos === 2) parts.push("−10% 2 irmãos");
+  if (irmaos === 3) parts.push("−15% 3+ irmãos");
+  const desc = parts.length
+    ? ` · ${formatKz(tarifaBase)} → ${formatKz(valor)} (${parts.join(", ")})`
+    : "";
   const ciclo = a.turma?.startsWith("Maternelle")
     ? "Maternelle"
     : ["6ème", "5ème", "4ème", "3ème"].includes(a.turma)
       ? "Collège"
       : "Primaire";
   const mesNome = mesLetivo ? nomeMesPropina(mesLetivo) : "";
-  const mesTxt = mesNome ? ` ${mesNome}` : "";
-  const desc = pc.detalhe ? ` · ${pc.detalhe}` : "";
   return {
     key: "propinas",
     label: mesNome
       ? `Propina ${mesNome}${desc}`
-      : `Propina ${ciclo} (${a.turma || "—"}) · tarifa ${formatKz(tarifa)}${desc}`,
-    value: pc.liquidoPropina > 0 ? pc.liquidoPropina : tarifa,
-    on: (pc.liquidoPropina > 0 ? pc.liquidoPropina : tarifa) > 0,
+      : `Propina ${ciclo} (${a.turma || "—"}) · tarifa ${formatKz(tarifaBase)}${desc}`,
+    value: valor > 0 ? valor : tarifaBase,
+    on: (valor > 0 ? valor : tarifaBase) > 0,
   };
 }
 
