@@ -2681,6 +2681,9 @@ export const useFinance = create<Store>()(
       },
       removeAluno: (id) => {
         requireEdit(get);
+        if (FICHAS_PROTEGIDAS[id]) {
+          throw new Error(`A ficha ${id} (${FICHAS_PROTEGIDAS[id].nome}) está protegida e não pode ser apagada.`);
+        }
         const ops = get().operators;
         const by = get().activeOperator || "—";
         if (by !== ops[0]) {
@@ -2700,12 +2703,15 @@ export const useFinance = create<Store>()(
       },
       purgeAlunoCompleto: (id) => {
         requireEdit(get);
+        const idTrim = String(id || "").trim();
+        if (FICHAS_PROTEGIDAS[idTrim]) {
+          return { ok: false, message: `A ficha ${idTrim} (${FICHAS_PROTEGIDAS[idTrim].nome}) está protegida.` };
+        }
         const ops = get().operators;
         const by = get().activeOperator || "—";
         if (by !== ops[0]) {
           return { ok: false, message: "Apenas o Colaborador 1 pode eliminar alunos definitivamente." };
         }
-        const idTrim = String(id || "").trim();
         if (!idTrim) return { ok: false, message: "ID em falta." };
 
         const idUp = idTrim.toUpperCase();
@@ -4598,16 +4604,42 @@ export function reabrirAlunosUnicos(): { restaurados: number; detalhes: string[]
  * Força a ficha 4E-04 · Nildo Azael Fortunato José (recibo no Arquivo).
  * O seed tinha 4E-04 como idAnterior de 3E-05 (Lucas); o ID foi reutilizado.
  */
+
+/**
+ * Fichas com identidade bloqueada (não podem ser apagadas nem renomeadas por sync/Arquivo).
+ * 4E-04 foi idAnterior de Lucas (3E-05) e reutilizado pelo Nildo — nunca reverter para Lucas.
+ */
+export const FICHAS_PROTEGIDAS: Record<
+  string,
+  { nome: string; turma: string; grupo: string; propinaOut?: number }
+> = {
+  "4E-04": {
+    nome: "Nildo Azael Fortunato José",
+    turma: "4ème",
+    grupo: "Collège",
+    propinaOut: 75000,
+  },
+};
+
+export function isFichaProtegida(id: string): boolean {
+  return Boolean(FICHAS_PROTEGIDAS[id]);
+}
+
 export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
   const ID = "4E-04";
+  const prot = FICHAS_PROTEGIDAS[ID];
   const state = useFinance.getState();
   const docs = (state.documentosAluno || []).filter((d) => d.alunoId === ID);
   docs.sort((a, b) =>
     String(b.emitidoEm || "").localeCompare(String(a.emitidoEm || "")),
   );
   const d = docs[0];
+  // Nome canónico: nunca aceitar "Lucas" ou outro nome no mesmo ID
+  const nomeDoc = String(d?.alunoNome || "").trim();
   const nome =
-    String(d?.alunoNome || "").trim() || "Nildo Azael Fortunato José";
+    prot?.nome ||
+    (/nildo/i.test(nomeDoc) ? nomeDoc : "") ||
+    "Nildo Azael Fortunato José";
   const liquido = Number(d?.valor) > 0 ? Number(d?.valor) : 202000;
   const recibo = String(d?.numero || d?.codigoVerificacao || "").trim();
   const dataPag = String(d?.pagoEm || d?.emitidoEm || "2026-09-23");
@@ -4620,8 +4652,8 @@ export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
   const ficha: Aluno = {
     id: ID,
     nome,
-    turma: "4ème",
-    grupo: "Collège",
+    turma: prot?.turma || "4ème",
+    grupo: prot?.grupo || "Collège",
     inscricao: 0,
     manuais: 0,
     cadernos: 0,
@@ -4647,6 +4679,14 @@ export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
   };
 
   extras.push(ficha);
+  // Override permanente: nome/turma não são sobrescritos por sync ou Arquivo
+  ov[ID] = {
+    ...(ov[ID] || {}),
+    nome,
+    turma: prot?.turma || "4ème",
+    grupo: prot?.grupo || "Collège",
+    statusPag: "pago",
+  };
   useFinance.setState({
     alunosExtra: extras,
     alunosDeletedIds: deleted,
@@ -4665,7 +4705,7 @@ export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
   // Garantir Outubro pago nas propinas do Nildo
   try {
     const st = useFinance.getState();
-    const prop = 75000;
+    const prop = prot?.propinaOut || 75000;
     const mens = [...(st.mensalidades || [])];
     const ix = mens.findIndex((m) => m.id === ID);
     const pag = { out: prop, nov: 0, dez: 0, jan: 0, fev: 0, mar: 0, abr: 0, mai: 0, jun: 0 };
@@ -5290,7 +5330,7 @@ export function alunosAll(
     docIds = new Set();
   }
   const deleted = new Set(
-    (deletedIds || []).filter((id) => !docIds.has(id)),
+    (deletedIds || []).filter((id) => !docIds.has(id) && !FICHAS_PROTEGIDAS[id]),
   );
 
   const apply = (a: Aluno): Aluno => {
@@ -5340,6 +5380,16 @@ export function alunosAll(
         /* ignore */
       }
     }
+    // Identidade bloqueada (Nildo 4E-04, etc.)
+    const prot = FICHAS_PROTEGIDAS[merged.id];
+    if (prot) {
+      merged.nome = prot.nome;
+      merged.turma = prot.turma || merged.turma;
+      merged.grupo = prot.grupo || merged.grupo || "Collège";
+      if (!merged.statusPag || merged.statusPag === "pendente") {
+        merged.statusPag = "pago";
+      }
+    }
     return merged;
   };
 
@@ -5355,8 +5405,35 @@ export function alunosAll(
 
   for (const a of seed.alunos) push(a);
   for (const a of extras) push(a);
-  // Sem stubs sintéticos a partir de todos os documentos (isso inflava 53→56).
-  // Nildo 4E-04 entra só via forcarFichaNildo4E04 → alunosExtra.
+  // Fichas protegidas: se faltarem (sync apagou extra), injectar sempre
+  for (const [id, prot] of Object.entries(FICHAS_PROTEGIDAS)) {
+    if (seenIds.has(id)) continue;
+    push({
+      id,
+      nome: prot.nome,
+      turma: prot.turma,
+      grupo: prot.grupo,
+      inscricao: 0,
+      manuais: 0,
+      uniforme: 0,
+      seguro: 0,
+      extras: 0,
+      curso: 0,
+      mensalidade1: 0,
+      propina: prot.propinaOut || 0,
+      dataPag: "",
+      bruto: 0,
+      descPct: 0,
+      liquido: 0,
+      encarregado: "",
+      telefone: "",
+      bi: "",
+      familia: "",
+      recibo: "",
+      obs: `Ficha protegida (${id})`,
+      statusPag: "pago",
+    } as Aluno);
+  }
   return out;
 }
 
