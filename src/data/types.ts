@@ -173,6 +173,13 @@ export type Aluno = {
   transferidoCampusCidade?: boolean;
   /** 0 nenhum · 2 (−10%) · 3 (−15%) irmãos. */
   irmaosNivel?: 0 | 2 | 3;
+  /**
+   * Bolsa escolar: isento de propina.
+   * Se true, os meses em bolsaMeses (ou Out→Jun) contam como pagos sem cobrança.
+   */
+  bolsa?: boolean;
+  /** Meses cobertos pela bolsa (ex.: ["out","nov",…,"jun"]). Vazio = todos Out→Jun. */
+  bolsaMeses?: string[];
   /** Campanha promo até 10/set (−40% nas propinas desta liquidação). */
   campanhaPromoSetembro?: boolean;
   /** Foto do aluno (data URL / base64) para o cadastro. */
@@ -330,6 +337,8 @@ export type DocumentoAluno = {
 };
 
 export type Mensalidade = {
+  /** Bolsa escolar (isento) — meses pagos sem cobrança. */
+  bolsa?: boolean;
   id: string;
   nome: string;
   turma: string;

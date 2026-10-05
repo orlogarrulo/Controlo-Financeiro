@@ -682,14 +682,17 @@ export function estadoPropinaMes(
   valorPago: number,
   dataPagamento?: string,
   hoje = new Date(),
+  /** Bolsa / isento: conta como pago mesmo com valor 0. */
+  isentoBolsa = false,
 ): EstadoPropinaMes {
   // Setembro não é mês de propina neste ano lectivo (1.ª = Outubro).
-  if (mesLetivo === "set" && !(valorPago > 0)) return "futuro";
+  if (mesLetivo === "set" && !(valorPago > 0) && !isentoBolsa) return "futuro";
   const { inicio, fim } = limitePropina(mesLetivo);
   const h = new Date(hoje);
   h.setHours(12, 0, 0, 0);
 
-  if (valorPago > 0) {
+  if (valorPago > 0 || isentoBolsa) {
+    if (isentoBolsa && !(valorPago > 0)) return "pago";
     const dataRef = dataPagamento || h.toISOString().slice(0, 10);
     return propinaNoPrazo(mesLetivo, dataRef) ? "pago" : "pago_multa";
   }

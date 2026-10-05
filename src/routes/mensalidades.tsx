@@ -20,7 +20,7 @@ import {
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import { formatKz } from "@/lib/format";
 import { tarifaPropinaAluno } from "@/lib/classe-congo";
-import { fundirMensalidades } from "@/lib/propina-estado";
+import { fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import {
   documentoReciboComCodigo,
   loadContacto,
@@ -74,6 +74,28 @@ function Mensalidades() {
 
   const [q, setQ] = useState("");
 
+  function aplicarBolsa(id: string) {
+    if (!canEdit) {
+      toast.error(VIEW_ONLY_MSG);
+      return;
+    }
+    const r = aplicarBolsaPropina(id);
+    if (r.ok) toast.success(r.message);
+    else toast.error(r.message);
+  }
+
+  function tirarBolsa(id: string) {
+    if (!canEdit) {
+      toast.error(VIEW_ONLY_MSG);
+      return;
+    }
+    const r = removerBolsaPropina(id);
+    if (r.ok) toast.success(r.message);
+    else toast.error(r.message);
+  }
+
+
+
   // Backfill + limpar órfãos/duplicados (Propinas = Matrículas)
   useEffect(() => {
     try {
@@ -117,6 +139,8 @@ function Mensalidades() {
         propina: a.propina,
         mensalidade1: a.mensalidade1,
         mesesPropina: a.mesesPropina,
+        bolsa: a.bolsa,
+        bolsaMeses: a.bolsaMeses,
       });
     }
     return map;
@@ -302,6 +326,10 @@ function Mensalidades() {
 
   return (
     <div>
+      <div className="mb-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+        <strong>Bolsa escolar:</strong> botão <em>Bolsa Out→Jun</em> em cada aluno marca propinas isentas até junho
+        (Relatórios/Conta corrente = pago, valor 0). Só Colaborador 1.
+      </div>
       <PageHeader
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -431,10 +459,13 @@ function Mensalidades() {
                 filtered.map((r) => {
                   const cred = creditoDe(r.id);
                   const paid = MESES_PROPINA.reduce((s, m) => s + (r.pagamentos[m] || 0), 0);
-                  const monthsPaid = MESES_PROPINA.filter((m) => (r.pagamentos[m] || 0) > 0).length;
+                  const isBolsaRow = !!(r as { bolsa?: boolean }).bolsa || !!alunoMetaById.get(r.id)?.bolsa;
+                  const monthsPaid = isBolsaRow
+                    ? MESES_PROPINA.length
+                    : MESES_PROPINA.filter((m) => (r.pagamentos[m] || 0) > 0).length;
                   const emAtraso = MESES_PROPINA.filter((m) => {
                     const v = r.pagamentos[m] || 0;
-                    return estadoPropinaMes(m, v, r.pagamentosEm?.[m]) === "atraso";
+                    return estadoPropinaMes(m, v, r.pagamentosEm?.[m], undefined, !!(r as { bolsa?: boolean }).bolsa || !!alunoMetaById.get(r.id)?.bolsa) === "atraso";
                   }).length;
                   const status =
                     monthsPaid === 0 && emAtraso === 0
@@ -460,6 +491,31 @@ function Mensalidades() {
                           {alunoMetaById.get(r.id)?.familia ? ` · ${alunoMetaById.get(r.id)?.familia}` : ""}
                           {cred > 0 ? ` · crédito ${formatKz(cred)}` : ""}
                         </p>
+                        <div className="no-print mt-1 flex flex-wrap items-center gap-1">
+                          {(!!(r as { bolsa?: boolean }).bolsa || !!alunoMetaById.get(r.id)?.bolsa) ? (
+                            <Badge variant="default" className="text-[10px]">Bolsa</Badge>
+                          ) : null}
+                          {canEdit ? (
+                            (!!(r as { bolsa?: boolean }).bolsa || !!alunoMetaById.get(r.id)?.bolsa) ? (
+                              <button
+                                type="button"
+                                className="rounded border px-1.5 py-0.5 text-[10px]"
+                                onClick={() => tirarBolsa(r.id)}
+                              >
+                                Remover bolsa
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="rounded border border-emerald-600 px-1.5 py-0.5 text-[10px] text-emerald-800"
+                                onClick={() => aplicarBolsa(r.id)}
+                                title="Marcar propinas Outubro→Junho como pagas (isento / bolsa)"
+                              >
+                                Bolsa Out→Jun
+                              </button>
+                            )
+                          ) : null}
+                        </div>
                       </td>
                       <td className="col-propina px-3 py-2 tabular-nums text-xs whitespace-nowrap">
                         {formatKz(
@@ -480,10 +536,13 @@ function Mensalidades() {
                         const val = r.pagamentos[m] || 0;
                         const dataPag = r.pagamentosEm?.[m];
                         const synced = jaNoBai(r.id, m);
+                        const isBolsaMes = !!(r as { bolsa?: boolean }).bolsa || !!alunoMetaById.get(r.id)?.bolsa;
                         const est = estadoPropinaMes(
                           m,
                           val,
                           dataPag || (synced ? new Date().toISOString().slice(0, 10) : undefined),
+                          undefined,
+                          isBolsaMes,
                         );
                         const lab = labelEstado(est);
                         return (

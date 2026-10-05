@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store";
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store"
+import { sincronizarPagamentosSeparadores, fundirMensalidades } from "@/lib/propina-estado";
 import { resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -3808,6 +3809,9 @@ function Alunos() {
               title="Descarrega JSON com todos os alunos e propinas (para actualizar seed.json no GitHub)"
               onClick={() => {
                 try {
+                  // Alinhar Propinas com Arquivo antes de exportar o JSON
+                  sincronizarPagamentosSeparadores();
+                  const mensSync = fundirMensalidades(useFinance.getState().mensalidades || []);
                   const stripFoto = (a: (typeof alunos)[0]) => {
                     const { foto: _f, ...rest } = a as { foto?: string } & typeof a;
                     return rest;
@@ -3816,7 +3820,7 @@ function Alunos() {
                     exportadoEm: new Date().toISOString(),
                     totalAlunos: alunos.length,
                     alunos: alunos.map(stripFoto),
-                    mensalidades: (mensalidades || []).filter((m) =>
+                    mensalidades: mensSync.filter((m) =>
                       alunos.some((a) => a.id === m.id),
                     ),
                     alunosDeletedIds: deletedAlunos || [],
