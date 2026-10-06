@@ -207,7 +207,7 @@ export type ReserveDocNumbersResult = {
   /** Primeiro e último número reservados (inclusive). */
   first?: number;
   last?: number;
-  /** "no-table" quando a migração migrations/pending/0004_doc_counters.sql ainda não foi aplicada. */
+  /** "no-table" quando a migração migrations/0004_doc_counters.sql ainda não foi aplicada. */
   reason?: string;
 };
 

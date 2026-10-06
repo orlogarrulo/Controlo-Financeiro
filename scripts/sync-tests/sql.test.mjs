@@ -1,4 +1,4 @@
-// Testa o SQL preparado (migrations/pending/0004_doc_counters.sql) e as instruções do servidor
+// Testa o SQL da migração (migrations/0004_doc_counters.sql) e as instruções do servidor
 // (reserva atómica, CAS do finance_cloud) num Postgres EM MEMÓRIA (PGLite) — nunca na Neon.
 // Correr: env -u DATABASE_URL node --test scripts/sync-tests/
 import { test } from "node:test";
@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { loadFixture } from "./harness.mjs";
 
-const MIGRATION = new URL("../../migrations/pending/0004_doc_counters.sql", import.meta.url);
+const MIGRATION = new URL("../../migrations/0004_doc_counters.sql", import.meta.url);
 const RESERVE = `INSERT INTO doc_counters (scope, value, updated_at)
   VALUES ($1, $2::bigint + $3::bigint, NOW())
   ON CONFLICT (scope) DO UPDATE

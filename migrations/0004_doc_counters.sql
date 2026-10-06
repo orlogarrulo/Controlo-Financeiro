@@ -1,13 +1,10 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- 0004 · Contadores de numeração de documentos (sem colisão entre PCs)
--- ESTADO: PREPARADA — NÃO APLICADA.
+-- Aplicada no deploy por scripts/migrate.mjs (build da Vercel) e pelo PGLite (src/lib/db.ts);
+-- registada em _migrations como '0004_doc_counters.sql' → corre uma só vez.
+-- Aditiva e idempotente: só cria doc_counters (IF NOT EXISTS) e semeia com ON CONFLICT.
 --
--- Está em migrations/pending/ de propósito: nem scripts/migrate.mjs (deploy) nem o
--- PGLite (src/lib/db.ts) descem a subpastas, por isso NÃO corre sozinha.
--- Para aplicar: mover para migrations/0004_doc_counters.sql e fazer deploy
--- (o build corre `npm run db:migrate`), ou correr manualmente na consola da Neon.
---
--- Enquanto não existir, o endpoint reserveDocNumbers devolve {ok:false, reason:"no-table"}
+-- Se a tabela não existir, o endpoint reserveDocNumbers devolve {ok:false, reason:"no-table"}
 -- e os PCs usam a numeração offline com sufixo do dispositivo (ex.: FRM-2026-10-004-K7Q).
 --
 -- Uso (atómico, uma só instrução — ver src/lib/finance-cloud.ts → reserveDocNumbers):
