@@ -1,5 +1,15 @@
-import { create } from "zustand";
+import { create, type StateCreator, type StoreMutatorIdentifier } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import {
+  documentoTombstoneKeys as documentoTombstoneKeysCore,
+  effectiveTombstones,
+  runInDeletionScope,
+  runInRestoreScope,
+  stampPatch,
+  FTS_KEY,
+  type Tombstones,
+} from "@/lib/sync-core";
+import { nextDocNumber, prepareDocNumbers } from "@/lib/doc-numbers";
 import seedJson from "@/data/seed.json";
 import type {
   Aluno,
@@ -111,7 +121,11 @@ function moverSetembroParaOutubro(
   delete pagamentosEm.set;
 }
 
-/** Numeração interna mensal: PREFIXO-AAAA-MM-001 (reinicia cada mês). */
+/**
+ * Numeração interna mensal: PREFIXO-AAAA-MM-001 (reinicia cada mês).
+ * Sem colisão entre PCs: usa números reservados no servidor (doc_counters) quando há;
+ * offline → PREFIXO-AAAA-MM-NNN-<PC> (sufixo do dispositivo). Ver src/lib/doc-numbers.ts.
+ */
 export function nextMonthlyDoc(
   prefix: string,
   existing: { docInterno?: string; id?: string; data?: string }[],
@@ -119,22 +133,57 @@ export function nextMonthlyDoc(
 ): string {
   const d = dataIso || new Date().toISOString().slice(0, 10);
   const ym = d.slice(0, 7); // YYYY-MM
-  const re = new RegExp("^" + prefix + "-" + ym + "-(\d{3})");
-  let max = 0;
-  const keys = new Set<string>();
-  for (const e of existing) {
-    const key = e.docInterno || e.id || "";
-    keys.add(key);
-    const mm = key.match(re);
-    if (mm) max = Math.max(max, Number(mm[1]));
+  return nextDocNumber(
+    prefix,
+    ym,
+    existing.map((e) => e.docInterno || e.id || ""),
+  );
+}
+
+/** Prefixo do n.º interno de um lançamento (ENT/SOC/CX/BAI/FRM). */
+export function capturaPrefix(input: { tipo: string; origem?: string }): string {
+  if (input.tipo === "entrada") return "ENT";
+  if (input.origem === "socio") return "SOC";
+  if (input.origem === "fundo") return "CX";
+  if (input.origem === "cartao" || input.origem === "banco") return "BAI";
+  return "FRM";
+}
+
+/**
+ * Reserva no servidor os n.ºs internos necessários para estes lançamentos (antes de addCaptura).
+ * Sem rede → os números saem com a etiqueta do PC (sem colisão). Nunca lança erro.
+ */
+export async function prepareNumerosCaptura(inputs: { tipo: string; origem?: string; data?: string }[]): Promise<void> {
+  const groups = new Map<string, { prefix: string; ym: string; n: number }>();
+  for (const i of inputs) {
+    const prefix = capturaPrefix(i);
+    const ym = (i.data || new Date().toISOString().slice(0, 10)).slice(0, 7);
+    const k = `${prefix}-${ym}`;
+    const g = groups.get(k) || { prefix, ym, n: 0 };
+    g.n += 1;
+    groups.set(k, g);
   }
-  let n = max + 1;
-  let id = prefix + "-" + ym + "-" + String(n).padStart(3, "0");
-  while (keys.has(id)) {
-    n += 1;
-    id = prefix + "-" + ym + "-" + String(n).padStart(3, "0");
+  const existing = [...seed.lancamentosSocio, ...(useFinance.getState().extras || [])].map(
+    (e) => e.docInterno || e.id || "",
+  );
+  for (const g of groups.values()) {
+    try {
+      await prepareDocNumbers(g.prefix, g.ym, g.n, existing);
+    } catch {
+      /* offline */
+    }
   }
-  return id;
+}
+
+/** Reserva n.ºs de fatura PROP-AAAA-MM-NNN no servidor (antes de nextFaturaNumero). */
+export async function prepareNumerosFatura(mesKey: string, count = 1): Promise<boolean> {
+  const key = (mesKey || new Date().toISOString().slice(0, 7)).slice(0, 7);
+  const existing = (useFinance.getState().faturasPropina || []).map((f) => String(f.numero || ""));
+  try {
+    return await prepareDocNumbers("PROP", key, count, existing);
+  } catch {
+    return false;
+  }
 }
 
 export type CapturaInput = {
@@ -214,35 +263,21 @@ type ExtraState = {
   documentosAluno: DocumentoAluno[];
   /** Créditos / aplicações / reembolsos por aluno (conta corrente). */
   contaCorrente: ContaCorrenteMov[];
+  /**
+   * Tombstones genéricos { colecção: { id: deletedAtISO } } — sincronizados na nuvem.
+   * Um registo com updatedAt > deletedAt anula o tombstone (restaurar / reemitir).
+   * As listas *DeletedIds acima passam a ser derivadas disto (compatibilidade).
+   */
+  tombstones: Tombstones;
+  /** LWW de operators / baiOverride (carimbado pelo middleware). */
+  operatorsUpdatedAt?: string;
+  baiOverrideUpdatedAt?: string;
+  /** Contacto / IBAN da escola (sincronizado; espelho de localStorage ecc-escola-contacto-v1). */
+  escolaContacto?: Record<string, unknown>;
 };
 
 /** Chaves de tombstone para um documento / fatura / código de recibo. */
-export function documentoTombstoneKeys(row: {
-  id?: string;
-  numero?: string;
-  codigoVerificacao?: string;
-  codigo?: string;
-  faturaNumero?: string;
-}): string[] {
-  const keys: string[] = [];
-  if (row.id) keys.push(String(row.id));
-  const num = (row.numero || "").trim().toUpperCase().replace(/\s+/g, "");
-  if (num) {
-    keys.push(`num:${num}`);
-    keys.push(`fat-legacy-${row.numero}`);
-  }
-  const cod = (row.codigoVerificacao || row.codigo || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
-  if (cod) {
-    keys.push(`cod:${cod}`);
-    keys.push(`rc-legacy-${row.codigoVerificacao || row.codigo}`);
-  }
-  const fatNum = (row.faturaNumero || "").trim().toUpperCase().replace(/\s+/g, "");
-  if (fatNum) keys.push(`num:${fatNum}`);
-  return keys.filter(Boolean);
-}
+export const documentoTombstoneKeys = documentoTombstoneKeysCore;
 
 export function isDocumentoApagado(
   row: {
@@ -305,6 +340,8 @@ type Store = ExtraState & {
   removeExtra: (id: string) => void;
   updateExtra: (id: string, patch: Partial<Lancamento>) => void;
   resetLocal: () => void;
+  /** Limpa o localStorage ecc-financeiro* e recarrega a página. */
+  resetLocalStorage: () => void;
   setActiveOperator: (name: string) => void;
   setOperatorName: (index: number, name: string) => void;
   pushAudit: (action: string, detail: string) => void;
@@ -359,6 +396,13 @@ type Store = ExtraState & {
   /** Remove todos os débitos SALARIO-APP / APP-SAL-* do extrato BAI. */
   limparDebitosSalarioBai: () => number;
   setUiPrefs: (patch: Partial<{ salariosMesKey?: string; salariosMesLabel?: string; salariosFilterMes?: string; entryPin?: string }>) => void;
+  /** Próximo n.º de fatura PROP-AAAA-MM-NNN (sem colisão entre PCs — ver doc-numbers.ts). */
+  nextFaturaNumero: (mesKey?: string) => string;
+  addFaturaPropina: (f: FaturaPropina & { id?: string; numero: string }) => void;
+  /** Guarda o contacto/IBAN da escola (vai para a nuvem). */
+  setEscolaContacto: (c: Record<string, unknown>) => void;
+  /** Tombstone da foto de um aluno (tabela aluno_fotos) — outro PC não a volta a enviar. */
+  markAlunoFotoDeleted: (id: string) => void;
   addInboxItems: (rows: import("@/data/types").InboxMovimento[]) => void;
   updateInboxItem: (id: string, patch: Partial<import("@/data/types").InboxMovimento>) => void;
   removeInboxItem: (id: string) => void;
@@ -704,9 +748,75 @@ export function estadoPropinaMes(
   return "atraso"; // passou o dia 10 → pendente com multa
 }
 
+/** Acções de apagar explícito: as remoções geram tombstones (não voltam do merge da nuvem). */
+const DELETION_ACTIONS = [
+  "removeInboxItem",
+  "clearInboxReconciliados",
+  "syncInboxParaBai",
+  "removeFundoPagamento",
+  "removeFundoAtm",
+  "removeExtra",
+  "removeReciboSalario",
+  "limparDebitosSalarioBai",
+  "deleteBaiMovimento",
+  "removeAluno",
+  "purgeAlunoCompleto",
+  "removeSalario",
+  "removeCrmEnvio",
+  "removeDocumentoAluno",
+] as const;
+/** Restauro explícito: anula o tombstone (updatedAt > deletedAt). */
+const RESTORE_ACTIONS = ["restoreAluno"] as const;
+
+function wrapScopedActions<T>(obj: T): T {
+  const o = obj as unknown as Record<string, unknown>;
+  for (const k of DELETION_ACTIONS) {
+    const fn = o[k];
+    if (typeof fn === "function") {
+      o[k] = (...args: unknown[]) => runInDeletionScope(() => (fn as (...a: unknown[]) => unknown)(...args));
+    }
+  }
+  for (const k of RESTORE_ACTIONS) {
+    const fn = o[k];
+    if (typeof fn === "function") {
+      o[k] = (...args: unknown[]) => runInRestoreScope(() => (fn as (...a: unknown[]) => unknown)(...args));
+    }
+  }
+  return obj;
+}
+
+/**
+ * Middleware de sincronização: cada set()/setState() local passa por stampPatch
+ * (updatedAt + _fts nos registos alterados, tombstones nas remoções explícitas).
+ * Dados vindos da nuvem/outro separador são aplicados com runWithoutStamp().
+ */
+function withSyncStamp<T, Mis extends [StoreMutatorIdentifier, unknown][] = []>(
+  config: StateCreator<T, Mis, []>,
+): StateCreator<T, Mis, []> {
+  return ((set: (p: unknown, r?: unknown) => void, get: () => unknown, api: {
+    setState: (p: unknown, r?: unknown) => void;
+    getState: () => unknown;
+  }) => {
+    const stamped = (partial: unknown, replace?: unknown) => {
+      const prev = get() as Record<string, unknown> | undefined;
+      const patch = typeof partial === "function" ? (partial as (s: unknown) => unknown)(prev) : partial;
+      if (!prev || !patch || typeof patch !== "object") return set(patch, replace);
+      return set(stampPatch(prev, patch as Record<string, unknown>), replace);
+    };
+    const origSetState = api.setState;
+    api.setState = (partial: unknown, replace?: unknown) => {
+      const prev = api.getState() as Record<string, unknown> | undefined;
+      const patch = typeof partial === "function" ? (partial as (s: unknown) => unknown)(prev) : partial;
+      if (!prev || !patch || typeof patch !== "object") return origSetState(patch, replace);
+      return origSetState(stampPatch(prev, patch as Record<string, unknown>), replace);
+    };
+    return (config as unknown as (s: unknown, g: unknown, a: unknown) => T)(stamped, get, api);
+  }) as unknown as StateCreator<T, Mis, []>;
+}
+
 export const useFinance = create<Store>()(
   persist(
-    (set, get) => ({
+    withSyncStamp<Store, [["zustand/persist", unknown]]>((set, get) => wrapScopedActions<Store>({
       extras: [],
       alunosExtra: [],
       alunosOverrides: {},
@@ -734,11 +844,22 @@ export const useFinance = create<Store>()(
       codigosRecibo: [],
       documentosAluno: [],
       contaCorrente: [],
+      tombstones: {},
       setUiPrefs: (patch) => {
         if (patch && "entryPin" in patch) {
           requireEdit(get);
         }
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
+      },
+      setEscolaContacto: (c) => {
+        set({ escolaContacto: { ...(get().escolaContacto || {}), ...c } });
+      },
+      markAlunoFotoDeleted: (id) => {
+        const key = String(id || "").trim();
+        if (!key) return;
+        const t = { ...(get().tombstones || {}) };
+        t.alunoFotos = { ...(t.alunoFotos || {}), [key]: new Date().toISOString() };
+        set({ tombstones: t });
       },
       addInboxItems: (rows) => {
         requireEdit(get);
@@ -1246,18 +1367,7 @@ export const useFinance = create<Store>()(
       addCaptura: (input) => {
         requireEdit(get);
         const extras = get().extras;
-        const prefix =
-          input.tipo === "entrada"
-            ? input.origem === "inscricao" || input.origem === "propina"
-              ? "ENT"
-              : "ENT"
-            : input.origem === "socio"
-              ? "SOC"
-              : input.origem === "fundo"
-                ? "CX"
-                : input.origem === "cartao" || input.origem === "banco"
-                  ? "BAI"
-                  : "FRM";
+        const prefix = capturaPrefix(input);
         const id = nextMonthlyDoc(prefix, [...seed.lancamentosSocio, ...extras], input.data);
         const by = get().activeOperator || "—";
         const now = new Date().toISOString();
@@ -2814,7 +2924,10 @@ export const useFinance = create<Store>()(
             obs: "Reposto automaticamente (rasto no sistema)",
             propina: Number(patch.propina || m?.propina || 0),
             statusPag: (patch.statusPag as Aluno["statusPag"]) || "registado",
-          });
+            // Campos do stub com tempo 0: a cópia completa na nuvem (se existir) ganha campo a campo;
+            // o updatedAt (carimbado) > deletedAt anula o tombstone.
+            [FTS_KEY]: { "*": 0 },
+          } as Aluno);
         }
         set({ alunosDeletedIds: deleted, alunosExtra: extras });
         get().pushAudit("restaurar_aluno", id);
@@ -2886,25 +2999,17 @@ export const useFinance = create<Store>()(
         });
         get().pushAudit("apagar_salario", `${id} · ${prevName}`);
       },
-            nextFaturaNumero: (mesKey) => {
-        const key = mesKey || new Date().toISOString().slice(0, 7);
-        const existing = get().faturasPropina || [];
-        let max = 0;
-        // Conta todas as PROP- do mês e também sequência global do prefixo
-        const reMes = new RegExp(`^PROP-${key}-(\d{3,})$`);
-        const reAny = /^PROP-\d{4}-\d{2}-(\d{3,})$/;
-        for (const f of existing) {
-          const n = String(f.numero || "");
-          const m1 = n.match(reMes);
-          if (m1) max = Math.max(max, Number(m1[1]));
-          const m2 = n.match(reAny);
-          if (m2 && n.includes(key)) max = Math.max(max, Number(m2[1]));
-        }
-        return `PROP-${key}-${String(max + 1).padStart(3, "0")}`;
+      nextFaturaNumero: (mesKey) => {
+        // PROP-AAAA-MM-NNN — pool reservado no servidor (prepareNumerosFatura) ou sufixo do PC offline.
+        const key = (mesKey || new Date().toISOString().slice(0, 7)).slice(0, 7);
+        const existing = (get().faturasPropina || []).map((f) => String(f.numero || ""));
+        return nextDocNumber("PROP", key, existing);
       },
       addFaturaPropina: (f) => {
         requireEdit(get);
-        set({ faturasPropina: [...(get().faturasPropina || []), f] });
+        // Sem id, a fusão por id descartaria a fatura → id = n.º (único entre PCs com a nova numeração).
+        const row = { ...f, id: String(f.id || f.numero || "").trim() || `FAT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}` };
+        set({ faturasPropina: [...(get().faturasPropina || []), row] });
         get().pushAudit("emitir_fatura_propina", `${f.numero} · ${f.alunoNome} · ${f.mesRef}`);
       },
       addCrmEnvio: (e) => {
@@ -3301,6 +3406,7 @@ export const useFinance = create<Store>()(
           documentosAluno: [],
           documentosAlunoDeletedIds: [],
           contaCorrente: [],
+          tombstones: {},
         });
       },
       resetLocalStorage: () => {
@@ -3331,16 +3437,23 @@ export const useFinance = create<Store>()(
           window.location.reload();
         }
       },
-    }),
+    })),
     {
       name: "ecc-financeiro-v3"
 ,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      version: 4,
-      migrate: (persisted: unknown) => {
-        // Seed manda: limpa override BAI, extras de alunos (duplicados) e volta ao cadastro do seed
+      version: 5,
+      migrate: (persisted: unknown, version: number) => {
         const s = (persisted || {}) as Record<string, unknown>;
+        // v5: listas *DeletedIds → tombstones genéricos (sem perder nada).
+        if (version >= 4) {
+          return {
+            ...s,
+            tombstones: effectiveTombstones(s as never),
+          };
+        }
+        // < v4 — Seed manda: limpa override BAI, extras de alunos (duplicados) e volta ao cadastro do seed
         const extra = Array.isArray(s.movimentosBaiExtra)
           ? (s.movimentosBaiExtra as { id?: string; banco?: string }[])
           : [];
@@ -3385,6 +3498,7 @@ export const useFinance = create<Store>()(
           alunosOverrides: overrides,
           alunosDeletedIds: Array.isArray(s.alunosDeletedIds) ? s.alunosDeletedIds : [],
           contaCorrente: Array.isArray(s.contaCorrente) ? s.contaCorrente : [],
+          tombstones: effectiveTombstones(s as never),
         };
       },
       partialize: (s) => ({
@@ -3415,6 +3529,10 @@ export const useFinance = create<Store>()(
         documentosAluno: s.documentosAluno || [],
         documentosAlunoDeletedIds: s.documentosAlunoDeletedIds || [],
         contaCorrente: s.contaCorrente || [],
+        tombstones: s.tombstones || {},
+        operatorsUpdatedAt: s.operatorsUpdatedAt,
+        baiOverrideUpdatedAt: s.baiOverrideUpdatedAt,
+        escolaContacto: s.escolaContacto,
       }),
     },
   ),
@@ -4396,7 +4514,20 @@ export function reporPropinasFromMatriculas(): { alunos: number; removidos: numb
     };
   });
   const removidos = Math.max(0, old.length - next.length);
+  // Sem alterações reais → não tocar no estado nem na auditoria (antes: nova entrada de auditoria
+  // e push a cada pull → ping-pong de versões entre PCs).
+  const sig = (m: Mensalidade | undefined) =>
+    m
+      ? JSON.stringify([m.nome, m.turma || "", Number(m.propina) || 0, m.pagamentos || {}, m.pagamentosEm || {}, m.obs || ""])
+      : "";
+  const contentChanged =
+    next.some((m) => sig(m) !== sig(byId.get(m.id))) ||
+    JSON.stringify(cc) !== JSON.stringify(state.contaCorrente || []);
+  if (!contentChanged && removidos === 0 && next.length === byId.size) {
+    return { alunos: next.length, removidos: 0 };
+  }
   useFinance.setState({ mensalidades: next, contaCorrente: cc });
+  if (!contentChanged) return { alunos: next.length, removidos };
   try {
     useFinance.getState().pushAudit?.(
       "propina_repor",
@@ -4420,7 +4551,11 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
   const overrides = { ...(state.alunosOverrides || {}) };
   const detalhes: string[] = [];
 
-  const visible = alunosAll(extras, overrides, deleted);
+  // Já escondidos (ou protegidos) não entram: alunosAll mostra quem tem recibo no Arquivo mesmo
+  // estando na lista — sem este filtro, cada execução voltava a "esconder" as mesmas fichas
+  // (novo tombstone + auditoria + push a cada pull, em ping-pong entre PCs).
+  const alreadyHidden = new Set(deleted);
+  const visible = alunosAll(extras, overrides, deleted).filter((a) => !alreadyHidden.has(a.id));
   const byName = new Map<string, Aluno[]>();
   for (const a of visible) {
     const key = normalizeNomeAluno(a.nome);
@@ -4457,6 +4592,7 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
         !(dup.encarregado || "").trim();
       const cadeia = Boolean(keep.idAnterior === dup.id || dup.idAnterior === keep.id);
       if (!stub && !cadeia) continue;
+      if (FICHAS_PROTEGIDAS[dup.id]) continue;
       toDelete.add(dup.id);
       detalhes.push(`Duplicado «${nome}»: manter ${keep.id}, esconder ${dup.id}`);
     }
@@ -4478,6 +4614,7 @@ export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[
       // ID reutilizado por outro aluno — não apagar
       continue;
     }
+    if (alreadyHidden.has(prev) || FICHAS_PROTEGIDAS[prev]) continue;
     toDelete.add(prev);
   }
 

@@ -204,6 +204,8 @@ export function parseBaiCsv(text: string): import("@/data/types").MovimentoBai[]
 
   let linha = 0;
   const out: import("@/data/types").MovimentoBai[] = [];
+  /** Ocorrências da mesma impressão digital no ficheiro (linhas idênticas legítimas). */
+  const seen = new Map<string, number>();
   for (const line of lines.slice(1)) {
     const c = splitCsvLine(line, sep);
     const ent = parseNum(c[iEnt]);
@@ -211,19 +213,55 @@ export function parseBaiCsv(text: string): import("@/data/types").MovimentoBai[]
     if (!c[iData] && !ent && !sai) continue;
     if (String(c[iData] || "").toUpperCase().includes("TOTAL")) continue;
     linha++;
+    const data = normalizeDate(c[iData] || "");
+    const banco = c[iBanco] || "";
+    const descricao = c[iDesc] || "";
+    const saldo = parseNum(c[iSal]);
     out.push({
-      id: `BAI-IMP-${linha}`,
+      // ID pelo conteúdo (não pela linha): o mesmo extrato importado em 2 PCs dá os mesmos IDs
+      // (deduplica); extratos diferentes nunca colidem (antes: BAI-IMP-1, -2… em todos os PCs).
+      id: baiImportId({ data, banco, descricao, entrada: ent, saida: sai, saldo }, seen),
       linha,
-      data: normalizeDate(c[iData] || ""),
-      banco: c[iBanco] || "",
-      descricao: c[iDesc] || "",
+      data,
+      banco,
+      descricao,
       entrada: ent,
       saida: sai,
-      saldo: parseNum(c[iSal]),
+      saldo,
       observacoes: c[iObs] || "",
     });
   }
   return out;
+}
+
+/** FNV-1a 32 bits → base36 (estável, sem dependências). */
+function fnv1a(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36).toUpperCase().padStart(7, "0");
+}
+
+/** BAI-IMP-<AAAAMMDD>-<hash>[-n] a partir do conteúdo do movimento. */
+export function baiImportId(
+  m: { data: string; banco: string; descricao: string; entrada: number; saida: number; saldo: number },
+  seen?: Map<string, number>,
+): string {
+  const fp = [
+    m.data,
+    Math.round((Number(m.entrada) || 0) * 100),
+    Math.round((Number(m.saida) || 0) * 100),
+    Math.round((Number(m.saldo) || 0) * 100),
+    String(m.banco || "").trim().toUpperCase(),
+    String(m.descricao || "").trim().toUpperCase().replace(/\s+/g, " "),
+  ].join("|");
+  const base = `BAI-IMP-${String(m.data || "").replace(/-/g, "") || "SEMDATA"}-${fnv1a(fp)}`;
+  if (!seen) return base;
+  const n = (seen.get(base) || 0) + 1;
+  seen.set(base, n);
+  return n === 1 ? base : `${base}-${n}`;
 }
 
 function parseNum(s: string | undefined): number {

@@ -30,12 +30,11 @@ import {
   movimentosAll,
   alunosAll,
   salariosAll,
+  prepareNumerosCaptura,
 } from "@/lib/store";
 import { MESES_LETIVOS } from "@/data/types";
 import {
   loadFinanceCloud,
-  saveFinanceCloud,
-  sliceFromStore,
   listRegulamentoAcks,
   listInqueritoSaude,
   listAgendamentos,
@@ -380,8 +379,17 @@ function GooglePage() {
   async function forcePushCloud() {
     setCloudBusy(true);
     try {
-      const res = await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
-      setCloudStatus(`Enviado · ${new Date(res.updatedAt).toLocaleString("pt-PT")}`);
+      // Mesmo caminho do envio automático: expectedUpdatedAt (optimistic lock) + fusão + retry.
+      const { forcePushFinanceCloud } = await import("@/components/hydrate-store");
+      const res = await forcePushFinanceCloud();
+      if (!res.ok) {
+        throw new Error(
+          res.conflict
+            ? "Outro computador está a gravar ao mesmo tempo — os dados foram fundidos; tente de novo dentro de instantes."
+            : res.error || "Falha ao enviar para a nuvem",
+        );
+      }
+      setCloudStatus(`Enviado · ${new Date(res.updatedAt || Date.now()).toLocaleString("pt-PT")}`);
       toast.success("Dados enviados para a nuvem");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao enviar para a nuvem");
@@ -441,13 +449,21 @@ function GooglePage() {
     );
   }
 
-  function importLancamentosText(text: string) {
+  async function importLancamentosText(text: string) {
     if (!guardImport()) return;
     const rows = parseFormsCsv(text);
     if (!rows.length) {
       toast.error("Sem linhas de lançamentos.");
       return;
     }
+    // Reserva os n.ºs internos no servidor antes de importar (sem colisão entre PCs).
+    await prepareNumerosCaptura(
+      rows.map((r) => ({
+        tipo: r.tipo === "entrada" ? "entrada" : "despesa",
+        origem: "formulario",
+        data: r.data || todayIso(),
+      })),
+    );
     const n = importLanc(
       rows.map((r) => ({
         data: r.data || todayIso(),

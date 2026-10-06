@@ -56,6 +56,7 @@ import {
   ALUNO_FOTO_MAX_SYNC,
 } from "@/lib/image";
 import { saveAlunoFoto, deleteAlunoFoto } from "@/lib/finance-cloud";
+import { prepareNumerosFatura } from "@/lib/store";
 import {
   linhasMatriculaFromAluno,
   linhaPropinaMensal,
@@ -180,6 +181,12 @@ function loadContacto(): EscolaContacto {
 function saveContacto(c: EscolaContacto) {
   try {
     localStorage.setItem(CONTACTO_STORAGE_KEY, JSON.stringify(c));
+  } catch {
+    /* ignore */
+  }
+  // Também na nuvem (outros PCs passam a ver o mesmo contacto / IBAN).
+  try {
+    useFinance.getState().setEscolaContacto?.(c as unknown as Record<string, unknown>);
   } catch {
     /* ignore */
   }
@@ -1951,6 +1958,8 @@ function Alunos() {
       if (foto && foto.startsWith("data:image")) {
         await saveAlunoFoto({ data: { id, dataUrl: foto } });
       } else {
+        // Tombstone: os outros PCs não voltam a enviar a foto antiga para a nuvem.
+        useFinance.getState().markAlunoFotoDeleted?.(id);
         await deleteAlunoFoto({ data: { id } });
       }
     } catch (e) {
@@ -3091,13 +3100,15 @@ function Alunos() {
     return { destTipo, destNome: destinatario.nome, destNif, destMorada, destinatario };
   }
 
-  function abrirFatura(a: Aluno) {
+  async function abrirFatura(a: Aluno) {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
     if (typeof nextFaturaNumero !== "function") {
       toast.error("Actualize a página (numeração indisponível).");
       return;
     }
+    // Reserva o n.º no servidor (sem colisão entre PCs); offline → n.º com sufixo deste PC.
+    await prepareNumerosFatura(mesKey, 1);
     const numero =
       typeof nextFaturaNumero === "function"
         ? nextFaturaNumero(mesKey)
@@ -3558,18 +3569,10 @@ function Alunos() {
 
       toast.message(`A montar 1 PDF com ${elegiveis.length} fatura(s)…`);
 
-      // Sequência local: evita o mesmo n.º se o store ainda não gravou
-      let seq = 0;
-      try {
-        const existing = faturasPropina || [];
-        const re = new RegExp(`^PROP-${mesKey}-(\d+)$`);
-        for (const f of existing) {
-          const m = String(f.numero || "").match(re);
-          if (m) seq = Math.max(seq, Number(m[1]));
-        }
-      } catch {
-        /* ignore */
-      }
+      // Reserva no servidor um bloco de n.ºs para o lote (sem colisão entre PCs).
+      // Antes: regex com "\d" num template string (= "d") → recomeçava sempre em 001 e
+      // sobrescrevia faturas do mês já emitidas.
+      await prepareNumerosFatura(mesKey, elegiveis.length);
 
       for (let i = 0; i < elegiveis.length; i++) {
         const a = elegiveis[i];
@@ -3578,8 +3581,7 @@ function Alunos() {
           semValor++;
           continue;
         }
-        seq += 1;
-        const numero = `PROP-${mesKey}-${String(seq).padStart(3, "0")}`;
+        const numero = nextFaturaNumero(mesKey);
         // Se propina 0 no registo, usa tarifário do ciclo (exceto transferidos já tratados em resolver)
         let valorFat = valor;
         if (valorFat <= 0) valorFat = propinaPorCiclo(a);

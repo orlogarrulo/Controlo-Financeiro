@@ -1,48 +1,29 @@
 /**
  * Sincronização do estado financeiro com Postgres (Neon em produção / PGLite em preview).
  * Um registo partilhado por escola — todos os dispositivos vêem os mesmos dados.
+ *
+ * A lógica pura de fusão vive em `finance-merge.ts` / `sync-core.ts` (testável em Node).
  */
 import { createServerFn } from "@tanstack/react-start";
-import { nextIdForTurma } from "@/lib/classe-congo";
+import {
+  emptyPayload,
+  mergeServerPayload,
+  payloadsEqual,
+  sanitizeFinancePayload,
+  type FinanceCloudPayload,
+} from "@/lib/finance-merge";
 
-export type FinanceCloudPayload = {
-  extras: unknown[];
-  alunosExtra: unknown[];
-  /** Cópia sem fotos dos alunos extra + overrides relevantes — recuperação multi-PC. */
-  alunosCenso?: unknown[];
-  alunosOverrides: Record<string, unknown>;
-  alunosDeletedIds?: string[];
-  mensalidades: unknown[];
-  fundoExtra: unknown[];
-  fundoAtmExtra?: unknown[];
-  movimentosBaiExtra: unknown[];
-  movimentosBaiDeletedIds?: string[];
-  baiOverride: boolean;
-  fotos: Record<string, string>;
-  operators: string[];
-  auditLog: unknown[];
-  sessionLog: unknown[];
-  salariosExtra: unknown[];
-  salariosOverrides: Record<string, unknown>;
-  salariosDeletedIds?: string[];
-  recibosSalario?: unknown[];
-  faturasPropina?: unknown[];
-  uiPrefs?: {
-    salariosMesKey?: string;
-    salariosMesLabel?: string;
-    salariosFilterMes?: string;
-    /** Código de entrada partilhado entre dispositivos. */
-    entryPin?: string;
-  };
-  inboxItems?: unknown[];
-  crmEnvios?: unknown[];
-  codigosRecibo?: unknown[];
-  documentosAluno?: unknown[];
-  /** Tombstones: ids, num:NUMERO, cod:CODIGO — não repor no merge. */
-  documentosAlunoDeletedIds?: string[];
-  contaCorrente?: unknown[];
-  clientUpdatedAt?: string;
-};
+export {
+  ALUNO_FOTO_MAX_SYNC_CLOUD,
+  dedupeByIdPreferNewer,
+  emptyPayload,
+  mergeServerPayload,
+  sanitizeFinancePayload,
+  sliceFromStore,
+  sliceFromStoreDetailed,
+  type FinanceCloudPayload,
+  type SliceCloudResult,
+} from "@/lib/finance-merge";
 
 export type FinanceCloudSnapshot = {
   payload: FinanceCloudPayload;
@@ -50,30 +31,7 @@ export type FinanceCloudSnapshot = {
   source: "neon" | "pglite" | "empty";
 };
 
-function emptyPayload(): FinanceCloudPayload {
-  return {
-    extras: [],
-    alunosExtra: [],
-    alunosCenso: [],
-    alunosOverrides: {},
-    mensalidades: [],
-    fundoExtra: [],
-    fundoAtmExtra: [],
-    movimentosBaiExtra: [],
-    movimentosBaiDeletedIds: [],
-    alunosDeletedIds: [],
-    baiOverride: false,
-    salariosDeletedIds: [],
-    recibosSalario: [],
-    fotos: {},
-    operators: [],
-    auditLog: [],
-    sessionLog: [],
-    salariosExtra: [],
-    salariosOverrides: {},
-  };
-}
-
+type SqlLike = { query: <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]> };
 
 async function ensureFinanceCloudTable(sql: {
   query: (text: string, params?: unknown[]) => Promise<unknown[]>;
@@ -87,313 +45,68 @@ async function ensureFinanceCloudTable(sql: {
   `);
 }
 
+function toIso(v: string | Date): string {
+  return typeof v === "string" ? new Date(v).toISOString() : new Date(v).toISOString();
+}
+
+async function readFinanceRow(
+  sql: SqlLike,
+): Promise<{ payload: FinanceCloudPayload; updatedAt: string; exists: boolean }> {
+  const rows = await sql.query<{ payload: FinanceCloudPayload | string; updated_at: string | Date }>(
+    `SELECT payload, updated_at FROM finance_cloud WHERE id = $1 LIMIT 1`,
+    ["escola"],
+  );
+  if (!rows.length) {
+    return { payload: emptyPayload(), updatedAt: new Date(0).toISOString(), exists: false };
+  }
+  const raw = rows[0].payload;
+  const payload =
+    typeof raw === "string"
+      ? { ...emptyPayload(), ...(JSON.parse(raw) as FinanceCloudPayload) }
+      : { ...emptyPayload(), ...raw };
+  return { payload, updatedAt: toIso(rows[0].updated_at), exists: true };
+}
+
 export const loadFinanceCloud = createServerFn({ method: "GET" }).handler(
   async (): Promise<FinanceCloudSnapshot> => {
     const { getSql, dbSource } = await import("@/lib/db");
     const sql = await getSql();
     try {
       await ensureFinanceCloudTable(sql);
-      const rows = await sql.query<{
-        payload: FinanceCloudPayload | string;
-        updated_at: string | Date;
-      }>(`SELECT payload, updated_at FROM finance_cloud WHERE id = $1 LIMIT 1`, ["escola"]);
-      if (!rows.length) {
-        return {
-          payload: emptyPayload(),
-          updatedAt: new Date(0).toISOString(),
-          source: "empty",
-        };
+      const row = await readFinanceRow(sql as SqlLike);
+      if (!row.exists) {
+        return { payload: emptyPayload(), updatedAt: new Date(0).toISOString(), source: "empty" };
       }
-      const row = rows[0];
-      const updatedAt =
-        typeof row.updated_at === "string"
-          ? row.updated_at
-          : new Date(row.updated_at).toISOString();
-      const payload =
-        typeof row.payload === "string"
-          ? (JSON.parse(row.payload) as FinanceCloudPayload)
-          : (row.payload as FinanceCloudPayload);
       return {
-        payload: sanitizeFinancePayload({ ...emptyPayload(), ...payload }),
-        updatedAt,
+        payload: sanitizeFinancePayload(row.payload),
+        updatedAt: row.updatedAt,
         source: dbSource,
       };
     } catch (e) {
       console.error("[finance-cloud] load failed", e);
-      return {
-        payload: emptyPayload(),
-        updatedAt: new Date(0).toISOString(),
-        source: "empty",
-      };
+      return { payload: emptyPayload(), updatedAt: new Date(0).toISOString(), source: "empty" };
     }
   },
 );
 
-function idOf(row: unknown): string {
-  return String((row as { id?: string } | undefined)?.id || "");
-}
-
-function rowUpdatedAt(row: unknown): number {
-  const v = (row as { updatedAt?: string } | undefined)?.updatedAt;
-  if (typeof v === "string" && v) {
-    const n = Date.parse(v);
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
-}
-
-function isNonEmptyValue(v: unknown): boolean {
-  return v != null && v !== "" && !(typeof v === "number" && Number.isNaN(v));
-}
-
-/** Funde campos sem deixar string vazia apagar valor preenchido; base = updatedAt mais recente. */
-function mergeRecordsPreferNewer(a: unknown, b: unknown): unknown {
-  if (!a || typeof a !== "object") return b;
-  if (!b || typeof b !== "object") return a;
-  const A = a as Record<string, unknown>;
-  const B = b as Record<string, unknown>;
-  const aTs = rowUpdatedAt(a);
-  const bTs = rowUpdatedAt(b);
-  const newer = bTs > aTs ? B : A;
-  const older = bTs > aTs ? A : B;
-  const merged: Record<string, unknown> = { ...older, ...newer };
-  for (const key of Object.keys(older)) {
-    if (!isNonEmptyValue(merged[key]) && isNonEmptyValue(older[key])) {
-      merged[key] = older[key];
+/** Só o updated_at da linha (barato) — o cliente decide se precisa do payload completo. */
+export const getFinanceCloudVersion = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ updatedAt: string }> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = (await getSql()) as unknown as SqlLike;
+    try {
+      await ensureFinanceCloudTable(sql as never);
+      const rows = await sql.query<{ updated_at: string | Date }>(
+        `SELECT updated_at FROM finance_cloud WHERE id = $1 LIMIT 1`,
+        ["escola"],
+      );
+      return { updatedAt: rows.length ? toIso(rows[0].updated_at) : new Date(0).toISOString() };
+    } catch (e) {
+      console.warn("[finance-cloud] version", e);
+      return { updatedAt: "" };
     }
-  }
-  if (aTs || bTs) {
-    merged.updatedAt = aTs >= bTs ? A.updatedAt || B.updatedAt : B.updatedAt || A.updatedAt;
-  }
-  return merged;
-}
-
-/** Colapsa IDs repetidos dentro de um único array (updatedAt mais recente). */
-export function dedupeByIdPreferNewer(rows: unknown[] | undefined): unknown[] {
-  const map = new Map<string, unknown>();
-  for (const row of rows || []) {
-    const id = idOf(row).trim();
-    if (!id) continue;
-    const prev = map.get(id);
-    map.set(id, prev ? mergeRecordsPreferNewer(prev, row) : row);
-  }
-  return Array.from(map.values());
-}
-
-function mergeById(existing: unknown[] | undefined, incoming: unknown[] | undefined): unknown[] {
-  // Primeiro colapsa duplicados internos de cada lado; depois funde.
-  const map = new Map<string, unknown>();
-  for (const row of dedupeByIdPreferNewer(existing)) {
-    const id = idOf(row).trim();
-    if (id) map.set(id, row);
-  }
-  for (const row of dedupeByIdPreferNewer(incoming)) {
-    const id = idOf(row).trim();
-    if (!id) continue;
-    const prev = map.get(id);
-    map.set(id, prev ? mergeRecordsPreferNewer(prev, row) : row);
-  }
-  return Array.from(map.values());
-}
-
-function normDocKey(s: string): string {
-  return String(s || "").trim().toUpperCase().replace(/\s+/g, "");
-}
-
-/** Colapsa por chave secundária (ex.: número de fatura) após dedupe por id. */
-function dedupeBySecondaryKey(
-  rows: unknown[] | undefined,
-  keyOf: (row: unknown) => string | null,
-): unknown[] {
-  const map = new Map<string, unknown>();
-  const noKey: unknown[] = [];
-  for (const row of rows || []) {
-    const k = keyOf(row);
-    if (!k) {
-      noKey.push(row);
-      continue;
-    }
-    const prev = map.get(k);
-    map.set(k, prev ? mergeRecordsPreferNewer(prev, row) : row);
-  }
-  return [...Array.from(map.values()), ...noKey];
-}
-
-function alunoNomeKeyCloud(row: unknown): string {
-  const nome = String((row as { nome?: string })?.nome || "").trim().toLowerCase();
-  return nome.replace(/\s+/g, " ");
-}
-
-/**
- * Se o mesmo ID aponta para pessoas diferentes, reatribui ID ao lado incoming
- * (mantém o existing na nuvem) — evita frankenstein no merge.
- */
-function resolveAlunoIdCollisionsCloud(
-  existing: unknown[],
-  incoming: unknown[],
-): { merged: unknown[]; remapped: number } {
-  const existingById = new Map<string, unknown>();
-  for (const row of existing || []) {
-    const id = idOf(row).trim();
-    if (id) existingById.set(id, row);
-  }
-  const taken = new Set<string>([
-    ...existingById.keys(),
-    ...(incoming || []).map((r) => idOf(r).trim()).filter(Boolean),
-  ]);
-  let remapped = 0;
-  const outIncoming: unknown[] = [];
-  for (const row of incoming || []) {
-    const id = idOf(row).trim();
-    if (!id) {
-      outIncoming.push(row);
-      continue;
-    }
-    const ex = existingById.get(id);
-    if (!ex) {
-      outIncoming.push(row);
-      continue;
-    }
-    const ln = alunoNomeKeyCloud(row);
-    const rn = alunoNomeKeyCloud(ex);
-    if (ln && rn && ln !== rn) {
-      const turma =
-        String((row as { turma?: string })?.turma || "").trim() ||
-        String((ex as { turma?: string })?.turma || "").trim() ||
-        "AL";
-      const newId = nextIdForTurma(turma, taken);
-      taken.add(newId);
-      outIncoming.push({
-        ...(row as object),
-        id: newId,
-        idAnterior: id,
-        updatedAt: new Date().toISOString(),
-      });
-      remapped += 1;
-    } else {
-      outIncoming.push(row);
-    }
-  }
-  return { merged: mergeById(existing, outIncoming), remapped };
-}
-
-/**
- * Garante arrays sem IDs duplicados (e docs sem número/código repetido).
- * Preferência: updatedAt mais recente; campos vazios não apagam preenchidos.
- */
-export function sanitizeFinancePayload(p: FinanceCloudPayload): FinanceCloudPayload {
-  const base = { ...emptyPayload(), ...p };
-  const alunos = mergeById(base.alunosExtra, base.alunosCenso);
-  const docs = dedupeBySecondaryKey(dedupeByIdPreferNewer(base.documentosAluno), (row) => {
-    const r = row as { numero?: string; codigoVerificacao?: string };
-    const num = normDocKey(r.numero || "");
-    if (num) return `num:${num}`;
-    const cod = normDocKey(r.codigoVerificacao || "");
-    if (cod) return `cod:${cod}`;
-    return null;
-  });
-  const faturas = dedupeBySecondaryKey(dedupeByIdPreferNewer(base.faturasPropina), (row) => {
-    const num = normDocKey(String((row as { numero?: string })?.numero || ""));
-    return num ? `num:${num}` : null;
-  });
-  const codigos = dedupeBySecondaryKey(dedupeByIdPreferNewer(base.codigosRecibo), (row) => {
-    const cod = normDocKey(String((row as { codigo?: string })?.codigo || ""));
-    return cod ? `cod:${cod}` : null;
-  });
-  return {
-    ...base,
-    extras: dedupeByIdPreferNewer(base.extras),
-    alunosExtra: alunos,
-    alunosCenso: alunos,
-    mensalidades: dedupeByIdPreferNewer(base.mensalidades),
-    fundoExtra: dedupeByIdPreferNewer(base.fundoExtra),
-    fundoAtmExtra: dedupeByIdPreferNewer(base.fundoAtmExtra),
-    movimentosBaiExtra: dedupeByIdPreferNewer(base.movimentosBaiExtra),
-    salariosExtra: dedupeByIdPreferNewer(base.salariosExtra),
-    recibosSalario: dedupeByIdPreferNewer(base.recibosSalario),
-    faturasPropina: faturas,
-    inboxItems: dedupeByIdPreferNewer(base.inboxItems),
-    crmEnvios: dedupeByIdPreferNewer(base.crmEnvios),
-    codigosRecibo: codigos,
-    documentosAluno: docs,
-    contaCorrente: dedupeByIdPreferNewer(base.contaCorrente),
-    auditLog: dedupeByIdPreferNewer(base.auditLog).slice(-200),
-    alunosDeletedIds: unionIds(base.alunosDeletedIds, []),
-    movimentosBaiDeletedIds: unionIds(base.movimentosBaiDeletedIds, []),
-    salariosDeletedIds: unionIds(base.salariosDeletedIds, []),
-    documentosAlunoDeletedIds: unionIds(base.documentosAlunoDeletedIds, []),
-  };
-}
-
-/** Filtra documentos/faturas/códigos marcados como apagados (tombstones). */
-function filterDocsDeleted(
-  rows: unknown[] | undefined,
-  deletedIds: string[] | undefined,
-): unknown[] {
-  if (!rows?.length) return rows || [];
-  if (!deletedIds?.length) return rows;
-  const set = new Set(deletedIds);
-  return rows.filter((raw) => {
-    const r = raw as {
-      id?: string;
-      numero?: string;
-      codigo?: string;
-      codigoVerificacao?: string;
-      faturaNumero?: string;
-    };
-    if (r.id && set.has(r.id)) return false;
-    const num = (r.numero || "").trim().toUpperCase().replace(/\s+/g, "");
-    if (num && set.has(`num:${num}`)) return false;
-    if (r.numero && set.has(`fat-legacy-${r.numero}`)) return false;
-    const cod = (r.codigoVerificacao || r.codigo || "")
-      .trim()
-      .toUpperCase()
-      .replace(/\s+/g, "");
-    if (cod && set.has(`cod:${cod}`)) return false;
-    if ((r.codigoVerificacao || r.codigo) && set.has(`rc-legacy-${r.codigoVerificacao || r.codigo}`))
-      return false;
-    const fatNum = (r.faturaNumero || "").trim().toUpperCase().replace(/\s+/g, "");
-    if (fatNum && set.has(`num:${fatNum}`)) return false;
-    return true;
-  });
-}
-
-function unionIds(a?: string[], b?: string[]): string[] {
-  return Array.from(new Set([...(a || []), ...(b || [])]));
-}
-
-
-function mergeOverridesPreferNewer(
-  existing: Record<string, unknown>,
-  incoming: Record<string, unknown>,
-): Record<string, unknown> {
-  const ids = new Set([...Object.keys(existing || {}), ...Object.keys(incoming || {})]);
-  const out: Record<string, unknown> = {};
-  for (const id of ids) {
-    const a = existing?.[id];
-    const b = incoming?.[id];
-    if (a != null && b != null) out[id] = mergeRecordsPreferNewer(a, b);
-    else out[id] = b ?? a;
-  }
-  return out;
-}
-
-/** Nunca deixar um PC vazio apagar o censo que já está na nuvem. */
-function mergeAlunosCloud(
-  existing: unknown[] | undefined,
-  incoming: unknown[] | undefined,
-): unknown[] {
-  const inc = incoming || [];
-  const cur = existing || [];
-  if (inc.length === 0 && cur.length > 0) return dedupeByIdPreferNewer(cur);
-  const { merged, remapped } = resolveAlunoIdCollisionsCloud(cur, inc);
-  if (remapped > 0) {
-    console.warn(
-      `[finance-cloud] ${remapped} matrícula(s) com ID colidido foram reatribuídas no save`,
-    );
-  }
-  return merged;
-}
+  },
+);
 
 export type SaveFinanceCloudResult = {
   ok: boolean;
@@ -404,318 +117,141 @@ export type SaveFinanceCloudResult = {
   payload?: FinanceCloudPayload;
 };
 
+/**
+ * Grava fundindo com o que está na nuvem (nunca sobrescreve às cegas).
+ * - `expectedUpdatedAt` (versão que o cliente conhece): se a nuvem mudou → conflict + payload actual
+ *   (o cliente funde e tenta de novo, com espera crescente).
+ * - Independentemente disso, o UPDATE é compare-and-swap sobre o `updated_at` lido
+ *   (fecha a corrida SELECT→UPDATE entre dois PCs); até 3 re-tentativas no servidor.
+ */
 export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
   async (ctx): Promise<SaveFinanceCloudResult> => {
-    const rawIn = ((ctx as { data?: FinanceCloudPayload & { expectedUpdatedAt?: string } }).data ??
-      emptyPayload()) as FinanceCloudPayload & { expectedUpdatedAt?: string };
+    const rawIn = ((ctx as { data?: Partial<FinanceCloudPayload> & { expectedUpdatedAt?: string } }).data ??
+      {}) as Partial<FinanceCloudPayload> & { expectedUpdatedAt?: string };
     const expectedUpdatedAt =
       typeof rawIn.expectedUpdatedAt === "string" && rawIn.expectedUpdatedAt.trim()
         ? rawIn.expectedUpdatedAt.trim()
         : undefined;
-    const { expectedUpdatedAt: _drop, ...rest } = rawIn;
-    const data = { ...emptyPayload(), ...rest } as FinanceCloudPayload;
+    const { expectedUpdatedAt: _drop, ...incoming } = rawIn;
     const { getSql } = await import("@/lib/db");
-    const sql = await getSql();
-    await ensureFinanceCloudTable(sql);
-    const updatedAt = new Date().toISOString();
+    const sql = (await getSql()) as unknown as SqlLike;
+    await ensureFinanceCloudTable(sql as never);
 
-    let current: FinanceCloudPayload = emptyPayload();
-    let currentUpdatedAt = new Date(0).toISOString();
     try {
-      const rows = await sql.query<{
-        payload: FinanceCloudPayload | string;
-        updated_at: string | Date;
-      }>(
-        `SELECT payload, updated_at FROM finance_cloud WHERE id = $1 LIMIT 1`,
-        ["escola"],
-      );
-      if (rows.length) {
-        const raw = rows[0].payload;
-        current =
-          typeof raw === "string"
-            ? { ...emptyPayload(), ...(JSON.parse(raw) as FinanceCloudPayload) }
-            : { ...emptyPayload(), ...raw };
-        currentUpdatedAt =
-          typeof rows[0].updated_at === "string"
-            ? rows[0].updated_at
-            : new Date(rows[0].updated_at).toISOString();
-      }
-    } catch (e) {
-      console.warn("[finance-cloud] read-before-save", e);
-    }
-
-    const payload: FinanceCloudPayload = sanitizeFinancePayload({
-      ...emptyPayload(),
-      ...current,
-      ...data,
-      extras: mergeById(current.extras, data.extras),
-      alunosExtra: mergeAlunosCloud(
-        mergeById(current.alunosExtra, current.alunosCenso),
-        mergeById(data.alunosExtra, data.alunosCenso),
-      ),
-      alunosCenso: mergeAlunosCloud(current.alunosCenso, data.alunosCenso || data.alunosExtra),
-      alunosOverrides: mergeOverridesPreferNewer(
-        current.alunosOverrides || {},
-        data.alunosOverrides || {},
-      ),
-      alunosDeletedIds: unionIds(current.alunosDeletedIds, data.alunosDeletedIds),
-      mensalidades: mergeById(current.mensalidades, data.mensalidades),
-      fundoExtra: mergeById(current.fundoExtra, data.fundoExtra),
-      fundoAtmExtra: mergeById(current.fundoAtmExtra, data.fundoAtmExtra),
-      movimentosBaiExtra: mergeById(current.movimentosBaiExtra, data.movimentosBaiExtra),
-      movimentosBaiDeletedIds: unionIds(current.movimentosBaiDeletedIds, data.movimentosBaiDeletedIds),
-      salariosExtra: mergeById(current.salariosExtra, data.salariosExtra),
-      salariosOverrides: {
-        ...(current.salariosOverrides || {}),
-        ...(data.salariosOverrides || {}),
-      },
-      salariosDeletedIds: unionIds(current.salariosDeletedIds, data.salariosDeletedIds),
-      recibosSalario: mergeById(current.recibosSalario, data.recibosSalario),
-      documentosAlunoDeletedIds: unionIds(
-        current.documentosAlunoDeletedIds,
-        data.documentosAlunoDeletedIds,
-      ),
-      faturasPropina: filterDocsDeleted(
-        mergeById(current.faturasPropina, data.faturasPropina),
-        unionIds(current.documentosAlunoDeletedIds, data.documentosAlunoDeletedIds),
-      ),
-      inboxItems: mergeById(current.inboxItems, data.inboxItems),
-      crmEnvios: mergeById(current.crmEnvios, data.crmEnvios),
-      codigosRecibo: filterDocsDeleted(
-        mergeById(current.codigosRecibo, data.codigosRecibo),
-        unionIds(current.documentosAlunoDeletedIds, data.documentosAlunoDeletedIds),
-      ),
-      documentosAluno: filterDocsDeleted(
-        mergeById(current.documentosAluno, data.documentosAluno),
-        unionIds(current.documentosAlunoDeletedIds, data.documentosAlunoDeletedIds),
-      ),
-      contaCorrente: mergeById(current.contaCorrente, data.contaCorrente),
-      auditLog: mergeById(current.auditLog, data.auditLog).slice(-200),
-      sessionLog: (data.sessionLog?.length ? data.sessionLog : current.sessionLog) || [],
-      clientUpdatedAt: updatedAt,
-    });
-    try {
-      // Optimistic lock: se o cliente indica a versão que conhece, só grava se coincidir.
-      if (expectedUpdatedAt && currentUpdatedAt !== new Date(0).toISOString()) {
-        const expectedMs = Date.parse(expectedUpdatedAt);
-        const currentMs = Date.parse(currentUpdatedAt);
-        // Comparar por instante (tolerância 2 ms) — evita falhas por formato ISO
-        if (
-          Number.isFinite(expectedMs) &&
-          Number.isFinite(currentMs) &&
-          Math.abs(expectedMs - currentMs) > 2
-        ) {
-          return {
-            ok: false,
-            conflict: true,
-            updatedAt: currentUpdatedAt,
-            payload: sanitizeFinancePayload(current),
-          };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const current = await readFinanceRow(sql);
+        if (expectedUpdatedAt && current.exists && attempt === 0) {
+          const expectedMs = Date.parse(expectedUpdatedAt);
+          const currentMs = Date.parse(current.updatedAt);
+          if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && Math.abs(expectedMs - currentMs) > 2) {
+            return {
+              ok: false,
+              conflict: true,
+              updatedAt: current.updatedAt,
+              payload: sanitizeFinancePayload(current.payload),
+            };
+          }
         }
-        const rows = await sql.query<{ updated_at: string | Date }>(
+        // Instante claramente posterior ao actual (≥ 5 ms): o CAS usa tolerância de 1 ms
+        // (timestamps antigos com µs), por isso duas versões nunca podem ficar a < 1 ms.
+        const nowMs = Math.max(Date.now(), Date.parse(current.updatedAt) + 5);
+        const updatedAt = new Date(nowMs).toISOString();
+        const payload = mergeServerPayload(current.payload, incoming, updatedAt);
+        // Nada mudou → não gravar nem mexer em updated_at (os outros PCs não fazem pull à toa).
+        if (current.exists && payloadsEqual(payload, current.payload)) {
+          return { ok: true, updatedAt: current.updatedAt };
+        }
+        const json = JSON.stringify(payload);
+        if (!current.exists) {
+          const ins = await sql.query<{ updated_at: string | Date }>(
+            `INSERT INTO finance_cloud (id, payload, updated_at)
+             VALUES ($1, $2::jsonb, $3::timestamptz)
+             ON CONFLICT (id) DO NOTHING
+             RETURNING updated_at`,
+            ["escola", json, updatedAt],
+          );
+          if (ins.length) return { ok: true, updatedAt };
+          continue; // outro PC criou a linha entretanto → refazer a fusão
+        }
+        const upd = await sql.query<{ updated_at: string | Date }>(
           `UPDATE finance_cloud
            SET payload = $2::jsonb, updated_at = $3::timestamptz
            WHERE id = $1
-             AND ABS(EXTRACT(EPOCH FROM (updated_at - $4::timestamptz))) < 0.05
+             AND ABS(EXTRACT(EPOCH FROM (updated_at - $4::timestamptz))) < 0.001
            RETURNING updated_at`,
-          ["escola", JSON.stringify(payload), updatedAt, expectedUpdatedAt],
+          ["escola", json, updatedAt, current.updatedAt],
         );
-        if (!rows.length) {
-          // Outro writer ganhou a corrida entre SELECT e UPDATE
-          return {
-            ok: false,
-            conflict: true,
-            updatedAt: currentUpdatedAt,
-            payload: sanitizeFinancePayload(current),
-          };
-        }
-        return { ok: true, updatedAt };
+        if (upd.length) return { ok: true, updatedAt };
+        // Outro writer ganhou a corrida entre SELECT e UPDATE → reler e fundir de novo.
       }
-
-      await sql.query(
-        `INSERT INTO finance_cloud (id, payload, updated_at)
-         VALUES ($1, $2::jsonb, $3::timestamptz)
-         ON CONFLICT (id) DO UPDATE SET
-           payload = EXCLUDED.payload,
-           updated_at = EXCLUDED.updated_at`,
-        ["escola", JSON.stringify(payload), updatedAt],
-      );
-      return { ok: true, updatedAt };
+      const latest = await readFinanceRow(sql);
+      return {
+        ok: false,
+        conflict: true,
+        updatedAt: latest.updatedAt,
+        payload: sanitizeFinancePayload(latest.payload),
+      };
     } catch (e) {
       console.error("[finance-cloud] save failed", e);
       throw new Error(
-        e instanceof Error
-          ? e.message
-          : "Falha ao gravar na nuvem. Verifique DATABASE_URL (Neon).",
+        e instanceof Error ? e.message : "Falha ao gravar na nuvem. Verifique DATABASE_URL (Neon).",
       );
     }
-  });
+  },
+);
+
+/* ─── Numeração de documentos sem colisão entre PCs (tabela doc_counters) ─── */
+
+export type ReserveDocNumbersResult = {
+  ok: boolean;
+  /** Primeiro e último número reservados (inclusive). */
+  first?: number;
+  last?: number;
+  /** "no-table" quando a migração migrations/pending/0004_doc_counters.sql ainda não foi aplicada. */
+  reason?: string;
+};
+
+/**
+ * Reserva `count` números consecutivos para `scope` (ex.: "PROP-2026-10", "FRM-2026-10").
+ * Atómico: INSERT … ON CONFLICT DO UPDATE … RETURNING (uma só instrução).
+ * `floor` = maior número já conhecido pelo cliente → o contador nunca fica abaixo dos dados existentes.
+ * NÃO cria a tabela: se não existir, devolve ok:false e o cliente usa a numeração offline (com sufixo do PC).
+ */
+export const reserveDocNumbers = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<ReserveDocNumbersResult> => {
+    const data = (ctx as { data?: { scope?: string; count?: number; floor?: number } }).data || {};
+    const scope = String(data.scope || "").trim().toUpperCase();
+    if (!/^[A-Z]{2,6}-\d{4}-\d{2}$/.test(scope)) return { ok: false, reason: "scope-invalido" };
+    const count = Math.max(1, Math.min(200, Math.floor(Number(data.count) || 1)));
+    const floor = Math.max(0, Math.floor(Number(data.floor) || 0));
+    const { getSql } = await import("@/lib/db");
+    const sql = (await getSql()) as unknown as SqlLike;
+    try {
+      const rows = await sql.query<{ value: number | string }>(
+        `INSERT INTO doc_counters (scope, value, updated_at)
+         VALUES ($1, $2::bigint + $3::bigint, NOW())
+         ON CONFLICT (scope) DO UPDATE
+           SET value = GREATEST(doc_counters.value, $2::bigint) + $3::bigint,
+               updated_at = NOW()
+         RETURNING value`,
+        [scope, floor, count],
+      );
+      const last = Number(rows[0]?.value);
+      if (!Number.isFinite(last)) return { ok: false, reason: "sem-valor" };
+      return { ok: true, first: last - count + 1, last };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/doc_counters/i.test(msg) && /exist/i.test(msg)) return { ok: false, reason: "no-table" };
+      console.warn("[doc-counters] reserve", msg);
+      return { ok: false, reason: "erro" };
+    }
+  },
+);
 
 /**
  * Fotos de aluno NÃO vão no JSON finance_cloud — usam a tabela `aluno_fotos`.
  * (base64 no JSON rebentava o payload e falhava entre PCs.)
  */
-export const ALUNO_FOTO_MAX_SYNC_CLOUD = 55_000;
-
-export type SliceCloudResult = {
-  payload: FinanceCloudPayload;
-  /** Quantas fotos de aluno foram retiradas do JSON (vão pela tabela dedicada). */
-  fotosOmitidas: number;
-};
-
-/** Extrai o slice persistido do store Zustand (seguro para a nuvem). */
-export function sliceFromStore(s: {
-  extras: unknown[];
-  alunosExtra: unknown[];
-  alunosOverrides: Record<string, unknown>;
-  alunosDeletedIds?: string[];
-  mensalidades: unknown[];
-  fundoExtra: unknown[];
-  fundoAtmExtra?: unknown[];
-  movimentosBaiExtra: unknown[];
-  movimentosBaiDeletedIds?: string[];
-  baiOverride: boolean;
-  fotos: Record<string, string>;
-  operators: string[];
-  auditLog: unknown[];
-  sessionLog: unknown[];
-  salariosExtra: unknown[];
-  salariosOverrides: Record<string, unknown>;
-  salariosDeletedIds?: string[];
-  recibosSalario?: unknown[];
-  faturasPropina?: unknown[];
-  uiPrefs?: {
-    salariosMesKey?: string;
-    salariosMesLabel?: string;
-    salariosFilterMes?: string;
-    /** Código de entrada partilhado entre dispositivos. */
-    entryPin?: string;
-  };
-  inboxItems?: unknown[];
-  crmEnvios?: unknown[];
-  codigosRecibo?: unknown[];
-  documentosAluno?: unknown[];
-  contaCorrente?: unknown[];
-}): FinanceCloudPayload {
-  return sliceFromStoreDetailed(s).payload;
-}
-
-/** Como sliceFromStore, mas reporta quantas fotos de aluno foram omitidas. */
-export function sliceFromStoreDetailed(s: {
-  extras: unknown[];
-  alunosExtra: unknown[];
-  alunosOverrides: Record<string, unknown>;
-  alunosDeletedIds?: string[];
-  mensalidades: unknown[];
-  fundoExtra: unknown[];
-  fundoAtmExtra?: unknown[];
-  movimentosBaiExtra: unknown[];
-  movimentosBaiDeletedIds?: string[];
-  baiOverride: boolean;
-  fotos: Record<string, string>;
-  operators: string[];
-  auditLog: unknown[];
-  sessionLog: unknown[];
-  salariosExtra: unknown[];
-  salariosOverrides: Record<string, unknown>;
-  salariosDeletedIds?: string[];
-  recibosSalario?: unknown[];
-  faturasPropina?: unknown[];
-  uiPrefs?: {
-    salariosMesKey?: string;
-    salariosMesLabel?: string;
-    salariosFilterMes?: string;
-    /** Código de entrada partilhado entre dispositivos. */
-    entryPin?: string;
-  };
-  inboxItems?: unknown[];
-  crmEnvios?: unknown[];
-  codigosRecibo?: unknown[];
-  documentosAluno?: unknown[];
-  documentosAlunoDeletedIds?: string[];
-  contaCorrente?: unknown[];
-}): SliceCloudResult {
-  const { list: alunosExtraSafe, omitted: o1 } = stripLargeFotosFromAlunos(
-    s.alunosExtra || [],
-  );
-  const { map: overridesSafe, omitted: o2 } = stripLargeFotosFromOverrides(
-    s.alunosOverrides || {},
-  );
-  return {
-    fotosOmitidas: o1 + o2,
-    payload: sanitizeFinancePayload({
-      extras: s.extras,
-      alunosExtra: alunosExtraSafe,
-      alunosCenso: alunosExtraSafe,
-      alunosOverrides: overridesSafe,
-      alunosDeletedIds: s.alunosDeletedIds || [],
-      mensalidades: s.mensalidades,
-      fundoExtra: s.fundoExtra,
-      fundoAtmExtra: s.fundoAtmExtra || [],
-      movimentosBaiExtra: s.movimentosBaiExtra,
-      movimentosBaiDeletedIds: s.movimentosBaiDeletedIds || [],
-      baiOverride: s.baiOverride,
-      // Mapa de fotos de lançamentos: não vai à nuvem (peso excessivo).
-      fotos: {},
-      operators: s.operators,
-      auditLog: s.auditLog.slice(-200),
-      sessionLog: s.sessionLog.slice(-100),
-      salariosExtra: s.salariosExtra,
-      salariosOverrides: s.salariosOverrides,
-      salariosDeletedIds: s.salariosDeletedIds || [],
-      recibosSalario: s.recibosSalario || [],
-      faturasPropina: s.faturasPropina || [],
-      uiPrefs: s.uiPrefs || {},
-      // Anexos: só enviam base64 se anexoSync e tamanho < ~100 KB
-      inboxItems: stripInboxAnexos(s.inboxItems || []),
-      crmEnvios: s.crmEnvios || [],
-      codigosRecibo: s.codigosRecibo || [],
-      documentosAluno: s.documentosAluno || [],
-      documentosAlunoDeletedIds: s.documentosAlunoDeletedIds || [],
-      contaCorrente: s.contaCorrente || [],
-    }),
-  };
-}
-
-const INBOX_ANEXO_MAX_SYNC = 100_000; // ~100 KB de string data-URL
-
-/** Remove campo `foto` dos alunos no JSON da nuvem (vai para tabela aluno_fotos). */
-function stripLargeFotosFromAlunos(list: unknown[]): {
-  list: unknown[];
-  omitted: number;
-} {
-  let omitted = 0;
-  const out = (list || []).map((raw) => {
-    const a = raw as { foto?: string; [k: string]: unknown };
-    if (typeof a?.foto === "string" && a.foto.length > 0) {
-      omitted += 1;
-      const { foto: _drop, ...rest } = a;
-      return rest;
-    }
-    return raw;
-  });
-  return { list: out, omitted };
-}
-
-function stripLargeFotosFromOverrides(map: Record<string, unknown>): {
-  map: Record<string, unknown>;
-  omitted: number;
-} {
-  let omitted = 0;
-  const out: Record<string, unknown> = {};
-  for (const [id, val] of Object.entries(map || {})) {
-    const a = val as { foto?: string; [k: string]: unknown };
-    if (typeof a?.foto === "string" && a.foto.length > 0) {
-      omitted += 1;
-      const { foto: _drop, ...rest } = a;
-      out[id] = rest;
-    } else {
-      out[id] = val;
-    }
-  }
-  return { map: out, omitted };
-}
-
 async function ensureAlunoFotosTable(sql: {
   query: (text: string, params?: unknown[]) => Promise<unknown[]>;
 }) {
@@ -793,28 +329,27 @@ export const loadAlunoFotos = createServerFn({ method: "GET" }).handler(
   },
 );
 
-function stripInboxAnexos(items: unknown[]): unknown[] {
-  return (items || []).map((raw) => {
-    const it = raw as {
-      anexoDataUrl?: string;
-      anexoSync?: boolean;
-      anexoNome?: string;
-      anexoMime?: string;
-      observacoes?: string;
-      [k: string]: unknown;
-    };
-    const url = it.anexoDataUrl || "";
-    if (!url) return raw;
-    if (it.anexoSync && url.length <= INBOX_ANEXO_MAX_SYNC) return raw;
-    const { anexoDataUrl: _drop, ...rest } = it;
-    return {
-      ...rest,
-      anexoNome: it.anexoNome,
-      anexoMime: it.anexoMime,
-      anexoSync: false,
-    };
-  });
-}
+/** Como loadAlunoFotos, mas com updated_at de cada foto (para respeitar tombstones de fotos). */
+export const loadAlunoFotosMeta = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Record<string, { dataUrl: string; updatedAt: string }>> => {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    try {
+      await ensureAlunoFotosTable(sql);
+      const rows = await sql.query<{ id: string; data_url: string; updated_at: string | Date }>(
+        `SELECT id, data_url, updated_at FROM aluno_fotos`,
+      );
+      const map: Record<string, { dataUrl: string; updatedAt: string }> = {};
+      for (const r of rows) {
+        if (r?.id && r?.data_url) map[r.id] = { dataUrl: r.data_url, updatedAt: toIso(r.updated_at) };
+      }
+      return map;
+    } catch (e) {
+      console.error("[aluno-fotos] load meta failed", e);
+      return {};
+    }
+  },
+);
 
 /** ——— Tomadas de conhecimento do regulamento (servidor / nuvem) ——— */
 
