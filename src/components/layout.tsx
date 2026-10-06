@@ -7,8 +7,9 @@ import { getSeed, useFinance } from "@/lib/store";
 import {
   clearOperatorSession,
   isCollaborator1,
-  switchOperatorSession,
+  resolveEntryPin,
 } from "@/lib/can-edit";
+import { toast } from "sonner";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 
 const NAV = [
@@ -168,10 +169,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <select
                     className="h-11 w-full rounded-xl border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
                     value={activeOperator}
-                    onChange={(e) => {
-                      const name = e.target.value;
-                      switchOperatorSession(name, operators);
-                      setActiveOperator(name);
+                    onChange={() => {
+                      // Trocar colaborador exige novo PIN — limpa sessão e volta ao gate
+                      try {
+                        useFinance.getState().pushSession("saida");
+                      } catch {
+                        /* ignore */
+                      }
+                      clearOperatorSession();
                     }}
                     aria-label="Colaborador ativo"
                   >
@@ -346,10 +351,13 @@ function OperatorPanel({
       <select
         className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
         value={activeOperator}
-        onChange={(e) => {
-          const name = e.target.value;
-          switchOperatorSession(name, operators);
-          setActiveOperator(name);
+        onChange={() => {
+          try {
+            useFinance.getState().pushSession("saida");
+          } catch {
+            /* ignore */
+          }
+          clearOperatorSession();
         }}
         aria-label="Colaborador ativo"
       >
@@ -379,6 +387,94 @@ function OperatorPanel({
               aria-label={`Nome colaborador ${i + 1}`}
             />
           ))}
+        </div>
+      ) : null}
+      {isAdmin ? <ChangePinPanel /> : null}
+    </div>
+  );
+}
+
+function ChangePinPanel() {
+  const entryPinStored = useFinance((s) => s.uiPrefs?.entryPin);
+  const setUiPrefs = useFinance((s) => s.setUiPrefs);
+  const pushAudit = useFinance((s) => s.pushAudit);
+  const [open, setOpen] = useState(false);
+  const [atual, setAtual] = useState("");
+  const [novo, setNovo] = useState("");
+  const [confirma, setConfirma] = useState("");
+
+  function guardar() {
+    const expected = resolveEntryPin(entryPinStored);
+    if (atual.trim() !== expected) {
+      toast.error("Código actual incorrecto.");
+      return;
+    }
+    const n = novo.trim();
+    if (n.length < 4) {
+      toast.error("O novo código deve ter pelo menos 4 dígitos.");
+      return;
+    }
+    if (n !== confirma.trim()) {
+      toast.error("A confirmação não coincide.");
+      return;
+    }
+    setUiPrefs({ entryPin: n });
+    pushAudit("alterar_codigo_entrada", "Código de entrada actualizado");
+    toast.success("Código de entrada actualizado.");
+    setAtual("");
+    setNovo("");
+    setConfirma("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="mt-2 border-t border-[var(--color-line)] pt-2">
+      <button
+        type="button"
+        className="text-left text-[11px] text-[var(--color-forest)] underline-offset-2 hover:underline"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Fechar alterar código" : "Alterar código"}
+      </button>
+      {open ? (
+        <div className="mt-2 space-y-1.5">
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Código actual"
+            value={atual}
+            onChange={(e) => setAtual(e.target.value)}
+            className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+            aria-label="Código actual"
+          />
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Novo código"
+            value={novo}
+            onChange={(e) => setNovo(e.target.value)}
+            className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+            aria-label="Novo código"
+          />
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Confirmar novo código"
+            value={confirma}
+            onChange={(e) => setConfirma(e.target.value)}
+            className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+            aria-label="Confirmar novo código"
+          />
+          <button
+            type="button"
+            className="h-8 w-full rounded-[var(--radius-sm)] bg-[var(--color-forest)] text-[10px] font-medium text-[var(--color-forest-fg)]"
+            onClick={guardar}
+          >
+            Guardar código
+          </button>
         </div>
       ) : null}
     </div>

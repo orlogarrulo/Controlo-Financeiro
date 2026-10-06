@@ -201,6 +201,8 @@ type ExtraState = {
     salariosMesKey?: string;
     salariosMesLabel?: string;
     salariosFilterMes?: string;
+    /** Código de entrada partilhado (nuvem). Fallback: 1977 em can-edit. */
+    entryPin?: string;
   };
   /** Caixa de entrada de reconciliação (atrasados). */
   inboxItems: import("@/data/types").InboxMovimento[];
@@ -356,7 +358,7 @@ type Store = ExtraState & {
   ensureSalariosBaiFromRecibos: () => number;
   /** Remove todos os débitos SALARIO-APP / APP-SAL-* do extrato BAI. */
   limparDebitosSalarioBai: () => number;
-  setUiPrefs: (patch: Partial<{ salariosMesKey?: string; salariosMesLabel?: string; salariosFilterMes?: string }>) => void;
+  setUiPrefs: (patch: Partial<{ salariosMesKey?: string; salariosMesLabel?: string; salariosFilterMes?: string; entryPin?: string }>) => void;
   addInboxItems: (rows: import("@/data/types").InboxMovimento[]) => void;
   updateInboxItem: (id: string, patch: Partial<import("@/data/types").InboxMovimento>) => void;
   removeInboxItem: (id: string) => void;
@@ -733,6 +735,9 @@ export const useFinance = create<Store>()(
       documentosAluno: [],
       contaCorrente: [],
       setUiPrefs: (patch) => {
+        if (patch && "entryPin" in patch) {
+          requireEdit(get);
+        }
         set({ uiPrefs: { ...(get().uiPrefs || {}), ...patch } });
       },
       addInboxItems: (rows) => {
@@ -4090,7 +4095,7 @@ export function realinharIdsPorTurma(): number {
 }
 
 
-const ID_ALUNO_RE = /\b(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2}\b/gi;
+const ID_ALUNO_RE = /\b(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2,}(?:-[a-z0-9]+)?\b/gi;
 
 function collectTraceIds(state: {
   alunosExtra?: Aluno[];

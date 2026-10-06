@@ -6,7 +6,6 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
-import { escolaLogoSrc } from "@/lib/logo-escola";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AppShell } from "@/components/layout";
 import { OperatorGate } from "@/components/operator-gate";
@@ -73,7 +72,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
-      { name: "theme-color", content: "#1F5C4A" },
+      { name: "theme-color", content: "#009543" },
       {
         name: "description",
         content: "École Consulaire du Congo (Brazzaville) – filial Nova Vida",
@@ -82,11 +81,12 @@ export const Route = createRootRoute({
       { name: "robots", content: "noindex, nofollow" },
     ],
     links: [
-      { rel: "icon", type: "image/jpeg", href: escolaLogoSrc() },
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
+      { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" },
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: escolaLogoSrc() },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
         rel: "preconnect",

@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
+import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
 import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades } from "@/lib/propina-estado";
-import { resolveTurmaOficial } from "@/lib/classe-congo";
+import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
 import {
@@ -488,33 +488,12 @@ function propinaDefaultFromTurma(turma: string): number {
   return PROPINA_PRIMAIRE;
 }
 
-/** ID automático: PREFIXO-NN a partir da turma. */
+/** ID automático via nextIdForTurma (anti-colisão multi-PC). */
 function nextAlunoId(turma: string, existing: Aluno[]): string {
-  const map: Record<string, string> = {
-    "Maternelle P1": "P1",
-    "Maternelle P2": "P2",
-    "Maternelle P3": "P3",
-    Maternelle: "MAT",
-    CP1: "CP1",
-    CP2: "CP2",
-    CE1: "CE1",
-    CE2: "CE2",
-    CM1: "CM1",
-    CM2: "CM2",
-    "6ème": "6E",
-    "5ème": "5E",
-    "4ème": "4E",
-    "3ème": "3E",
-  };
-  const prefix = map[turma] || "AL";
-  let max = 0;
-  for (const a of existing) {
-    if (a.id.startsWith(prefix + "-")) {
-      const n = Number(a.id.split("-").pop());
-      if (Number.isFinite(n)) max = Math.max(max, n);
-    }
-  }
-  return `${prefix}-${String(max + 1).padStart(2, "0")}`;
+  return nextIdForTurma(
+    turma,
+    existing.map((a) => a.id).filter(Boolean),
+  );
 }
 
 function nextRecibo(existing: Aluno[]): string {
@@ -1984,7 +1963,7 @@ function Alunos() {
 
   async function saveNew() {
     if (!canEdit) return;
-    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
+    if (!isAdminUnlocked() && form.pin !== resolveEntryPin(useFinance.getState().uiPrefs?.entryPin)) {
       toast.error("Código incorrecto.");
       return;
     }
@@ -2112,7 +2091,7 @@ function Alunos() {
 
   async function saveEdit() {
     if (!editing || !canEdit) return;
-    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
+    if (!isAdminUnlocked() && form.pin !== resolveEntryPin(useFinance.getState().uiPrefs?.entryPin)) {
       toast.error("Código incorrecto.");
       return;
     }

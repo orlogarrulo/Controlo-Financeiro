@@ -3,6 +3,7 @@
  * Um registo partilhado por escola — todos os dispositivos vêem os mesmos dados.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { nextIdForTurma } from "@/lib/classe-congo";
 
 export type FinanceCloudPayload = {
   extras: unknown[];
@@ -30,6 +31,8 @@ export type FinanceCloudPayload = {
     salariosMesKey?: string;
     salariosMesLabel?: string;
     salariosFilterMes?: string;
+    /** Código de entrada partilhado entre dispositivos. */
+    entryPin?: string;
   };
   inboxItems?: unknown[];
   crmEnvios?: unknown[];
@@ -111,7 +114,7 @@ export const loadFinanceCloud = createServerFn({ method: "GET" }).handler(
           ? (JSON.parse(row.payload) as FinanceCloudPayload)
           : (row.payload as FinanceCloudPayload);
       return {
-        payload: { ...emptyPayload(), ...payload },
+        payload: sanitizeFinancePayload({ ...emptyPayload(), ...payload }),
         updatedAt,
         source: dbSource,
       };
@@ -130,19 +133,196 @@ function idOf(row: unknown): string {
   return String((row as { id?: string } | undefined)?.id || "");
 }
 
-function mergeById(existing: unknown[] | undefined, incoming: unknown[] | undefined): unknown[] {
-  const map = new Map<string, unknown>();
-  for (const row of existing || []) {
-    const id = idOf(row);
-    if (id) map.set(id, row);
+function rowUpdatedAt(row: unknown): number {
+  const v = (row as { updatedAt?: string } | undefined)?.updatedAt;
+  if (typeof v === "string" && v) {
+    const n = Date.parse(v);
+    return Number.isFinite(n) ? n : 0;
   }
-  for (const row of incoming || []) {
-    const id = idOf(row);
+  return 0;
+}
+
+function isNonEmptyValue(v: unknown): boolean {
+  return v != null && v !== "" && !(typeof v === "number" && Number.isNaN(v));
+}
+
+/** Funde campos sem deixar string vazia apagar valor preenchido; base = updatedAt mais recente. */
+function mergeRecordsPreferNewer(a: unknown, b: unknown): unknown {
+  if (!a || typeof a !== "object") return b;
+  if (!b || typeof b !== "object") return a;
+  const A = a as Record<string, unknown>;
+  const B = b as Record<string, unknown>;
+  const aTs = rowUpdatedAt(a);
+  const bTs = rowUpdatedAt(b);
+  const newer = bTs > aTs ? B : A;
+  const older = bTs > aTs ? A : B;
+  const merged: Record<string, unknown> = { ...older, ...newer };
+  for (const key of Object.keys(older)) {
+    if (!isNonEmptyValue(merged[key]) && isNonEmptyValue(older[key])) {
+      merged[key] = older[key];
+    }
+  }
+  if (aTs || bTs) {
+    merged.updatedAt = aTs >= bTs ? A.updatedAt || B.updatedAt : B.updatedAt || A.updatedAt;
+  }
+  return merged;
+}
+
+/** Colapsa IDs repetidos dentro de um único array (updatedAt mais recente). */
+export function dedupeByIdPreferNewer(rows: unknown[] | undefined): unknown[] {
+  const map = new Map<string, unknown>();
+  for (const row of rows || []) {
+    const id = idOf(row).trim();
     if (!id) continue;
     const prev = map.get(id);
-    map.set(id, prev && typeof prev === "object" ? { ...(prev as object), ...(row as object) } : row);
+    map.set(id, prev ? mergeRecordsPreferNewer(prev, row) : row);
   }
   return Array.from(map.values());
+}
+
+function mergeById(existing: unknown[] | undefined, incoming: unknown[] | undefined): unknown[] {
+  // Primeiro colapsa duplicados internos de cada lado; depois funde.
+  const map = new Map<string, unknown>();
+  for (const row of dedupeByIdPreferNewer(existing)) {
+    const id = idOf(row).trim();
+    if (id) map.set(id, row);
+  }
+  for (const row of dedupeByIdPreferNewer(incoming)) {
+    const id = idOf(row).trim();
+    if (!id) continue;
+    const prev = map.get(id);
+    map.set(id, prev ? mergeRecordsPreferNewer(prev, row) : row);
+  }
+  return Array.from(map.values());
+}
+
+function normDocKey(s: string): string {
+  return String(s || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+/** Colapsa por chave secundária (ex.: número de fatura) após dedupe por id. */
+function dedupeBySecondaryKey(
+  rows: unknown[] | undefined,
+  keyOf: (row: unknown) => string | null,
+): unknown[] {
+  const map = new Map<string, unknown>();
+  const noKey: unknown[] = [];
+  for (const row of rows || []) {
+    const k = keyOf(row);
+    if (!k) {
+      noKey.push(row);
+      continue;
+    }
+    const prev = map.get(k);
+    map.set(k, prev ? mergeRecordsPreferNewer(prev, row) : row);
+  }
+  return [...Array.from(map.values()), ...noKey];
+}
+
+function alunoNomeKeyCloud(row: unknown): string {
+  const nome = String((row as { nome?: string })?.nome || "").trim().toLowerCase();
+  return nome.replace(/\s+/g, " ");
+}
+
+/**
+ * Se o mesmo ID aponta para pessoas diferentes, reatribui ID ao lado incoming
+ * (mantém o existing na nuvem) — evita frankenstein no merge.
+ */
+function resolveAlunoIdCollisionsCloud(
+  existing: unknown[],
+  incoming: unknown[],
+): { merged: unknown[]; remapped: number } {
+  const existingById = new Map<string, unknown>();
+  for (const row of existing || []) {
+    const id = idOf(row).trim();
+    if (id) existingById.set(id, row);
+  }
+  const taken = new Set<string>([
+    ...existingById.keys(),
+    ...(incoming || []).map((r) => idOf(r).trim()).filter(Boolean),
+  ]);
+  let remapped = 0;
+  const outIncoming: unknown[] = [];
+  for (const row of incoming || []) {
+    const id = idOf(row).trim();
+    if (!id) {
+      outIncoming.push(row);
+      continue;
+    }
+    const ex = existingById.get(id);
+    if (!ex) {
+      outIncoming.push(row);
+      continue;
+    }
+    const ln = alunoNomeKeyCloud(row);
+    const rn = alunoNomeKeyCloud(ex);
+    if (ln && rn && ln !== rn) {
+      const turma =
+        String((row as { turma?: string })?.turma || "").trim() ||
+        String((ex as { turma?: string })?.turma || "").trim() ||
+        "AL";
+      const newId = nextIdForTurma(turma, taken);
+      taken.add(newId);
+      outIncoming.push({
+        ...(row as object),
+        id: newId,
+        idAnterior: id,
+        updatedAt: new Date().toISOString(),
+      });
+      remapped += 1;
+    } else {
+      outIncoming.push(row);
+    }
+  }
+  return { merged: mergeById(existing, outIncoming), remapped };
+}
+
+/**
+ * Garante arrays sem IDs duplicados (e docs sem número/código repetido).
+ * Preferência: updatedAt mais recente; campos vazios não apagam preenchidos.
+ */
+export function sanitizeFinancePayload(p: FinanceCloudPayload): FinanceCloudPayload {
+  const base = { ...emptyPayload(), ...p };
+  const alunos = mergeById(base.alunosExtra, base.alunosCenso);
+  const docs = dedupeBySecondaryKey(dedupeByIdPreferNewer(base.documentosAluno), (row) => {
+    const r = row as { numero?: string; codigoVerificacao?: string };
+    const num = normDocKey(r.numero || "");
+    if (num) return `num:${num}`;
+    const cod = normDocKey(r.codigoVerificacao || "");
+    if (cod) return `cod:${cod}`;
+    return null;
+  });
+  const faturas = dedupeBySecondaryKey(dedupeByIdPreferNewer(base.faturasPropina), (row) => {
+    const num = normDocKey(String((row as { numero?: string })?.numero || ""));
+    return num ? `num:${num}` : null;
+  });
+  const codigos = dedupeBySecondaryKey(dedupeByIdPreferNewer(base.codigosRecibo), (row) => {
+    const cod = normDocKey(String((row as { codigo?: string })?.codigo || ""));
+    return cod ? `cod:${cod}` : null;
+  });
+  return {
+    ...base,
+    extras: dedupeByIdPreferNewer(base.extras),
+    alunosExtra: alunos,
+    alunosCenso: alunos,
+    mensalidades: dedupeByIdPreferNewer(base.mensalidades),
+    fundoExtra: dedupeByIdPreferNewer(base.fundoExtra),
+    fundoAtmExtra: dedupeByIdPreferNewer(base.fundoAtmExtra),
+    movimentosBaiExtra: dedupeByIdPreferNewer(base.movimentosBaiExtra),
+    salariosExtra: dedupeByIdPreferNewer(base.salariosExtra),
+    recibosSalario: dedupeByIdPreferNewer(base.recibosSalario),
+    faturasPropina: faturas,
+    inboxItems: dedupeByIdPreferNewer(base.inboxItems),
+    crmEnvios: dedupeByIdPreferNewer(base.crmEnvios),
+    codigosRecibo: codigos,
+    documentosAluno: docs,
+    contaCorrente: dedupeByIdPreferNewer(base.contaCorrente),
+    auditLog: dedupeByIdPreferNewer(base.auditLog).slice(-200),
+    alunosDeletedIds: unionIds(base.alunosDeletedIds, []),
+    movimentosBaiDeletedIds: unionIds(base.movimentosBaiDeletedIds, []),
+    salariosDeletedIds: unionIds(base.salariosDeletedIds, []),
+    documentosAlunoDeletedIds: unionIds(base.documentosAlunoDeletedIds, []),
+  };
 }
 
 /** Filtra documentos/faturas/códigos marcados como apagados (tombstones). */
@@ -182,6 +362,22 @@ function unionIds(a?: string[], b?: string[]): string[] {
   return Array.from(new Set([...(a || []), ...(b || [])]));
 }
 
+
+function mergeOverridesPreferNewer(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const ids = new Set([...Object.keys(existing || {}), ...Object.keys(incoming || {})]);
+  const out: Record<string, unknown> = {};
+  for (const id of ids) {
+    const a = existing?.[id];
+    const b = incoming?.[id];
+    if (a != null && b != null) out[id] = mergeRecordsPreferNewer(a, b);
+    else out[id] = b ?? a;
+  }
+  return out;
+}
+
 /** Nunca deixar um PC vazio apagar o censo que já está na nuvem. */
 function mergeAlunosCloud(
   existing: unknown[] | undefined,
@@ -189,22 +385,48 @@ function mergeAlunosCloud(
 ): unknown[] {
   const inc = incoming || [];
   const cur = existing || [];
-  if (inc.length === 0 && cur.length > 0) return cur;
-  return mergeById(cur, inc);
+  if (inc.length === 0 && cur.length > 0) return dedupeByIdPreferNewer(cur);
+  const { merged, remapped } = resolveAlunoIdCollisionsCloud(cur, inc);
+  if (remapped > 0) {
+    console.warn(
+      `[finance-cloud] ${remapped} matrícula(s) com ID colidido foram reatribuídas no save`,
+    );
+  }
+  return merged;
 }
 
+export type SaveFinanceCloudResult = {
+  ok: boolean;
+  updatedAt: string;
+  /** true se outro dispositivo gravou entretanto (optimistic lock). */
+  conflict?: boolean;
+  /** Payload actual na nuvem quando há conflito. */
+  payload?: FinanceCloudPayload;
+};
+
 export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
-  async (ctx): Promise<{ ok: boolean; updatedAt: string }> => {
-    const data = ((ctx as { data?: FinanceCloudPayload }).data ?? emptyPayload()) as FinanceCloudPayload;
+  async (ctx): Promise<SaveFinanceCloudResult> => {
+    const rawIn = ((ctx as { data?: FinanceCloudPayload & { expectedUpdatedAt?: string } }).data ??
+      emptyPayload()) as FinanceCloudPayload & { expectedUpdatedAt?: string };
+    const expectedUpdatedAt =
+      typeof rawIn.expectedUpdatedAt === "string" && rawIn.expectedUpdatedAt.trim()
+        ? rawIn.expectedUpdatedAt.trim()
+        : undefined;
+    const { expectedUpdatedAt: _drop, ...rest } = rawIn;
+    const data = { ...emptyPayload(), ...rest } as FinanceCloudPayload;
     const { getSql } = await import("@/lib/db");
     const sql = await getSql();
     await ensureFinanceCloudTable(sql);
     const updatedAt = new Date().toISOString();
 
     let current: FinanceCloudPayload = emptyPayload();
+    let currentUpdatedAt = new Date(0).toISOString();
     try {
-      const rows = await sql.query<{ payload: FinanceCloudPayload | string }>(
-        `SELECT payload FROM finance_cloud WHERE id = $1 LIMIT 1`,
+      const rows = await sql.query<{
+        payload: FinanceCloudPayload | string;
+        updated_at: string | Date;
+      }>(
+        `SELECT payload, updated_at FROM finance_cloud WHERE id = $1 LIMIT 1`,
         ["escola"],
       );
       if (rows.length) {
@@ -213,12 +435,16 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
           typeof raw === "string"
             ? { ...emptyPayload(), ...(JSON.parse(raw) as FinanceCloudPayload) }
             : { ...emptyPayload(), ...raw };
+        currentUpdatedAt =
+          typeof rows[0].updated_at === "string"
+            ? rows[0].updated_at
+            : new Date(rows[0].updated_at).toISOString();
       }
     } catch (e) {
       console.warn("[finance-cloud] read-before-save", e);
     }
 
-    const payload: FinanceCloudPayload = {
+    const payload: FinanceCloudPayload = sanitizeFinancePayload({
       ...emptyPayload(),
       ...current,
       ...data,
@@ -228,10 +454,10 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
         mergeById(data.alunosExtra, data.alunosCenso),
       ),
       alunosCenso: mergeAlunosCloud(current.alunosCenso, data.alunosCenso || data.alunosExtra),
-      alunosOverrides: {
-        ...(current.alunosOverrides || {}),
-        ...(data.alunosOverrides || {}),
-      },
+      alunosOverrides: mergeOverridesPreferNewer(
+        current.alunosOverrides || {},
+        data.alunosOverrides || {},
+      ),
       alunosDeletedIds: unionIds(current.alunosDeletedIds, data.alunosDeletedIds),
       mensalidades: mergeById(current.mensalidades, data.mensalidades),
       fundoExtra: mergeById(current.fundoExtra, data.fundoExtra),
@@ -267,8 +493,45 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
       auditLog: mergeById(current.auditLog, data.auditLog).slice(-200),
       sessionLog: (data.sessionLog?.length ? data.sessionLog : current.sessionLog) || [],
       clientUpdatedAt: updatedAt,
-    };
+    });
     try {
+      // Optimistic lock: se o cliente indica a versão que conhece, só grava se coincidir.
+      if (expectedUpdatedAt && currentUpdatedAt !== new Date(0).toISOString()) {
+        const expectedMs = Date.parse(expectedUpdatedAt);
+        const currentMs = Date.parse(currentUpdatedAt);
+        // Comparar por instante (tolerância 2 ms) — evita falhas por formato ISO
+        if (
+          Number.isFinite(expectedMs) &&
+          Number.isFinite(currentMs) &&
+          Math.abs(expectedMs - currentMs) > 2
+        ) {
+          return {
+            ok: false,
+            conflict: true,
+            updatedAt: currentUpdatedAt,
+            payload: sanitizeFinancePayload(current),
+          };
+        }
+        const rows = await sql.query<{ updated_at: string | Date }>(
+          `UPDATE finance_cloud
+           SET payload = $2::jsonb, updated_at = $3::timestamptz
+           WHERE id = $1
+             AND ABS(EXTRACT(EPOCH FROM (updated_at - $4::timestamptz))) < 0.05
+           RETURNING updated_at`,
+          ["escola", JSON.stringify(payload), updatedAt, expectedUpdatedAt],
+        );
+        if (!rows.length) {
+          // Outro writer ganhou a corrida entre SELECT e UPDATE
+          return {
+            ok: false,
+            conflict: true,
+            updatedAt: currentUpdatedAt,
+            payload: sanitizeFinancePayload(current),
+          };
+        }
+        return { ok: true, updatedAt };
+      }
+
       await sql.query(
         `INSERT INTO finance_cloud (id, payload, updated_at)
          VALUES ($1, $2::jsonb, $3::timestamptz)
@@ -325,6 +588,8 @@ export function sliceFromStore(s: {
     salariosMesKey?: string;
     salariosMesLabel?: string;
     salariosFilterMes?: string;
+    /** Código de entrada partilhado entre dispositivos. */
+    entryPin?: string;
   };
   inboxItems?: unknown[];
   crmEnvios?: unknown[];
@@ -360,6 +625,8 @@ export function sliceFromStoreDetailed(s: {
     salariosMesKey?: string;
     salariosMesLabel?: string;
     salariosFilterMes?: string;
+    /** Código de entrada partilhado entre dispositivos. */
+    entryPin?: string;
   };
   inboxItems?: unknown[];
   crmEnvios?: unknown[];
@@ -376,7 +643,7 @@ export function sliceFromStoreDetailed(s: {
   );
   return {
     fotosOmitidas: o1 + o2,
-    payload: {
+    payload: sanitizeFinancePayload({
       extras: s.extras,
       alunosExtra: alunosExtraSafe,
       alunosCenso: alunosExtraSafe,
@@ -406,7 +673,7 @@ export function sliceFromStoreDetailed(s: {
       documentosAluno: s.documentosAluno || [],
       documentosAlunoDeletedIds: s.documentosAlunoDeletedIds || [],
       contaCorrente: s.contaCorrente || [],
-    },
+    }),
   };
 }
 

@@ -103,15 +103,43 @@ export function prefixFromTurma(turma: string): string {
   return PREFIXO_TURMA[(turma || "").trim()] || "AL";
 }
 
+/**
+ * Próximo ID de matrícula para a turma.
+ * Formato legado: PREFIX-NN · novo: PREFIX-NN-xxxx (sufixo anti-colisão multi-PC).
+ * Dois dispositivos com o mesmo max local já não geram o mesmo ID.
+ */
 export function nextIdForTurma(turma: string, taken: Iterable<string>): string {
   const prefix = prefixFromTurma(turma);
-  const re = new RegExp(`^${prefix}-(\\d+)$`, "i");
+  const takenSet = new Set(
+    [...taken].map((id) => String(id || "").trim().toUpperCase()).filter(Boolean),
+  );
+  // Aceita IDs legados PREFIX-NN e novos PREFIX-NN-xxxx
+  const re = new RegExp(`^${prefix}-(\\d+)(?:-[a-z0-9]+)?$`, "i");
   let max = 0;
   for (const id of taken) {
     const m = String(id || "").match(re);
     if (m) max = Math.max(max, Number(m[1]) || 0);
   }
-  return `${prefix}-${String(max + 1).padStart(2, "0")}`;
+  const rand4 = () => {
+    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let out = "";
+    const cryptoObj = typeof crypto !== "undefined" ? crypto : undefined;
+    if (cryptoObj?.getRandomValues) {
+      const buf = new Uint8Array(4);
+      cryptoObj.getRandomValues(buf);
+      for (let i = 0; i < 4; i++) out += alphabet[buf[i]! % alphabet.length]!;
+      return out;
+    }
+    for (let i = 0; i < 4; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)]!;
+    return out;
+  };
+  // Base sequencial + sufixo aleatório: P1-05-k7x2 (evita colisão multi-dispositivo)
+  for (let attempt = 0; attempt < 64; attempt++) {
+    const n = max + 1 + Math.floor(attempt / 8);
+    const id = `${prefix}-${String(n).padStart(2, "0")}-${rand4()}`;
+    if (!takenSet.has(id.toUpperCase())) return id;
+  }
+  return `${prefix}-${String(max + 1).padStart(2, "0")}-${Date.now().toString(36).slice(-4)}`;
 }
 
 /** Idade típica da turma em 1/out (min, max inclusive). */

@@ -6,7 +6,9 @@ import {
   sliceFromStoreDetailed,
   loadAlunoFotos,
   saveAlunoFoto,
+  sanitizeFinancePayload,
   type FinanceCloudPayload,
+  type SaveFinanceCloudResult,
 } from "@/lib/finance-cloud";
 import {
   useFinance,
@@ -16,11 +18,19 @@ import {
   normalizeNomeAluno,
   recalcularClassesMatriculas,
   reporPropinasFromMatriculas,
+  sanearAlunosDuplicados,
 } from "@/lib/store";
+import { nextIdForTurma } from "@/lib/classe-congo";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 import type { Aluno } from "@/data/types";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
+const LOCAL_ISO_KEY = "ecc-financeiro-cloud-updated-at";
+/** Evita loop push→conflict→apply→subscribe→push. */
+let suppressCloudPush = false;
+function applyingRemoteFlag(on: boolean) {
+  suppressCloudPush = on;
+}
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
 const CARTE_SCOLAIRE_MIGRATE_KEY = "ecc-carte-scolaire-v1"; // sexo + lieu de naissance + cartão FR
 
@@ -70,6 +80,7 @@ export function HydrateStore() {
           // Sempre funde (merge por id) — não sobrescreve o lado local
           applyPayload(remote.payload);
           localStorage.setItem(LOCAL_TS_KEY, String(Math.max(remoteTs, Date.now())));
+          if (remote.updatedAt) localStorage.setItem(LOCAL_ISO_KEY, remote.updatedAt);
         }
         // Fotos na tabela dedicada — aplicar sempre (mesmo sem outros dados remotos)
         if (remoteFotos && Object.keys(remoteFotos).length > 0) {
@@ -79,6 +90,17 @@ export function HydrateStore() {
           reporPropinasFromMatriculas();
         } catch (e) {
           console.warn("[propinas-dedupe]", e);
+        }
+        try {
+          const rSan = sanearAlunosDuplicados();
+          if (rSan.removidos > 0) {
+            console.warn(
+              `[cloud] sanear alunos: ${rSan.removidos} ficha(s) ocultada(s)`,
+              rSan.detalhes.slice(0, 5),
+            );
+          }
+        } catch (e) {
+          console.warn("[alunos-dedupe]", e);
         }
         applyingRemote.current = false;
         lastPull.current = Date.now();
@@ -194,7 +216,7 @@ export function HydrateStore() {
       }
 
       unsub = useFinance.subscribe(() => {
-        if (!ready.current || applyingRemote.current) return;
+        if (!ready.current || applyingRemote.current || suppressCloudPush) return;
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => {
           void pushCloud();
@@ -272,16 +294,137 @@ function mergeRecibosPreferPago(local: unknown[], remote: unknown[]): never[] {
   return Array.from(map.values()) as never[];
 }
 
+function rowUpdatedAt(row: unknown): number {
+  const v = (row as { updatedAt?: string } | undefined)?.updatedAt;
+  if (typeof v === "string" && v) {
+    const n = Date.parse(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function isNonEmptyValue(v: unknown): boolean {
+  return v != null && v !== "" && !(typeof v === "number" && Number.isNaN(v));
+}
+
+/**
+ * Funde dois registos com o mesmo id sem sobreposição cega:
+ * base = o mais recente por updatedAt; campos vazios não apagam valores preenchidos.
+ */
+function mergeRecordsPreferNewer(a: unknown, b: unknown): unknown {
+  if (!a || typeof a !== "object") return b;
+  if (!b || typeof b !== "object") return a;
+  const A = a as Record<string, unknown>;
+  const B = b as Record<string, unknown>;
+  const aTs = rowUpdatedAt(a);
+  const bTs = rowUpdatedAt(b);
+  const newer = bTs > aTs ? B : A;
+  const older = bTs > aTs ? A : B;
+  const merged: Record<string, unknown> = { ...older, ...newer };
+  for (const key of Object.keys(older)) {
+    if (!isNonEmptyValue(merged[key]) && isNonEmptyValue(older[key])) {
+      merged[key] = older[key];
+    }
+  }
+  if (aTs || bTs) {
+    merged.updatedAt = aTs >= bTs ? A.updatedAt || B.updatedAt : B.updatedAt || A.updatedAt;
+  }
+  return merged;
+}
+
+/** Colapsa IDs repetidos num array (updatedAt mais recente). */
+function dedupeRowsById(rows: unknown[] | undefined): unknown[] {
+  const map = new Map<string, unknown>();
+  for (const row of rows || []) {
+    const id = String((row as { id?: string })?.id || "").trim();
+    if (!id) continue;
+    const prev = map.get(id);
+    map.set(id, prev ? mergeRecordsPreferNewer(prev, row) : row);
+  }
+  return Array.from(map.values());
+}
+
+/** Último já não ganha: funde por id com mergeRecordsPreferNewer. */
 function mergeById(local: unknown[], remote: unknown[]): never[] {
   const map = new Map<string, unknown>();
-  for (const row of [...(remote || []), ...(local || [])]) {
-    const r = row as { id?: string };
-    if (r?.id) map.set(r.id, row);
+  for (const row of dedupeRowsById(remote)) {
+    const id = String((row as { id?: string })?.id || "").trim();
+    if (!id) continue;
+    map.set(id, row);
+  }
+  for (const row of dedupeRowsById(local)) {
+    const id = String((row as { id?: string })?.id || "").trim();
+    if (!id) continue;
+    const prev = map.get(id);
+    map.set(id, prev ? mergeRecordsPreferNewer(prev, row) : row);
   }
   return Array.from(map.values()) as never[];
 }
 
-function applyPayload(p: FinanceCloudPayload) {
+function alunoNomeKey(row: unknown): string {
+  const nome = String((row as { nome?: string })?.nome || "").trim();
+  try {
+    return normalizeNomeAluno(nome);
+  } catch {
+    return nome.toLowerCase();
+  }
+}
+
+/**
+ * Se o mesmo ID aponta para pessoas diferentes (colisão multi-PC),
+ * reatribui um ID novo ao registo local e guarda idAnterior.
+ */
+function resolveAlunoIdCollisions(local: unknown[], remote: unknown[]): {
+  merged: never[];
+  remapped: number;
+} {
+  const remoteById = new Map<string, unknown>();
+  for (const row of remote || []) {
+    const id = String((row as { id?: string })?.id || "").trim();
+    if (id) remoteById.set(id, row);
+  }
+  const taken = new Set<string>([
+    ...remoteById.keys(),
+    ...(local || []).map((r) => String((r as { id?: string })?.id || "").trim()).filter(Boolean),
+  ]);
+  const outLocal: unknown[] = [];
+  let remapped = 0;
+  for (const row of local || []) {
+    const id = String((row as { id?: string })?.id || "").trim();
+    if (!id) {
+      outLocal.push(row);
+      continue;
+    }
+    const remoteRow = remoteById.get(id);
+    if (!remoteRow) {
+      outLocal.push(row);
+      continue;
+    }
+    const ln = alunoNomeKey(row);
+    const rn = alunoNomeKey(remoteRow);
+    if (ln && rn && ln !== rn) {
+      const turmaForId =
+        String((row as { turma?: string })?.turma || "").trim() ||
+        String((remoteRow as { turma?: string })?.turma || "").trim() ||
+        "AL";
+      const newId = nextIdForTurma(turmaForId, taken);
+      taken.add(newId);
+      outLocal.push({
+        ...(row as object),
+        id: newId,
+        idAnterior: id,
+        updatedAt: new Date().toISOString(),
+      });
+      remapped += 1;
+    } else {
+      outLocal.push(row);
+    }
+  }
+  return { merged: mergeById(outLocal, remote), remapped };
+}
+
+function applyPayload(raw: FinanceCloudPayload) {
+  const p = sanitizeFinancePayload(raw);
   const local = useFinance.getState();
   // Fundir por id: nuvem + local (telemóvel e PC passam a ver os mesmos registos)
   const remoteAlunos = mergeById(
@@ -289,7 +432,15 @@ function applyPayload(p: FinanceCloudPayload) {
     (p.alunosExtra as never[]) || [],
   );
   const localAlunos = local.alunosExtra || [];
-  const alunosMerged = mergeById(localAlunos, remoteAlunos);
+  const { merged: alunosMerged, remapped: alunosRemapped } = resolveAlunoIdCollisions(
+    localAlunos,
+    remoteAlunos,
+  );
+  if (alunosRemapped > 0) {
+    console.warn(
+      `[cloud] ${alunosRemapped} matrícula(s) com ID colidido foram reatribuídas (anti-sobreposição)`,
+    );
+  }
   const docsAll = [
     ...((local.documentosAluno as { alunoId?: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }[]) || []),
     ...((p.documentosAluno as { alunoId?: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }[]) || []),
@@ -579,7 +730,7 @@ export async function pushFinanceNow() {
   return pushCloud();
 }
 
-async function pushCloud() {
+async function pushCloud(retried = false) {
   try {
     const state = useFinance.getState();
     const { payload } = sliceFromStoreDetailed(state);
@@ -594,10 +745,35 @@ async function pushCloud() {
     payload.alunosCenso = censo;
     payload.alunosExtra = censo.filter((a) => a.id && !SEED_ALUNO_IDS.has(a.id));
     persistAlunosCensoLocal(censo as never);
-    const res = await saveFinanceCloud({ data: payload });
-    if (res?.updatedAt) {
+    const expectedUpdatedAt =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(LOCAL_ISO_KEY) || undefined
+        : undefined;
+    const res = (await saveFinanceCloud({
+      data: {
+        ...payload,
+        ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
+      } as never,
+    })) as SaveFinanceCloudResult;
+    if (res?.conflict && res.payload && !retried) {
+      // Outro dispositivo gravou — fundir e tentar uma vez
+      applyingRemoteFlag(true);
+      try {
+        applyPayload(res.payload);
+        if (res.updatedAt) {
+          localStorage.setItem(LOCAL_ISO_KEY, res.updatedAt);
+          localStorage.setItem(LOCAL_TS_KEY, String(Date.parse(res.updatedAt) || Date.now()));
+        }
+      } finally {
+        applyingRemoteFlag(false);
+      }
+      await pushCloud(true);
+      return;
+    }
+    if (res?.ok && res.updatedAt) {
       localStorage.setItem(LOCAL_TS_KEY, String(Date.parse(res.updatedAt) || Date.now()));
-    } else {
+      localStorage.setItem(LOCAL_ISO_KEY, res.updatedAt);
+    } else if (!res?.conflict) {
       localStorage.setItem(LOCAL_TS_KEY, String(Date.now()));
     }
   } catch (e) {
