@@ -79,6 +79,12 @@ function codigoRecibo(d: { codigoVerificacao?: string; codigo?: string; numero?:
   return (raw || fromNumero).trim().toUpperCase().replace(/\s+/g, "");
 }
 
+const RECIBOS_MANTER = new Set(["RC-202610-S3R2-34", "RC-202610-WYDE-76"]);
+
+function reciboProtegido(d: { codigoVerificacao?: string; codigo?: string; numero?: string }): boolean {
+  return RECIBOS_MANTER.has(codigoRecibo(d));
+}
+
 function estadoTone(e: DocumentoAlunoEstado): string {
   if (e === "arquivado" || e === "confirmado") return "bg-emerald-700 text-white";
   if (e === "enviado") return "bg-sky-700 text-white";
@@ -109,10 +115,11 @@ function buildVistaDocumentos(
       .trim()
       .toUpperCase()
       .replace(/\s+/g, "");
-    if (cod && del.has(`cod:${cod}`)) return true;
+    if (cod && del.has(`cod:${cod}`) && !RECIBOS_MANTER.has(cod)) return true;
     if (
       (row.codigoVerificacao || row.codigo) &&
-      del.has(`rc-legacy-${row.codigoVerificacao || row.codigo}`)
+      del.has(`rc-legacy-${row.codigoVerificacao || row.codigo}`) &&
+      !RECIBOS_MANTER.has(cod)
     )
       return true;
     return false;
@@ -226,8 +233,8 @@ function buildVistaDocumentos(
     const linhas = linhasAssinatura(d);
     // Com linhas: aluno|tipo|modelo|rubricas|valor
     // Sem linhas: aluno|tipo|modelo|valor  (dois recibos 320 000 sem detalhe = duplicado)
-    if (linhas) return [d.alunoId, d.tipo, d.modelo || "", linhas, String(v), codigoRecibo(d)].join("|");
-    return [d.alunoId, d.tipo, d.modelo || "", `valor:${v}`, codigoRecibo(d)].join("|");
+    if (linhas) return [d.alunoId, d.tipo, d.modelo || "", linhas, String(v)].join("|");
+    return [d.alunoId, d.tipo, d.modelo || "", `valor:${v}`].join("|");
   }
 
   function rubricaDe(d: DocumentoAluno): string {
@@ -279,25 +286,27 @@ function buildVistaDocumentos(
   // Passagem 1: colapsar por assinatura de conteúdo
   const melhor = new Map<string, DocumentoAluno>();
   for (const d of brutos) {
-    const chave = assinaturaDuplicado(d);
+    const chave = reciboProtegido(d) ? `rc:${codigoRecibo(d)}` : assinaturaDuplicado(d);
     const prev = melhor.get(chave);
     if (!prev || melhorQue(d, prev)) melhor.set(chave, d);
   }
 
-  // Passagem 2: liquidação — mesmo aluno + mesmo valor = duplicado
-  // (mesmo que um tenha linhas e outro não, ou labels diferentes)
+  // Passagem 2: mesmo aluno + mesmo valor gravado = repetido.
+  // Montantes diferentes do mesmo aluno ficam. Códigos pedidos nunca saem.
   const porLiqValor = new Map<string, DocumentoAluno>();
   for (const d of melhor.values()) {
     if (!(d.tipo === "recibo" && (d.modelo === "liquidacao_matricula" || rubricaDe(d) === "matricula"))) {
       continue;
     }
-    const k = `${d.alunoId}|liq|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`;
+    if (reciboProtegido(d)) continue;
+    const k = `${d.alunoId}|liq|${valorNorm(d)}`;
     const prev = porLiqValor.get(k);
     if (!prev || melhorQue(d, prev)) porLiqValor.set(k, d);
   }
   for (const [k, d] of [...melhor.entries()]) {
+    if (reciboProtegido(d)) continue;
     if (d.tipo === "recibo" && (d.modelo === "liquidacao_matricula" || rubricaDe(d) === "matricula")) {
-      const keep = porLiqValor.get(`${d.alunoId}|liq|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`);
+      const keep = porLiqValor.get(`${d.alunoId}|liq|${valorNorm(d)}`);
       if (keep && keep.id !== d.id) melhor.delete(k);
     }
   }
@@ -306,13 +315,15 @@ function buildVistaDocumentos(
   const porPropMes = new Map<string, DocumentoAluno>();
   for (const d of melhor.values()) {
     if (d.tipo !== "recibo" || rubricaDe(d) !== "propina") continue;
-    const k = `${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`;
+    if (reciboProtegido(d)) continue;
+    const k = `${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}`;
     const prev = porPropMes.get(k);
     if (!prev || melhorQue(d, prev)) porPropMes.set(k, d);
   }
   for (const [k, d] of [...melhor.entries()]) {
+    if (reciboProtegido(d)) continue;
     if (d.tipo === "recibo" && rubricaDe(d) === "propina") {
-      const keep = porPropMes.get(`${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`);
+      const keep = porPropMes.get(`${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}`);
       if (keep && keep.id !== d.id) melhor.delete(k);
     }
   }
@@ -444,15 +455,12 @@ function collapseLiquidacoesDuplicadas(
   const keep = new Map<string, DocumentoAluno>();
   const others: DocumentoAluno[] = [];
   for (const d of docs) {
-    if (!isReciboLiquidacao(d)) {
+    if (!isReciboLiquidacao(d) || reciboProtegido(d)) {
       others.push(d);
       continue;
     }
-    const aluno = alunoById.get(d.alunoId);
-    const montante = Math.round(valorDocumentoExibido(d, aluno) || Number(d.valor) || 0);
-    const cod = codigoRecibo(d);
-    // Código RC- próprio nunca é duplicado de outro recibo.
-    const k = cod ? `${d.alunoId}|liq|cod|${cod}` : `${d.alunoId}|liq|${montante}|sem-codigo`;
+    const montante = Math.round(Number(d.valor) || 0);
+    const k = `${d.alunoId}|liq|${montante}`;
     const prev = keep.get(k);
     if (
       !prev ||
@@ -521,7 +529,8 @@ function ArquivoPage() {
       if (!isReciboLiquidacao(d)) continue;
       const aluno = alunos.find((x) => x.id === d.alunoId);
       if (!aluno) continue;
-      const correcto = valorDocumentoExibido(d, aluno);
+      if (reciboProtegido(d)) continue;
+      const correcto = Number(d.valor) || 0;
       const stored = Number(d.valor) || 0;
       if (correcto > 0 && stored > 0 && Math.abs(correcto - stored) > 1) {
         try {
@@ -545,9 +554,8 @@ function ArquivoPage() {
     for (const d of documentos) {
       if (!isReciboLiquidacao(d)) continue;
       if (codigoRecibo(d)) continue;
-      const aluno = alunos.find((x) => x.id === d.alunoId);
-      const mont = Math.round(valorDocumentoExibido(d, aluno) || Number(d.valor) || 0);
-      const k = `${d.alunoId}|${mont}|sem-codigo`;
+      const mont = Math.round(Number(d.valor) || 0);
+      const k = `${d.alunoId}|${mont}`;
       const prev = best.get(k);
       if (!prev) {
         best.set(k, d);
@@ -985,7 +993,7 @@ function ArquivoPage() {
                       <td className="px-3 py-2 text-xs tabular-nums">
                         {d.emitidoEm ? formatDate(d.emitidoEm.slice(0, 10)) : "—"}
                       </td>
-                      <td className="px-3 py-2 tabular-nums">{formatKz(valorDocumentoExibido(d, alunos.find((x) => x.id === d.alunoId)))}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatKz(d.tipo === "recibo" ? Number(d.valor) || 0 : valorDocumentoExibido(d, alunos.find((x) => x.id === d.alunoId)))}</td>
                       <td className="px-3 py-2">
                         <Badge className={estadoTone(d.estado)}>
                           {ESTADO_LABEL[d.estado] || d.estado}
