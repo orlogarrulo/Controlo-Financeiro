@@ -252,6 +252,8 @@ type ExtraState = {
     salariosFilterMes?: string;
     /** Código de entrada partilhado (nuvem). Fallback: 1977 em can-edit. */
     entryPin?: string;
+    /** Senha de cada colaborador. Só o Colaborador 1 altera. */
+    entryPins?: string[];
   };
   /** Caixa de entrada de reconciliação (atrasados). */
   inboxItems: import("@/data/types").InboxMovimento[];
@@ -395,7 +397,7 @@ type Store = ExtraState & {
   ensureSalariosBaiFromRecibos: () => number;
   /** Remove todos os débitos SALARIO-APP / APP-SAL-* do extrato BAI. */
   limparDebitosSalarioBai: () => number;
-  setUiPrefs: (patch: Partial<{ salariosMesKey?: string; salariosMesLabel?: string; salariosFilterMes?: string; entryPin?: string }>) => void;
+  setUiPrefs: (patch: Partial<{ salariosMesKey?: string; salariosMesLabel?: string; salariosFilterMes?: string; entryPin?: string; entryPins?: string[] }>) => void;
   /** Próximo n.º de fatura PROP-AAAA-MM-NNN (sem colisão entre PCs — ver doc-numbers.ts). */
   nextFaturaNumero: (mesKey?: string) => string;
   addFaturaPropina: (f: FaturaPropina & { id?: string; numero: string }) => void;
@@ -1494,6 +1496,13 @@ export const useFinance = create<Store>()(
       },
       addAluno: (aluno) => {
         requireEdit(get);
+        const nomeN = normalizeNomeAluno(aluno.nome || "");
+        const ja = alunosAll(get().alunosExtra || [], get().alunosOverrides || {}, get().alunosDeletedIds || []).find(
+          (a) => a.id !== aluno.id && normalizeNomeAluno(a.nome) === nomeN && nomeN,
+        );
+        if (ja) {
+          throw new Error(`Já existe uma matrícula com este nome (${ja.id} · ${ja.nome}). Não foi gravada.`);
+        }
         const by = get().activeOperator || "—";
         const now = new Date().toISOString();
         const row = {
@@ -5632,6 +5641,12 @@ export function alunosAll(
   const deleted = new Set(
     (deletedIds || []).filter((id) => !FICHAS_PROTEGIDAS[id]),
   );
+  // Nome único não pode desaparecer só por estar em apagados.
+  const nomesVivos = new Set(
+    [...(seed.alunos || []), ...(extras || [])]
+      .filter((a) => a?.id && !deleted.has(a.id))
+      .map((a) => normalizeNomeAluno(a.nome)),
+  );
 
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
@@ -5698,7 +5713,7 @@ export function alunosAll(
 
   const push = (a: Aluno) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    if (deleted.has(a.id)) return;
+    if (deleted.has(a.id) && nomesVivos.has(normalizeNomeAluno(a.nome))) return;
     seenIds.add(a.id);
     out.push(apply(a));
   };

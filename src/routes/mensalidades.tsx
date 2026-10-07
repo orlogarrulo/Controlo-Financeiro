@@ -388,7 +388,7 @@ function Mensalidades() {
         }
         kicker="Outubro a Junho"
         title="Mensalidades"
-        description={`Mesma lista de Matrículas · ${all.length} aluno(s). 1.ª propina: Outubro (até 20 de setembro). Meses seguintes: do dia 30 até ao dia 10. No telemóvel, deslize a grelha.`}
+        description={`Mesma lista de Matrículas · ${rows.length} aluno(s). 1.ª propina: Outubro (até 20 de setembro). Meses seguintes: do dia 30 até ao dia 10. No telemóvel, deslize a grelha.`}
       />
 
       <div className="no-print mb-3">

@@ -1980,6 +1980,12 @@ function Alunos() {
       toast.error("Indique o nome do aluno.");
       return;
     }
+    const nomeN = form.nome.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const repetido = alunos.find((a) => a.nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() === nomeN);
+    if (repetido) {
+      toast.error(`Já existe este aluno: ${repetido.nome} (${repetido.id}). A matrícula não foi gravada. Pode editar a ficha existente.`);
+      return;
+    }
     const faltaMetodo = validarMetodosObrigatorios(form);
     if (faltaMetodo) {
       toast.error(faltaMetodo);
@@ -3777,18 +3783,17 @@ function Alunos() {
             ? `Cadastro único · ${alunos.length} aluno(s), o mesmo número em Propinas e Arquivo. 1) Cadastrar. 2) Fatura ou Recibo → PDF.`
             : `Consulta · ${alunos.length} aluno(s), alinhado com Propinas e Arquivo. Só o Colaborador 1 edita.`
         }
-        actions={
-          canEdit ? (
-            <Button className="h-10" onClick={openNew}>
-              <UserPlus className="mr-1 size-4" /> Nova matrícula
-            </Button>
-          ) : null
-        }
+        actions={null}
       />
 
-      <section className="no-print mb-4 flex flex-col gap-3 lg:flex-row">
-        <div className="flex w-full shrink-0 flex-col gap-2 lg:w-56 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start">
-          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-muted)] uppercase">Formulários</p>
+      <section className="no-print mb-4 w-full max-w-[15.5rem]">
+        <div className="flex flex-col gap-2 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start [&_button]:border [&_button]:border-[var(--color-line)] [&_button]:bg-white [&_button]:text-[var(--color-ink)] [&_button]:shadow-none">
+          {canEdit ? (
+            <Button variant="outline" onClick={openNew}>
+              <UserPlus className="mr-1 size-4" /> Nova matrícula
+            </Button>
+          ) : null}
+          <p className="pt-1 text-[10px] font-medium tracking-[0.14em] text-[var(--color-muted)] uppercase">Formulários</p>
           <Button variant="secondary" className="justify-start" onClick={() => setRegOpen(true)}>
             <FileText className="mr-1 size-4" /> Regulamento
           </Button>
@@ -3812,8 +3817,7 @@ function Alunos() {
           }}>
             <Mail className="mr-1 size-4" /> Inquérito de saúde
           </Button>
-        </div>
-        <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start">
+          <p className="pt-1 text-[10px] font-medium tracking-[0.14em] text-[var(--color-muted)] uppercase">Acções</p>
             <Button
               className="shrink-0"
               variant="secondary"
@@ -3994,7 +3998,7 @@ function Alunos() {
             >
               <IdCard className="mr-1 size-4" /> N.Vida · s/foto
             </Button>
-            <div className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+            <div className="flex w-full items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-white p-0.5">
               <select
                 className="h-9 rounded-md border-0 bg-transparent px-2 text-xs font-medium text-[var(--color-ink)] outline-none"
                 value={pdfLang}

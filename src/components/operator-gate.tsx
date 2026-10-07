@@ -6,8 +6,12 @@ import { Label } from "@/components/ui/label";
 import { useFinance, getSeed } from "@/lib/store";
 import {
   isCollaborator1,
-  resolveEntryPin,
+  IDLE_LOCK_MS,
+  resolveOperatorPin,
   SESSION_END_EVENT,
+  readSession,
+  sessionStillActive,
+  touchSessionActivity,
   wipeOperatorSession,
   writeSession,
   type OperatorSession,
@@ -32,7 +36,6 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
   const escola = getSeed().escola;
 
   useEffect(() => {
-    // Cada abertura, reload, restauro da PWA ou Sair volta a pedir o código.
     const forceGate = () => {
       wipeOperatorSession();
       setSession(null);
@@ -40,16 +43,47 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
       setPick(null);
       setErr("");
     };
-    forceGate();
+    const existing = readSession();
+    if (sessionStillActive(existing)) {
+      setSession(existing);
+      touchSessionActivity();
+    } else if (existing) {
+      wipeOperatorSession();
+    }
     setReady(true);
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) forceGate();
+    let lastTick = Date.now();
+    let hiddenAt = 0;
+    const onActivity = () => {
+      if (document.visibilityState === "visible") touchSessionActivity();
     };
+    const onHide = () => {
+      hiddenAt = Date.now();
+    };
+    const onShow = () => {
+      const gap = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      // Suspensão ou ecrã desligado: ao voltar pede o código.
+      if (gap > 15000) forceGate();
+    };
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      if (now - lastTick > 20000) forceGate();
+      lastTick = now;
+      const cur = readSession();
+      if (cur && !sessionStillActive(cur)) forceGate();
+    }, 5000);
     window.addEventListener(SESSION_END_EVENT, forceGate);
-    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("pointerdown", onActivity);
+    window.addEventListener("keydown", onActivity);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") onHide();
+      else onShow();
+    });
     return () => {
+      window.clearInterval(timer);
       window.removeEventListener(SESSION_END_EVENT, forceGate);
-      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("pointerdown", onActivity);
+      window.removeEventListener("keydown", onActivity);
     };
   }, []);
 
@@ -65,14 +99,14 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  const expectedPin = resolveEntryPin(entryPinStored);
-
   function confirm() {
     setErr("");
     if (!pick) {
       setErr("Escolha o membro da equipa.");
       return;
     }
+    const idx = operators.indexOf(pick);
+    const expectedPin = resolveOperatorPin({ entryPin: entryPinStored, entryPins: useFinance.getState().uiPrefs?.entryPins }, idx);
     if (pin.trim() !== expectedPin) {
       setErr("Código incorrecto.");
       return;
@@ -83,6 +117,7 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
       adminUnlocked: isFirst,
       at: new Date().toISOString(),
     };
+    s.lastActivity = Date.now();
     writeSession(s);
     setActiveOperator(pick);
     pushSession("entrada", pick);

@@ -8,6 +8,7 @@ import {
   clearOperatorSession,
   isCollaborator1,
   resolveEntryPin,
+  resolveOperatorPin,
 } from "@/lib/can-edit";
 import { toast } from "sonner";
 import { escolaLogoSrc } from "@/lib/logo-escola";
@@ -382,18 +383,20 @@ function OperatorPanel({
 }
 
 function ChangePinPanel() {
-  const entryPinStored = useFinance((s) => s.uiPrefs?.entryPin);
+  const operators = useFinance((s) => s.operators);
+  const prefs = useFinance((s) => s.uiPrefs);
   const setUiPrefs = useFinance((s) => s.setUiPrefs);
   const pushAudit = useFinance((s) => s.pushAudit);
   const [open, setOpen] = useState(false);
+  const [qual, setQual] = useState(0);
   const [atual, setAtual] = useState("");
   const [novo, setNovo] = useState("");
   const [confirma, setConfirma] = useState("");
 
   function guardar() {
-    const expected = resolveEntryPin(entryPinStored);
-    if (atual.trim() !== expected) {
-      toast.error("Código actual incorrecto.");
+    const minha = resolveOperatorPin(prefs, 0);
+    if (atual.trim() !== minha) {
+      toast.error("Código do Colaborador 1 incorrecto.");
       return;
     }
     const n = novo.trim();
@@ -405,9 +408,12 @@ function ChangePinPanel() {
       toast.error("A confirmação não coincide.");
       return;
     }
-    setUiPrefs({ entryPin: n });
-    pushAudit("alterar_codigo_entrada", "Código de entrada actualizado");
-    toast.success("Código de entrada actualizado.");
+    const pins = [...(prefs?.entryPins || [])];
+    while (pins.length < operators.length) pins.push("");
+    pins[qual] = n;
+    setUiPrefs({ entryPins: pins });
+    pushAudit("alterar_codigo_entrada", `Código do ${operators[qual] || "colaborador"} actualizado pelo Colaborador 1`);
+    toast.success(`Código de ${operators[qual] || "colaborador"} actualizado.`);
     setAtual("");
     setNovo("");
     setConfirma("");
@@ -421,15 +427,20 @@ function ChangePinPanel() {
         className="text-left text-[11px] text-[var(--color-forest)] underline-offset-2 hover:underline"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? "Fechar alterar código" : "Alterar código"}
+        {open ? "Fechar senhas" : "Senhas dos colaboradores"}
       </button>
       {open ? (
         <div className="mt-2 space-y-1.5">
+          <select className="h-8 w-full rounded border px-2 text-xs" value={qual} onChange={(e) => setQual(Number(e.target.value))}>
+            {operators.map((name, i) => (
+              <option key={name} value={i}>{name}</option>
+            ))}
+          </select>
           <input
             type="password"
             inputMode="numeric"
             autoComplete="off"
-            placeholder="Código actual"
+            placeholder="Código actual do Colaborador 1"
             value={atual}
             onChange={(e) => setAtual(e.target.value)}
             className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"

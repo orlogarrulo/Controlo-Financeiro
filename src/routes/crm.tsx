@@ -1221,7 +1221,7 @@ Cordiais cumprimentos,
     <div className="space-y-6">
       <PageHeader
         title="CRM · Encarregados"
-        description="Contactos, pré-visualização da mensagem, visualização da fatura, envio (e-mail / WhatsApp) e confirmação de entrega."
+        description={`Contactos e envios partilhados com Relatórios. ${stats.porEnviar} por enviar · ${stats.jaPagos ?? 0} já pagos em Propinas/Matrículas.`}
       />
 
       {/* KPIs: contagens inteiras (não valores em Kz) */}

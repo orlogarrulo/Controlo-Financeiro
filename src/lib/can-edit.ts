@@ -31,6 +31,17 @@ export function resolveEntryPin(stored?: string | null): string {
   return t || DEFAULT_ENTRY_PIN;
 }
 
+/** Código do colaborador i (0 = C1). Senhas individuais; vazio usa o código antigo partilhado. */
+export function resolveOperatorPin(
+  prefs: { entryPin?: string | null; entryPins?: Array<string | null> } | null | undefined,
+  index: number,
+): string {
+  const list = prefs?.entryPins || [];
+  const own = index >= 0 && index < list.length ? String(list[index] || "").trim() : "";
+  if (own) return own;
+  return resolveEntryPin(prefs?.entryPin);
+}
+
 /** Sessão: colaborador escolhido neste browser (só válida até reload / trocar). */
 export const SESSION_KEY = "ecc-operator-session";
 
@@ -39,7 +50,23 @@ export type OperatorSession = {
   /** true só se Colaborador 1 validou o PIN nesta entrada */
   adminUnlocked: boolean;
   at: string;
+  lastActivity?: number;
 };
+
+export const IDLE_LOCK_MS = 5 * 60 * 1000;
+
+export function touchSessionActivity() {
+  const s = readSession();
+  if (!s) return;
+  s.lastActivity = Date.now();
+  writeSession(s);
+}
+
+export function sessionStillActive(s: OperatorSession | null): boolean {
+  if (!s?.name) return false;
+  const at = Number(s.lastActivity || Date.parse(s.at) || 0);
+  return Date.now() - at < IDLE_LOCK_MS;
+}
 
 export function readSession(): OperatorSession | null {
   try {
