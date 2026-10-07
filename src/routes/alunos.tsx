@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
 import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store"
-import { sincronizarPagamentosSeparadores, fundirMensalidades } from "@/lib/propina-estado";
+import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -281,6 +281,8 @@ type FormState = {
   /** 0 = não incluir propina nesta liquidação; 1–9 meses */
   mesesPropina: string;
   propina: string;
+  /** Bolsa: propina Out→Jun isenta, sem cobrança. */
+  bolsaEstudos: boolean;
   telefone: string;
   email: string;
   morada: string;
@@ -347,6 +349,7 @@ function emptyForm(): FormState {
     mensalidade1: "0",
     mesesPropina: "1",
     propina: "0",
+    bolsaEstudos: false,
     telefone: "",
     email: "",
     morada: "",
@@ -405,6 +408,7 @@ function buildObs(form: FormState): string {
   }
   if (form.transferidoCampusCidade) parts.push(CAMPUS_CIDADE_NOTA);
   if (form.seguroExterno) parts.push("Seguro próprio (externo)");
+  if (form.bolsaEstudos) parts.push("Bolsa escolar · propina isenta Out→Jun (sem cobrança)");
   if (form.campanhaPromoSetembro) {
     const pc = calcPropinaComCampanha(num(form.propina), num(form.mesesPropina), true, irmaosNivelFromForm(form),
     );
@@ -1376,11 +1380,39 @@ function MatriculaForm({
               </div>
             ) : null}
           </div>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-emerald-300 bg-emerald-50 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 shrink-0"
+                checked={form.bolsaEstudos}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setForm(
+                    aplicarPropinaForm(form, {
+                      bolsaEstudos: on,
+                      mesesPropina: on ? "0" : form.mesesPropina === "0" ? "1" : form.mesesPropina,
+                      campanhaPromoSetembro: on ? false : form.campanhaPromoSetembro,
+                    }),
+                  );
+                }}
+              />
+              <span>
+                <strong>Bolsa de estudos</strong>
+                <span className="mt-1 block text-[12px] text-[var(--color-muted)]">
+                  A propina de outubro a junho fica paga pela bolsa. Não há cobrança desses meses.
+                  O aluno fica identificado como bolsista a partir desta matrícula. Inscrição e outros encargos mantêm-se, se existirem.
+                </span>
+              </span>
+            </label>
+          </div>
           <div className="space-y-1.5">
             <Label>Meses de propina a pagar agora (1–9)</Label>
             <select
               className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
               value={form.mesesPropina}
+              disabled={form.bolsaEstudos}
               onChange={(e) => {
                 setForm(aplicarPropinaForm(form, { mesesPropina: e.target.value }));
               }}
@@ -1519,6 +1551,7 @@ function MatriculaForm({
           Total a pagar: {formatKz(totais.liquido)}
           {totais.descPct > 0 ? ` · desconto propinas ${totais.descPct}%` : ""}
           {form.seguroExterno ? " (sem seguro da escola)" : ""}
+          {form.bolsaEstudos ? " · bolsista (propina Out–Jun isenta)" : ""}
           {form.transferidoCampusCidade
             ? ` · propina mensal ref. ${formatKz(
                 irmaosNivelFromForm(form) === 2
@@ -1816,6 +1849,7 @@ function Alunos() {
           ? (a.propina ?? CAMPUS_CIDADE_PROPINA)
           : (a.propina ?? propinaDefaultFromTurma(turmaCorrigida)),
       ),
+      bolsaEstudos: Boolean(a.bolsa) || /bolsa escolar/i.test(a.obs || ""),
       telefone: a.telefone || "",
       email: a.email || "",
       morada: a.morada || "",
@@ -2011,8 +2045,8 @@ function Alunos() {
       alimentacao: t.alimentacao,
       curso: t.curso,
       cartaoEstudante: t.cartaoEstudante || 0,
-      mensalidade1: t.mensalidade1,
-      mesesPropina: num(form.mesesPropina) || 0,
+      mensalidade1: form.bolsaEstudos ? 0 : t.mensalidade1,
+      mesesPropina: form.bolsaEstudos ? 0 : num(form.mesesPropina) || 0,
       dataPag: form.dataPag,
       bruto: t.bruto,
       descPct: t.descPct || 0,
@@ -2041,9 +2075,14 @@ function Alunos() {
       transferidoCampusCidade: form.transferidoCampusCidade,
       irmaosNivel: irmaosNivelFromForm(form),
       campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+      bolsa: form.bolsaEstudos || undefined,
+      bolsaMeses: form.bolsaEstudos
+        ? ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"]
+        : undefined,
       docsEntregues: form.docsEntregues,
     } as Aluno;
     addAluno(aluno);
+    if (form.bolsaEstudos) aplicarBolsaPropina(id);
     await syncFotoToCloud(id, foto);
     // Sincronizar de imediato com a nuvem para outros PCs e para não perder a ficha
     try {
@@ -2214,8 +2253,14 @@ function Alunos() {
         transferidoCampusCidade: form.transferidoCampusCidade,
         irmaosNivel: irmaosNivelFromForm(form),
         campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+        bolsa: form.bolsaEstudos,
+        bolsaMeses: form.bolsaEstudos
+          ? ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"]
+          : [],
         docsEntregues: form.docsEntregues,
       } as Partial<Aluno>);
+      if (form.bolsaEstudos) aplicarBolsaPropina(editing.id);
+      else if (editing.bolsa) removerBolsaPropina(editing.id);
       await syncFotoToCloud(editing.id, foto);
       // Forçar push para a nuvem para o outro PC não sobrescrever com dados antigos
       try {
@@ -4172,6 +4217,7 @@ function Alunos() {
                 <td className="px-3 py-2">
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     <NomeAluno aluno={a} />
+                    {a.bolsa ? <Badge variant="outline">Bolsista</Badge> : null}
                   </span>
                   {a.pai || a.mae ? (
                     <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
