@@ -3774,16 +3774,20 @@ function Alunos() {
         title="Matrículas"
         description={
           canEdit
-            ? "1) Cadastrar aluno (Nova matrícula). 2) Quando quiser, Fatura ou Recibo → ver modelo → PDF. No dia 30 pode gerar todas as faturas de uma vez."
-            : "Consulta das matrículas. Só o Colaborador 1 pode criar ou editar."
+            ? `Cadastro único · ${alunos.length} aluno(s), o mesmo número em Propinas e Arquivo. 1) Cadastrar. 2) Fatura ou Recibo → PDF.`
+            : `Consulta · ${alunos.length} aluno(s), alinhado com Propinas e Arquivo. Só o Colaborador 1 edita.`
         }
         actions={
-          <div className="no-print flex flex-row flex-wrap items-center gap-2">
-            {canEdit ? (
-              <Button className="shrink-0" onClick={openNew}>
-                <UserPlus className="mr-1 size-4" /> Nova matrícula
-              </Button>
-            ) : null}
+          canEdit ? (
+            <Button className="h-10" onClick={openNew}>
+              <UserPlus className="mr-1 size-4" /> Nova matrícula
+            </Button>
+          ) : null
+        }
+      />
+
+      <section className="no-print mb-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start">
             <Button
               className="shrink-0"
               variant="secondary"
@@ -4089,11 +4093,10 @@ function Alunos() {
                 {batchBusy ? "A gerar faturas…" : "Faturas do mês"}
               </Button>
             ) : null}
-          </div>
-        }
-      />
+        </div>
+      </section>
 
-      <div className="no-print mb-4 flex flex-col gap-2 sm:flex-row">
+      <div className="no-print mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_220px_auto]">
         <Input
           placeholder="Nome, família, ID, cidade, nova vida…"
           value={q}
@@ -4162,15 +4165,15 @@ function Alunos() {
       </header>
 
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[980px] border-collapse text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
-              <th className="px-3 py-2 text-left">ID</th>
+              <th className="w-[88px] px-3 py-2 text-left">ID</th>
               <th className="px-3 py-2 text-left">Nome</th>
-              <th className="px-3 py-2 text-left">Turma</th>
-              <th className="px-3 py-2 text-left">Telefone</th>
-              <th className="px-3 py-2 text-left">Data</th>
-              <th className="px-3 py-2 text-right">Líquido</th>
+              <th className="w-[120px] px-3 py-2 text-left">Turma</th>
+              <th className="w-[130px] px-3 py-2 text-left">Telefone</th>
+              <th className="w-[108px] px-3 py-2 text-left">Data</th>
+              <th className="w-[110px] px-3 py-2 text-right">Líquido</th>
               <th className="px-3 py-2 text-left">Seguro</th>
               <th className="px-3 py-2 text-left">Pagamento</th>
               <th className="px-3 py-2 text-left">Recibo</th>
@@ -4219,8 +4222,8 @@ function Alunos() {
                 </td>
                 <td className="px-3 py-2 text-xs">{a.metodoPagamento || "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{a.recibo}</td>
-                <td className="no-print px-3 py-2 text-right">
-                  <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                <td className="no-print px-3 py-2 text-right align-middle">
+                  <div className="inline-flex flex-nowrap items-center justify-end gap-1">
                     <Button
                       size="sm"
                       variant="secondary"

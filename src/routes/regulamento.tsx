@@ -15,6 +15,8 @@ import {
 } from "@/lib/regulamento-interno";
 import { saveRegulamentoAck } from "@/lib/csv";
 import { submitRegulamentoAck } from "@/lib/finance-cloud";
+import { deliverOfficialHtml } from "@/lib/pdf-export";
+import { buildConfirmacaoEncarregadoHtml } from "@/lib/confirmacao-encarregado";
 
 export const Route = createFileRoute("/regulamento")({
   component: RegulamentoPage,
@@ -123,6 +125,23 @@ export function RegulamentoPage() {
           ? "Prise de connaissance enregistrée. Merci."
           : "Tomada de conhecimento registada. Obrigado.",
       );
+      const html = buildConfirmacaoEncarregadoHtml({
+        titulo: lang === "fr" ? "Confirmation — règlement intérieur" : "Confirmação — regulamento interno",
+        subtitulo: lang === "fr" ? "Justificatif pour le responsable légal" : "Comprovativo para o encarregado de educação",
+        linhas: [
+          { label: lang === "fr" ? "Élève" : "Aluno", value: row.alunoNome },
+          { label: lang === "fr" ? "Classe" : "Turma", value: row.turma },
+          { label: lang === "fr" ? "Responsable" : "Encarregado", value: row.encarregadoNome },
+          { label: lang === "fr" ? "Date" : "Data", value: dataHoje },
+          { label: lang === "fr" ? "Déclaration" : "Declaração", value: lang === "fr" ? "J'ai pris connaissance du règlement." : "Tomei conhecimento do regulamento." },
+        ],
+      });
+      void deliverOfficialHtml(html, {
+        filename: "confirmacao-regulamento.pdf",
+        forceSinglePage: true,
+        openPrint: true,
+        shareTitle: lang === "fr" ? "Confirmation du règlement" : "Confirmação do regulamento",
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
     } finally {

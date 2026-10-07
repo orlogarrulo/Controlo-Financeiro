@@ -4569,6 +4569,127 @@ export function reporPropinasFromMatriculas(): { alunos: number; removidos: numb
  * Mantém a ficha "melhor" (ID alinhado à turma, mais dados) e esconde as outras.
  * Resolve o caso 52 → 48 após realinhamentos + recuperação agressiva.
  */
+
+/**
+ * Uma ficha por aluno nos três separadores.
+ * Duplicado (mesmo nome, ou ficha «Aluno …») sai de Matrículas e Propinas;
+ * recibos e faturas do Arquivo passam para o ID que fica.
+ */
+export function sincronizarCadastro(): { alunos: number; fundidos: number; detalhes: string[] } {
+  const state = useFinance.getState();
+  let extras = [...(state.alunosExtra || [])];
+  let deleted = [...(state.alunosDeletedIds || [])];
+  const overrides = { ...(state.alunosOverrides || {}) };
+  let docs = [...(state.documentosAluno || [])];
+  let faturas = [...(state.faturasPropina || [])];
+  let codigos = [...(state.codigosRecibo || [])];
+  let mensalidades = [...(state.mensalidades || [])];
+  const detalhes: string[] = [];
+  const fundir = new Map<string, string>();
+
+  const score = (a: Aluno): number => {
+    let n = 0;
+    const fromId = turmaFromId(a.id);
+    if (fromId && fromId === (a.turma || "").trim()) n += 50;
+    if (a.dataNascimento) n += 20;
+    if (a.encarregado || a.telefone) n += 15;
+    if (a.idAnterior) n += 8;
+    if ((a.propina || 0) > 0) n += 5;
+    if (!/^aluno\s/i.test(a.nome || "")) n += 30;
+    return n;
+  };
+
+  const visible = alunosAll(extras, overrides, deleted);
+  const byName = new Map<string, Aluno[]>();
+  for (const a of visible) {
+    if (FICHAS_PROTEGIDAS[a.id]) continue;
+    if (!isCanonicalAlunoId(a.id) || isMovimentoNaoAluno(a.id) || /^aluno\s/i.test(a.nome || "")) {
+      fundir.set(a.id, "");
+      continue;
+    }
+    const key = normalizeNomeAluno(a.nome);
+    if (!key) continue;
+    const list = byName.get(key) || [];
+    list.push(a);
+    byName.set(key, list);
+  }
+  for (const [nome, list] of byName) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => score(b) - score(a));
+    const keep = list[0];
+    for (const dup of list.slice(1)) {
+      if (FICHAS_PROTEGIDAS[dup.id]) continue;
+      fundir.set(dup.id, keep.id);
+      detalhes.push(`Duplicado «${nome}»: fica ${keep.id}, sai ${dup.id}`);
+    }
+  }
+
+  if (fundir.size === 0) {
+    return { alunos: visible.length, fundidos: 0, detalhes: [] };
+  }
+
+  const nomeDe = (id: string) => visible.find((a) => a.id === id)?.nome || id;
+  docs = docs.map((d) => {
+    const to = fundir.get(String(d.alunoId || ""));
+    if (!to) return d;
+    return { ...d, alunoId: to, alunoNome: d.alunoNome || nomeDe(to) };
+  });
+  faturas = faturas.map((f) => {
+    const to = fundir.get(String(f.alunoId || ""));
+    if (!to) return f;
+    return { ...f, alunoId: to, alunoNome: f.alunoNome || nomeDe(to) };
+  });
+  codigos = codigos.map((c) => {
+    const to = fundir.get(String(c.alunoId || ""));
+    if (!to) return c;
+    return { ...c, alunoId: to };
+  });
+  const mensById = new Map(mensalidades.filter((m) => m?.id).map((m) => [m.id, m]));
+  for (const [from, to] of fundir) {
+    if (!to) {
+      mensById.delete(from);
+      continue;
+    }
+    const loser = mensById.get(from);
+    const keep = mensById.get(to);
+    if (loser && keep) {
+      mensById.set(to, {
+        ...keep,
+        pagamentos: mergePagamentosMes(keep.pagamentos, loser.pagamentos),
+        propina: keep.propina || loser.propina,
+      });
+      mensById.delete(from);
+    } else if (loser) {
+      mensById.set(to, { ...loser, id: to, nome: nomeDe(to) });
+      mensById.delete(from);
+    }
+    deleted.push(from);
+    extras = extras.filter((a) => a.id !== from);
+    if (overrides[from]) delete overrides[from];
+  }
+  deleted = Array.from(new Set(deleted));
+  useFinance.setState({
+    alunosExtra: extras,
+    alunosOverrides: overrides,
+    alunosDeletedIds: deleted,
+    documentosAluno: docs,
+    faturasPropina: faturas,
+    codigosRecibo: codigos,
+    mensalidades: Array.from(mensById.values()),
+  });
+  try {
+    reporPropinasFromMatriculas();
+  } catch {
+    /* a grelha alinha no próximo arranque */
+  }
+  const alunos = alunosAll(
+    useFinance.getState().alunosExtra || [],
+    useFinance.getState().alunosOverrides || {},
+    useFinance.getState().alunosDeletedIds || [],
+  ).length;
+  return { alunos, fundidos: fundir.size, detalhes };
+}
+
 export function sanearAlunosDuplicados(): { removidos: number; detalhes: string[] } {
   const state = useFinance.getState();
   let extras = [...(state.alunosExtra || [])];
@@ -5267,6 +5388,7 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
 
   for (const id of traces) {
     if (!isCanonicalAlunoId(id) || isMovimentoNaoAluno(id)) continue;
+    if (deleted.includes(id)) continue;
     if (visible.has(id)) continue;
     if (purgedLocked.has(id)) continue;
     if (deleted.includes(id) && hasReplacement(id)) continue;
@@ -5504,8 +5626,11 @@ export function alunosAll(
   } catch {
     docIds = new Set();
   }
+  // Apagado fica apagado, mesmo com recibo antigo no Arquivo.
+  // O recibo é transferido para a ficha que se mantém (sincronizarCadastro).
+  // Excepção: ficha protegida (Nildo 4E-04).
   const deleted = new Set(
-    (deletedIds || []).filter((id) => !docIds.has(id) && !FICHAS_PROTEGIDAS[id]),
+    (deletedIds || []).filter((id) => !FICHAS_PROTEGIDAS[id]),
   );
 
   const apply = (a: Aluno): Aluno => {

@@ -15,6 +15,7 @@ import {
   recalcularClassesMatriculas,
   reporPropinasFromMatriculas,
   sanearAlunosDuplicados,
+  sincronizarCadastro,
 } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 import {
@@ -382,8 +383,12 @@ async function pullAndMerge(reason: string): Promise<void> {
       }
       try {
         const rSan = sanearAlunosDuplicados();
-        if (rSan.removidos > 0) {
-          console.warn(`[cloud] sanear alunos: ${rSan.removidos} ficha(s) ocultada(s)`, rSan.detalhes.slice(0, 5));
+        const rSync = sincronizarCadastro();
+        if (rSan.removidos > 0 || rSync.fundidos > 0) {
+          console.warn(
+            `[cloud] cadastro: ${rSync.alunos} aluno(s), ${rSync.fundidos} duplicado(s) fundido(s)`,
+            rSync.detalhes.slice(0, 6),
+          );
         }
       } catch (e) {
         console.warn("[alunos-dedupe]", e);
