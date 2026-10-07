@@ -163,7 +163,7 @@ export const saveFinanceCloud = createServerFn({ method: "POST" }).handler(
         // (timestamps antigos com µs), por isso duas versões nunca podem ficar a < 1 ms.
         const nowMs = Math.max(Date.now(), Date.parse(current.updatedAt) + 5);
         const updatedAt = new Date(nowMs).toISOString();
-        const payload = mergeServerPayload(current.payload, incoming, updatedAt);
+        const payload = sanitizeFinancePayload(mergeServerPayload(current.payload, incoming, updatedAt));
         // Nada mudou → não gravar nem mexer em updated_at (os outros PCs não fazem pull à toa).
         if (current.exists && payloadsEqual(payload, current.payload)) {
           return { ok: true, updatedAt: current.updatedAt };

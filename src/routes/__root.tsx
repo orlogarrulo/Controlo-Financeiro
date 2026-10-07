@@ -49,7 +49,7 @@ function RootBody() {
     return (
       <>
         <Outlet />
-        <Toaster position="top-center" richColors />
+        <Toaster position="top-right" duration={3000} richColors />
       </>
     );
   }
@@ -61,7 +61,7 @@ function RootBody() {
           <Outlet />
         </AppShell>
       </OperatorGate>
-      <Toaster position="top-center" richColors />
+      <Toaster position="top-right" duration={3000} richColors />
     </>
   );
 }

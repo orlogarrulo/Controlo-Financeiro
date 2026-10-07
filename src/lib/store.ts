@@ -4238,9 +4238,10 @@ const MOVIMENTO_SUFFIX_RE = /-(?:OUT|NOV|DEZ|INS|MAT|JAN|FEV|MAR|ABR|MAI|JUN|JUL
 export function isMovimentoNaoAluno(id: string): boolean {
   const s = String(id || "").trim();
   if (!s) return true;
+  if (isCanonicalAlunoId(s)) return false;
   if (/^BAI-/i.test(s)) return true;
   if (MOVIMENTO_SUFFIX_RE.test(s)) return true;
-  return !isCanonicalAlunoId(s);
+  return true;
 }
 
 function collectTraceIds(state: {
@@ -5286,6 +5287,9 @@ export function pruneExtrasFantasma(): { removidos: number } {
 }
 
 export function recuperarAlunosOcultos(): { restaurados: number; detalhes: string[] } {
+  // Não criar fichas a partir de recibos, propinas ou códigos BAI.
+  // Nome novo só entra por Nova matrícula. Nome igual é recusado.
+  return { restaurados: 0, detalhes: [] };
   const state = useFinance.getState();
   let extras = [...(state.alunosExtra || [])];
   const overrides = { ...(state.alunosOverrides || {}) };
@@ -5713,13 +5717,19 @@ export function alunosAll(
 
   const push = (a: Aluno) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    if (deleted.has(a.id) && nomesVivos.has(normalizeNomeAluno(a.nome))) return;
+    if (!cloudCompleta && deleted.has(a.id) && nomesVivos.has(normalizeNomeAluno(a.nome))) return;
     seenIds.add(a.id);
     out.push(apply(a));
   };
 
-  for (const a of seed.alunos) push(a);
-  for (const a of extras) push(a);
+  // Lista da nuvem completa manda. Um extra parcial não apaga o seed; o seed também não é tecto.
+  const cloudCompleta = (extras || []).length >= (seed.alunos || []).length;
+  if (cloudCompleta) {
+    for (const a of extras) push(a);
+  } else {
+    for (const a of seed.alunos) push(a);
+    for (const a of extras) push(a);
+  }
   // Fichas protegidas: se faltarem (sync apagou extra), injectar sempre
   for (const [id, prot] of Object.entries(FICHAS_PROTEGIDAS)) {
     if (seenIds.has(id)) continue;

@@ -384,7 +384,7 @@ async function pullAndMerge(reason: string): Promise<void> {
       let fundidos = 0;
       try {
         const rSan = sanearAlunosDuplicados();
-        const rSync = sincronizarCadastro();
+        const rSync = { fundidos: 0, detalhes: [] as string[] };
         fundidos = rSync.fundidos;
         if (rSan.removidos > 0 || rSync.fundidos > 0) {
           console.warn(

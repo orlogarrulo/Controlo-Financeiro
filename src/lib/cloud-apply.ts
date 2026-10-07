@@ -169,8 +169,7 @@ export function applyRemotePayload(raw: FinanceCloudPayload, opts?: { authoritat
   const byId = new Map<string, Record<string, unknown>>();
   for (const a of alunosMerged as { id?: string }[]) {
     const id = String(a?.id || "").trim();
-    if (!id || SEED_ALUNO_IDS.has(id)) continue;
-    if (deletedAlunos.has(id) && !idsComDocumento.has(id)) continue;
+    if (!id) continue;
     byId.set(id, a as Record<string, unknown>);
   }
   for (const d of docsAll) {
@@ -178,6 +177,8 @@ export function applyRemotePayload(raw: FinanceCloudPayload, opts?: { authoritat
     if (!id || SEED_ALUNO_IDS.has(id) || byId.has(id)) continue;
     // Códigos de movimento (…-OUT, BAI-MAT-…-1) não são alunos.
     if (!isCanonicalAlunoId(id)) continue;
+    // Recibo não cria matrícula. Aluno novo só em Nova matrícula.
+    continue;
     const nome = String(d.alunoNome || "").trim() || id;
     if (/^aluno\s/i.test(nome)) continue;
     const pref = id.split("-")[0] || "";
@@ -316,7 +317,7 @@ export function buildPushPayload(): FinanceCloudPayload {
   );
   payload.alunosCenso = censo;
   // alunosExtra: TODOS os extras locais (inclui _fts/updatedAt) — o censo leva os campos fundidos.
-  payload.alunosExtra = (payload.alunosExtra || []).filter((a) => !SEED_ALUNO_IDS.has(idOf(a)));
+  payload.alunosExtra = payload.alunosExtra || [];
   persistAlunosCensoLocal(censo as never);
   return payload;
 }

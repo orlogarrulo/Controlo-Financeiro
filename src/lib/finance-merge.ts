@@ -225,6 +225,34 @@ function isCanonicalAlunoCloud(id: string): boolean {
 }
 
 /** Apaga fichas a mais (mesmo nome ou «Aluno …») e passa o Arquivo para o ID que fica. */
+
+/** Nome único marcado como apagado volta à lista. Nome diferente é outro aluno. */
+export function restoreUniqueDeleted(p: FinanceCloudPayload): FinanceCloudPayload {
+  const alunos = (Array.isArray(p.alunosExtra) ? p.alunosExtra : []) as Record<string, unknown>[];
+  const deleted = new Set((p.alunosDeletedIds || []).map((id) => String(id)));
+  const norm = (v: unknown) => normNomeAlunoCloud(String(v || ""));
+  const live = new Set(alunos.filter((a) => !deleted.has(String(a.id || ""))).map((a) => norm(a.nome)));
+  const back: string[] = [];
+  for (const a of alunos) {
+    const id = String(a.id || "");
+    const nome = norm(a.nome);
+    if (!id || !deleted.has(id) || !nome || nome.startsWith("aluno ")) continue;
+    if (live.has(nome)) continue;
+    back.push(id);
+    live.add(nome);
+  }
+  if (!back.length) return p;
+  const tombs = { ...(p.tombstones || {}) } as Record<string, Record<string, unknown>>;
+  const alunosT = { ...(tombs.alunos || {}) };
+  for (const id of back) delete alunosT[id];
+  tombs.alunos = alunosT;
+  return {
+    ...p,
+    tombstones: tombs,
+    alunosDeletedIds: (p.alunosDeletedIds || []).filter((id) => !back.includes(String(id))),
+  };
+}
+
 export function purgeDuplicateAlunos(p: FinanceCloudPayload): FinanceCloudPayload {
   const alunos = (Array.isArray(p.alunosExtra) ? p.alunosExtra : []) as Record<string, unknown>[];
   const deleted = new Set((p.alunosDeletedIds || []).map((id) => String(id)));
@@ -240,9 +268,9 @@ export function purgeDuplicateAlunos(p: FinanceCloudPayload): FinanceCloudPayloa
   };
   for (const a of alunos) {
     const id = String(a.id || "").trim();
-    if (!id || deleted.has(id)) continue;
+    if (!id) continue;
     if (id === "4E-04") continue;
-    if (!isCanonicalAlunoCloud(id) || /^aluno\s/i.test(String(a.nome || ""))) {
+    if (!isCanonicalAlunoCloud(id) || /^aluno\s+[a-z0-9-]+$/i.test(String(a.nome || "").trim())) {
       drop.set(id, "");
       continue;
     }
@@ -254,9 +282,13 @@ export function purgeDuplicateAlunos(p: FinanceCloudPayload): FinanceCloudPayloa
   }
   for (const list of byName.values()) {
     if (list.length < 2) continue;
-    list.sort((a, b) => score(b) - score(a));
-    const keep = String(list[0].id);
-    for (const dup of list.slice(1)) drop.set(String(dup.id), keep);
+    const live = list.filter((a) => !deleted.has(String(a.id)));
+    const ranked = (live.length ? live : list).slice().sort((a, b) => score(b) - score(a));
+    const keep = String(ranked[0].id);
+    for (const dup of list) {
+      if (String(dup.id) === keep) continue;
+      drop.set(String(dup.id), keep);
+    }
   }
   if (drop.size === 0) return p;
   const nomeDe = (id: string) => String(alunos.find((a) => String(a.id) === id)?.nome || id);
@@ -285,11 +317,12 @@ export function purgeDuplicateAlunos(p: FinanceCloudPayload): FinanceCloudPayloa
     }
   }
   const nextAlunos = alunos.filter((a) => !drop.has(String(a.id || "")));
+  const deletedLeft = (p.alunosDeletedIds || []).filter((id) => !drop.has(String(id)));
   return {
     ...p,
     alunosExtra: nextAlunos,
     alunosCenso: nextAlunos,
-    alunosDeletedIds: Array.from(deleted),
+    alunosDeletedIds: deletedLeft,
     documentosAluno: remap(p.documentosAluno as Record<string, unknown>[]),
     faturasPropina: remap(p.faturasPropina as Record<string, unknown>[]),
     codigosRecibo: remap(p.codigosRecibo as Record<string, unknown>[]),
@@ -318,7 +351,7 @@ export function sanitizeFinancePayload(p: FinanceCloudPayload): FinanceCloudPayl
     const cod = normDocKey(String((row as { codigo?: string })?.codigo || ""));
     return cod ? `cod:${cod}` : null;
   });
-  const purged = purgeDuplicateAlunos({ ...base, alunosExtra: alunos, alunosCenso: alunos });
+  const purged = restoreUniqueDeleted(purgeDuplicateAlunos({ ...base, alunosExtra: alunos, alunosCenso: alunos }));
   const out: FinanceCloudPayload = {
     ...base,
     ...purged,
@@ -342,7 +375,7 @@ export function sanitizeFinancePayload(p: FinanceCloudPayload): FinanceCloudPayl
     tombstones: tombs,
   };
   Object.assign(out, deriveLegacyLists(out as never, tombs));
-  return out;
+  return restoreUniqueDeleted(out);
 }
 
 /**
