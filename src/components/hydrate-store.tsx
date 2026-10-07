@@ -381,9 +381,11 @@ async function pullAndMerge(reason: string): Promise<void> {
       } catch (e) {
         console.warn("[propinas-dedupe]", e);
       }
+      let fundidos = 0;
       try {
         const rSan = sanearAlunosDuplicados();
         const rSync = sincronizarCadastro();
+        fundidos = rSync.fundidos;
         if (rSan.removidos > 0 || rSync.fundidos > 0) {
           console.warn(
             `[cloud] cadastro: ${rSync.alunos} aluno(s), ${rSync.fundidos} duplicado(s) fundido(s)`,
@@ -413,7 +415,9 @@ async function pullAndMerge(reason: string): Promise<void> {
         } catch {
           /* ignore */
         }
-      } else if (isDirty() || (reason === "boot" && hasLocalData())) {
+      }
+      // Duplicados apagados têm de ir para a Neon; senão o próximo PC volta a mostrar 73.
+      if (fundidos > 0 || isDirty() || (!adoptNeon && reason === "boot" && hasLocalData())) {
         await pushCloud();
       }
       await pushLocalAlunoFotos(remoteFotos || {});

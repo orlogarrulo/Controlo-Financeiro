@@ -3786,8 +3786,34 @@ function Alunos() {
         }
       />
 
-      <section className="no-print mb-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-3">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start">
+      <section className="no-print mb-4 flex flex-col gap-3 lg:flex-row">
+        <div className="flex w-full shrink-0 flex-col gap-2 lg:w-56 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start">
+          <p className="text-[10px] font-medium tracking-[0.14em] text-[var(--color-muted)] uppercase">Formulários</p>
+          <Button variant="secondary" className="justify-start" onClick={() => setRegOpen(true)}>
+            <FileText className="mr-1 size-4" /> Regulamento
+          </Button>
+          <Button variant="secondary" className="justify-start" onClick={() => {
+            const url = agendamentoPublicUrl();
+            const msg = buildAgendamentoWhatsApp({ escolaNome: getSeed().escola?.nome, linkFormulario: url });
+            void navigator.clipboard.writeText(msg).then(
+              () => toast.success("Mensagem de agendamento copiada — cole no WhatsApp"),
+              () => window.open(url, "_blank", "noopener,noreferrer"),
+            );
+          }}>
+            <Calendar className="mr-1 size-4" /> Agendamento
+          </Button>
+          <AutorizacaoFotosButton />
+          <Button variant="secondary" className="justify-start" onClick={() => {
+            const msg = buildInqueritoSaudeWhatsApp({ escolaNome: getSeed().escola.nome || "École Consulaire du Congo – Nova Vida" });
+            void navigator.clipboard.writeText(msg).then(
+              () => toast.success("Inquérito copiado — cole no WhatsApp"),
+              () => toast.error("Não foi possível copiar"),
+            );
+          }}>
+            <Mail className="mr-1 size-4" /> Inquérito de saúde
+          </Button>
+        </div>
+        <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start">
             <Button
               className="shrink-0"
               variant="secondary"
@@ -3836,35 +3862,6 @@ function Alunos() {
             >
               <ScrollText className="mr-1 size-4" /> Declaração de matrícula
             </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="Regulamento interno FR/PT — PDF e link para pais (WhatsApp / e-mail)"
-              onClick={() => setRegOpen(true)}
-            >
-              <FileText className="mr-1 size-4" /> Regulamento interno
-            </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="Agendamento pedagógico — sábados 09:30–12:30 (link /marca)"
-              onClick={() => {
-                const url = agendamentoPublicUrl();
-                const msg = buildAgendamentoWhatsApp({
-                  escolaNome: getSeed().escola?.nome,
-                  linkFormulario: url,
-                });
-                void navigator.clipboard.writeText(msg).then(
-                  () => toast.success("Mensagem de agendamento copiada — cole no WhatsApp"),
-                  () => {
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  },
-                );
-              }}
-            >
-              <Calendar className="mr-1 size-4" /> Agendamento
-            </Button>
-            <AutorizacaoFotosButton />
             <Button
               className="shrink-0"
               variant="secondary"
@@ -3996,22 +3993,6 @@ function Alunos() {
               }}
             >
               <IdCard className="mr-1 size-4" /> N.Vida · s/foto
-            </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="Copiar inquérito estilo WhatsApp (lista de envio — os pais respondem na conversa)"
-              onClick={() => {
-                const msg = buildInqueritoSaudeWhatsApp({
-                  escolaNome: getSeed().escola.nome || "École Consulaire du Congo – Nova Vida",
-                });
-                void navigator.clipboard.writeText(msg).then(
-                  () => toast.success("Inquérito copiado — cole na lista de envio do WhatsApp"),
-                  () => toast.error("Não foi possível copiar"),
-                );
-              }}
-            >
-              <Mail className="mr-1 size-4" /> Inquérito de saúde
             </Button>
             <div className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
               <select

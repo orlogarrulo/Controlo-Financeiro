@@ -210,10 +210,99 @@ export function mergeAlunosCloud(existing: unknown[] | undefined, incoming: unkn
  * Garante arrays sem IDs duplicados, aplica tombstones e deriva as listas antigas.
  * Campos vazios não apagam preenchidos em empate; ganha o campo mais recente (_fts/updatedAt).
  */
+
+function normNomeAlunoCloud(nome: string): string {
+  return String(nome || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isCanonicalAlunoCloud(id: string): boolean {
+  return /^(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2}$/i.test(String(id || "").trim());
+}
+
+/** Apaga fichas a mais (mesmo nome ou «Aluno …») e passa o Arquivo para o ID que fica. */
+export function purgeDuplicateAlunos(p: FinanceCloudPayload): FinanceCloudPayload {
+  const alunos = (Array.isArray(p.alunosExtra) ? p.alunosExtra : []) as Record<string, unknown>[];
+  const deleted = new Set((p.alunosDeletedIds || []).map((id) => String(id)));
+  const drop = new Map<string, string>();
+  const byName = new Map<string, Record<string, unknown>[]>();
+  const score = (a: Record<string, unknown>) => {
+    let n = 0;
+    if (a.dataNascimento) n += 20;
+    if (a.encarregado || a.telefone) n += 15;
+    if (Number(a.propina) > 0) n += 5;
+    if (!/^aluno\s/i.test(String(a.nome || ""))) n += 30;
+    return n;
+  };
+  for (const a of alunos) {
+    const id = String(a.id || "").trim();
+    if (!id || deleted.has(id)) continue;
+    if (id === "4E-04") continue;
+    if (!isCanonicalAlunoCloud(id) || /^aluno\s/i.test(String(a.nome || ""))) {
+      drop.set(id, "");
+      continue;
+    }
+    const key = normNomeAlunoCloud(String(a.nome || ""));
+    if (!key) continue;
+    const list = byName.get(key) || [];
+    list.push(a);
+    byName.set(key, list);
+  }
+  for (const list of byName.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => score(b) - score(a));
+    const keep = String(list[0].id);
+    for (const dup of list.slice(1)) drop.set(String(dup.id), keep);
+  }
+  if (drop.size === 0) return p;
+  const nomeDe = (id: string) => String(alunos.find((a) => String(a.id) === id)?.nome || id);
+  const remap = <T extends Record<string, unknown>>(rows: T[] | undefined): T[] =>
+    (rows || []).map((row) => {
+      const to = drop.get(String(row.alunoId || ""));
+      if (!to) return row;
+      return { ...row, alunoId: to, alunoNome: row.alunoNome || nomeDe(to) };
+    });
+  const mens = (p.mensalidades || []) as Record<string, unknown>[];
+  const mensById = new Map(mens.filter((m) => m.id).map((m) => [String(m.id), m]));
+  for (const [from, to] of drop) {
+    deleted.add(from);
+    if (!to) {
+      mensById.delete(from);
+      continue;
+    }
+    const loser = mensById.get(from);
+    const keep = mensById.get(to);
+    if (loser && keep) {
+      mensById.set(to, { ...keep, propina: keep.propina || loser.propina });
+      mensById.delete(from);
+    } else if (loser) {
+      mensById.set(to, { ...loser, id: to, nome: nomeDe(to) });
+      mensById.delete(from);
+    }
+  }
+  const nextAlunos = alunos.filter((a) => !drop.has(String(a.id || "")));
+  return {
+    ...p,
+    alunosExtra: nextAlunos,
+    alunosCenso: nextAlunos,
+    alunosDeletedIds: Array.from(deleted),
+    documentosAluno: remap(p.documentosAluno as Record<string, unknown>[]),
+    faturasPropina: remap(p.faturasPropina as Record<string, unknown>[]),
+    codigosRecibo: remap(p.codigosRecibo as Record<string, unknown>[]),
+    mensalidades: Array.from(mensById.values()),
+  };
+}
+
 export function sanitizeFinancePayload(p: FinanceCloudPayload): FinanceCloudPayload {
   const base = { ...emptyPayload(), ...p } as FinanceCloudPayload;
   const tombs = effectiveTombstones(base as never);
   const alunos = mergeById(base.alunosExtra, base.alunosCenso).filter((r) => idOf(r));
+  base.alunosExtra = alunos;
+  base.alunosCenso = alunos;
   const clean = (coll: string, rows: unknown[] | undefined) =>
     filterTombstoned(coll, dedupeByIdPreferNewer(rows), tombs);
   const docs = dedupeBySecondaryKey(clean("documentosAluno", base.documentosAluno), (row) => {
@@ -229,11 +318,13 @@ export function sanitizeFinancePayload(p: FinanceCloudPayload): FinanceCloudPayl
     const cod = normDocKey(String((row as { codigo?: string })?.codigo || ""));
     return cod ? `cod:${cod}` : null;
   });
+  const purged = purgeDuplicateAlunos({ ...base, alunosExtra: alunos, alunosCenso: alunos });
   const out: FinanceCloudPayload = {
     ...base,
+    ...purged,
     extras: clean("extras", base.extras),
-    alunosExtra: alunos,
-    alunosCenso: alunos,
+    alunosExtra: purged.alunosExtra,
+    alunosCenso: purged.alunosExtra,
     mensalidades: clean("mensalidades", base.mensalidades),
     fundoExtra: clean("fundoExtra", base.fundoExtra),
     fundoAtmExtra: clean("fundoAtmExtra", base.fundoAtmExtra),

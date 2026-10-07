@@ -77,11 +77,18 @@ export const loadFinanceCloud = createServerFn({ method: "GET" }).handler(
       if (!row.exists) {
         return { payload: emptyPayload(), updatedAt: new Date(0).toISOString(), source: "empty" };
       }
-      return {
-        payload: sanitizeFinancePayload(row.payload),
-        updatedAt: row.updatedAt,
-        source: dbSource,
-      };
+      const payload = sanitizeFinancePayload(row.payload);
+      const before = Array.isArray(row.payload?.alunosExtra) ? row.payload.alunosExtra.length : 0;
+      const after = Array.isArray(payload.alunosExtra) ? payload.alunosExtra.length : 0;
+      let updatedAt = row.updatedAt;
+      if (after < before) {
+        updatedAt = new Date().toISOString();
+        await (sql as SqlLike).query(
+          `UPDATE finance_cloud SET payload = $2::jsonb, updated_at = $3::timestamptz WHERE id = $1`,
+          ["escola", JSON.stringify(payload), updatedAt],
+        );
+      }
+      return { payload, updatedAt, source: dbSource };
     } catch (e) {
       console.error("[finance-cloud] load failed", e);
       return { payload: emptyPayload(), updatedAt: new Date(0).toISOString(), source: "empty" };
