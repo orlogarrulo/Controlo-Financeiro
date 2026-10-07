@@ -49,6 +49,7 @@ export function RegulamentoPage() {
   });
   const [lang, setLang] = useState<RegulamentoLang>(langParam || "pt");
   const [encarregadoNome, setEncarregadoNome] = useState("");
+  const [numAlunos, setNumAlunos] = useState(1);
   const [alunos, setAlunos] = useState<{ nome: string; turma: string }[]>(
     Array.from({ length: 6 }, () => ({ nome: "", turma: "" })),
   );
@@ -69,6 +70,7 @@ export function RegulamentoPage() {
   );
 
   const alunosPreenchidos = alunos
+    .slice(0, numAlunos)
     .map((a) => ({ nome: a.nome.trim(), turma: a.turma.trim() }))
     .filter((a) => a.nome);
   const alunoNome = alunosPreenchidos.map((a) => a.nome).join(" · ");
@@ -90,11 +92,11 @@ export function RegulamentoPage() {
   const dataHoje = formatDataHoje(lang);
 
   async function confirmarConhecimento() {
-    if (alunosPreenchidos.length === 0 || !encarregadoNome.trim()) {
+    if (alunosPreenchidos.length < numAlunos || !encarregadoNome.trim()) {
       toast.error(
         lang === "fr"
-          ? "Indiquez le responsable et au moins un élève."
-          : "Indique o encarregado e pelo menos um aluno.",
+          ? "Indiquez le responsable et le nom de chaque élève choisi."
+          : "Indique o encarregado e o nome de cada aluno escolhido.",
       );
       return;
     }
@@ -227,11 +229,11 @@ export function RegulamentoPage() {
         </h2>
         <p className="mb-3 text-xs text-[var(--color-muted,#64748b)]">
           {lang === "fr"
-            ? "Un responsable peut indiquer de 1 à 6 élèves. Seul le premier est obligatoire."
-            : "Um encarregado pode indicar de 1 a 6 alunos. Só o primeiro é obrigatório."}
+            ? "Choisissez le nombre d'élèves du même responsable. Les champs apparaissent ensuite."
+            : "Escolha o número de alunos do mesmo encarregado. Os campos aparecem em seguida."}
         </p>
 
-        <div className="grid gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label>{lang === "fr" ? "Nom du responsable *" : "Nome do encarregado *"}</Label>
             <Input
@@ -241,34 +243,57 @@ export function RegulamentoPage() {
               autoComplete="name"
             />
           </div>
-          {alunos.map((aluno, i) => (
-            <div key={i} className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label>
-                  {lang === "fr" ? `Élève ${i + 1}` : `Aluno ${i + 1}`}
-                  {i === 0 ? " *" : ""}
-                </Label>
-                <Input
-                  value={aluno.nome}
-                  onChange={(e) =>
-                    setAlunos((prev) =>
-                      prev.map((row, idx) => (idx === i ? { ...row, nome: e.target.value } : row)),
-                    )
-                  }
-                  placeholder={lang === "fr" ? "Nom complet" : "Nome completo"}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>{lang === "fr" ? `Classe ${i + 1}` : `Turma ${i + 1}`}</Label>
-                <Input
-                  value={aluno.turma}
-                  onChange={(e) =>
-                    setAlunos((prev) =>
-                      prev.map((row, idx) => (idx === i ? { ...row, turma: e.target.value } : row)),
-                    )
-                  }
-                  placeholder="ex.: CE1, 6e…"
-                />
+          <div className="space-y-1">
+            <Label>{lang === "fr" ? "Nombre d'élèves *" : "Número de alunos *"}</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-[var(--color-line,#d5ddd8)] bg-white px-3 text-sm"
+              value={numAlunos}
+              onChange={(e) => setNumAlunos(Number(e.target.value))}
+            >
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n}{" "}
+                  {lang === "fr" ? (n > 1 ? "élèves" : "élève") : n > 1 ? "alunos" : "aluno"}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-3">
+          {alunos.slice(0, numAlunos).map((aluno, i) => (
+            <div
+              key={i}
+              className="rounded-xl border border-[var(--color-line,#d5ddd8)] bg-[var(--color-bg,#f4f7f5)] p-3"
+            >
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-forest,#1f5c4a)]">
+                {lang === "fr" ? `Élève ${i + 1}` : `Aluno ${i + 1}`}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>{lang === "fr" ? "Nom de l'élève *" : "Nome do aluno *"}</Label>
+                  <Input
+                    value={aluno.nome}
+                    onChange={(e) =>
+                      setAlunos((prev) =>
+                        prev.map((row, idx) => (idx === i ? { ...row, nome: e.target.value } : row)),
+                      )
+                    }
+                    placeholder={lang === "fr" ? "Nom complet" : "Nome completo"}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>{lang === "fr" ? "Classe" : "Turma"}</Label>
+                  <Input
+                    value={aluno.turma}
+                    onChange={(e) =>
+                      setAlunos((prev) =>
+                        prev.map((row, idx) => (idx === i ? { ...row, turma: e.target.value } : row)),
+                      )
+                    }
+                    placeholder="ex.: CE1, 6e…"
+                  />
+                </div>
               </div>
             </div>
           ))}
