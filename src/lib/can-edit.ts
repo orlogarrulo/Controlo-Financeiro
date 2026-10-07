@@ -80,10 +80,12 @@ export function switchOperatorSession(_name: string, _operators: string[]) {
   wipeOperatorSession();
 }
 
-/** Limpa sessão e recarrega para voltar ao OperatorGate. */
+export const SESSION_END_EVENT = "ecc-operator-session-end";
+
+/** Termina a sessão e volta ao código de entrada. Não fica sessão aberta. */
 export function clearOperatorSession() {
   wipeOperatorSession();
-  if (typeof window !== "undefined") {
-    window.location.reload();
-  }
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(SESSION_END_EVENT));
+  window.location.reload();
 }

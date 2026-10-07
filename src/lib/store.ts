@@ -4213,7 +4213,26 @@ export function realinharIdsPorTurma(): number {
 }
 
 
-const ID_ALUNO_RE = /\b(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2,}(?:-[a-z0-9]+)?\b/gi;
+/**
+ * ID de aluno = turma + hífen + 2 dígitos (P3-07, CM2-02, 4E-04).
+ * Não inclui sufixo de movimento: -OUT/-NOV/-DEZ/-INS/-MAT nem -1/-3 (BAI-MAT-…-1).
+ * O grupo opcional antigo fazia o arranque criar fichas «Aluno CM2-02-3».
+ */
+const ID_ALUNO_RE = /\b(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2}(?!-)\b/gi;
+
+export function isCanonicalAlunoId(id: string): boolean {
+  return /^(?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2}$/i.test(String(id || "").trim());
+}
+
+const MOVIMENTO_SUFFIX_RE = /-(?:OUT|NOV|DEZ|INS|MAT|JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|\d+)$/i;
+
+export function isMovimentoNaoAluno(id: string): boolean {
+  const s = String(id || "").trim();
+  if (!s) return true;
+  if (/^BAI-/i.test(s)) return true;
+  if (MOVIMENTO_SUFFIX_RE.test(s)) return true;
+  return !isCanonicalAlunoId(s);
+}
 
 function collectTraceIds(state: {
   alunosExtra?: Aluno[];
@@ -4246,7 +4265,10 @@ function collectTraceIds(state: {
   for (const m of bai) {
     const blob = `${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`;
     const found = blob.match(ID_ALUNO_RE);
-    if (found) for (const id of found) add(id.toUpperCase());
+    if (found) for (const id of found) {
+      const up = id.toUpperCase();
+      if (isCanonicalAlunoId(up)) add(up);
+    }
   }
   return Array.from(ids);
 }
@@ -4270,12 +4292,15 @@ function parseBaiMatricula(id: string, movimentos: MovimentoBai[]): {
     const obs = String(m.observacoes || "");
     const mid = String(m.id || "");
     const blob = `${desc} ${obs} ${mid}`;
-    if (!blob.toUpperCase().includes(idUp)) continue;
+    const midUp = mid.toUpperCase();
     const mm = desc.match(re) || blob.match(re);
+    // Código de movimento (…-OUT, BAI-MAT-…-1) contém o ID mas não é ficha.
+    const exactId = midUp === idUp;
+    if (!mm && !exactId) continue;
     const rec = blob.match(/recibo\s*(EF\/\d+)/i);
     const met = blob.match(/M[eé]todo:\s*([^·\n]+)/i);
     const entrada = Number(m.entrada) || 0;
-    if (mm || entrada > 0 || mid.toUpperCase().includes(idUp)) {
+    if (mm || (exactId && entrada > 0)) {
       let nome = mm?.[1]?.replace(/\s+/g, " ").trim();
       // limpar sufixos de parcela "Inscrição · Nome"
       if (nome && /·/.test(nome)) {
@@ -5241,6 +5266,7 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
   const purgedLocked = new Set(keptDeleted);
 
   for (const id of traces) {
+    if (!isCanonicalAlunoId(id) || isMovimentoNaoAluno(id)) continue;
     if (visible.has(id)) continue;
     if (purgedLocked.has(id)) continue;
     if (deleted.includes(id) && hasReplacement(id)) continue;
@@ -5301,6 +5327,10 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
       dataPag: baiInfo.dataPag || docAluno?.pagoEm || docAluno?.emitidoEm,
       recibo: baiInfo.recibo || docAluno?.numero || docAluno?.codigoVerificacao,
     };
+    const nomeHumano = String(nomeFonte || "").trim();
+    if (!nomeHumano || /^aluno\s/i.test(nomeHumano) || nomeHumano.toUpperCase() === id.toUpperCase()) {
+      continue;
+    }
     const stub = stubAlunoFromTrace(id, ov, mens, nomeFonte, baiMerged);
     if (docAluno?.modelo === "liquidacao_matricula" || (docAluno?.valor || 0) > 0) {
       stub.statusPag = "pago";
@@ -5346,6 +5376,7 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
   for (const d of docs) {
     const id = String(d.alunoId || "").trim();
     if (!id || visible.has(id)) continue;
+    if (!isCanonicalAlunoId(id) || isMovimentoNaoAluno(id)) continue;
     if (seed.alunos.some((a) => a.id === id) && !deleted.includes(id)) {
       visible.add(id);
       continue;
@@ -5357,6 +5388,8 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
       detalhes.push(`ID ${id} reaberto (existia em extras + Arquivo)`);
       continue;
     }
+    const nomeDoc = String(d.alunoNome || "").trim();
+    if (!nomeDoc || /^aluno\s/i.test(nomeDoc)) continue;
     const stub = stubAlunoFromTrace(
       id,
       overrides[id],
@@ -5411,7 +5444,7 @@ export function recuperarAlunosOcultos(): { restaurados: number; detalhes: strin
         };
         materializados += 1;
       }
-    } else if (!seed.alunos.some((a) => a.id === id)) {
+    } else if (!seed.alunos.some((a) => a.id === id) && isCanonicalAlunoId(id) && !isMovimentoNaoAluno(id) && nomeDoc && !/^aluno\s/i.test(nomeDoc)) {
       const stub = stubAlunoFromTrace(id, overrides[id], mensalidades.find((m) => m.id === id), nomeDoc, {
         nome: nomeDoc,
         liquido: Number(d.valor) || 0,

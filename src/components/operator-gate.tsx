@@ -7,6 +7,7 @@ import { useFinance, getSeed } from "@/lib/store";
 import {
   isCollaborator1,
   resolveEntryPin,
+  SESSION_END_EVENT,
   wipeOperatorSession,
   writeSession,
   type OperatorSession,
@@ -31,10 +32,25 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
   const escola = getSeed().escola;
 
   useEffect(() => {
-    // Nunca restaurar sessão de localStorage — cada abertura passa pelo gate.
-    wipeOperatorSession();
-    setSession(null);
+    // Cada abertura, reload, restauro da PWA ou Sair volta a pedir o código.
+    const forceGate = () => {
+      wipeOperatorSession();
+      setSession(null);
+      setPin("");
+      setPick(null);
+      setErr("");
+    };
+    forceGate();
     setReady(true);
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) forceGate();
+    };
+    window.addEventListener(SESSION_END_EVENT, forceGate);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener(SESSION_END_EVENT, forceGate);
+      window.removeEventListener("pageshow", onPageShow);
+    };
   }, []);
 
   if (!ready) {

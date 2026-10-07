@@ -186,25 +186,21 @@ export function AppShell({ children }: { children: ReactNode }) {
                       </option>
                     ))}
                   </select>
-                  <div className="mt-2 flex gap-3">
-                    <button
-                      type="button"
-                      className="text-xs text-[var(--color-muted)] underline-offset-2 hover:underline"
-                      onClick={() => {
-                        try {
-                          useFinance.getState().pushSession("saida");
-                        } catch {
-                          /* ignore */
-                        }
-                        clearOperatorSession();
-                        setOpen(false);
-                      }}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <LogOut className="size-3" /> Terminar sessão
-                      </span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--color-line-strong)] bg-[var(--color-surface)] text-sm font-medium"
+                    onClick={() => {
+                      try {
+                        useFinance.getState().pushSession("saida");
+                      } catch {
+                        /* ignore */
+                      }
+                      clearOperatorSession();
+                      setOpen(false);
+                    }}
+                  >
+                    <LogOut className="size-4" /> Sair
+                  </button>
                 </div>
 
                 <nav className="flex-1 overflow-y-auto px-3 py-3">
@@ -325,29 +321,20 @@ function OperatorPanel({
           Modo consulta: só visualizar e imprimir. Edição reservada ao Colaborador 1.
         </p>
       ) : null}
-      <div className="mb-2 flex flex-col gap-1">
-        <button
-          type="button"
-          className="text-left text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
-          onClick={() => {
-            try {
-              useFinance.getState().pushSession("saida");
-            } catch {
-              /* ignore */
-            }
-            clearOperatorSession();
-          }}
-        >
-          Terminar sessão
-        </button>
-        <button
-          type="button"
-          className="text-left text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
-          onClick={() => clearOperatorSession()}
-        >
-          Trocar colaborador
-        </button>
-      </div>
+      <button
+        type="button"
+        className="mb-2 flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] text-xs font-medium"
+        onClick={() => {
+          try {
+            useFinance.getState().pushSession("saida");
+          } catch {
+            /* ignore */
+          }
+          clearOperatorSession();
+        }}
+      >
+        <LogOut className="size-3.5" /> Sair
+      </button>
       <select
         className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
         value={activeOperator}

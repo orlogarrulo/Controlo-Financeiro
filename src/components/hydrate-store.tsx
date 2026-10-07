@@ -38,6 +38,8 @@ const DIRTY_KEY = "ecc-financeiro-dirty";
 const PERSIST_KEY = "ecc-financeiro-v3";
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
 const CARTE_SCOLAIRE_MIGRATE_KEY = "ecc-carte-scolaire-v1"; // sexo + lieu de naissance + cartão FR
+/** Primeira abertura desta versão adopta a Neon restaurada e não empurra a cache antiga. */
+const NEON_AUTHORITY_KEY = "ecc-neon-authority-20261007";
 /** Verificação periódica da nuvem com o separador visível (só lê updated_at; payload só se mudou). */
 const PERIODIC_PULL_MS = 45_000;
 const PUSH_DEBOUNCE_MS = 1_200;
@@ -362,8 +364,12 @@ async function pullAndMerge(reason: string): Promise<void> {
       ]);
       const remoteTs = Date.parse(remote.updatedAt) || 0;
       const hasRemote = remoteTs > 0 && payloadHasData(remote.payload);
+      const adoptNeon =
+        reason === "boot" &&
+        hasRemote &&
+        (typeof localStorage === "undefined" || localStorage.getItem(NEON_AUTHORITY_KEY) !== "1");
       withRemoteApply(() => {
-        if (hasRemote) applyRemotePayload(remote.payload);
+        if (hasRemote) applyRemotePayload(remote.payload, adoptNeon ? { authoritative: true } : undefined);
         if (remoteFotos && Object.keys(remoteFotos).length > 0) applyRemoteFotos(remoteFotos);
         applyAlunoFotoTombstones();
       });
@@ -394,8 +400,15 @@ async function pullAndMerge(reason: string): Promise<void> {
             : "Dados sincronizados (servidor de pré-visualização)",
         );
       }
-      // Só envia se houver alterações locais por enviar (ou no arranque, para unificar).
-      if (isDirty() || (reason === "boot" && hasLocalData())) {
+      // Primeira abertura: a Neon restaurada manda. Não reenviar a cache que criou fichas falsas.
+      if (adoptNeon) {
+        try {
+          localStorage.setItem(NEON_AUTHORITY_KEY, "1");
+          localStorage.removeItem(DIRTY_KEY);
+        } catch {
+          /* ignore */
+        }
+      } else if (isDirty() || (reason === "boot" && hasLocalData())) {
         await pushCloud();
       }
       await pushLocalAlunoFotos(remoteFotos || {});

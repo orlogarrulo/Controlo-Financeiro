@@ -15,6 +15,7 @@ import {
   normalizeNomeAluno,
   persistAlunosCensoLocal,
   SEED_ALUNO_IDS,
+  isCanonicalAlunoId,
   useFinance,
 } from "@/lib/store";
 import {
@@ -140,16 +141,22 @@ function stableDocIso(d: DocLite | undefined): string {
  * Funde o payload da nuvem no store local (o local ganha empates) e aplica as regras
  * específicas (Arquivo → ficha, 4E-04, censo local). Não carimba nada (runWithoutStamp).
  */
-export function applyRemotePayload(raw: FinanceCloudPayload): void {
+export function applyRemotePayload(raw: FinanceCloudPayload, opts?: { authoritative?: boolean }): void {
   const p = sanitizeFinancePayload(raw);
   const local = useFinance.getState();
-  const merged = mergeFinanceSlices(local as unknown as Record<string, unknown>, p as unknown as Record<string, unknown>) as unknown as typeof local & {
-    tombstones: Tombstones;
-  };
+  // Primeira abertura depois do restauro Neon: a nuvem manda. A cache do browser
+  // (que chegou a gravar fichas falsas e recibos trocados) não volta a ganhar.
+  const merged = mergeFinanceSlices(
+    (opts?.authoritative ? p : local) as unknown as Record<string, unknown>,
+    (opts?.authoritative ? p : p) as unknown as Record<string, unknown>,
+  ) as unknown as typeof local & { tombstones: Tombstones };
 
   // Alunos: nuvem (censo + extra) vs local, com resolução de colisões de ID.
   const remoteAlunos = mergeById((p.alunosExtra as unknown[]) || [], (p.alunosCenso as unknown[]) || []);
-  const { merged: alunosMerged, remapped } = resolveAlunoIdCollisions(local.alunosExtra || [], remoteAlunos);
+  const { merged: alunosMerged, remapped } = resolveAlunoIdCollisions(
+    opts?.authoritative ? [] : local.alunosExtra || [],
+    remoteAlunos,
+  );
   if (remapped > 0) {
     console.warn(`[cloud] ${remapped} matrícula(s) com ID colidido foram reatribuídas (anti-sobreposição)`);
   }
@@ -169,7 +176,10 @@ export function applyRemotePayload(raw: FinanceCloudPayload): void {
   for (const d of docsAll) {
     const id = String(d.alunoId || "").trim();
     if (!id || SEED_ALUNO_IDS.has(id) || byId.has(id)) continue;
+    // Códigos de movimento (…-OUT, BAI-MAT-…-1) não são alunos.
+    if (!isCanonicalAlunoId(id)) continue;
     const nome = String(d.alunoNome || "").trim() || id;
+    if (/^aluno\s/i.test(nome)) continue;
     const pref = id.split("-")[0] || "";
     byId.set(id, {
       id,
