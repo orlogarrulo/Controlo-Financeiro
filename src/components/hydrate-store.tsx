@@ -365,10 +365,8 @@ async function pullAndMerge(reason: string): Promise<void> {
       ]);
       const remoteTs = Date.parse(remote.updatedAt) || 0;
       const hasRemote = remoteTs > 0 && payloadHasData(remote.payload);
-      const adoptNeon =
-        reason === "boot" &&
-        hasRemote &&
-        (typeof localStorage === "undefined" || localStorage.getItem(NEON_AUTHORITY_KEY) !== "1");
+      // Outro PC, outro seed ou cache antiga: no arranque a Neon manda sempre.
+      const adoptNeon = reason === "boot" && hasRemote;
       withRemoteApply(() => {
         if (hasRemote) applyRemotePayload(remote.payload, adoptNeon ? { authoritative: true } : undefined);
         if (remoteFotos && Object.keys(remoteFotos).length > 0) applyRemoteFotos(remoteFotos);
@@ -417,7 +415,7 @@ async function pullAndMerge(reason: string): Promise<void> {
         }
       }
       // Duplicados apagados têm de ir para a Neon; senão o próximo PC volta a mostrar 73.
-      if (fundidos > 0 || isDirty() || (!adoptNeon && reason === "boot" && hasLocalData())) {
+      if (!adoptNeon && (fundidos > 0 || isDirty())) {
         await pushCloud();
       }
       await pushLocalAlunoFotos(remoteFotos || {});

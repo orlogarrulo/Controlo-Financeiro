@@ -5722,14 +5722,15 @@ export function alunosAll(
     out.push(apply(a));
   };
 
-  // Lista da nuvem completa manda. Um extra parcial não apaga o seed; o seed também não é tecto.
-  const cloudCompleta = (extras || []).length >= (seed.alunos || []).length;
-  if (cloudCompleta) {
-    for (const a of extras) push(a);
-  } else {
-    for (const a of seed.alunos) push(a);
-    for (const a of extras) push(a);
-  }
+  // O seed não é censo. Sem nuvem, o ecrã mostra a última lista gravada, não a fotografia antiga.
+  const seenNames = new Set<string>();
+  const pushUnique = (a: Aluno) => {
+    const nome = normalizeNomeAluno(a?.nome || "");
+    if (!nome || seenNames.has(nome)) return;
+    seenNames.add(nome);
+    push(a);
+  };
+  for (const a of extras || []) pushUnique(a);
   // Fichas protegidas: se faltarem (sync apagou extra), injectar sempre
   for (const [id, prot] of Object.entries(FICHAS_PROTEGIDAS)) {
     if (seenIds.has(id)) continue;
