@@ -5717,7 +5717,7 @@ export function alunosAll(
 
   const push = (a: Aluno) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    if (!cloudCompleta && deleted.has(a.id) && nomesVivos.has(normalizeNomeAluno(a.nome))) return;
+    if (deleted.has(a.id) && nomesVivos.has(normalizeNomeAluno(a.nome))) return;
     seenIds.add(a.id);
     out.push(apply(a));
   };
