@@ -514,6 +514,7 @@ function RelatoriosPage() {
   const alunosDeletedIds = useFinance((s) => s.alunosDeletedIds || []);
   const documentos = useFinance((s) => s.documentosAluno || []);
   const codigosRecibo = useFinance((s) => s.codigosRecibo || []);
+  const crmEnvios = useFinance((s) => s.crmEnvios || []);
 
   const [mesFiltro, setMesFiltro] = useState("out");
 
@@ -1084,7 +1085,7 @@ function RelatoriosPage() {
         <div>
           <h1 className="font-display text-2xl tracking-tight">Relatórios</h1><button type="button" className="ml-2 rounded border px-2 py-1 text-xs font-sans" onClick={sincronizar}>Sincronizar pagamentos</button>
           <p className="text-sm text-muted-foreground">
-            Matrículas + Propinas + Recibos · {alunos.length} alunos no censo
+            Matrículas + Propinas + Recibos + CRM · {alunos.length} alunos no censo · {crmEnvios.length} contacto(s) registado(s)
           </p>
         </div>
         <div className="flex items-center gap-2">

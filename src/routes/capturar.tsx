@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getSeed, useFinance, type CapturaInput } from "@/lib/store";
+import { getSeed, useFinance, prepareNumerosCaptura, type CapturaInput } from "@/lib/store";
 import { compressImage } from "@/lib/image";
 import { ocrImage, parseOcrText } from "@/lib/ocr";
 import { todayIso } from "@/lib/format";
@@ -104,7 +104,7 @@ function Capturar() {
     }
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     if (!canEdit) {
       toast.error(VIEW_ONLY_MSG);
@@ -119,6 +119,8 @@ function Capturar() {
       const observacoes = abatimentoSocio
         ? (obs.toLowerCase().includes("a reembolsar") ? obs : [obs, "A reembolsar"].filter(Boolean).join(" · "))
         : obs;
+      // N.º interno reservado no servidor (sem colisão entre PCs); offline → sufixo do PC.
+      await prepareNumerosCaptura([{ tipo: "despesa", origem: form.origem, data: form.data }]);
       const row = add({ ...form, tipo: "despesa", foto, observacoes });
       toast.success(
         abatimentoSocio

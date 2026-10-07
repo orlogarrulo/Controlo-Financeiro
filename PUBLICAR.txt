@@ -1,0 +1,28 @@
+Controlo Financeiro — pacote de publicação (7 Out 2026)
+=======================================================
+
+A escola tem 67 alunos. Duplicados, extrato BAI e as restantes correcções já feitas
+mantêm-se. Este pacote não repõe a base nem apaga fichas.
+
+O que esta versão impede
+- O arranque já não trata códigos de movimento (…-OUT, …-INS, …-NOV, …-DEZ, BAI-MAT-…-1)
+  como alunos. Não volta a criar fichas «Aluno CM2-02-3».
+- A primeira abertura em cada PC adopta a Neon restaurada (cópia das 23:25) e não
+  empurra a cache antiga do browser por cima da nuvem.
+- A migração 0004_doc_counters já está na Neon (contadores, ex. PROP-2026-10).
+  O script de migrate é idempotente: no build volta a correr e não duplica.
+
+Publicar
+1. Extrair este zip.
+2. npm install && npm run build
+3. Deploy Vercel (build: npm run build). DATABASE_URL da Neon já configurada.
+4. Só depois: em cada PC e telemóvel, fechar a app, Ctrl+Shift+R (ou reinstalar o ícone)
+   e entrar com o PIN. A primeira abertura sincroniza a partir da nuvem.
+
+Não abrir a versão que está agora no ar antes deste deploy: ainda cria fichas falsas.
+
+
+Sessão
+- Botão Sair na barra lateral (e no menu do telemóvel).
+- Sair, trocar colaborador, fechar ou reabrir a app volta a pedir o código.
+- Não fica sessão aberta no browser.

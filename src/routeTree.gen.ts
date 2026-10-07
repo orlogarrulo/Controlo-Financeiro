@@ -10,30 +10,30 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AgendamentoRouteImport } from './routes/agendamento'
 import { Route as AlunosRouteImport } from './routes/alunos'
+import { Route as ArquivoRouteImport } from './routes/arquivo'
+import { Route as AuditoriaRouteImport } from './routes/auditoria'
+import { Route as AutorizacaoFotosRouteImport } from './routes/autorizacao-fotos'
 import { Route as BancoRouteImport } from './routes/banco'
 import { Route as CapturarRouteImport } from './routes/capturar'
+import { Route as ContaCorrenteRouteImport } from './routes/conta-corrente'
+import { Route as CrmRouteImport } from './routes/crm'
+import { Route as FotosRouteImport } from './routes/fotos'
 import { Route as FundoRouteImport } from './routes/fundo'
 import { Route as GoogleRouteImport } from './routes/google'
-import { Route as LancamentosRouteImport } from './routes/lancamentos'
-import { Route as MensalidadesRouteImport } from './routes/mensalidades'
-import { Route as ContaCorrenteRouteImport } from './routes/conta-corrente'
-import { Route as RelatoriosRouteImport } from './routes/relatorios'
-import { Route as CrmRouteImport } from './routes/crm'
-import { Route as RecibosRouteImport } from './routes/recibos'
-import { Route as SalariosRouteImport } from './routes/salarios'
-import { Route as PendenciasRouteImport } from './routes/pendencias'
-import { Route as AuditoriaRouteImport } from './routes/auditoria'
-import { Route as ArquivoRouteImport } from './routes/arquivo'
 import { Route as InboxRouteImport } from './routes/inbox'
-import { Route as RastreioRouteImport } from './routes/rastreio'
-import { Route as RegulamentoRouteImport } from './routes/regulamento'
-import { Route as AgendamentoRouteImport } from './routes/agendamento'
 import { Route as InqueritoSaudeRouteImport } from './routes/inquerito-saude'
+import { Route as LancamentosRouteImport } from './routes/lancamentos'
 import { Route as MarcaRouteImport } from './routes/marca'
-import { Route as AutorizacaoFotosRouteImport } from './routes/autorizacao-fotos'
-import { Route as FotosRouteImport } from './routes/fotos'
+import { Route as MensalidadesRouteImport } from './routes/mensalidades'
+import { Route as PendenciasRouteImport } from './routes/pendencias'
+import { Route as RastreioRouteImport } from './routes/rastreio'
+import { Route as RecibosRouteImport } from './routes/recibos'
 import { Route as RegrasRouteImport } from './routes/regras'
+import { Route as RegulamentoRouteImport } from './routes/regulamento'
+import { Route as RelatoriosRouteImport } from './routes/relatorios'
+import { Route as SalariosRouteImport } from './routes/salarios'
 import { Route as SaudeRouteImport } from './routes/saude'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,49 +41,29 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RegulamentoRoute = RegulamentoRouteImport.update({
-  id: '/regulamento',
-  path: '/regulamento',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AgendamentoRoute = AgendamentoRouteImport.update({
   id: '/agendamento',
   path: '/agendamento',
   getParentRoute: () => rootRouteImport,
 } as any)
-const InqueritoSaudeRoute = InqueritoSaudeRouteImport.update({
-  id: '/inquerito-saude',
-  path: '/inquerito-saude',
+const AlunosRoute = AlunosRouteImport.update({
+  id: '/alunos',
+  path: '/alunos',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MarcaRoute = MarcaRouteImport.update({
-  id: '/marca',
-  path: '/marca',
+const ArquivoRoute = ArquivoRouteImport.update({
+  id: '/arquivo',
+  path: '/arquivo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditoriaRoute = AuditoriaRouteImport.update({
+  id: '/auditoria',
+  path: '/auditoria',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AutorizacaoFotosRoute = AutorizacaoFotosRouteImport.update({
   id: '/autorizacao-fotos',
   path: '/autorizacao-fotos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FotosRoute = FotosRouteImport.update({
-  id: '/fotos',
-  path: '/fotos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RegrasRoute = RegrasRouteImport.update({
-  id: '/regras',
-  path: '/regras',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SaudeRoute = SaudeRouteImport.update({
-  id: '/saude',
-  path: '/saude',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AlunosRoute = AlunosRouteImport.update({
-  id: '/alunos',
-  path: '/alunos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BancoRoute = BancoRouteImport.update({
@@ -96,6 +76,21 @@ const CapturarRoute = CapturarRouteImport.update({
   path: '/capturar',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContaCorrenteRoute = ContaCorrenteRouteImport.update({
+  id: '/conta-corrente',
+  path: '/conta-corrente',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CrmRoute = CrmRouteImport.update({
+  id: '/crm',
+  path: '/crm',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FotosRoute = FotosRouteImport.update({
+  id: '/fotos',
+  path: '/fotos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FundoRoute = FundoRouteImport.update({
   id: '/fundo',
   path: '/fundo',
@@ -106,9 +101,24 @@ const GoogleRoute = GoogleRouteImport.update({
   path: '/google',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InboxRoute = InboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InqueritoSaudeRoute = InqueritoSaudeRouteImport.update({
+  id: '/inquerito-saude',
+  path: '/inquerito-saude',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LancamentosRoute = LancamentosRouteImport.update({
   id: '/lancamentos',
   path: '/lancamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarcaRoute = MarcaRouteImport.update({
+  id: '/marca',
+  path: '/marca',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MensalidadesRoute = MensalidadesRouteImport.update({
@@ -116,49 +126,9 @@ const MensalidadesRoute = MensalidadesRouteImport.update({
   path: '/mensalidades',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ContaCorrenteRoute = ContaCorrenteRouteImport.update({
-  id: '/conta-corrente',
-  path: '/conta-corrente',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RelatoriosRoute = RelatoriosRouteImport.update({
-  id: '/relatorios',
-  path: '/relatorios',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CrmRoute = CrmRouteImport.update({
-  id: '/crm',
-  path: '/crm',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RecibosRoute = RecibosRouteImport.update({
-  id: '/recibos',
-  path: '/recibos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SalariosRoute = SalariosRouteImport.update({
-  id: '/salarios',
-  path: '/salarios',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PendenciasRoute = PendenciasRouteImport.update({
   id: '/pendencias',
   path: '/pendencias',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuditoriaRoute = AuditoriaRouteImport.update({
-  id: '/auditoria',
-  path: '/auditoria',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ArquivoRoute = ArquivoRouteImport.update({
-  id: '/arquivo',
-  path: '/arquivo',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InboxRoute = InboxRouteImport.update({
-  id: '/inbox',
-  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RastreioRoute = RastreioRouteImport.update({
@@ -166,203 +136,236 @@ const RastreioRoute = RastreioRouteImport.update({
   path: '/rastreio',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RecibosRoute = RecibosRouteImport.update({
+  id: '/recibos',
+  path: '/recibos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegrasRoute = RegrasRouteImport.update({
+  id: '/regras',
+  path: '/regras',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegulamentoRoute = RegulamentoRouteImport.update({
+  id: '/regulamento',
+  path: '/regulamento',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RelatoriosRoute = RelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SalariosRoute = SalariosRouteImport.update({
+  id: '/salarios',
+  path: '/salarios',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SaudeRoute = SaudeRouteImport.update({
+  id: '/saude',
+  path: '/saude',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/regulamento': typeof RegulamentoRoute
   '/agendamento': typeof AgendamentoRoute
-  '/inquerito-saude': typeof InqueritoSaudeRoute
-  '/marca': typeof MarcaRoute
-  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
-  '/fotos': typeof FotosRoute
-  '/regras': typeof RegrasRoute
-  '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
+  '/arquivo': typeof ArquivoRoute
+  '/auditoria': typeof AuditoriaRoute
+  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
+  '/conta-corrente': typeof ContaCorrenteRoute
+  '/crm': typeof CrmRoute
+  '/fotos': typeof FotosRoute
   '/fundo': typeof FundoRoute
   '/google': typeof GoogleRoute
-  '/lancamentos': typeof LancamentosRoute
-  '/mensalidades': typeof MensalidadesRoute
-  '/conta-corrente': typeof ContaCorrenteRoute
-  '/relatorios': typeof RelatoriosRoute
-  '/crm': typeof CrmRoute
-  '/recibos': typeof RecibosRoute
-  '/salarios': typeof SalariosRoute
-  '/pendencias': typeof PendenciasRoute
-  '/auditoria': typeof AuditoriaRoute
-  '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
+  '/inquerito-saude': typeof InqueritoSaudeRoute
+  '/lancamentos': typeof LancamentosRoute
+  '/marca': typeof MarcaRoute
+  '/mensalidades': typeof MensalidadesRoute
+  '/pendencias': typeof PendenciasRoute
   '/rastreio': typeof RastreioRoute
+  '/recibos': typeof RecibosRoute
+  '/regras': typeof RegrasRoute
+  '/regulamento': typeof RegulamentoRoute
+  '/relatorios': typeof RelatoriosRoute
+  '/salarios': typeof SalariosRoute
+  '/saude': typeof SaudeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/regulamento': typeof RegulamentoRoute
   '/agendamento': typeof AgendamentoRoute
-  '/inquerito-saude': typeof InqueritoSaudeRoute
-  '/marca': typeof MarcaRoute
-  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
-  '/fotos': typeof FotosRoute
-  '/regras': typeof RegrasRoute
-  '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
+  '/arquivo': typeof ArquivoRoute
+  '/auditoria': typeof AuditoriaRoute
+  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
+  '/conta-corrente': typeof ContaCorrenteRoute
+  '/crm': typeof CrmRoute
+  '/fotos': typeof FotosRoute
   '/fundo': typeof FundoRoute
   '/google': typeof GoogleRoute
-  '/lancamentos': typeof LancamentosRoute
-  '/mensalidades': typeof MensalidadesRoute
-  '/conta-corrente': typeof ContaCorrenteRoute
-  '/relatorios': typeof RelatoriosRoute
-  '/crm': typeof CrmRoute
-  '/recibos': typeof RecibosRoute
-  '/salarios': typeof SalariosRoute
-  '/pendencias': typeof PendenciasRoute
-  '/auditoria': typeof AuditoriaRoute
-  '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
+  '/inquerito-saude': typeof InqueritoSaudeRoute
+  '/lancamentos': typeof LancamentosRoute
+  '/marca': typeof MarcaRoute
+  '/mensalidades': typeof MensalidadesRoute
+  '/pendencias': typeof PendenciasRoute
   '/rastreio': typeof RastreioRoute
+  '/recibos': typeof RecibosRoute
+  '/regras': typeof RegrasRoute
+  '/regulamento': typeof RegulamentoRoute
+  '/relatorios': typeof RelatoriosRoute
+  '/salarios': typeof SalariosRoute
+  '/saude': typeof SaudeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/regulamento': typeof RegulamentoRoute
   '/agendamento': typeof AgendamentoRoute
-  '/inquerito-saude': typeof InqueritoSaudeRoute
-  '/marca': typeof MarcaRoute
-  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
-  '/fotos': typeof FotosRoute
-  '/regras': typeof RegrasRoute
-  '/saude': typeof SaudeRoute
   '/alunos': typeof AlunosRoute
+  '/arquivo': typeof ArquivoRoute
+  '/auditoria': typeof AuditoriaRoute
+  '/autorizacao-fotos': typeof AutorizacaoFotosRoute
   '/banco': typeof BancoRoute
   '/capturar': typeof CapturarRoute
+  '/conta-corrente': typeof ContaCorrenteRoute
+  '/crm': typeof CrmRoute
+  '/fotos': typeof FotosRoute
   '/fundo': typeof FundoRoute
   '/google': typeof GoogleRoute
-  '/lancamentos': typeof LancamentosRoute
-  '/mensalidades': typeof MensalidadesRoute
-  '/conta-corrente': typeof ContaCorrenteRoute
-  '/relatorios': typeof RelatoriosRoute
-  '/crm': typeof CrmRoute
-  '/recibos': typeof RecibosRoute
-  '/salarios': typeof SalariosRoute
-  '/pendencias': typeof PendenciasRoute
-  '/auditoria': typeof AuditoriaRoute
-  '/arquivo': typeof ArquivoRoute
   '/inbox': typeof InboxRoute
+  '/inquerito-saude': typeof InqueritoSaudeRoute
+  '/lancamentos': typeof LancamentosRoute
+  '/marca': typeof MarcaRoute
+  '/mensalidades': typeof MensalidadesRoute
+  '/pendencias': typeof PendenciasRoute
   '/rastreio': typeof RastreioRoute
+  '/recibos': typeof RecibosRoute
+  '/regras': typeof RegrasRoute
+  '/regulamento': typeof RegulamentoRoute
+  '/relatorios': typeof RelatoriosRoute
+  '/salarios': typeof SalariosRoute
+  '/saude': typeof SaudeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/regulamento'
     | '/agendamento'
-    | '/inquerito-saude'
-    | '/marca'
-    | '/autorizacao-fotos'
-    | '/fotos'
-    | '/regras'
-    | '/saude'
     | '/alunos'
+    | '/arquivo'
+    | '/auditoria'
+    | '/autorizacao-fotos'
     | '/banco'
     | '/capturar'
-    | '/fundo'
-    | '/google'
-    | '/lancamentos'
-    | '/mensalidades'
     | '/conta-corrente'
     | '/crm'
-    | '/recibos'
-    | '/salarios'
-    | '/pendencias'
-    | '/auditoria'
-    | '/arquivo'
+    | '/fotos'
+    | '/fundo'
+    | '/google'
     | '/inbox'
+    | '/inquerito-saude'
+    | '/lancamentos'
+    | '/marca'
+    | '/mensalidades'
+    | '/pendencias'
     | '/rastreio'
+    | '/recibos'
+    | '/regras'
+    | '/regulamento'
+    | '/relatorios'
+    | '/salarios'
+    | '/saude'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/regulamento'
     | '/agendamento'
-    | '/inquerito-saude'
-    | '/marca'
-    | '/autorizacao-fotos'
-    | '/fotos'
-    | '/regras'
-    | '/saude'
     | '/alunos'
+    | '/arquivo'
+    | '/auditoria'
+    | '/autorizacao-fotos'
     | '/banco'
     | '/capturar'
-    | '/fundo'
-    | '/google'
-    | '/lancamentos'
-    | '/mensalidades'
     | '/conta-corrente'
     | '/crm'
-    | '/recibos'
-    | '/salarios'
-    | '/pendencias'
-    | '/auditoria'
-    | '/arquivo'
+    | '/fotos'
+    | '/fundo'
+    | '/google'
     | '/inbox'
+    | '/inquerito-saude'
+    | '/lancamentos'
+    | '/marca'
+    | '/mensalidades'
+    | '/pendencias'
     | '/rastreio'
+    | '/recibos'
+    | '/regras'
+    | '/regulamento'
+    | '/relatorios'
+    | '/salarios'
+    | '/saude'
   id:
     | '__root__'
     | '/'
-    | '/regulamento'
     | '/agendamento'
-    | '/inquerito-saude'
-    | '/marca'
-    | '/autorizacao-fotos'
-    | '/fotos'
-    | '/regras'
-    | '/saude'
     | '/alunos'
+    | '/arquivo'
+    | '/auditoria'
+    | '/autorizacao-fotos'
     | '/banco'
     | '/capturar'
-    | '/fundo'
-    | '/google'
-    | '/lancamentos'
-    | '/mensalidades'
     | '/conta-corrente'
     | '/crm'
-    | '/recibos'
-    | '/salarios'
-    | '/pendencias'
-    | '/auditoria'
-    | '/arquivo'
+    | '/fotos'
+    | '/fundo'
+    | '/google'
     | '/inbox'
+    | '/inquerito-saude'
+    | '/lancamentos'
+    | '/marca'
+    | '/mensalidades'
+    | '/pendencias'
     | '/rastreio'
+    | '/recibos'
+    | '/regras'
+    | '/regulamento'
+    | '/relatorios'
+    | '/salarios'
+    | '/saude'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  RegulamentoRoute: typeof RegulamentoRoute
   AgendamentoRoute: typeof AgendamentoRoute
-  InqueritoSaudeRoute: typeof InqueritoSaudeRoute
-  MarcaRoute: typeof MarcaRoute
-  AutorizacaoFotosRoute: typeof AutorizacaoFotosRoute
-  FotosRoute: typeof FotosRoute
-  RegrasRoute: typeof RegrasRoute
-  SaudeRoute: typeof SaudeRoute
   AlunosRoute: typeof AlunosRoute
+  ArquivoRoute: typeof ArquivoRoute
+  AuditoriaRoute: typeof AuditoriaRoute
+  AutorizacaoFotosRoute: typeof AutorizacaoFotosRoute
   BancoRoute: typeof BancoRoute
   CapturarRoute: typeof CapturarRoute
+  ContaCorrenteRoute: typeof ContaCorrenteRoute
+  CrmRoute: typeof CrmRoute
+  FotosRoute: typeof FotosRoute
   FundoRoute: typeof FundoRoute
   GoogleRoute: typeof GoogleRoute
-  LancamentosRoute: typeof LancamentosRoute
-  MensalidadesRoute: typeof MensalidadesRoute
-  ContaCorrenteRoute: typeof ContaCorrenteRoute
-  RelatoriosRoute: typeof RelatoriosRoute
-  CrmRoute: typeof CrmRoute
-  RecibosRoute: typeof RecibosRoute
-  SalariosRoute: typeof SalariosRoute
-  PendenciasRoute: typeof PendenciasRoute
-  AuditoriaRoute: typeof AuditoriaRoute
-  ArquivoRoute: typeof ArquivoRoute
   InboxRoute: typeof InboxRoute
+  InqueritoSaudeRoute: typeof InqueritoSaudeRoute
+  LancamentosRoute: typeof LancamentosRoute
+  MarcaRoute: typeof MarcaRoute
+  MensalidadesRoute: typeof MensalidadesRoute
+  PendenciasRoute: typeof PendenciasRoute
   RastreioRoute: typeof RastreioRoute
+  RecibosRoute: typeof RecibosRoute
+  RegrasRoute: typeof RegrasRoute
+  RegulamentoRoute: typeof RegulamentoRoute
+  RelatoriosRoute: typeof RelatoriosRoute
+  SalariosRoute: typeof SalariosRoute
+  SaudeRoute: typeof SaudeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -374,13 +377,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/regulamento': {
-      id: '/regulamento'
-      path: '/regulamento'
-      fullPath: '/regulamento'
-      preLoaderRoute: typeof RegulamentoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/agendamento': {
       id: '/agendamento'
       path: '/agendamento'
@@ -388,18 +384,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgendamentoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/inquerito-saude': {
-      id: '/inquerito-saude'
-      path: '/inquerito-saude'
-      fullPath: '/inquerito-saude'
-      preLoaderRoute: typeof InqueritoSaudeRouteImport
+    '/alunos': {
+      id: '/alunos'
+      path: '/alunos'
+      fullPath: '/alunos'
+      preLoaderRoute: typeof AlunosRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/marca': {
-      id: '/marca'
-      path: '/marca'
-      fullPath: '/marca'
-      preLoaderRoute: typeof MarcaRouteImport
+    '/arquivo': {
+      id: '/arquivo'
+      path: '/arquivo'
+      fullPath: '/arquivo'
+      preLoaderRoute: typeof ArquivoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auditoria': {
+      id: '/auditoria'
+      path: '/auditoria'
+      fullPath: '/auditoria'
+      preLoaderRoute: typeof AuditoriaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/autorizacao-fotos': {
@@ -407,34 +410,6 @@ declare module '@tanstack/react-router' {
       path: '/autorizacao-fotos'
       fullPath: '/autorizacao-fotos'
       preLoaderRoute: typeof AutorizacaoFotosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/fotos': {
-      id: '/fotos'
-      path: '/fotos'
-      fullPath: '/fotos'
-      preLoaderRoute: typeof FotosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/regras': {
-      id: '/regras'
-      path: '/regras'
-      fullPath: '/regras'
-      preLoaderRoute: typeof RegrasRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/saude': {
-      id: '/saude'
-      path: '/saude'
-      fullPath: '/saude'
-      preLoaderRoute: typeof SaudeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/alunos': {
-      id: '/alunos'
-      path: '/alunos'
-      fullPath: '/alunos'
-      preLoaderRoute: typeof AlunosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/banco': {
@@ -451,6 +426,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CapturarRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/conta-corrente': {
+      id: '/conta-corrente'
+      path: '/conta-corrente'
+      fullPath: '/conta-corrente'
+      preLoaderRoute: typeof ContaCorrenteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/crm': {
+      id: '/crm'
+      path: '/crm'
+      fullPath: '/crm'
+      preLoaderRoute: typeof CrmRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fotos': {
+      id: '/fotos'
+      path: '/fotos'
+      fullPath: '/fotos'
+      preLoaderRoute: typeof FotosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/fundo': {
       id: '/fundo'
       path: '/fundo'
@@ -465,11 +461,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GoogleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/inbox': {
+      id: '/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof InboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inquerito-saude': {
+      id: '/inquerito-saude'
+      path: '/inquerito-saude'
+      fullPath: '/inquerito-saude'
+      preLoaderRoute: typeof InqueritoSaudeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/lancamentos': {
       id: '/lancamentos'
       path: '/lancamentos'
       fullPath: '/lancamentos'
       preLoaderRoute: typeof LancamentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marca': {
+      id: '/marca'
+      path: '/marca'
+      fullPath: '/marca'
+      preLoaderRoute: typeof MarcaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mensalidades': {
@@ -479,53 +496,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MensalidadesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/crm': {
-      id: '/crm'
-      path: '/crm'
-      fullPath: '/crm'
-      preLoaderRoute: typeof CrmRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/recibos': {
-      id: '/recibos'
-      path: '/recibos'
-      fullPath: '/recibos'
-      preLoaderRoute: typeof RecibosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/salarios': {
-      id: '/salarios'
-      path: '/salarios'
-      fullPath: '/salarios'
-      preLoaderRoute: typeof SalariosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/pendencias': {
       id: '/pendencias'
       path: '/pendencias'
       fullPath: '/pendencias'
       preLoaderRoute: typeof PendenciasRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auditoria': {
-      id: '/auditoria'
-      path: '/auditoria'
-      fullPath: '/auditoria'
-      preLoaderRoute: typeof AuditoriaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/arquivo': {
-      id: '/arquivo'
-      path: '/arquivo'
-      fullPath: '/arquivo'
-      preLoaderRoute: typeof ArquivoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/inbox': {
-      id: '/inbox'
-      path: '/inbox'
-      fullPath: '/inbox'
-      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rastreio': {
@@ -535,11 +510,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RastreioRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/conta-corrente': {
-      id: '/conta-corrente'
-      path: '/conta-corrente'
-      fullPath: '/conta-corrente'
-      preLoaderRoute: typeof ContaCorrenteRouteImport
+    '/recibos': {
+      id: '/recibos'
+      path: '/recibos'
+      fullPath: '/recibos'
+      preLoaderRoute: typeof RecibosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/regras': {
+      id: '/regras'
+      path: '/regras'
+      fullPath: '/regras'
+      preLoaderRoute: typeof RegrasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/regulamento': {
+      id: '/regulamento'
+      path: '/regulamento'
+      fullPath: '/regulamento'
+      preLoaderRoute: typeof RegulamentoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/relatorios': {
@@ -549,36 +538,50 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RelatoriosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/salarios': {
+      id: '/salarios'
+      path: '/salarios'
+      fullPath: '/salarios'
+      preLoaderRoute: typeof SalariosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/saude': {
+      id: '/saude'
+      path: '/saude'
+      fullPath: '/saude'
+      preLoaderRoute: typeof SaudeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  RegulamentoRoute: RegulamentoRoute,
   AgendamentoRoute: AgendamentoRoute,
-  InqueritoSaudeRoute: InqueritoSaudeRoute,
-  MarcaRoute: MarcaRoute,
-  AutorizacaoFotosRoute: AutorizacaoFotosRoute,
-  FotosRoute: FotosRoute,
-  RegrasRoute: RegrasRoute,
-  SaudeRoute: SaudeRoute,
   AlunosRoute: AlunosRoute,
+  ArquivoRoute: ArquivoRoute,
+  AuditoriaRoute: AuditoriaRoute,
+  AutorizacaoFotosRoute: AutorizacaoFotosRoute,
   BancoRoute: BancoRoute,
   CapturarRoute: CapturarRoute,
+  ContaCorrenteRoute: ContaCorrenteRoute,
+  CrmRoute: CrmRoute,
+  FotosRoute: FotosRoute,
   FundoRoute: FundoRoute,
   GoogleRoute: GoogleRoute,
-  LancamentosRoute: LancamentosRoute,
-  MensalidadesRoute: MensalidadesRoute,
-  ContaCorrenteRoute: ContaCorrenteRoute,
-  RelatoriosRoute: RelatoriosRoute,
-  CrmRoute: CrmRoute,
-  RecibosRoute: RecibosRoute,
-  SalariosRoute: SalariosRoute,
-  PendenciasRoute: PendenciasRoute,
-  AuditoriaRoute: AuditoriaRoute,
-  ArquivoRoute: ArquivoRoute,
   InboxRoute: InboxRoute,
+  InqueritoSaudeRoute: InqueritoSaudeRoute,
+  LancamentosRoute: LancamentosRoute,
+  MarcaRoute: MarcaRoute,
+  MensalidadesRoute: MensalidadesRoute,
+  PendenciasRoute: PendenciasRoute,
   RastreioRoute: RastreioRoute,
+  RecibosRoute: RecibosRoute,
+  RegrasRoute: RegrasRoute,
+  RegulamentoRoute: RegulamentoRoute,
+  RelatoriosRoute: RelatoriosRoute,
+  SalariosRoute: SalariosRoute,
+  SaudeRoute: SaudeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

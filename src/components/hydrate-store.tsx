@@ -1,41 +1,134 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
+  getFinanceCloudVersion,
   loadFinanceCloud,
   saveFinanceCloud,
-  sliceFromStoreDetailed,
-  loadAlunoFotos,
+  loadAlunoFotosMeta,
   saveAlunoFoto,
+  reserveDocNumbers,
   type FinanceCloudPayload,
+  type SaveFinanceCloudResult,
 } from "@/lib/finance-cloud";
 import {
   useFinance,
-  alunosAll,
-  persistAlunosCensoLocal,
-  SEED_ALUNO_IDS,
-  normalizeNomeAluno,
   recalcularClassesMatriculas,
   reporPropinasFromMatriculas,
+  sanearAlunosDuplicados,
+  sincronizarCadastro,
 } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
-import type { Aluno } from "@/data/types";
+import {
+  applyAlunoFotoTombstones,
+  applyPeerState,
+  applyRemoteFotos,
+  applyRemotePayload,
+  buildPushPayload,
+  localFotosToUpload,
+  seedEscolaContactoFromLocal,
+} from "@/lib/cloud-apply";
+import { setDocNumberReserver } from "@/lib/doc-numbers";
 
 const LOCAL_TS_KEY = "ecc-financeiro-cloud-ts";
+/**
+ * Versão da nuvem que ESTE separador conhece (base do optimistic lock).
+ * sessionStorage = por separador: dois separadores no mesmo PC não partilham a base.
+ */
+const LOCAL_ISO_KEY = "ecc-financeiro-cloud-updated-at";
+const DIRTY_KEY = "ecc-financeiro-dirty";
+const PERSIST_KEY = "ecc-financeiro-v3";
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
 const CARTE_SCOLAIRE_MIGRATE_KEY = "ecc-carte-scolaire-v1"; // sexo + lieu de naissance + cartão FR
+/** Primeira abertura desta versão adopta a Neon restaurada e não empurra a cache antiga. */
+const NEON_AUTHORITY_KEY = "ecc-neon-authority-20261007";
+/** Verificação periódica da nuvem com o separador visível (só lê updated_at; payload só se mudou). */
+const PERIODIC_PULL_MS = 45_000;
+const PUSH_DEBOUNCE_MS = 1_200;
+const MAX_CONFLICT_RETRIES = 5;
+
+/** >0 enquanto aplicamos dados remotos (nuvem / outro separador) — não dispara push. */
+let remoteApplyDepth = 0;
+function withRemoteApply<R>(fn: () => R): R {
+  remoteApplyDepth++;
+  try {
+    return fn();
+  } finally {
+    remoteApplyDepth--;
+  }
+}
+
+function getKnownIso(): string | undefined {
+  try {
+    return sessionStorage.getItem(LOCAL_ISO_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+function setKnownIso(iso: string | undefined) {
+  if (!iso) return;
+  try {
+    sessionStorage.setItem(LOCAL_ISO_KEY, iso);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(LOCAL_TS_KEY, String(Date.parse(iso) || Date.now()));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Contador de alterações locais (para saber se o push apanhou tudo). */
+let localChangeSeq = 0;
+function markDirty() {
+  localChangeSeq++;
+  try {
+    localStorage.setItem(DIRTY_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+function isDirty(): boolean {
+  try {
+    return localStorage.getItem(DIRTY_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+function clearDirtyIf(seqAtStart: number) {
+  if (localChangeSeq !== seqAtStart) return;
+  try {
+    localStorage.removeItem(DIRTY_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+let bc: BroadcastChannel | null = null;
+function channel(): BroadcastChannel | null {
+  if (bc) return bc;
+  try {
+    bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("ecc-finance-sync") : null;
+  } catch {
+    bc = null;
+  }
+  return bc;
+}
 
 /**
- * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório):
+ * Continuidade multi-dispositivo (telemóvel ↔ PC do escritório ↔ vários separadores):
  * 1) Rehidrata localStorage
- * 2) Carrega nuvem e funde com local (nunca perde registos de um lado)
- * 3) Em cada alteração local, grava na nuvem (debounce 1,2 s)
- * 4) Ao voltar ao separador / rede, puxa de novo a nuvem
+ * 2) Carrega nuvem e funde com local (campo a campo; tombstones; o local ganha empates)
+ * 3) Em cada alteração local, grava na nuvem (debounce 1,2 s, optimistic lock + retry crescente)
+ * 4) Ao voltar ao separador / rede, e a cada 45 s com o separador visível, verifica a nuvem
+ * 5) Outro separador gravou o localStorage → funde em memória (evento 'storage')
  *
  * Requisito: DATABASE_URL (Neon) em produção — sem isso só há PGLite no servidor
  * de preview e o telemóvel/PC podem não partilhar o mesmo backend.
  */
 export function HydrateStore() {
-  const applyingRemote = useRef(false);
   const ready = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPull = useRef(0);
@@ -43,64 +136,12 @@ export function HydrateStore() {
   useEffect(() => {
     let unsub: (() => void) | undefined;
     let cancelled = false;
+    let periodic: ReturnType<typeof setInterval> | null = null;
 
-    async function pullAndMerge(reason: string) {
-      try {
-        const [remote, remoteFotos] = await Promise.all([
-          loadFinanceCloud(),
-          loadAlunoFotos().catch(() => ({} as Record<string, string>)),
-        ]);
-        if (cancelled) return;
-        const remoteTs = Date.parse(remote.updatedAt) || 0;
-        const hasRemote =
-          remoteTs > 0 &&
-          (remote.payload.alunosExtra?.length ||
-            remote.payload.alunosCenso?.length ||
-            remote.payload.extras?.length ||
-            remote.payload.mensalidades?.length ||
-            remote.payload.salariosExtra?.length ||
-            remote.payload.fundoExtra?.length ||
-            remote.payload.recibosSalario?.length ||
-            remote.payload.movimentosBaiExtra?.length ||
-            Object.keys(remote.payload.alunosOverrides || {}).length ||
-            Object.keys(remote.payload.salariosOverrides || {}).length);
-
-        applyingRemote.current = true;
-        if (hasRemote) {
-          // Sempre funde (merge por id) — não sobrescreve o lado local
-          applyPayload(remote.payload);
-          localStorage.setItem(LOCAL_TS_KEY, String(Math.max(remoteTs, Date.now())));
-        }
-        // Fotos na tabela dedicada — aplicar sempre (mesmo sem outros dados remotos)
-        if (remoteFotos && Object.keys(remoteFotos).length > 0) {
-          applyAlunoFotos(remoteFotos);
-        }
-        try {
-          reporPropinasFromMatriculas();
-        } catch (e) {
-          console.warn("[propinas-dedupe]", e);
-        }
-        applyingRemote.current = false;
-        lastPull.current = Date.now();
-        if (reason === "boot" && (hasRemote || Object.keys(remoteFotos || {}).length > 0)) {
-          toast.message(
-            remote.source === "neon"
-              ? "Dados sincronizados da nuvem — pode continuar neste dispositivo"
-              : "Dados sincronizados (servidor de pré-visualização)",
-          );
-        }
-        // Após fundir, envia o estado unificado para a nuvem (+ fotos locais em falta)
-        if (hasLocalData() || hasRemote) {
-          await pushCloud();
-        }
-        await pushLocalAlunoFotos(remoteFotos || {});
-      } catch (e) {
-        console.warn("[cloud] load", e);
-        if (reason === "boot") {
-          toast.message("Sem nuvem — a trabalhar só neste dispositivo (offline)");
-        }
-      }
-    }
+    setDocNumberReserver(async (scope, count, floor) => {
+      const r = await reserveDocNumbers({ data: { scope, count, floor } } as never);
+      return r?.ok && r.first != null && r.last != null ? { first: r.first, last: r.last } : null;
+    });
 
     async function boot() {
       try {
@@ -109,9 +150,16 @@ export function HydrateStore() {
         /* ignore */
       }
       if (cancelled) return;
+      try {
+        seedEscolaContactoFromLocal();
+      } catch {
+        /* ignore */
+      }
 
       await pullAndMerge("boot");
+      lastPull.current = Date.now();
       ready.current = true;
+      const stateBeforeMigrations = useFinance.getState();
 
       // Migração única: recalcular classes Congo-Brazzaville e persistir na nuvem
       try {
@@ -193,13 +241,22 @@ export function HydrateStore() {
         console.warn("[classes-congo] migrate", e);
       }
 
+      if (useFinance.getState() !== stateBeforeMigrations) markDirty();
       unsub = useFinance.subscribe(() => {
-        if (!ready.current || applyingRemote.current) return;
+        if (!ready.current || remoteApplyDepth > 0) return;
+        markDirty();
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(() => {
           void pushCloud();
-        }, 1200);
+        }, PUSH_DEBOUNCE_MS);
       });
+      // Alterações feitas pelas migrações acima (antes de subscrever) também seguem.
+      if (isDirty()) void pushCloud();
+
+      periodic = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        void checkCloudVersion("periodic");
+      }, PERIODIC_PULL_MS);
     }
 
     void boot();
@@ -208,20 +265,44 @@ export function HydrateStore() {
     function onVisible() {
       if (document.visibilityState !== "visible") return;
       if (Date.now() - lastPull.current < 8000) return;
-      void pullAndMerge("focus");
+      lastPull.current = Date.now();
+      void checkCloudVersion("focus");
     }
     function onOnline() {
       void pullAndMerge("online");
     }
+    /** Outro separador deste PC gravou o estado → fundir (não sobrescrever). */
+    function onStorage(e: StorageEvent) {
+      if (e.storageArea !== localStorage || e.key !== PERSIST_KEY || !e.newValue || !ready.current) return;
+      try {
+        const parsed = JSON.parse(e.newValue) as { state?: Record<string, unknown> };
+        if (!parsed?.state) return;
+        withRemoteApply(() => applyPeerState(parsed.state!));
+      } catch (err) {
+        console.warn("[tabs] storage merge", err);
+      }
+    }
+    function onChannel(ev: MessageEvent) {
+      const d = ev.data as { type?: string; updatedAt?: string } | null;
+      if (d?.type !== "cloud-saved" || !ready.current) return;
+      // Outro separador gravou na nuvem: a nossa base de lock fica desactualizada → verificar.
+      if (d.updatedAt && d.updatedAt !== getKnownIso()) void checkCloudVersion("tab");
+    }
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", onOnline);
+    window.addEventListener("storage", onStorage);
+    channel()?.addEventListener("message", onChannel);
 
     return () => {
       cancelled = true;
       unsub?.();
       if (timer.current) clearTimeout(timer.current);
+      if (periodic) clearInterval(periodic);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
+      window.removeEventListener("storage", onStorage);
+      channel()?.removeEventListener("message", onChannel);
+      setDocNumberReserver(null);
     };
   }, []);
 
@@ -241,542 +322,232 @@ function hasLocalData(): boolean {
   );
 }
 
-
-/** Mantém movimentos gerados na app — não congela extrato BAI antigo importado. */
-function sanitizeBaiExtra(extra: unknown[]): unknown[] {
-  return (extra || []).filter((row) => {
-    const m = row as { id?: string; banco?: string };
-    const id = String(m?.id || "");
-    const banco = String(m?.banco || "");
-    return (
-      id.startsWith("APP-") ||
-      id.startsWith("ATM-MAN-") ||
-      id.startsWith("INB-BAI-") ||
-      id.startsWith("APP-INB-") ||
-      banco === "SALARIO-APP" ||
-      banco === "PROPINA-APP" ||
-      banco.startsWith("INBOX-")
-    );
-  });
+function payloadHasData(p: FinanceCloudPayload): boolean {
+  return Boolean(
+    p.alunosExtra?.length ||
+      p.alunosCenso?.length ||
+      p.extras?.length ||
+      p.mensalidades?.length ||
+      p.salariosExtra?.length ||
+      p.fundoExtra?.length ||
+      p.recibosSalario?.length ||
+      p.movimentosBaiExtra?.length ||
+      Object.keys(p.alunosOverrides || {}).length ||
+      Object.keys(p.salariosOverrides || {}).length ||
+      Object.keys(p.tombstones || {}).length,
+  );
 }
 
-function mergeRecibosPreferPago(local: unknown[], remote: unknown[]): never[] {
-  const map = new Map<string, Record<string, unknown>>();
-  for (const row of [...(remote || []), ...(local || [])]) {
-    const r = row as { id?: string; pago?: boolean };
-    if (!r?.id) continue;
-    const prev = map.get(r.id);
-    if (!prev) map.set(r.id, { ...r });
-    else map.set(r.id, { ...prev, ...r, pago: Boolean(prev.pago || r.pago) });
-  }
-  return Array.from(map.values()) as never[];
-}
+let pullInFlight: Promise<void> | null = null;
 
-function mergeById(local: unknown[], remote: unknown[]): never[] {
-  const map = new Map<string, unknown>();
-  for (const row of [...(remote || []), ...(local || [])]) {
-    const r = row as { id?: string };
-    if (r?.id) map.set(r.id, row);
-  }
-  return Array.from(map.values()) as never[];
-}
-
-function applyPayload(p: FinanceCloudPayload) {
-  const local = useFinance.getState();
-  // Fundir por id: nuvem + local (telemóvel e PC passam a ver os mesmos registos)
-  const remoteAlunos = mergeById(
-    (p.alunosCenso as never[]) || [],
-    (p.alunosExtra as never[]) || [],
-  );
-  const localAlunos = local.alunosExtra || [];
-  const alunosMerged = mergeById(localAlunos, remoteAlunos);
-  const docsAll = [
-    ...((local.documentosAluno as { alunoId?: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }[]) || []),
-    ...((p.documentosAluno as { alunoId?: string; alunoNome?: string; valor?: number; numero?: string; codigoVerificacao?: string; pagoEm?: string; emitidoEm?: string; modelo?: string }[]) || []),
-  ];
-  const idsComDocumento = new Set(
-    docsAll.map((d) => String(d.alunoId || "").trim()).filter(Boolean),
-  );
-  // PRIMEIRO: quem tem recibo no Arquivo NÃO fica apagado (corrige Nildo 4E-04)
-  const deletedAlunos = new Set(
-    [
-      ...((p.alunosDeletedIds as string[]) || []),
-      ...(local.alunosDeletedIds || []),
-    ].filter((id) => !idsComDocumento.has(id)),
-  );
-  // Extras: manter todos os não-seed; repor a partir do Arquivo se faltarem
-  const byId = new Map<string, Record<string, unknown>>();
-  for (const a of alunosMerged as { id?: string }[]) {
-    const id = String(a?.id || "").trim();
-    if (!id || SEED_ALUNO_IDS.has(id) || deletedAlunos.has(id)) continue;
-    byId.set(id, a as Record<string, unknown>);
-  }
-  // Materializar IDs do Arquivo em falta (1 vez, estável)
-  for (const d of docsAll) {
-    const id = String(d.alunoId || "").trim();
-    if (!id || SEED_ALUNO_IDS.has(id) || byId.has(id)) continue;
-    const nome = String(d.alunoNome || "").trim() || id;
-    const pref = id.split("-")[0] || "";
-    const turmaMap: Record<string, string> = {
-      PS: "Maternelle PS", MS: "Maternelle MS", GS: "Maternelle GS",
-      P1: "Maternelle P1", P2: "Maternelle P2", P3: "CI", P4: "CP", P5: "CE1",
-      CM1: "CM1", CM2: "CM2",
-      "6E": "6ème", "5E": "5ème", "4E": "4ème", "3E": "3ème",
-    };
-    byId.set(id, {
-      id,
-      nome,
-      turma: turmaMap[pref] || "",
-      grupo: ["6E","5E","4E","3E"].includes(pref) ? "Collège" : pref.startsWith("P") || pref in {PS:1,MS:1,GS:1} ? "Maternelle" : "Primaire",
-      liquido: Number(d.valor) || 0,
-      bruto: Number(d.valor) || 0,
-      recibo: d.numero || d.codigoVerificacao || "",
-      dataPag: d.pagoEm || d.emitidoEm || "",
-      statusPag: "pago",
-      inscricao: 0,
-      seguro: 0,
-      manuais: 0,
-      cadernos: 0,
-      uniforme: 0,
-      extras: 0,
-      curso: 0,
-      mensalidade1: 0,
-      propina: 0,
-      obs: "Materializado do Arquivo (recibo de matrícula)",
-      updatedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    });
-  }
-  // Enriquecer nome se ficha existir mas nome vazio/genérico
-  for (const d of docsAll) {
-    const id = String(d.alunoId || "").trim();
-    if (!id || !byId.has(id)) continue;
-    const cur = byId.get(id)!;
-    const nomeDoc = String(d.alunoNome || "").trim();
-    const nomeCur = String(cur.nome || "").trim();
-    if (nomeDoc && (!nomeCur || nomeCur === id || /^aluno\s/i.test(nomeCur))) {
-      byId.set(id, {
-        ...cur,
-        nome: nomeDoc,
-        liquido: Number(cur.liquido) > 0 ? cur.liquido : Number(d.valor) || 0,
-        recibo: cur.recibo || d.numero || d.codigoVerificacao || "",
-        statusPag: cur.statusPag || "pago",
-      });
+/** Pede só o updated_at; se a nuvem mudou (ou temos alterações por enviar), faz pull completo. */
+async function checkCloudVersion(reason: string) {
+  try {
+    const v = await getFinanceCloudVersion();
+    if (v?.updatedAt && v.updatedAt === getKnownIso()) {
+      if (isDirty() && !pushInFlight) void pushCloud();
+      return;
     }
-  }
-
-  // Garantir 4E-04 Nildo no merge da nuvem
-  if (!byId.has("4E-04")) {
-    const dN = docsAll.find((d) => d.alunoId === "4E-04");
-    const nomeN = String(dN?.alunoNome || "").trim() || "Nildo Azael Fortunato José";
-    byId.set("4E-04", {
-      id: "4E-04",
-      nome: nomeN,
-      turma: "4ème",
-      grupo: "Collège",
-      liquido: Number(dN?.valor) > 0 ? Number(dN?.valor) : 202000,
-      bruto: Number(dN?.valor) > 0 ? Number(dN?.valor) : 202000,
-      recibo: dN?.numero || dN?.codigoVerificacao || "REC-EF051-2026-10",
-      dataPag: dN?.pagoEm || dN?.emitidoEm || "2026-09-23",
-      statusPag: "pago",
-      inscricao: 0,
-      seguro: 0,
-      manuais: 0,
-      cadernos: 0,
-      uniforme: 0,
-      extras: 0,
-      curso: 0,
-      mensalidade1: 0,
-      propina: 0,
-      obs: "Ficha forçada (4E-04 · Nildo)",
-      updatedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    });
-  } else {
-    const cur = byId.get("4E-04")!;
-    const dN = docsAll.find((d) => d.alunoId === "4E-04");
-    const nomeN = String(dN?.alunoNome || cur.nome || "").trim() || "Nildo Azael Fortunato José";
-    byId.set("4E-04", { ...cur, nome: nomeN, turma: cur.turma || "4ème", statusPag: cur.statusPag || "pago" });
-  }
-
-  const extrasMerged = mergeById(
-    (local.extras as never[]) || [],
-    (p.extras as never[]) || [],
-  );
-  const mensMerged = mergeById(
-    (local.mensalidades as never[]) || [],
-    (p.mensalidades as never[]) || [],
-  );
-  const salExtraMerged = mergeById(
-    (local.salariosExtra as never[]) || [],
-    (p.salariosExtra as never[]) || [],
-  );
-  useFinance.setState({
-    extras: extrasMerged as never[],
-    alunosExtra: Array.from(byId.values()) as never[],
-    alunosOverrides: mergeAlunoOverrides(
-      local.alunosOverrides || {},
-      (p.alunosOverrides as Record<string, Record<string, unknown>>) || {},
-    ) as never,
-    alunosDeletedIds: Array.from(deletedAlunos).filter((id) => id !== "4E-04"),
-    mensalidades: mensMerged as never[],
-    fundoExtra: mergeById(
-      (local.fundoExtra as never[]) || [],
-      (p.fundoExtra as never[]) || [],
-    ) as never[],
-    fundoAtmExtra: mergeById(
-      (local.fundoAtmExtra as never[]) || [],
-      (p.fundoAtmExtra as never[]) || [],
-    ) as never[],
-    movimentosBaiExtra: sanitizeBaiExtra(
-      mergeById(local.movimentosBaiExtra || [], (p.movimentosBaiExtra as never[]) || []),
-    ) as never[],
-    movimentosBaiDeletedIds: Array.from(
-      new Set([
-        ...((p.movimentosBaiDeletedIds as string[]) || []),
-        ...(local.movimentosBaiDeletedIds || []),
-      ]),
-    ),
-    baiOverride: Boolean(p.baiOverride) || Boolean(local.baiOverride),
-    fotos: { ...(local.fotos || {}), ...(p.fotos || {}) },
-    operators: p.operators?.length ? p.operators : local.operators,
-    auditLog: mergeById(
-      (local.auditLog as never[]) || [],
-      (p.auditLog as never[]) || [],
-    ) as never[],
-    sessionLog: (p.sessionLog as never[]) || local.sessionLog || [],
-    salariosExtra: salExtraMerged as never[],
-    salariosOverrides: {
-      ...(local.salariosOverrides || {}),
-      ...((p.salariosOverrides as never) || {}),
-    } as never,
-    salariosDeletedIds: Array.from(
-      new Set([
-        ...((p.salariosDeletedIds as string[]) || []),
-        ...(local.salariosDeletedIds || []),
-      ]),
-    ),
-    recibosSalario: mergeRecibosPreferPago(local.recibosSalario || [], p.recibosSalario || []),
-    documentosAlunoDeletedIds: Array.from(
-      new Set([
-        ...((local.documentosAlunoDeletedIds as string[]) || []),
-        ...((p.documentosAlunoDeletedIds as string[]) || []),
-      ]),
-    ),
-    faturasPropina: (() => {
-      const deleted = Array.from(
-        new Set([
-          ...((local.documentosAlunoDeletedIds as string[]) || []),
-          ...((p.documentosAlunoDeletedIds as string[]) || []),
-        ]),
-      );
-      const merged = mergeById(
-        local.faturasPropina || [],
-        (p.faturasPropina as never[]) || [],
-      ) as { id?: string; numero?: string }[];
-      if (!deleted.length) return merged as never[];
-      const set = new Set(deleted);
-      return merged.filter((f) => {
-        if (f.id && set.has(f.id)) return false;
-        const num = (f.numero || "").trim().toUpperCase().replace(/\s+/g, "");
-        if (num && set.has(`num:${num}`)) return false;
-        if (f.numero && set.has(`fat-legacy-${f.numero}`)) return false;
-        return true;
-      }) as never[];
-    })(),
-    uiPrefs: {
-      ...(local.uiPrefs || {}),
-      ...((p.uiPrefs as Record<string, string>) || {}),
-    },
-    inboxItems: mergeById(
-      (local.inboxItems as never[]) || [],
-      (p.inboxItems as never[]) || [],
-    ) as never[],
-    crmEnvios: mergeById(
-      (local.crmEnvios as never[]) || [],
-      (p.crmEnvios as never[]) || [],
-    ) as never[],
-    codigosRecibo: (() => {
-      const deleted = Array.from(
-        new Set([
-          ...((local.documentosAlunoDeletedIds as string[]) || []),
-          ...((p.documentosAlunoDeletedIds as string[]) || []),
-        ]),
-      );
-      const merged = mergeById(
-        (local.codigosRecibo as never[]) || [],
-        (p.codigosRecibo as never[]) || [],
-      ) as { id?: string; codigo?: string }[];
-      if (!deleted.length) return merged as never[];
-      const set = new Set(deleted);
-      return merged.filter((c) => {
-        if (c.id && set.has(c.id)) return false;
-        const cod = (c.codigo || "").trim().toUpperCase().replace(/\s+/g, "");
-        if (cod && set.has(`cod:${cod}`)) return false;
-        if (c.codigo && set.has(`rc-legacy-${c.codigo}`)) return false;
-        return true;
-      }) as never[];
-    })(),
-    documentosAluno: (() => {
-      const deleted = Array.from(
-        new Set([
-          ...((local.documentosAlunoDeletedIds as string[]) || []),
-          ...((p.documentosAlunoDeletedIds as string[]) || []),
-        ]),
-      );
-      const merged = mergeById(
-        (local.documentosAluno as never[]) || [],
-        (p.documentosAluno as never[]) || [],
-      ) as {
-        id?: string;
-        numero?: string;
-        codigoVerificacao?: string;
-        faturaNumero?: string;
-      }[];
-      if (!deleted.length) return merged as never[];
-      const set = new Set(deleted);
-      return merged.filter((d) => {
-        if (d.id && set.has(d.id)) return false;
-        const num = (d.numero || "").trim().toUpperCase().replace(/\s+/g, "");
-        if (num && set.has(`num:${num}`)) return false;
-        if (d.numero && set.has(`fat-legacy-${d.numero}`)) return false;
-        const cod = (d.codigoVerificacao || "").trim().toUpperCase().replace(/\s+/g, "");
-        if (cod && set.has(`cod:${cod}`)) return false;
-        if (d.codigoVerificacao && set.has(`rc-legacy-${d.codigoVerificacao}`)) return false;
-        const fatNum = (d.faturaNumero || "").trim().toUpperCase().replace(/\s+/g, "");
-        if (fatNum && set.has(`num:${fatNum}`)) return false;
-        return true;
-      }) as never[];
-    })(),
-    contaCorrente: mergeById(
-      (local.contaCorrente as never[]) || [],
-      (p.contaCorrente as never[]) || [],
-    ) as never[],
-  });
-  try {
-    persistAlunosCensoLocal(
-      alunosAll(
-        useFinance.getState().alunosExtra || [],
-        useFinance.getState().alunosOverrides || {},
-        useFinance.getState().alunosDeletedIds || [],
-      ),
-    );
-  } catch (e) {
-    console.warn("[censo-local] apply", e);
-  }
-  // Alinha botões com extrato após aplicar nuvem
-  try {
-    useFinance.getState().reconcileSalariosBai?.();
   } catch {
-    /* ignore */
+    /* sem rede: tenta o pull completo (vai falhar em silêncio) */
   }
+  await pullAndMerge(reason);
+}
+
+/** Puxa a nuvem, funde com o local e (se houver alterações locais) envia o estado unificado. */
+async function pullAndMerge(reason: string): Promise<void> {
+  if (pullInFlight) return pullInFlight;
+  pullInFlight = (async () => {
+    try {
+      const [remote, remoteFotos] = await Promise.all([
+        loadFinanceCloud(),
+        loadAlunoFotosMeta().catch(() => ({}) as Record<string, { dataUrl: string; updatedAt: string }>),
+      ]);
+      const remoteTs = Date.parse(remote.updatedAt) || 0;
+      const hasRemote = remoteTs > 0 && payloadHasData(remote.payload);
+      // Outro PC, outro seed ou cache antiga: no arranque a Neon manda sempre.
+      const adoptNeon = reason === "boot" && hasRemote;
+      withRemoteApply(() => {
+        if (hasRemote) applyRemotePayload(remote.payload, adoptNeon ? { authoritative: true } : undefined);
+        if (remoteFotos && Object.keys(remoteFotos).length > 0) applyRemoteFotos(remoteFotos);
+        applyAlunoFotoTombstones();
+      });
+      if (remoteTs > 0) setKnownIso(remote.updatedAt);
+      // Rotinas de coerência: se mudarem algo, o subscribe marca "dirty" e envia.
+      try {
+        reporPropinasFromMatriculas();
+      } catch (e) {
+        console.warn("[propinas-dedupe]", e);
+      }
+      let fundidos = 0;
+      try {
+        const rSan = sanearAlunosDuplicados();
+        const rSync = { fundidos: 0, detalhes: [] as string[] };
+        fundidos = rSync.fundidos;
+        if (rSan.removidos > 0 || rSync.fundidos > 0) {
+          console.warn(
+            `[cloud] cadastro: ${rSync.alunos} aluno(s), ${rSync.fundidos} duplicado(s) fundido(s)`,
+            rSync.detalhes.slice(0, 6),
+          );
+        }
+      } catch (e) {
+        console.warn("[alunos-dedupe]", e);
+      }
+      try {
+        useFinance.getState().reconcileSalariosBai?.();
+      } catch {
+        /* ignore */
+      }
+      if (reason === "boot" && (hasRemote || Object.keys(remoteFotos || {}).length > 0)) {
+        toast.message(
+          remote.source === "neon"
+            ? "Dados sincronizados da nuvem — pode continuar neste dispositivo"
+            : "Dados sincronizados (servidor de pré-visualização)",
+        );
+      }
+      // Primeira abertura: a Neon restaurada manda. Não reenviar a cache que criou fichas falsas.
+      if (adoptNeon) {
+        try {
+          localStorage.setItem(NEON_AUTHORITY_KEY, "1");
+          localStorage.removeItem(DIRTY_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
+      // Duplicados apagados têm de ir para a Neon; senão o próximo PC volta a mostrar 73.
+      if (!adoptNeon && (fundidos > 0 || isDirty())) {
+        await pushCloud();
+      }
+      await pushLocalAlunoFotos(remoteFotos || {});
+    } catch (e) {
+      console.warn("[cloud] load", e);
+      if (reason === "boot") {
+        toast.message("Sem nuvem — a trabalhar só neste dispositivo (offline)");
+      }
+    } finally {
+      pullInFlight = null;
+    }
+  })();
+  return pullInFlight;
 }
 
 /** Evita spam de toasts se a nuvem falhar várias vezes seguidas. */
 let lastCloudErrorToast = 0;
+let lastConflictToast = 0;
+let pushInFlight: Promise<PushResult> | null = null;
+let pushQueued = false;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let networkFailures = 0;
 
-export async function pushFinanceNow() {
+export type PushResult = { ok: boolean; conflict?: boolean; updatedAt?: string; error?: string };
+
+export async function pushFinanceNow(): Promise<PushResult> {
   return pushCloud();
 }
 
-async function pushCloud() {
-  try {
-    const state = useFinance.getState();
-    const { payload } = sliceFromStoreDetailed(state);
-    const censo = alunosAll(
-      state.alunosExtra || [],
-      state.alunosOverrides || {},
-      state.alunosDeletedIds || [],
-    ).map((a) => {
-      const { foto: _omit, ...rest } = a as Aluno & { foto?: string };
-      return rest;
-    });
-    payload.alunosCenso = censo;
-    payload.alunosExtra = censo.filter((a) => a.id && !SEED_ALUNO_IDS.has(a.id));
-    persistAlunosCensoLocal(censo as never);
-    const res = await saveFinanceCloud({ data: payload });
-    if (res?.updatedAt) {
-      localStorage.setItem(LOCAL_TS_KEY, String(Date.parse(res.updatedAt) || Date.now()));
-    } else {
-      localStorage.setItem(LOCAL_TS_KEY, String(Date.now()));
-    }
-  } catch (e) {
-    console.warn("[cloud] save", e);
-    const msg = e instanceof Error ? e.message : String(e || "");
-    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-    if (Date.now() - lastCloudErrorToast > 15_000) {
-      lastCloudErrorToast = Date.now();
-      if (offline) {
-        toast.message("Sem rede — dados guardados só neste dispositivo. Sincronizam quando houver internet.");
-      } else if (/fetch|network|Failed to fetch|413|payload|body|too large|JSON/i.test(msg)) {
-        toast.error(
-          "Falha ao gravar na nuvem (dados demasiado grandes ou rede). Os dados ficam neste PC; tente de novo.",
-        );
-      } else {
-        toast.error(
-          "Não foi possível sincronizar com a nuvem. Os dados continuam guardados neste dispositivo.",
-        );
-      }
-    }
-  }
+/** Envia já para a nuvem (usado por "Forçar envio" em Google/Exportar). Usa expectedUpdatedAt. */
+export async function forcePushFinanceCloud(): Promise<PushResult> {
+  return pushCloud();
 }
 
-/** Funde overrides preservando a foto se um dos lados a tiver. */
-function mergeAlunoOverrides(
-  local: Record<string, Record<string, unknown> | Partial<Record<string, unknown>>>,
-  remote: Record<string, Record<string, unknown>>,
-): Record<string, unknown> {
-  const ids = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
-  const out: Record<string, unknown> = {};
-  /** Campos de contacto / ficha: nunca deixar string vazia da nuvem apagar valor local (ou vice-versa). */
-  const preserveKeys = [
-    "telefone",
-    "email",
-    "dataNascimento",
-    "pai",
-    "mae",
-    "encarregado",
-    "morada",
-    "bi",
-    "familia",
-    "turma",
-    "obs",
-    "dataPag",
-    "nome",
-    "docsEntregues",
-  ];
-  const ts = (o: Record<string, unknown>) => {
-    const v = o.updatedAt;
-    if (typeof v === "string" && v) {
-      const n = Date.parse(v);
-      return Number.isFinite(n) ? n : 0;
-    }
-    return 0;
-  };
-  const nonEmpty = (v: unknown) =>
-    v != null && v !== "" && !(typeof v === "number" && Number.isNaN(v));
-
-  for (const id of ids) {
-    const L = (local?.[id] || {}) as Record<string, unknown>;
-    const R = (remote?.[id] || {}) as Record<string, unknown>;
-    const Lt = ts(L);
-    const Rt = ts(R);
-    // Base: o mais recente por updatedAt; se iguais, local por cima
-    const merged: Record<string, unknown> =
-      Rt > Lt ? { ...L, ...R } : { ...R, ...L };
-
-    for (const key of preserveKeys) {
-      if (!nonEmpty(merged[key])) {
-        if (nonEmpty(L[key])) merged[key] = L[key];
-        else if (nonEmpty(R[key])) merged[key] = R[key];
-      }
-    }
-    // Números de matrícula: preferir o lado mais recente se ambos existem
-    for (const key of [
-      "inscricao",
-      "seguro",
-      "propina",
-      "liquido",
-      "bruto",
-      "manuais",
-      "cadernos",
-      "uniforme",
-      "extras",
-      "transporte",
-      "alimentacao",
-      "curso",
-      "cartaoEstudante",
-      "mensalidade1",
-      "mesesPropina",
-      "descPct",
-    ]) {
-      if (merged[key] == null || merged[key] === "") {
-        if (L[key] != null && L[key] !== "") merged[key] = L[key];
-        else if (R[key] != null && R[key] !== "") merged[key] = R[key];
-      }
-    }
-
-    const foto =
-      (typeof merged.foto === "string" && merged.foto) ||
-      (typeof R.foto === "string" && R.foto) ||
-      (typeof L.foto === "string" && L.foto) ||
-      undefined;
-    if (foto) merged.foto = foto;
-    else delete merged.foto;
-
-    // updatedAt = o mais recente
-    if (Lt || Rt) {
-      merged.updatedAt = Lt >= Rt ? L.updatedAt || R.updatedAt : R.updatedAt || L.updatedAt;
-    }
-    out[id] = merged;
+/** Uma gravação de cada vez; pedidos durante uma gravação juntam-se numa só a seguir. */
+function pushCloud(): Promise<PushResult> {
+  if (pushInFlight) {
+    pushQueued = true;
+    return pushInFlight;
   }
-  return out;
+  pushInFlight = (async () => {
+    try {
+      return await pushCloudOnce();
+    } finally {
+      pushInFlight = null;
+      if (pushQueued) {
+        pushQueued = false;
+        void pushCloud();
+      }
+    }
+  })();
+  return pushInFlight;
 }
 
-/** Aplica fotos da tabela `aluno_fotos` aos overrides / extras locais. */
-function applyAlunoFotos(fotos: Record<string, string>) {
-  const state = useFinance.getState();
-  const overrides = { ...(state.alunosOverrides || {}) } as Record<
-    string,
-    Record<string, unknown>
-  >;
-  let extras = [...(state.alunosExtra || [])];
-  let changed = false;
+function scheduleRetry(ms: number) {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void pushCloud();
+  }, ms);
+}
 
-  for (const [id, dataUrl] of Object.entries(fotos)) {
-    if (!id || !dataUrl) continue;
-    const extraIdx = extras.findIndex((a) => a.id === id);
-    if (extraIdx >= 0) {
-      if (extras[extraIdx].foto !== dataUrl) {
-        extras = extras.map((a, i) => (i === extraIdx ? { ...a, foto: dataUrl } : a));
-        changed = true;
+async function pushCloudOnce(): Promise<PushResult> {
+  const seqAtStart = localChangeSeq;
+  for (let attempt = 0; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
+    try {
+      const payload = buildPushPayload();
+      const expectedUpdatedAt = getKnownIso();
+      const res = (await saveFinanceCloud({
+        data: { ...payload, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}) } as never,
+      })) as SaveFinanceCloudResult;
+      networkFailures = 0;
+      if (res?.ok && res.updatedAt) {
+        setKnownIso(res.updatedAt);
+        clearDirtyIf(seqAtStart);
+        channel()?.postMessage({ type: "cloud-saved", updatedAt: res.updatedAt });
+        return { ok: true, updatedAt: res.updatedAt };
       }
-    } else {
-      const prev = overrides[id] || {};
-      if (prev.foto !== dataUrl) {
-        overrides[id] = { ...prev, foto: dataUrl };
-        changed = true;
+      if (res?.conflict) {
+        // Outro dispositivo gravou: fundir o que está na nuvem e tentar de novo (espera crescente).
+        if (res.payload) withRemoteApply(() => applyRemotePayload(res.payload!));
+        if (res.updatedAt) setKnownIso(res.updatedAt);
+        if (attempt < MAX_CONFLICT_RETRIES) {
+          await sleep(Math.min(8000, 400 * 2 ** attempt) + Math.floor(Math.random() * 300));
+          continue;
+        }
+        if (Date.now() - lastConflictToast > 60_000) {
+          lastConflictToast = Date.now();
+          toast.warning(
+            "Outro computador está a gravar ao mesmo tempo. Os seus dados estão guardados neste computador; nova tentativa automática em 30 s.",
+          );
+        }
+        scheduleRetry(30_000);
+        return { ok: false, conflict: true, updatedAt: res.updatedAt };
       }
+      return { ok: false, error: "Resposta inválida da nuvem" };
+    } catch (e) {
+      console.warn("[cloud] save", e);
+      networkFailures++;
+      const msg = e instanceof Error ? e.message : String(e || "");
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      if (Date.now() - lastCloudErrorToast > 15_000) {
+        lastCloudErrorToast = Date.now();
+        if (offline) {
+          toast.message("Sem rede — dados guardados só neste dispositivo. Sincronizam quando houver internet.");
+        } else if (/fetch|network|Failed to fetch|413|payload|body|too large|JSON/i.test(msg)) {
+          toast.error(
+            "Falha ao gravar na nuvem (dados demasiado grandes ou rede). Os dados ficam neste PC; nova tentativa automática.",
+          );
+        } else {
+          toast.error("Não foi possível sincronizar com a nuvem. Os dados continuam guardados neste dispositivo.");
+        }
+      }
+      // Espera crescente: 5 s, 10 s, 20 s … até 5 min (o evento 'online' também volta a tentar).
+      if (!offline) scheduleRetry(Math.min(300_000, 5_000 * 2 ** Math.min(6, networkFailures - 1)));
+      return { ok: false, error: msg };
     }
   }
-  if (changed) {
-    useFinance.setState({
-      alunosOverrides: overrides as never,
-      alunosExtra: extras as never,
-    });
-  }
+  return { ok: false, conflict: true };
 }
 
 /**
- * Envia para a tabela dedicada as fotos que existem localmente
- * e ainda não estão (ou diferem) na nuvem.
+ * Envia para a tabela dedicada as fotos que existem localmente,
+ * ainda não estão (ou diferem) na nuvem e não foram apagadas depois.
  */
-async function pushLocalAlunoFotos(remoteFotos: Record<string, string>) {
+async function pushLocalAlunoFotos(remoteFotos: Record<string, { dataUrl: string }>) {
   try {
-    const state = useFinance.getState();
-    const localMap: Record<string, string> = {};
-
-    for (const a of state.alunosExtra || []) {
-      if (a?.id && typeof a.foto === "string" && a.foto.startsWith("data:image")) {
-        localMap[a.id] = a.foto;
-      }
-    }
-    for (const [id, ov] of Object.entries(state.alunosOverrides || {})) {
-      const foto = (ov as { foto?: string })?.foto;
-      if (typeof foto === "string" && foto.startsWith("data:image")) {
-        localMap[id] = foto;
-      }
-    }
-
-    const tasks: Promise<unknown>[] = [];
-    for (const [id, dataUrl] of Object.entries(localMap)) {
-      if (remoteFotos[id] === dataUrl) continue;
-      tasks.push(
-        saveAlunoFoto({ data: { id, dataUrl } }).catch((e) => {
-          console.warn("[aluno-fotos] save", id, e);
-        }),
-      );
-    }
+    const tasks = localFotosToUpload(remoteFotos).map(({ id, dataUrl }) =>
+      saveAlunoFoto({ data: { id, dataUrl } } as never).catch((e) => {
+        console.warn("[aluno-fotos] save", id, e);
+      }),
+    );
     if (tasks.length) await Promise.all(tasks);
   } catch (e) {
     console.warn("[aluno-fotos] pushLocal", e);

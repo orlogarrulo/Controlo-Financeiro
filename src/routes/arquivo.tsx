@@ -786,7 +786,7 @@ function ArquivoPage() {
     <div className="space-y-6">
       <PageHeader
         title="Arquivo"
-        description="Histórico de faturas e recibos por aluno · pesquisa · download · recibo a partir do n.º da fatura. Séries TPA/despesas mantidas."
+        description={`Recibos e faturas dos ${alunos.length} aluno(s) de Matrículas. Duplicado funde-se na ficha que fica. Pesquisa, PDF e recibo a partir da fatura.`}
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

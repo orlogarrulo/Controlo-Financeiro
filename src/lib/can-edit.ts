@@ -1,5 +1,6 @@
-/** PIN só do Colaborador 1 — não mostrar aos outros. */
+/** PIN de entrada por omissão (fallback se ainda não houver valor no store/nuvem). */
 export const EDIT_PIN = "1977";
+export const DEFAULT_ENTRY_PIN = EDIT_PIN;
 
 /** Mensagem padrão quando C2–C5 tentam editar. */
 export const VIEW_ONLY_MSG =
@@ -21,18 +22,55 @@ export function assertCanEdit(activeOperator: string, operators: string[]): void
   }
 }
 
-/** Sessão: colaborador escolhido neste browser. */
+/**
+ * PIN efectivo de entrada: valor guardado no store/nuvem, senão fallback 1977.
+ * Aceita string vazia/whitespace como «ainda sem valor».
+ */
+export function resolveEntryPin(stored?: string | null): string {
+  const t = typeof stored === "string" ? stored.trim() : "";
+  return t || DEFAULT_ENTRY_PIN;
+}
+
+/** Código do colaborador i (0 = C1). Senhas individuais; vazio usa o código antigo partilhado. */
+export function resolveOperatorPin(
+  prefs: { entryPin?: string | null; entryPins?: Array<string | null> } | null | undefined,
+  index: number,
+): string {
+  const list = prefs?.entryPins || [];
+  const own = index >= 0 && index < list.length ? String(list[index] || "").trim() : "";
+  if (own) return own;
+  return resolveEntryPin(prefs?.entryPin);
+}
+
+/** Sessão: colaborador escolhido neste browser (só válida até reload / trocar). */
 export const SESSION_KEY = "ecc-operator-session";
 
 export type OperatorSession = {
   name: string;
-  /** true só se Colaborador 1 validou o PIN 1977 */
+  /** true só se Colaborador 1 validou o PIN nesta entrada */
   adminUnlocked: boolean;
   at: string;
+  lastActivity?: number;
 };
+
+export const IDLE_LOCK_MS = 5 * 60 * 1000;
+
+export function touchSessionActivity() {
+  const s = readSession();
+  if (!s) return;
+  s.lastActivity = Date.now();
+  writeSession(s);
+}
+
+export function sessionStillActive(s: OperatorSession | null): boolean {
+  if (!s?.name) return false;
+  const at = Number(s.lastActivity || Date.parse(s.at) || 0);
+  return Date.now() - at < IDLE_LOCK_MS;
+}
 
 export function readSession(): OperatorSession | null {
   try {
+    if (typeof localStorage === "undefined") return null;
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as OperatorSession;
@@ -42,8 +80,17 @@ export function readSession(): OperatorSession | null {
 }
 
 export function writeSession(s: OperatorSession | null) {
+  if (typeof localStorage === "undefined") return;
   if (!s) localStorage.removeItem(SESSION_KEY);
   else localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+}
+
+/**
+ * Limpa a sessão sem reload — usado no arranque do gate para forçar PIN
+ * em cada abertura/reload.
+ */
+export function wipeOperatorSession() {
+  writeSession(null);
 }
 
 /** True se o Colaborador 1 já desbloqueou com PIN nesta sessão do browser. */
@@ -53,23 +100,19 @@ export function isAdminUnlocked(): boolean {
 }
 
 /**
- * Troca o colaborador ativo sem forçar novo login.
- * Se voltar ao Colaborador 1 e a sessão já tinha sido desbloqueada, mantém adminUnlocked.
+ * @deprecated Troca directa sem PIN — não usar.
+ * Qualquer mudança de colaborador deve limpar a sessão e voltar ao gate.
  */
-export function switchOperatorSession(name: string, operators: string[]) {
-  const prev = readSession();
-  const isFirst = isCollaborator1(name, operators);
-  const s: OperatorSession = {
-    name,
-    adminUnlocked: isFirst ? Boolean(prev?.adminUnlocked) : false,
-    at: new Date().toISOString(),
-  };
-  writeSession(s);
+export function switchOperatorSession(_name: string, _operators: string[]) {
+  wipeOperatorSession();
 }
 
+export const SESSION_END_EVENT = "ecc-operator-session-end";
+
+/** Termina a sessão e volta ao código de entrada. Não fica sessão aberta. */
 export function clearOperatorSession() {
-  writeSession(null);
-  if (typeof window !== "undefined") {
-    window.location.reload();
-  }
+  wipeOperatorSession();
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(SESSION_END_EVENT));
+  window.location.reload();
 }

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { alunoMatchesQuery, nomeComSufixoCampus } from "@/lib/aluno-display";
 import { NomeAluno } from "@/components/nome-aluno";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/kpi";
 import { Button } from "@/components/ui/button";
@@ -30,12 +30,11 @@ import {
   movimentosAll,
   alunosAll,
   salariosAll,
+  prepareNumerosCaptura,
 } from "@/lib/store";
 import { MESES_LETIVOS } from "@/data/types";
 import {
   loadFinanceCloud,
-  saveFinanceCloud,
-  sliceFromStore,
   listRegulamentoAcks,
   listInqueritoSaude,
   listAgendamentos,
@@ -73,6 +72,32 @@ function GooglePage() {
   const salarios = salariosAll(salariosExtra, salariosOverrides);
   const [cloudStatus, setCloudStatus] = useState<string>("");
   const [cloudBusy, setCloudBusy] = useState(false);
+  const [fotoRows, setFotoRows] = useState<AutorizacaoFotosCloud[]>([]);
+  const [fotoEstado, setFotoEstado] = useState("A ler a Neon…");
+
+  useEffect(() => {
+    let cancel = false;
+    void (async () => {
+      try {
+        const rows = await listAutorizacoesFotos();
+        if (cancel) return;
+        setFotoRows(rows);
+        setFotoEstado(
+          rows.length
+            ? `${rows.length} resposta(s) na Neon`
+            : "Neon ligada. Ainda não há respostas de autorização de fotos.",
+        );
+      } catch {
+        if (cancel) return;
+        setFotoRows([]);
+        setFotoEstado("Não foi possível ler a Neon. Confirme DATABASE_URL e volte a tentar.");
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
   const [lastExport, setLastExport] = useState<string | null>(null);
 
   const [paste, setPaste] = useState("");
@@ -380,8 +405,17 @@ function GooglePage() {
   async function forcePushCloud() {
     setCloudBusy(true);
     try {
-      const res = await saveFinanceCloud({ data: sliceFromStore(useFinance.getState()) });
-      setCloudStatus(`Enviado · ${new Date(res.updatedAt).toLocaleString("pt-PT")}`);
+      // Mesmo caminho do envio automático: expectedUpdatedAt (optimistic lock) + fusão + retry.
+      const { forcePushFinanceCloud } = await import("@/components/hydrate-store");
+      const res = await forcePushFinanceCloud();
+      if (!res.ok) {
+        throw new Error(
+          res.conflict
+            ? "Outro computador está a gravar ao mesmo tempo — os dados foram fundidos; tente de novo dentro de instantes."
+            : res.error || "Falha ao enviar para a nuvem",
+        );
+      }
+      setCloudStatus(`Enviado · ${new Date(res.updatedAt || Date.now()).toLocaleString("pt-PT")}`);
       toast.success("Dados enviados para a nuvem");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao enviar para a nuvem");
@@ -441,13 +475,21 @@ function GooglePage() {
     );
   }
 
-  function importLancamentosText(text: string) {
+  async function importLancamentosText(text: string) {
     if (!guardImport()) return;
     const rows = parseFormsCsv(text);
     if (!rows.length) {
       toast.error("Sem linhas de lançamentos.");
       return;
     }
+    // Reserva os n.ºs internos no servidor antes de importar (sem colisão entre PCs).
+    await prepareNumerosCaptura(
+      rows.map((r) => ({
+        tipo: r.tipo === "entrada" ? "entrada" : "despesa",
+        origem: "formulario",
+        data: r.data || todayIso(),
+      })),
+    );
     const n = importLanc(
       rows.map((r) => ({
         data: r.data || todayIso(),
@@ -592,7 +634,7 @@ function GooglePage() {
               variant={lastExport === "autorizacao-fotos" ? "default" : "secondary"}
               onClick={() => void exportAutorizacoesFotos()}
             >
-              Autorização de fotos
+              Respostas — autorização de fotos (Excel + PDF)
             </Button>
             <Button
               type="button"
@@ -605,6 +647,48 @@ function GooglePage() {
           <p className="mt-2 text-xs text-[var(--color-muted)]">
             Cada botão descarrega CSV e abre PDF A4 (pronto a imprimir, sem cortar). O botão fica verde após a exportação.
           </p>
+
+          <section className="mt-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-lg">Planilha — autorização de fotos</h3>
+              <Button type="button" size="sm" onClick={() => void exportAutorizacoesFotos()}>
+                Excel + PDF
+              </Button>
+            </div>
+            <p className="mt-1 text-xs text-[var(--color-muted)]">{fotoEstado}</p>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-xs">
+                <thead>
+                  <tr className="border-b text-[var(--color-muted)]">
+                    <th className="py-1 pr-2">Aluno</th>
+                    <th className="py-1 pr-2">Turma</th>
+                    <th className="py-1 pr-2">Decisão</th>
+                    <th className="py-1 pr-2">Responsável</th>
+                    <th className="py-1 pr-2">Tomei nota</th>
+                    <th className="py-1">Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fotoRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-3 text-[var(--color-muted)]">Sem linhas nesta folha.</td>
+                    </tr>
+                  ) : (
+                    fotoRows.map((r, i) => (
+                      <tr key={`${r.submittedAt}-${i}`} className="border-b border-[var(--color-line)]">
+                        <td className="py-1 pr-2">{r.alunoNome}</td>
+                        <td className="py-1 pr-2">{r.turma || "—"}</td>
+                        <td className="py-1 pr-2">{r.decisao === "sim" ? "Sim, autorizo" : "Não autorizo"}</td>
+                        <td className="py-1 pr-2">{r.responsavelNome}</td>
+                        <td className="py-1 pr-2">{r.tomeiNotaNome}</td>
+                        <td className="py-1">{r.data || r.submittedAt.slice(0, 10)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
           <p className="mt-3 text-xs text-[var(--color-muted)]">
             Saldo BAI: <strong>{formatKz(movsApp[movsApp.length - 1]?.saldo ?? 0)}</strong> ·{" "}
             {movsApp.length} linhas · {alunos.length} alunos · Conta {seed.escola.contaBai}.

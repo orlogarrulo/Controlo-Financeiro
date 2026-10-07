@@ -5,21 +5,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFinance, getSeed } from "@/lib/store";
 import {
-  EDIT_PIN,
   isCollaborator1,
+  IDLE_LOCK_MS,
+  resolveOperatorPin,
+  SESSION_END_EVENT,
   readSession,
+  sessionStillActive,
+  touchSessionActivity,
+  wipeOperatorSession,
   writeSession,
   type OperatorSession,
 } from "@/lib/can-edit";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 
 /**
- * Bloqueia a app até escolher colaborador.
- * Colaborador 1 exige PIN 1977 (campo só visível para ele).
- * Os outros entram sem código e sem ver o campo do PIN.
+ * Bloqueia a app até escolher colaborador e validar o código de entrada.
+ * Todos os colaboradores (C1–C5) precisam do PIN.
+ * Cada reload/abertura limpa a sessão e volta a pedir o código.
  */
 export function OperatorGate({ children }: { children: React.ReactNode }) {
   const operators = useFinance((s) => s.operators);
+  const entryPinStored = useFinance((s) => s.uiPrefs?.entryPin);
   const setActiveOperator = useFinance((s) => s.setActiveOperator);
   const pushSession = useFinance((s) => s.pushSession);
   const [ready, setReady] = useState(false);
@@ -30,13 +36,56 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
   const escola = getSeed().escola;
 
   useEffect(() => {
-    const s = readSession();
-    if (s?.name) {
-      setSession(s);
-      setActiveOperator(s.name);
+    const forceGate = () => {
+      wipeOperatorSession();
+      setSession(null);
+      setPin("");
+      setPick(null);
+      setErr("");
+    };
+    const existing = readSession();
+    if (sessionStillActive(existing)) {
+      setSession(existing);
+      touchSessionActivity();
+    } else if (existing) {
+      wipeOperatorSession();
     }
     setReady(true);
-  }, [setActiveOperator]);
+    let lastTick = Date.now();
+    let hiddenAt = 0;
+    const onActivity = () => {
+      if (document.visibilityState === "visible") touchSessionActivity();
+    };
+    const onHide = () => {
+      hiddenAt = Date.now();
+    };
+    const onShow = () => {
+      const gap = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      // Suspensão ou ecrã desligado: ao voltar pede o código.
+      if (gap > 15000) forceGate();
+    };
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      if (now - lastTick > 20000) forceGate();
+      lastTick = now;
+      const cur = readSession();
+      if (cur && !sessionStillActive(cur)) forceGate();
+    }, 5000);
+    window.addEventListener(SESSION_END_EVENT, forceGate);
+    window.addEventListener("pointerdown", onActivity);
+    window.addEventListener("keydown", onActivity);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") onHide();
+      else onShow();
+    });
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(SESSION_END_EVENT, forceGate);
+      window.removeEventListener("pointerdown", onActivity);
+      window.removeEventListener("keydown", onActivity);
+    };
+  }, []);
 
   if (!ready) {
     return (
@@ -50,35 +99,25 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  const isFirst = pick !== null && isCollaborator1(pick, operators);
-
   function confirm() {
     setErr("");
     if (!pick) {
       setErr("Escolha o membro da equipa.");
       return;
     }
-    if (isCollaborator1(pick, operators)) {
-      if (pin.trim() !== EDIT_PIN) {
-        setErr("Código incorrecto.");
-        return;
-      }
-      const s: OperatorSession = {
-        name: pick,
-        adminUnlocked: true,
-        at: new Date().toISOString(),
-      };
-      writeSession(s);
-      setActiveOperator(pick);
-      pushSession("entrada", pick);
-      setSession(s);
+    const idx = operators.indexOf(pick);
+    const expectedPin = resolveOperatorPin({ entryPin: entryPinStored, entryPins: useFinance.getState().uiPrefs?.entryPins }, idx);
+    if (pin.trim() !== expectedPin) {
+      setErr("Código incorrecto.");
       return;
     }
+    const isFirst = isCollaborator1(pick, operators);
     const s: OperatorSession = {
       name: pick,
-      adminUnlocked: false,
+      adminUnlocked: isFirst,
       at: new Date().toISOString(),
     };
+    s.lastActivity = Date.now();
     writeSession(s);
     setActiveOperator(pick);
     pushSession("entrada", pick);
@@ -102,14 +141,13 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
         </p>
         <h1 className="font-display mt-2 text-center text-2xl tracking-tight">Controlo Financeiro</h1>
         <p className="mt-2 text-center text-sm text-[var(--color-muted)]">
-          Escolha o membro da equipa para continuar. Sem esta escolha não há acesso aos dados.
+          Escolha o membro da equipa e introduza o código de entrada para continuar.
         </p>
 
         <div className="mt-6 space-y-2">
           <Label className="text-xs text-[var(--color-muted)]">Membro da equipa</Label>
-          {operators.map((name, i) => {
+          {operators.map((name) => {
             const selected = pick === name;
-            const needsPin = i === 0;
             return (
               <button
                 key={name}
@@ -127,22 +165,19 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
               >
                 <UserRound className="size-4 text-[var(--color-forest)]" />
                 <span className="flex-1 font-medium">{name}</span>
-                {needsPin ? (
-                  <span className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">
-                    <Lock className="size-3" /> Código
-                  </span>
-                ) : null}
+                <span className="flex items-center gap-1 text-[10px] text-[var(--color-muted)]">
+                  <Lock className="size-3" /> Código
+                </span>
               </button>
             );
           })}
         </div>
 
-        {/* PIN só visível quando Colaborador 1 está seleccionado */}
-        {isFirst ? (
+        {pick ? (
           <div className="mt-4 space-y-2">
-            <Label htmlFor="pin-admin">Código do Colaborador 1</Label>
+            <Label htmlFor="pin-entrada">Código de entrada</Label>
             <Input
-              id="pin-admin"
+              id="pin-entrada"
               type="password"
               inputMode="numeric"
               autoComplete="off"
@@ -152,7 +187,7 @@ export function OperatorGate({ children }: { children: React.ReactNode }) {
               onKeyDown={(e) => e.key === "Enter" && confirm()}
             />
             <p className="text-[11px] text-[var(--color-muted)]">
-              Permissão total de edição. O código não é mostrado aos outros membros.
+              Obrigatório para todos os colaboradores. Pode alterar o código dentro da app (Colaborador 1).
             </p>
           </div>
         ) : null}

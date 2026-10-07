@@ -13,6 +13,8 @@ import {
   submitAutorizacaoFotos,
   type AutorizacaoFotosCloud,
 } from "@/lib/finance-cloud";
+import { deliverOfficialHtml } from "@/lib/pdf-export";
+import { buildConfirmacaoEncarregadoHtml } from "@/lib/confirmacao-encarregado";
 
 export const Route = createFileRoute("/autorizacao-fotos")({
   component: AutorizacaoFotosPage,
@@ -144,6 +146,25 @@ export function AutorizacaoFotosPage() {
       setLastId(id);
       setDone(true);
       toast.success(t("Autorização registada.", "Autorisation enregistrée."));
+      const html = buildConfirmacaoEncarregadoHtml({
+        titulo: t("Confirmação — autorização de fotografias", "Confirmation — autorisation de prise de vue"),
+        subtitulo: t("Comprovativo para o encarregado de educação", "Justificatif pour le responsable légal"),
+        refId: id,
+        linhas: [
+          { label: t("Encarregado", "Responsable"), value: payload.responsavelNome },
+          { label: t("Telefone", "Téléphone"), value: payload.telefone || "" },
+          { label: t("Alunos", "Élèves"), value: lista.map((f) => `${f.nome}${f.turma ? ` (${f.turma})` : ""}`).join(" · ") },
+          { label: t("Decisão", "Décision"), value: payload.decisao === "sim" ? t("Sim, autorizo", "Oui, j'autorise") : t("Não autorizo", "Je n'autorise pas") },
+          { label: t("Tomei nota", "J'ai pris note"), value: payload.tomeiNotaNome },
+          { label: t("Data", "Date"), value: payload.data },
+        ],
+      });
+      void deliverOfficialHtml(html, {
+        filename: `confirmacao-fotos-${id || "encarregado"}.pdf`,
+        forceSinglePage: true,
+        openPrint: true,
+        shareTitle: t("Confirmação de autorização de fotos", "Confirmation d'autorisation photos"),
+      });
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {
@@ -274,7 +295,7 @@ export function AutorizacaoFotosPage() {
           </p>
           <div className="mt-3 space-y-3">
             <div>
-              <Label>{t("Número de filhos *", "Nombre d'enfants *")}</Label>
+              <Label>{t("Número de alunos do mesmo encarregado (1 a 6) *", "Nombre d'élèves du même responsable (1 à 6) *")}</Label>
               <div className="mt-1 flex flex-wrap gap-1">
                 {[1, 2, 3, 4, 5, 6].map((n) => (
                   <button

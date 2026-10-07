@@ -445,6 +445,8 @@ function ContaCorrentePage() {
 
     for (const m of contaCorrente) {
       if (byId.has(m.alunoId)) continue;
+      // ID antigo sem ficha não é aluno. Não criar linha só com o código.
+      continue;
       const saldo = saldoCreditoDe(contaCorrente, m.alunoId);
       const cred = m.tipo === "credito" ? Number(m.valor) || 0 : 0;
       const det =

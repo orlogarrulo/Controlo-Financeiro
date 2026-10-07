@@ -71,6 +71,7 @@ function Mensalidades() {
   const activeOperator = useFinance((s) => s.activeOperator);
   const operators = useFinance((s) => s.operators);
   const canEdit = isCollaborator1(activeOperator, operators);
+  const censo = alunosAll(alunosExtra, alunosOverrides, alunosDeletedIds);
 
   const [q, setQ] = useState("");
 
@@ -326,10 +327,6 @@ function Mensalidades() {
 
   return (
     <div>
-      <div className="mb-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-        <strong>Bolsa escolar:</strong> botão <em>Bolsa Out→Jun</em> em cada aluno marca propinas isentas até junho
-        (Relatórios/Conta corrente = pago, valor 0). Só Colaborador 1.
-      </div>
       <PageHeader
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -388,7 +385,7 @@ function Mensalidades() {
         }
         kicker="Outubro a Junho"
         title="Mensalidades"
-        description="1.ª propina: Outubro (até 20 de setembro). Meses seguintes: do dia 30 até ao dia 10 do mês seguinte. No telemóvel, deslize a grelha para o lado — o nome do aluno fica visível."
+        description={`Mesma lista de Matrículas · ${censo.length} aluno(s). 1.ª propina: Outubro (até 20 de setembro). Meses seguintes: do dia 30 até ao dia 10. No telemóvel, deslize a grelha.`}
       />
 
       <div className="no-print mb-3">

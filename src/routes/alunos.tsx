@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EDIT_PIN, isAdminUnlocked, isCollaborator1 } from "@/lib/can-edit";
+import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
 import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades } from "@/lib/propina-estado";
-import { resolveTurmaOficial } from "@/lib/classe-congo";
+import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
 import {
@@ -56,6 +56,7 @@ import {
   ALUNO_FOTO_MAX_SYNC,
 } from "@/lib/image";
 import { saveAlunoFoto, deleteAlunoFoto } from "@/lib/finance-cloud";
+import { prepareNumerosFatura } from "@/lib/store";
 import {
   linhasMatriculaFromAluno,
   linhaPropinaMensal,
@@ -180,6 +181,12 @@ function loadContacto(): EscolaContacto {
 function saveContacto(c: EscolaContacto) {
   try {
     localStorage.setItem(CONTACTO_STORAGE_KEY, JSON.stringify(c));
+  } catch {
+    /* ignore */
+  }
+  // Também na nuvem (outros PCs passam a ver o mesmo contacto / IBAN).
+  try {
+    useFinance.getState().setEscolaContacto?.(c as unknown as Record<string, unknown>);
   } catch {
     /* ignore */
   }
@@ -488,33 +495,12 @@ function propinaDefaultFromTurma(turma: string): number {
   return PROPINA_PRIMAIRE;
 }
 
-/** ID automático: PREFIXO-NN a partir da turma. */
+/** ID automático via nextIdForTurma (anti-colisão multi-PC). */
 function nextAlunoId(turma: string, existing: Aluno[]): string {
-  const map: Record<string, string> = {
-    "Maternelle P1": "P1",
-    "Maternelle P2": "P2",
-    "Maternelle P3": "P3",
-    Maternelle: "MAT",
-    CP1: "CP1",
-    CP2: "CP2",
-    CE1: "CE1",
-    CE2: "CE2",
-    CM1: "CM1",
-    CM2: "CM2",
-    "6ème": "6E",
-    "5ème": "5E",
-    "4ème": "4E",
-    "3ème": "3E",
-  };
-  const prefix = map[turma] || "AL";
-  let max = 0;
-  for (const a of existing) {
-    if (a.id.startsWith(prefix + "-")) {
-      const n = Number(a.id.split("-").pop());
-      if (Number.isFinite(n)) max = Math.max(max, n);
-    }
-  }
-  return `${prefix}-${String(max + 1).padStart(2, "0")}`;
+  return nextIdForTurma(
+    turma,
+    existing.map((a) => a.id).filter(Boolean),
+  );
 }
 
 function nextRecibo(existing: Aluno[]): string {
@@ -1972,6 +1958,8 @@ function Alunos() {
       if (foto && foto.startsWith("data:image")) {
         await saveAlunoFoto({ data: { id, dataUrl: foto } });
       } else {
+        // Tombstone: os outros PCs não voltam a enviar a foto antiga para a nuvem.
+        useFinance.getState().markAlunoFotoDeleted?.(id);
         await deleteAlunoFoto({ data: { id } });
       }
     } catch (e) {
@@ -1984,12 +1972,18 @@ function Alunos() {
 
   async function saveNew() {
     if (!canEdit) return;
-    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
+    if (!isAdminUnlocked() && form.pin !== resolveEntryPin(useFinance.getState().uiPrefs?.entryPin)) {
       toast.error("Código incorrecto.");
       return;
     }
     if (!form.nome.trim()) {
       toast.error("Indique o nome do aluno.");
+      return;
+    }
+    const nomeN = form.nome.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const repetido = alunos.find((a) => a.nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() === nomeN);
+    if (repetido) {
+      toast.error(`Já existe este aluno: ${repetido.nome} (${repetido.id}). A matrícula não foi gravada. Pode editar a ficha existente.`);
       return;
     }
     const faltaMetodo = validarMetodosObrigatorios(form);
@@ -2112,7 +2106,7 @@ function Alunos() {
 
   async function saveEdit() {
     if (!editing || !canEdit) return;
-    if (!isAdminUnlocked() && form.pin !== EDIT_PIN) {
+    if (!isAdminUnlocked() && form.pin !== resolveEntryPin(useFinance.getState().uiPrefs?.entryPin)) {
       toast.error("Código incorrecto.");
       return;
     }
@@ -3112,13 +3106,15 @@ function Alunos() {
     return { destTipo, destNome: destinatario.nome, destNif, destMorada, destinatario };
   }
 
-  function abrirFatura(a: Aluno) {
+  async function abrirFatura(a: Aluno) {
     const { key: mesLetivo, mesRef, mesKey } = mesLetivoAtual();
     const { valor, pagoMes } = resolverValorPropina(a, mesLetivo);
     if (typeof nextFaturaNumero !== "function") {
       toast.error("Actualize a página (numeração indisponível).");
       return;
     }
+    // Reserva o n.º no servidor (sem colisão entre PCs); offline → n.º com sufixo deste PC.
+    await prepareNumerosFatura(mesKey, 1);
     const numero =
       typeof nextFaturaNumero === "function"
         ? nextFaturaNumero(mesKey)
@@ -3579,18 +3575,10 @@ function Alunos() {
 
       toast.message(`A montar 1 PDF com ${elegiveis.length} fatura(s)…`);
 
-      // Sequência local: evita o mesmo n.º se o store ainda não gravou
-      let seq = 0;
-      try {
-        const existing = faturasPropina || [];
-        const re = new RegExp(`^PROP-${mesKey}-(\d+)$`);
-        for (const f of existing) {
-          const m = String(f.numero || "").match(re);
-          if (m) seq = Math.max(seq, Number(m[1]));
-        }
-      } catch {
-        /* ignore */
-      }
+      // Reserva no servidor um bloco de n.ºs para o lote (sem colisão entre PCs).
+      // Antes: regex com "\d" num template string (= "d") → recomeçava sempre em 001 e
+      // sobrescrevia faturas do mês já emitidas.
+      await prepareNumerosFatura(mesKey, elegiveis.length);
 
       for (let i = 0; i < elegiveis.length; i++) {
         const a = elegiveis[i];
@@ -3599,8 +3587,7 @@ function Alunos() {
           semValor++;
           continue;
         }
-        seq += 1;
-        const numero = `PROP-${mesKey}-${String(seq).padStart(3, "0")}`;
+        const numero = nextFaturaNumero(mesKey);
         // Se propina 0 no registo, usa tarifário do ciclo (exceto transferidos já tratados em resolver)
         let valorFat = valor;
         if (valorFat <= 0) valorFat = propinaPorCiclo(a);
@@ -3793,16 +3780,44 @@ function Alunos() {
         title="Matrículas"
         description={
           canEdit
-            ? "1) Cadastrar aluno (Nova matrícula). 2) Quando quiser, Fatura ou Recibo → ver modelo → PDF. No dia 30 pode gerar todas as faturas de uma vez."
-            : "Consulta das matrículas. Só o Colaborador 1 pode criar ou editar."
+            ? `Cadastro único · ${alunos.length} aluno(s), o mesmo número em Propinas e Arquivo. 1) Cadastrar. 2) Fatura ou Recibo → PDF.`
+            : `Consulta · ${alunos.length} aluno(s), alinhado com Propinas e Arquivo. Só o Colaborador 1 edita.`
         }
-        actions={
-          <div className="no-print flex flex-row flex-wrap items-center gap-2">
-            {canEdit ? (
-              <Button className="shrink-0" onClick={openNew}>
-                <UserPlus className="mr-1 size-4" /> Nova matrícula
-              </Button>
-            ) : null}
+        actions={null}
+      />
+
+      <section className="no-print mb-4 w-full max-w-[15.5rem]">
+        <div className="flex flex-col gap-2 [&_button]:h-10 [&_button]:w-full [&_button]:justify-start [&_button]:border [&_button]:border-[var(--color-line)] [&_button]:bg-white [&_button]:text-[var(--color-ink)] [&_button]:shadow-none">
+          {canEdit ? (
+            <Button variant="outline" onClick={openNew}>
+              <UserPlus className="mr-1 size-4" /> Nova matrícula
+            </Button>
+          ) : null}
+          <p className="pt-1 text-[10px] font-medium tracking-[0.14em] text-[var(--color-muted)] uppercase">Formulários</p>
+          <Button variant="secondary" className="justify-start" onClick={() => setRegOpen(true)}>
+            <FileText className="mr-1 size-4" /> Regulamento
+          </Button>
+          <Button variant="secondary" className="justify-start" onClick={() => {
+            const url = agendamentoPublicUrl();
+            const msg = buildAgendamentoWhatsApp({ escolaNome: getSeed().escola?.nome, linkFormulario: url });
+            void navigator.clipboard.writeText(msg).then(
+              () => toast.success("Mensagem de agendamento copiada — cole no WhatsApp"),
+              () => window.open(url, "_blank", "noopener,noreferrer"),
+            );
+          }}>
+            <Calendar className="mr-1 size-4" /> Agendamento
+          </Button>
+          <AutorizacaoFotosButton />
+          <Button variant="secondary" className="justify-start" onClick={() => {
+            const msg = buildInqueritoSaudeWhatsApp({ escolaNome: getSeed().escola.nome || "École Consulaire du Congo – Nova Vida" });
+            void navigator.clipboard.writeText(msg).then(
+              () => toast.success("Inquérito copiado — cole no WhatsApp"),
+              () => toast.error("Não foi possível copiar"),
+            );
+          }}>
+            <Mail className="mr-1 size-4" /> Inquérito de saúde
+          </Button>
+          <p className="pt-1 text-[10px] font-medium tracking-[0.14em] text-[var(--color-muted)] uppercase">Acções</p>
             <Button
               className="shrink-0"
               variant="secondary"
@@ -3851,35 +3866,6 @@ function Alunos() {
             >
               <ScrollText className="mr-1 size-4" /> Declaração de matrícula
             </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="Regulamento interno FR/PT — PDF e link para pais (WhatsApp / e-mail)"
-              onClick={() => setRegOpen(true)}
-            >
-              <FileText className="mr-1 size-4" /> Regulamento interno
-            </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="Agendamento pedagógico — sábados 09:30–12:30 (link /marca)"
-              onClick={() => {
-                const url = agendamentoPublicUrl();
-                const msg = buildAgendamentoWhatsApp({
-                  escolaNome: getSeed().escola?.nome,
-                  linkFormulario: url,
-                });
-                void navigator.clipboard.writeText(msg).then(
-                  () => toast.success("Mensagem de agendamento copiada — cole no WhatsApp"),
-                  () => {
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  },
-                );
-              }}
-            >
-              <Calendar className="mr-1 size-4" /> Agendamento
-            </Button>
-            <AutorizacaoFotosButton />
             <Button
               className="shrink-0"
               variant="secondary"
@@ -4012,23 +3998,7 @@ function Alunos() {
             >
               <IdCard className="mr-1 size-4" /> N.Vida · s/foto
             </Button>
-            <Button
-              className="shrink-0"
-              variant="secondary"
-              title="Copiar inquérito estilo WhatsApp (lista de envio — os pais respondem na conversa)"
-              onClick={() => {
-                const msg = buildInqueritoSaudeWhatsApp({
-                  escolaNome: getSeed().escola.nome || "École Consulaire du Congo – Nova Vida",
-                });
-                void navigator.clipboard.writeText(msg).then(
-                  () => toast.success("Inquérito copiado — cole na lista de envio do WhatsApp"),
-                  () => toast.error("Não foi possível copiar"),
-                );
-              }}
-            >
-              <Mail className="mr-1 size-4" /> Inquérito de saúde
-            </Button>
-            <div className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] p-0.5">
+            <div className="flex w-full items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-white p-0.5">
               <select
                 className="h-9 rounded-md border-0 bg-transparent px-2 text-xs font-medium text-[var(--color-ink)] outline-none"
                 value={pdfLang}
@@ -4108,11 +4078,10 @@ function Alunos() {
                 {batchBusy ? "A gerar faturas…" : "Faturas do mês"}
               </Button>
             ) : null}
-          </div>
-        }
-      />
+        </div>
+      </section>
 
-      <div className="no-print mb-4 flex flex-col gap-2 sm:flex-row">
+      <div className="no-print mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_220px_auto]">
         <Input
           placeholder="Nome, família, ID, cidade, nova vida…"
           value={q}
@@ -4181,15 +4150,15 @@ function Alunos() {
       </header>
 
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] print-sheet">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[980px] border-collapse text-sm">
           <thead className="bg-[var(--color-bg)] text-[11px] tracking-wide text-[var(--color-muted)] uppercase">
             <tr>
-              <th className="px-3 py-2 text-left">ID</th>
+              <th className="w-[88px] px-3 py-2 text-left">ID</th>
               <th className="px-3 py-2 text-left">Nome</th>
-              <th className="px-3 py-2 text-left">Turma</th>
-              <th className="px-3 py-2 text-left">Telefone</th>
-              <th className="px-3 py-2 text-left">Data</th>
-              <th className="px-3 py-2 text-right">Líquido</th>
+              <th className="w-[120px] px-3 py-2 text-left">Turma</th>
+              <th className="w-[130px] px-3 py-2 text-left">Telefone</th>
+              <th className="w-[108px] px-3 py-2 text-left">Data</th>
+              <th className="w-[110px] px-3 py-2 text-right">Líquido</th>
               <th className="px-3 py-2 text-left">Seguro</th>
               <th className="px-3 py-2 text-left">Pagamento</th>
               <th className="px-3 py-2 text-left">Recibo</th>
@@ -4238,8 +4207,8 @@ function Alunos() {
                 </td>
                 <td className="px-3 py-2 text-xs">{a.metodoPagamento || "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{a.recibo}</td>
-                <td className="no-print px-3 py-2 text-right">
-                  <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                <td className="no-print px-3 py-2 text-right align-middle">
+                  <div className="inline-flex flex-nowrap items-center justify-end gap-1">
                     <Button
                       size="sm"
                       variant="secondary"

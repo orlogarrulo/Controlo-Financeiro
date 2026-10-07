@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { deliverOfficialHtml } from "@/lib/pdf-export";
+import { buildConfirmacaoEncarregadoHtml } from "@/lib/confirmacao-encarregado";
 import {
   submitInqueritoSaude,
   listInqueritoSaude,
@@ -244,6 +246,25 @@ export function InqueritoSaudePage() {
       setLastId(id);
       setDone(true);
       toast.success(t("Inquérito enviado.", "Questionnaire envoyé."));
+      const html = buildConfirmacaoEncarregadoHtml({
+        titulo: t("Confirmação — inquérito de saúde", "Confirmation — questionnaire de santé"),
+        subtitulo: t("Comprovativo para o encarregado de educação", "Justificatif pour le responsable légal"),
+        refId: id,
+        linhas: [
+          { label: t("Encarregado", "Responsable"), value: payload.encarregadoNome },
+          { label: t("Telefone", "Téléphone"), value: payload.telefone },
+          ...payload.alunos.map((a, i) => ({
+            label: t(`Aluno ${i + 1}`, `Élève ${i + 1}`),
+            value: `${a.nome} · ${a.grupoSanguineo || "—"} · ${a.alergiasMedicamentos || "—"} · ${a.alergiasAlimentares || "—"} · ${a.clinicaProxima || "—"}`,
+          })),
+        ],
+      });
+      void deliverOfficialHtml(html, {
+        filename: `confirmacao-saude-${id || "encarregado"}.pdf`,
+        forceSinglePage: true,
+        openPrint: true,
+        shareTitle: t("Confirmação do inquérito de saúde", "Confirmation du questionnaire de santé"),
+      });
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {

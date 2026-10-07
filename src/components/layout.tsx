@@ -7,8 +7,10 @@ import { getSeed, useFinance } from "@/lib/store";
 import {
   clearOperatorSession,
   isCollaborator1,
-  switchOperatorSession,
+  resolveEntryPin,
+  resolveOperatorPin,
 } from "@/lib/can-edit";
+import { toast } from "sonner";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 
 const NAV = [
@@ -168,10 +170,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <select
                     className="h-11 w-full rounded-xl border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
                     value={activeOperator}
-                    onChange={(e) => {
-                      const name = e.target.value;
-                      switchOperatorSession(name, operators);
-                      setActiveOperator(name);
+                    onChange={() => {
+                      // Trocar colaborador exige novo PIN — limpa sessão e volta ao gate
+                      try {
+                        useFinance.getState().pushSession("saida");
+                      } catch {
+                        /* ignore */
+                      }
+                      clearOperatorSession();
                     }}
                     aria-label="Colaborador ativo"
                   >
@@ -181,25 +187,21 @@ export function AppShell({ children }: { children: ReactNode }) {
                       </option>
                     ))}
                   </select>
-                  <div className="mt-2 flex gap-3">
-                    <button
-                      type="button"
-                      className="text-xs text-[var(--color-muted)] underline-offset-2 hover:underline"
-                      onClick={() => {
-                        try {
-                          useFinance.getState().pushSession("saida");
-                        } catch {
-                          /* ignore */
-                        }
-                        clearOperatorSession();
-                        setOpen(false);
-                      }}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <LogOut className="size-3" /> Terminar sessão
-                      </span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--color-line-strong)] bg-[var(--color-surface)] text-sm font-medium"
+                    onClick={() => {
+                      try {
+                        useFinance.getState().pushSession("saida");
+                      } catch {
+                        /* ignore */
+                      }
+                      clearOperatorSession();
+                      setOpen(false);
+                    }}
+                  >
+                    <LogOut className="size-4" /> Sair
+                  </button>
                 </div>
 
                 <nav className="flex-1 overflow-y-auto px-3 py-3">
@@ -320,36 +322,30 @@ function OperatorPanel({
           Modo consulta: só visualizar e imprimir. Edição reservada ao Colaborador 1.
         </p>
       ) : null}
-      <div className="mb-2 flex flex-col gap-1">
-        <button
-          type="button"
-          className="text-left text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
-          onClick={() => {
-            try {
-              useFinance.getState().pushSession("saida");
-            } catch {
-              /* ignore */
-            }
-            clearOperatorSession();
-          }}
-        >
-          Terminar sessão
-        </button>
-        <button
-          type="button"
-          className="text-left text-[11px] text-[var(--color-muted)] underline-offset-2 hover:underline"
-          onClick={() => clearOperatorSession()}
-        >
-          Trocar colaborador
-        </button>
-      </div>
+      <button
+        type="button"
+        className="mb-2 flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] text-xs font-medium"
+        onClick={() => {
+          try {
+            useFinance.getState().pushSession("saida");
+          } catch {
+            /* ignore */
+          }
+          clearOperatorSession();
+        }}
+      >
+        <LogOut className="size-3.5" /> Sair
+      </button>
       <select
         className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-2 text-xs"
         value={activeOperator}
-        onChange={(e) => {
-          const name = e.target.value;
-          switchOperatorSession(name, operators);
-          setActiveOperator(name);
+        onChange={() => {
+          try {
+            useFinance.getState().pushSession("saida");
+          } catch {
+            /* ignore */
+          }
+          clearOperatorSession();
         }}
         aria-label="Colaborador ativo"
       >
@@ -379,6 +375,104 @@ function OperatorPanel({
               aria-label={`Nome colaborador ${i + 1}`}
             />
           ))}
+        </div>
+      ) : null}
+      {isAdmin ? <ChangePinPanel /> : null}
+    </div>
+  );
+}
+
+function ChangePinPanel() {
+  const operators = useFinance((s) => s.operators);
+  const prefs = useFinance((s) => s.uiPrefs);
+  const setUiPrefs = useFinance((s) => s.setUiPrefs);
+  const pushAudit = useFinance((s) => s.pushAudit);
+  const [open, setOpen] = useState(false);
+  const [qual, setQual] = useState(0);
+  const [atual, setAtual] = useState("");
+  const [novo, setNovo] = useState("");
+  const [confirma, setConfirma] = useState("");
+
+  function guardar() {
+    const minha = resolveOperatorPin(prefs, 0);
+    if (atual.trim() !== minha) {
+      toast.error("Código do Colaborador 1 incorrecto.");
+      return;
+    }
+    const n = novo.trim();
+    if (n.length < 4) {
+      toast.error("O novo código deve ter pelo menos 4 dígitos.");
+      return;
+    }
+    if (n !== confirma.trim()) {
+      toast.error("A confirmação não coincide.");
+      return;
+    }
+    const pins = [...(prefs?.entryPins || [])];
+    while (pins.length < operators.length) pins.push("");
+    pins[qual] = n;
+    setUiPrefs({ entryPins: pins });
+    pushAudit("alterar_codigo_entrada", `Código do ${operators[qual] || "colaborador"} actualizado pelo Colaborador 1`);
+    toast.success(`Código de ${operators[qual] || "colaborador"} actualizado.`);
+    setAtual("");
+    setNovo("");
+    setConfirma("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="mt-2 border-t border-[var(--color-line)] pt-2">
+      <button
+        type="button"
+        className="text-left text-[11px] text-[var(--color-forest)] underline-offset-2 hover:underline"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Fechar senhas" : "Senhas dos colaboradores"}
+      </button>
+      {open ? (
+        <div className="mt-2 space-y-1.5">
+          <select className="h-8 w-full rounded border px-2 text-xs" value={qual} onChange={(e) => setQual(Number(e.target.value))}>
+            {operators.map((name, i) => (
+              <option key={name} value={i}>{name}</option>
+            ))}
+          </select>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Código actual do Colaborador 1"
+            value={atual}
+            onChange={(e) => setAtual(e.target.value)}
+            className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+            aria-label="Código actual"
+          />
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Novo código"
+            value={novo}
+            onChange={(e) => setNovo(e.target.value)}
+            className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+            aria-label="Novo código"
+          />
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Confirmar novo código"
+            value={confirma}
+            onChange={(e) => setConfirma(e.target.value)}
+            className="h-8 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs"
+            aria-label="Confirmar novo código"
+          />
+          <button
+            type="button"
+            className="h-8 w-full rounded-[var(--radius-sm)] bg-[var(--color-forest)] text-[10px] font-medium text-[var(--color-forest-fg)]"
+            onClick={guardar}
+          >
+            Guardar código
+          </button>
         </div>
       ) : null}
     </div>

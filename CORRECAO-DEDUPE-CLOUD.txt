@@ -1,0 +1,26 @@
+Dedupe finance_cloud (após patches PIN + IDs)
+=============================================
+
+Problema
+--------
+Merge por ID podia manter duplicados internos no payload JSONB; colisões de
+identidade (mesmo ID, pessoas diferentes) e documentos com o mesmo número
+também inflavam listas (alunos, propinas, CRM, movimentos, etc.).
+
+Correcção (local, sem push)
+---------------------------
+1. sanitizeFinancePayload + dedupeByIdPreferNewer em finance-cloud.ts
+   - load: devolve payload já limpo
+   - save: grava sempre sem IDs/números duplicados
+   - slice (push cliente): não envia duplicados
+2. Colisão de alunos no save (resolveAlunoIdCollisionsCloud + nextIdForTurma)
+3. hydrate-store: mergeById colapsa duplicados internos; applyPayload sanitiza;
+   sanearAlunosDuplicados após cada pull
+4. Script scripts/dedupe-finance-cloud.mjs (DRY-RUN por omissão) para limpar Neon
+
+Neon
+----
+NÃO foi executado nada em produção.
+Se ainda houver lixo antigo na DB, Orlog pode pedir:
+  DATABASE_URL=... node scripts/dedupe-finance-cloud.mjs
+  DATABASE_URL=... node scripts/dedupe-finance-cloud.mjs --apply

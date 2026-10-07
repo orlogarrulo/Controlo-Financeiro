@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useEffect, useRef, useState } from "react";
 import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { getSeed, movimentosAll, useFinance } from "@/lib/store";
+import { getSeed, movimentosAll, useFinance, prepareNumerosCaptura } from "@/lib/store";
 import { escolaLogoSrc } from "@/lib/logo-escola";
 import type { Origem } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
@@ -91,7 +91,7 @@ function Banco() {
     setNovaMovOpen(true);
   }
 
-  function guardarNovaMov() {
+  async function guardarNovaMov() {
     const valor = Number(movForm.valor) || 0;
     if (valor <= 0) {
       toast.error("Indique o valor.");
@@ -114,6 +114,7 @@ function Banco() {
         toast.success(`Entrada de ${formatKz(valor)} registada no Banco BAI`);
       } else if (movForm.comoDespesa) {
         // Um só registo: Lista de despesas + saída BAI (addCaptura já debita o BAI)
+        await prepareNumerosCaptura([{ tipo: "despesa", origem: "banco", data: movForm.data }]);
         addCaptura({
           data: movForm.data,
           tipo: "despesa",

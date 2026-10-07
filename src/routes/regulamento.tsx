@@ -15,6 +15,8 @@ import {
 } from "@/lib/regulamento-interno";
 import { saveRegulamentoAck } from "@/lib/csv";
 import { submitRegulamentoAck } from "@/lib/finance-cloud";
+import { deliverOfficialHtml } from "@/lib/pdf-export";
+import { buildConfirmacaoEncarregadoHtml } from "@/lib/confirmacao-encarregado";
 
 export const Route = createFileRoute("/regulamento")({
   component: RegulamentoPage,
@@ -46,9 +48,10 @@ export function RegulamentoPage() {
     },
   });
   const [lang, setLang] = useState<RegulamentoLang>(langParam || "pt");
-  const [alunoNome, setAlunoNome] = useState("");
   const [encarregadoNome, setEncarregadoNome] = useState("");
-  const [turma, setTurma] = useState("");
+  const [alunos, setAlunos] = useState<{ nome: string; turma: string }[]>(
+    Array.from({ length: 6 }, () => ({ nome: "", turma: "" })),
+  );
   const [aceito, setAceito] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -65,26 +68,33 @@ export function RegulamentoPage() {
     [escolaSeed],
   );
 
+  const alunosPreenchidos = alunos
+    .map((a) => ({ nome: a.nome.trim(), turma: a.turma.trim() }))
+    .filter((a) => a.nome);
+  const alunoNome = alunosPreenchidos.map((a) => a.nome).join(" · ");
+  const turma = alunosPreenchidos.map((a) => a.turma).filter(Boolean).join(" · ");
+
   const htmlPreview = useMemo(
     () =>
       regulamentoInternoHtml(lang, escola, {
-        alunoNome: alunoNome.trim() || undefined,
+        alunoNome: alunoNome || undefined,
         encarregadoNome: encarregadoNome.trim() || undefined,
-        turma: turma.trim() || undefined,
+        turma: turma || undefined,
+        alunos: alunosPreenchidos,
         lang,
         signedAt: done ? new Date().toISOString() : undefined,
       }),
-    [lang, escola, alunoNome, encarregadoNome, turma, done],
+    [lang, escola, alunoNome, encarregadoNome, turma, alunosPreenchidos, done],
   );
 
   const dataHoje = formatDataHoje(lang);
 
   async function confirmarConhecimento() {
-    if (!alunoNome.trim() || !encarregadoNome.trim()) {
+    if (alunosPreenchidos.length === 0 || !encarregadoNome.trim()) {
       toast.error(
         lang === "fr"
-          ? "Indiquez le nom de l’élève et du responsable."
-          : "Indique o nome do aluno e do encarregado.",
+          ? "Indiquez le responsable et au moins un élève."
+          : "Indique o encarregado e pelo menos um aluno.",
       );
       return;
     }
@@ -100,9 +110,10 @@ export function RegulamentoPage() {
     try {
       const signedAt = new Date().toISOString();
       const row = {
-        alunoNome: alunoNome.trim(),
+        alunoNome,
         encarregadoNome: encarregadoNome.trim(),
-        turma: turma.trim(),
+        turma,
+        alunos: alunosPreenchidos,
         lang,
         signedAt,
       };
@@ -123,6 +134,23 @@ export function RegulamentoPage() {
           ? "Prise de connaissance enregistrée. Merci."
           : "Tomada de conhecimento registada. Obrigado.",
       );
+      const html = buildConfirmacaoEncarregadoHtml({
+        titulo: lang === "fr" ? "Confirmation — règlement intérieur" : "Confirmação — regulamento interno",
+        subtitulo: lang === "fr" ? "Justificatif pour le responsable légal" : "Comprovativo para o encarregado de educação",
+        linhas: [
+          { label: lang === "fr" ? "Élèves (1 à 6)" : "Alunos (1 a 6)", value: row.alunoNome },
+          { label: lang === "fr" ? "Classes" : "Turmas", value: row.turma },
+          { label: lang === "fr" ? "Responsable" : "Encarregado", value: row.encarregadoNome },
+          { label: lang === "fr" ? "Date" : "Data", value: dataHoje },
+          { label: lang === "fr" ? "Déclaration" : "Declaração", value: lang === "fr" ? "J'ai pris connaissance du règlement." : "Tomei conhecimento do regulamento." },
+        ],
+      });
+      void deliverOfficialHtml(html, {
+        filename: "confirmacao-regulamento.pdf",
+        forceSinglePage: true,
+        openPrint: true,
+        shareTitle: lang === "fr" ? "Confirmation du règlement" : "Confirmação do regulamento",
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -146,7 +174,7 @@ export function RegulamentoPage() {
               : "A sua tomada de conhecimento foi registada pela escola. Pode fechar esta página."}
           </p>
           <p className="mt-4 text-left text-sm text-[var(--color-ink,#0f172a)]">
-            <strong>{lang === "fr" ? "Élève" : "Aluno"}:</strong> {alunoNome}
+            <strong>{lang === "fr" ? "Élèves" : "Alunos"}:</strong> {alunoNome}
             <br />
             <strong>{lang === "fr" ? "Responsable" : "Encarregado"}:</strong>{" "}
             {encarregadoNome}
@@ -199,11 +227,11 @@ export function RegulamentoPage() {
         </h2>
         <p className="mb-3 text-xs text-[var(--color-muted,#64748b)]">
           {lang === "fr"
-            ? "Remplissez et envoyez — sans imprimer ni renvoyer de document."
-            : "Preencha e envie — sem imprimir nem reenviar documento."}
+            ? "Un responsable peut indiquer de 1 à 6 élèves. Seul le premier est obligatoire."
+            : "Um encarregado pode indicar de 1 a 6 alunos. Só o primeiro é obrigatório."}
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <div className="space-y-1">
             <Label>{lang === "fr" ? "Nom du responsable *" : "Nome do encarregado *"}</Label>
             <Input
@@ -213,23 +241,38 @@ export function RegulamentoPage() {
               autoComplete="name"
             />
           </div>
-          <div className="space-y-1">
-            <Label>{lang === "fr" ? "Nom de l’élève *" : "Nome do aluno *"}</Label>
-            <Input
-              value={alunoNome}
-              onChange={(e) => setAlunoNome(e.target.value)}
-              placeholder={lang === "fr" ? "Nom complet" : "Nome completo"}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>{lang === "fr" ? "Classe (optionnel)" : "Turma (opcional)"}</Label>
-            <Input
-              value={turma}
-              onChange={(e) => setTurma(e.target.value)}
-              placeholder="ex.: CE1, 6e…"
-            />
-          </div>
-          <div className="space-y-1">
+          {alunos.map((aluno, i) => (
+            <div key={i} className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label>
+                  {lang === "fr" ? `Élève ${i + 1}` : `Aluno ${i + 1}`}
+                  {i === 0 ? " *" : ""}
+                </Label>
+                <Input
+                  value={aluno.nome}
+                  onChange={(e) =>
+                    setAlunos((prev) =>
+                      prev.map((row, idx) => (idx === i ? { ...row, nome: e.target.value } : row)),
+                    )
+                  }
+                  placeholder={lang === "fr" ? "Nom complet" : "Nome completo"}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{lang === "fr" ? `Classe ${i + 1}` : `Turma ${i + 1}`}</Label>
+                <Input
+                  value={aluno.turma}
+                  onChange={(e) =>
+                    setAlunos((prev) =>
+                      prev.map((row, idx) => (idx === i ? { ...row, turma: e.target.value } : row)),
+                    )
+                  }
+                  placeholder="ex.: CE1, 6e…"
+                />
+              </div>
+            </div>
+          ))}
+          <div className="space-y-1 sm:max-w-xs">
             <Label>{lang === "fr" ? "Date" : "Data"}</Label>
             <Input value={dataHoje} readOnly className="bg-[var(--color-bg,#f4f7f5)]" />
           </div>
