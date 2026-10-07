@@ -1380,7 +1380,6 @@ function MatriculaForm({
               </div>
             ) : null}
           </div>
-          </div>
           <div className="space-y-1.5 sm:col-span-2">
             <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-emerald-300 bg-emerald-50 p-3 text-sm">
               <input
