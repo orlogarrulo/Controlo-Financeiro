@@ -533,9 +533,13 @@ export function documentoReciboComCodigo(
     try {
       const s = useFinance.getState();
       if (typeof s.addDocumentoAluno === "function") {
-        const numero = opts?.numero || `REC-${a.id}-${mesKey}`;
-        const ja = s.findDocumentoPorNumero?.(numero);
-        if (!ja) {
+        const numero = opts?.numero || `REC-${a.id}-${codigo}`;
+        const jaMesmoCodigo = (s.documentosAluno || []).some(
+          (d) =>
+            (d.codigoVerificacao || "").toUpperCase() === codigo.toUpperCase() &&
+            d.alunoId === a.id,
+        );
+        if (!jaMesmoCodigo) {
           s.addDocumentoAluno({
             tipo: "recibo",
             modelo: opts?.ambito === "liquidacao" ? "liquidacao_matricula" : "propina_mes",

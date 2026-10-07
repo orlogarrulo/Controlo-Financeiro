@@ -73,6 +73,12 @@ const ESTADO_LABEL: Record<DocumentoAlunoEstado, string> = {
   arquivado: "Arquivado",
 };
 
+function codigoRecibo(d: { codigoVerificacao?: string; codigo?: string; numero?: string }): string {
+  const raw = String(d.codigoVerificacao || d.codigo || "");
+  const fromNumero = /^RC-/i.test(String(d.numero || "")) ? String(d.numero) : "";
+  return (raw || fromNumero).trim().toUpperCase().replace(/\s+/g, "");
+}
+
 function estadoTone(e: DocumentoAlunoEstado): string {
   if (e === "arquivado" || e === "confirmado") return "bg-emerald-700 text-white";
   if (e === "enviado") return "bg-sky-700 text-white";
@@ -220,8 +226,8 @@ function buildVistaDocumentos(
     const linhas = linhasAssinatura(d);
     // Com linhas: aluno|tipo|modelo|rubricas|valor
     // Sem linhas: aluno|tipo|modelo|valor  (dois recibos 320 000 sem detalhe = duplicado)
-    if (linhas) return [d.alunoId, d.tipo, d.modelo || "", linhas, String(v)].join("|");
-    return [d.alunoId, d.tipo, d.modelo || "", `valor:${v}`].join("|");
+    if (linhas) return [d.alunoId, d.tipo, d.modelo || "", linhas, String(v), codigoRecibo(d)].join("|");
+    return [d.alunoId, d.tipo, d.modelo || "", `valor:${v}`, codigoRecibo(d)].join("|");
   }
 
   function rubricaDe(d: DocumentoAluno): string {
@@ -285,13 +291,13 @@ function buildVistaDocumentos(
     if (!(d.tipo === "recibo" && (d.modelo === "liquidacao_matricula" || rubricaDe(d) === "matricula"))) {
       continue;
     }
-    const k = `${d.alunoId}|liq|${valorNorm(d)}`;
+    const k = `${d.alunoId}|liq|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`;
     const prev = porLiqValor.get(k);
     if (!prev || melhorQue(d, prev)) porLiqValor.set(k, d);
   }
   for (const [k, d] of [...melhor.entries()]) {
     if (d.tipo === "recibo" && (d.modelo === "liquidacao_matricula" || rubricaDe(d) === "matricula")) {
-      const keep = porLiqValor.get(`${d.alunoId}|liq|${valorNorm(d)}`);
+      const keep = porLiqValor.get(`${d.alunoId}|liq|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`);
       if (keep && keep.id !== d.id) melhor.delete(k);
     }
   }
@@ -300,13 +306,13 @@ function buildVistaDocumentos(
   const porPropMes = new Map<string, DocumentoAluno>();
   for (const d of melhor.values()) {
     if (d.tipo !== "recibo" || rubricaDe(d) !== "propina") continue;
-    const k = `${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}`;
+    const k = `${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`;
     const prev = porPropMes.get(k);
     if (!prev || melhorQue(d, prev)) porPropMes.set(k, d);
   }
   for (const [k, d] of [...melhor.entries()]) {
     if (d.tipo === "recibo" && rubricaDe(d) === "propina") {
-      const keep = porPropMes.get(`${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}`);
+      const keep = porPropMes.get(`${d.alunoId}|prop|${mesNorm(d)}|${valorNorm(d)}|${codigoRecibo(d) || "sem-codigo"}`);
       if (keep && keep.id !== d.id) melhor.delete(k);
     }
   }
@@ -444,8 +450,9 @@ function collapseLiquidacoesDuplicadas(
     }
     const aluno = alunoById.get(d.alunoId);
     const montante = Math.round(valorDocumentoExibido(d, aluno) || Number(d.valor) || 0);
-    // Chave estável: aluno + montante mostrado (180000, não 350000 legado)
-    const k = `${d.alunoId}|liq|${montante}`;
+    const cod = codigoRecibo(d);
+    // Código RC- próprio nunca é duplicado de outro recibo.
+    const k = cod ? `${d.alunoId}|liq|cod|${cod}` : `${d.alunoId}|liq|${montante}|sem-codigo`;
     const prev = keep.get(k);
     if (
       !prev ||
@@ -500,7 +507,8 @@ function ArquivoPage() {
     [documentosAluno, faturasPropina, codigosRecibo, documentosAlunoDeletedIds],
   );
 
-  // Corrige valores inflados + remove do store recibos de liquidação duplicados (mesmo aluno + montante)
+  // Corrige valores inflados. Não apaga recibos com código RC- próprio
+  // (ex.: RC-202610-S3R2-34 e RC-202610-WYDE-76 deixavam de aparecer).
   useEffect(() => {
     const st = useFinance.getState();
     const update = st.updateDocumentoAluno;
@@ -524,7 +532,7 @@ function ArquivoPage() {
         }
       }
     }
-    // 2) apagar duplicados (mantém o melhor por aluno+montante efectivo)
+    // 2) só funde cópias sem código RC- distinto (mesmo aluno + mesmo montante)
     const rank = (d: DocumentoAluno) => {
       let n = 0;
       if (d.codigoVerificacao) n += 4;
@@ -536,9 +544,10 @@ function ArquivoPage() {
     const dups: DocumentoAluno[] = [];
     for (const d of documentos) {
       if (!isReciboLiquidacao(d)) continue;
+      if (codigoRecibo(d)) continue;
       const aluno = alunos.find((x) => x.id === d.alunoId);
       const mont = Math.round(valorDocumentoExibido(d, aluno) || Number(d.valor) || 0);
-      const k = `${d.alunoId}|${mont}`;
+      const k = `${d.alunoId}|${mont}|sem-codigo`;
       const prev = best.get(k);
       if (!prev) {
         best.set(k, d);
@@ -570,14 +579,18 @@ function ArquivoPage() {
   }, [alunos.length, documentos.length]);
 
   const filtrados = useMemo(() => {
-    // Rede de segurança: liquidação duplicada (mesmo aluno + valor) some da lista
+    // Cada código RC- fica visível. Só se escondem cópias sem código do mesmo aluno e valor.
     let list = collapseLiquidacoesDuplicadas(documentos, alunos);
     if (alunoId) list = list.filter((d) => d.alunoId === alunoId);
     if (filtroTipo !== "todos") list = list.filter((d) => d.tipo === filtroTipo);
     const qq = q.trim().toLowerCase();
     if (qq) {
       list = list.filter((d) => {
-        const blob = `${d.numero} ${d.alunoNome} ${d.alunoId} ${d.mesKey || ""} ${d.mesRef || ""} ${d.codigoVerificacao || ""} ${d.faturaNumero || ""} ${(d.linhas || []).map((l) => l.label).join(" ")}`.toLowerCase();
+        const aluno = alunos.find((x) => x.id === d.alunoId);
+        const fam = aluno?.familia || "";
+        const enc = aluno?.encarregado || "";
+        const pais = [aluno?.pai, aluno?.mae].filter(Boolean).join(" ");
+        const blob = `${d.numero} ${d.alunoNome} ${d.alunoId} ${fam} ${enc} ${pais} ${d.mesKey || ""} ${d.mesRef || ""} ${d.codigoVerificacao || ""} ${d.faturaNumero || ""} ${(d.linhas || []).map((l) => l.label).join(" ")}`.toLowerCase();
         return blob.includes(qq);
       });
     }
@@ -955,6 +968,13 @@ function ArquivoPage() {
                       <td className="px-3 py-2">
                         <div className="font-medium">{d.alunoNome}</div>
                         <div className="text-xs text-[var(--color-muted)]">{d.alunoId}</div>
+                        {(() => {
+                          const aluno = alunos.find((x) => x.id === d.alunoId);
+                          const fam = aluno?.familia || aluno?.encarregado;
+                          return fam ? (
+                            <div className="text-[10px] text-[var(--color-muted)]">Família: {fam}</div>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-xs">
                         {MODELO_LABEL[d.modelo] || d.modelo}
