@@ -10,6 +10,8 @@ export type RegulamentoAck = {
   alunoNome: string;
   encarregadoNome: string;
   turma?: string;
+  /** Até 6 alunos do mesmo encarregado. alunoNome/turma continuam o resumo. */
+  alunos?: { nome: string; turma?: string }[];
   lang: RegulamentoLang;
   signedAt: string;
 };
@@ -362,19 +364,32 @@ function signatureBlock(
   lang: RegulamentoLang,
   ack?: Partial<RegulamentoAck>,
 ): string {
-  const aluno = esc(ack?.alunoNome || "");
   const enc = esc(ack?.encarregadoNome || "");
   const data = ack?.signedAt
     ? new Date(ack.signedAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "pt-PT")
     : "____ / ____ / ________";
+  const filled = (ack?.alunos || [])
+    .map((a) => ({ nome: (a.nome || "").trim(), turma: (a.turma || "").trim() }))
+    .filter((a) => a.nome);
+  const slots = Array.from({ length: 6 }, (_, i) => filled[i] || { nome: "", turma: "" });
+  const alunoLabel = lang === "fr" ? "Nom de l’élève" : "Nome do aluno";
+  const turmaLabel = lang === "fr" ? "Classe" : "Turma";
+  const lines = slots
+    .map((a, i) => {
+      const nome = a.nome ? esc(a.nome) : "_________________________________";
+      const turma = a.turma ? esc(a.turma) : "____________";
+      return `${i + 1}. ${alunoLabel} : ${nome} &nbsp;&nbsp; ${turmaLabel} : ${turma}`;
+    })
+    .join("<br/>");
   if (lang === "fr") {
     return `
   <div class="sign">
     <div class="sig">
       <strong>Le responsable légal / parent</strong><br/>
-      Nom de l’élève : ${aluno || "_________________________________"}<br/>
+      Élèves du même responsable (1 à 6) :<br/>
+      ${lines}<br/>
       Nom du responsable : ${enc || "_____________________________"}<br/>
-      ${ack?.turma ? `Classe : ${esc(ack.turma)}<br/>` : ""}Date : ${data}<br/>
+      Date : ${data}<br/>
       Signature : _______________________________
     </div>
     <div class="sig">
@@ -389,9 +404,10 @@ function signatureBlock(
   <div class="sign">
     <div class="sig">
       <strong>O(A) encarregado(a) de educação</strong><br/>
-      Nome do aluno : ${aluno || "_________________________________"}<br/>
+      Alunos do mesmo encarregado (1 a 6) :<br/>
+      ${lines}<br/>
       Nome do encarregado : ${enc || "_____________________________"}<br/>
-      ${ack?.turma ? `Turma : ${esc(ack.turma)}<br/>` : ""}Data : ${data}<br/>
+      Data : ${data}<br/>
       Assinatura : _______________________________
     </div>
     <div class="sig">

@@ -930,7 +930,31 @@ function CrmPage() {
         const numeroRecibo =
           (a.recibo && String(a.recibo).trim()) ||
           row.fatura?.numero ||
-          `REC-${a.id}-${mesKey}`;
+          `REC-${a.id}-${codigo || mesKey}`;
+        if (codigo) {
+          const st = useFinance.getState();
+          const ja = (st.documentosAluno || []).some(
+            (d) =>
+              (d.codigoVerificacao || "").toUpperCase() === codigo.toUpperCase() &&
+              d.alunoId === a.id,
+          );
+          if (!ja && typeof st.addDocumentoAluno === "function") {
+            st.addDocumentoAluno({
+              tipo: "recibo",
+              modelo: "liquidacao_matricula",
+              numero: numeroRecibo,
+              alunoId: a.id,
+              alunoNome: nomeComSufixoCampus(a),
+              mesKey,
+              mesRef: mesLabel(mesKey),
+              valor,
+              linhas: docBase.linhas,
+              estado: "emitido",
+              codigoVerificacao: codigo,
+              pagoEm: new Date().toISOString().slice(0, 10),
+            });
+          }
+        }
         const stamped = documentoOficialFromAluno(a, {
           modo: "recibo",
           mesLetivo,

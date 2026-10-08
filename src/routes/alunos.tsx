@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
 import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store"
-import { sincronizarPagamentosSeparadores, fundirMensalidades } from "@/lib/propina-estado";
+import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
@@ -281,6 +281,8 @@ type FormState = {
   /** 0 = não incluir propina nesta liquidação; 1–9 meses */
   mesesPropina: string;
   propina: string;
+  /** Bolsa: propina Out→Jun isenta, sem cobrança. */
+  bolsaEstudos: boolean;
   telefone: string;
   email: string;
   morada: string;
@@ -347,6 +349,7 @@ function emptyForm(): FormState {
     mensalidade1: "0",
     mesesPropina: "1",
     propina: "0",
+    bolsaEstudos: false,
     telefone: "",
     email: "",
     morada: "",
@@ -405,6 +408,7 @@ function buildObs(form: FormState): string {
   }
   if (form.transferidoCampusCidade) parts.push(CAMPUS_CIDADE_NOTA);
   if (form.seguroExterno) parts.push("Seguro próprio (externo)");
+  if (form.bolsaEstudos) parts.push("Bolsa escolar · propina isenta Out→Jun (sem cobrança)");
   if (form.campanhaPromoSetembro) {
     const pc = calcPropinaComCampanha(num(form.propina), num(form.mesesPropina), true, irmaosNivelFromForm(form),
     );
@@ -789,8 +793,9 @@ function MatriculaForm({
       <div className="space-y-2 sm:col-span-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)]/50 p-3">
         <Label className="text-sm font-semibold">Métodos de pagamento (por rubrica)</Label>
         <p className="text-[11px] text-[var(--color-muted)]">
-          Escolha o método em cada linha (ex.: inscrição em dinheiro, seguro e manuais em cartão).
-          Só <strong>Cartão</strong>, <strong>Transferência</strong> e <strong>Depósito em dinheiro (conta BAI)</strong> geram entrada no extrato Banco BAI. «Dinheiro (em mão)» não entra no extrato.
+          {form.bolsaEstudos
+            ? "Bolsa de estudos: a matrícula pode ser gravada sem escolher método de pagamento."
+            : "Escolha o método em cada linha (ex.: inscrição em dinheiro, seguro e manuais em cartão). Só Cartão, Transferência e Depósito em dinheiro (conta BAI) geram entrada no extrato Banco BAI. «Dinheiro (em mão)» não entra no extrato."}
         </p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {([
@@ -1112,7 +1117,7 @@ function MatriculaForm({
                             seguro: "0",
                             incluirCartaoEstudante: false,
                             cartaoEstudante: "0",
-                            propina: String(CAMPUS_CIDADE_PROPINA),
+                            propina: num(form.propina) > 0 ? form.propina : String(CAMPUS_CIDADE_PROPINA),
                           }),
                         )
                       }
@@ -1126,9 +1131,25 @@ function MatriculaForm({
                 (não são cobrados em separado).
               </p>
             </div>
-            <p className="text-xs text-[var(--color-muted)]">
-              Propina mensal fixa: <strong>{formatKz(CAMPUS_CIDADE_PROPINA)}</strong>
-            </p>
+            <div className="space-y-1.5">
+              <Label>Propina mensal Campus Cidade (editável)</Label>
+              <Input
+                value={form.propina}
+                inputMode="decimal"
+                onChange={(e) =>
+                  setForm(
+                    aplicarPropinaForm(form, {
+                      propina: e.target.value,
+                      transferidoCampusCidade: true,
+                    }),
+                  )
+                }
+                placeholder={String(CAMPUS_CIDADE_PROPINA)}
+              />
+              <p className="text-[11px] text-[var(--color-muted)]">
+                Referência habitual {formatKz(CAMPUS_CIDADE_PROPINA)}. Se indicar outro valor, a ficha, as propinas e os recibos usam esse montante.
+              </p>
+            </div>
             <div>
               <p className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">
                 Irmãos no mesmo agregado (desconto automático na propina)
@@ -1144,13 +1165,13 @@ function MatriculaForm({
                         aplicarPropinaForm(form, {
                           irmaosNivel: 0,
                           agregadoIrmaos: false,
-                          propina: String(CAMPUS_CIDADE_PROPINA),
+                          propina: num(form.propina) > 0 ? form.propina : String(CAMPUS_CIDADE_PROPINA),
                           mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
                         }),
                       )
                     }
                   />
-                  Nenhum · {formatKz(CAMPUS_CIDADE_PROPINA)}/mês
+                  Nenhum · {formatKz(num(form.propina) || CAMPUS_CIDADE_PROPINA)}/mês
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -1162,13 +1183,13 @@ function MatriculaForm({
                         aplicarPropinaForm(form, {
                           irmaosNivel: 2,
                           agregadoIrmaos: true,
-                          propina: String(CAMPUS_CIDADE_PROPINA),
+                          propina: num(form.propina) > 0 ? form.propina : String(CAMPUS_CIDADE_PROPINA),
                           mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
                         }),
                       )
                     }
                   />
-                  2 irmãos (−10%) · {formatKz(Math.round(CAMPUS_CIDADE_PROPINA * 0.9))}/mês
+                  2 irmãos (−10%) · {formatKz(Math.round((num(form.propina) || CAMPUS_CIDADE_PROPINA) * 0.9))}/mês
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -1180,20 +1201,21 @@ function MatriculaForm({
                         aplicarPropinaForm(form, {
                           irmaosNivel: 3,
                           agregadoIrmaos: true,
-                          propina: String(CAMPUS_CIDADE_PROPINA),
+                          propina: num(form.propina) > 0 ? form.propina : String(CAMPUS_CIDADE_PROPINA),
                           mesesPropina: num(form.mesesPropina) > 0 ? form.mesesPropina : "1",
                         }),
                       )
                     }
                   />
-                  3 ou mais (−15%) · {formatKz(Math.round(CAMPUS_CIDADE_PROPINA * 0.85))}/mês
+                  3 ou mais (−15%) · {formatKz(Math.round((num(form.propina) || CAMPUS_CIDADE_PROPINA) * 0.85))}/mês
                 </label>
               </div>
               {irmaosNivelFromForm(form) > 0 || form.campanhaPromoSetembro ? (
                 <p className="mt-1.5 text-[11px] text-[var(--color-forest)]">
                   {(() => {
+                    const base = num(form.propina) || CAMPUS_CIDADE_PROPINA;
                     const pc = calcPropinaComCampanha(
-                      CAMPUS_CIDADE_PROPINA,
+                      base,
                       Math.max(1, num(form.mesesPropina) || 1),
                       form.campanhaPromoSetembro,
                       irmaosNivelFromForm(form),
@@ -1376,11 +1398,38 @@ function MatriculaForm({
               </div>
             ) : null}
           </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-emerald-300 bg-emerald-50 p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 shrink-0"
+                checked={form.bolsaEstudos}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setForm(
+                    aplicarPropinaForm(form, {
+                      bolsaEstudos: on,
+                      mesesPropina: on ? "0" : form.mesesPropina === "0" ? "1" : form.mesesPropina,
+                      campanhaPromoSetembro: on ? false : form.campanhaPromoSetembro,
+                    }),
+                  );
+                }}
+              />
+              <span>
+                <strong>Bolsa de estudos</strong>
+                <span className="mt-1 block text-[12px] text-[var(--color-muted)]">
+                  A propina de outubro a junho fica paga pela bolsa. Não há cobrança desses meses.
+                  O aluno fica identificado como bolsista a partir desta matrícula. Inscrição e outros encargos mantêm-se, se existirem.
+                </span>
+              </span>
+            </label>
+          </div>
           <div className="space-y-1.5">
             <Label>Meses de propina a pagar agora (1–9)</Label>
             <select
               className="flex h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-line-strong)] bg-[var(--color-surface)] px-3 text-sm"
               value={form.mesesPropina}
+              disabled={form.bolsaEstudos}
               onChange={(e) => {
                 setForm(aplicarPropinaForm(form, { mesesPropina: e.target.value }));
               }}
@@ -1519,14 +1568,9 @@ function MatriculaForm({
           Total a pagar: {formatKz(totais.liquido)}
           {totais.descPct > 0 ? ` · desconto propinas ${totais.descPct}%` : ""}
           {form.seguroExterno ? " (sem seguro da escola)" : ""}
+          {form.bolsaEstudos ? " · bolsista (propina Out–Jun isenta)" : ""}
           {form.transferidoCampusCidade
-            ? ` · propina mensal ref. ${formatKz(
-                irmaosNivelFromForm(form) === 2
-                  ? Math.round(CAMPUS_CIDADE_PROPINA * 0.9)
-                  : irmaosNivelFromForm(form) === 3
-                    ? Math.round(CAMPUS_CIDADE_PROPINA * 0.85)
-                    : CAMPUS_CIDADE_PROPINA,
-              )}/mês (Campus Cidade${
+            ? ` · propina mensal ref. ${formatKz(num(form.propina) || CAMPUS_CIDADE_PROPINA)}/mês (Campus Cidade${
                 irmaosNivelFromForm(form) === 2
                   ? " · −10% 2 irmãos"
                   : irmaosNivelFromForm(form) === 3
@@ -1816,6 +1860,7 @@ function Alunos() {
           ? (a.propina ?? CAMPUS_CIDADE_PROPINA)
           : (a.propina ?? propinaDefaultFromTurma(turmaCorrigida)),
       ),
+      bolsaEstudos: Boolean(a.bolsa) || /bolsa escolar/i.test(a.obs || ""),
       telefone: a.telefone || "",
       email: a.email || "",
       morada: a.morada || "",
@@ -1917,6 +1962,7 @@ function Alunos() {
    * Evita gravar vários métodos “por defeito” sem o utilizador ter escolhido.
    */
   function validarMetodosObrigatorios(form: FormState): string | null {
+    if (form.bolsaEstudos) return null;
     const t = calcTotais(form);
     const checks: [number, string, string][] = [
       [t.inscricao, form.metodoInscricao, "Inscrição"],
@@ -2011,8 +2057,8 @@ function Alunos() {
       alimentacao: t.alimentacao,
       curso: t.curso,
       cartaoEstudante: t.cartaoEstudante || 0,
-      mensalidade1: t.mensalidade1,
-      mesesPropina: num(form.mesesPropina) || 0,
+      mensalidade1: form.bolsaEstudos ? 0 : t.mensalidade1,
+      mesesPropina: form.bolsaEstudos ? 0 : num(form.mesesPropina) || 0,
       dataPag: form.dataPag,
       bruto: t.bruto,
       descPct: t.descPct || 0,
@@ -2041,9 +2087,14 @@ function Alunos() {
       transferidoCampusCidade: form.transferidoCampusCidade,
       irmaosNivel: irmaosNivelFromForm(form),
       campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+      bolsa: form.bolsaEstudos || undefined,
+      bolsaMeses: form.bolsaEstudos
+        ? ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"]
+        : undefined,
       docsEntregues: form.docsEntregues,
     } as Aluno;
     addAluno(aluno);
+    if (form.bolsaEstudos) aplicarBolsaPropina(id);
     await syncFotoToCloud(id, foto);
     // Sincronizar de imediato com a nuvem para outros PCs e para não perder a ficha
     try {
@@ -2214,8 +2265,14 @@ function Alunos() {
         transferidoCampusCidade: form.transferidoCampusCidade,
         irmaosNivel: irmaosNivelFromForm(form),
         campanhaPromoSetembro: Boolean(form.campanhaPromoSetembro),
+        bolsa: form.bolsaEstudos,
+        bolsaMeses: form.bolsaEstudos
+          ? ["out", "nov", "dez", "jan", "fev", "mar", "abr", "mai", "jun"]
+          : [],
         docsEntregues: form.docsEntregues,
       } as Partial<Aluno>);
+      if (form.bolsaEstudos) aplicarBolsaPropina(editing.id);
+      else if (editing.bolsa) removerBolsaPropina(editing.id);
       await syncFotoToCloud(editing.id, foto);
       // Forçar push para a nuvem para o outro PC não sobrescrever com dados antigos
       try {
@@ -4172,6 +4229,7 @@ function Alunos() {
                 <td className="px-3 py-2">
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     <NomeAluno aluno={a} />
+                    {a.bolsa ? <Badge variant="outline">Bolsista</Badge> : null}
                   </span>
                   {a.pai || a.mae ? (
                     <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
