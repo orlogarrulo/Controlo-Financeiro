@@ -340,6 +340,51 @@ function GooglePage() {
     return [header, ...lines].join("\n");
   }
 
+
+  function arquivoToCsv(): string {
+    const docs = useFinance.getState().documentosAluno || [];
+    const turmaDe = new Map((alunos || []).map((a) => [a.id, a.turma || ""]));
+    const header =
+      "Aluno;Turma;Tipo;Modelo;Número;Emitido em;Pago em;Rubricas;Valor;Estado;Código";
+    const modeloLabel: Record<string, string> = {
+      propina_mes: "Propina do mês",
+      liquidacao_matricula: "Liquidação matrícula",
+      meio_ano: "Entrada a meio do ano",
+      atl_explicacao: "ATL — Explicação",
+      atl_actividades: "ATL — Actividades",
+      secretaria: "Serviços de secretaria",
+      outro: "Outro",
+    };
+    const lines = docs.map((d) => {
+      const rubricas = (d.linhas || [])
+        .filter((l) => l.on !== false && Number(l.value) > 0)
+        .map((l) => `${l.label}: ${l.value}`)
+        .join(" | ");
+      return [
+        d.alunoNome,
+        turmaDe.get(d.alunoId) || "",
+        d.tipo === "recibo" ? "Recibo" : "Fatura",
+        modeloLabel[d.modelo] || d.modelo,
+        d.numero,
+        (d.emitidoEm || "").slice(0, 10),
+        (d.pagoEm || "").slice(0, 10),
+        rubricas,
+        d.valor ?? "",
+        d.estado || "",
+        d.codigoVerificacao || "",
+      ]
+        .map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`)
+        .join(";");
+    });
+    return [header, ...lines].join("\n");
+  }
+
+  function exportArquivo() {
+    const n = (useFinance.getState().documentosAluno || []).length;
+    runExport("arquivo", "Arquivo_documentos.csv", () => arquivoToCsv(), "Arquivo — faturas e recibos");
+    if (!n) toast.message("Arquivo ainda sem documentos neste dispositivo");
+  }
+
   async function exportAutorizacoesFotos() {
     try {
       let rows: AutorizacaoFotosCloud[] = [];
@@ -378,6 +423,7 @@ function GooglePage() {
       exportFundo();
       exportRegulamento();
       void exportInqueritoSaude();
+      exportArquivo();
       void exportAgendamentos();
       void exportAutorizacoesFotos();
       setLastExport("tudo");
@@ -631,10 +677,10 @@ function GooglePage() {
             </Button>
             <Button
               type="button"
-              variant={lastExport === "autorizacao-fotos" ? "default" : "secondary"}
-              onClick={() => void exportAutorizacoesFotos()}
+              variant={lastExport === "arquivo" ? "default" : "secondary"}
+              onClick={() => exportArquivo()}
             >
-              Respostas — autorização de fotos (Excel + PDF)
+              Arquivo
             </Button>
             <Button
               type="button"
@@ -648,47 +694,19 @@ function GooglePage() {
             Cada botão descarrega CSV e abre PDF A4 (pronto a imprimir, sem cortar). O botão fica verde após a exportação.
           </p>
 
-          <section className="mt-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-display text-lg">Planilha — autorização de fotos</h3>
-              <Button type="button" size="sm" onClick={() => void exportAutorizacoesFotos()}>
-                Excel + PDF
-              </Button>
-            </div>
-            <p className="mt-1 text-xs text-[var(--color-muted)]">{fotoEstado}</p>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-xs">
-                <thead>
-                  <tr className="border-b text-[var(--color-muted)]">
-                    <th className="py-1 pr-2">Aluno</th>
-                    <th className="py-1 pr-2">Turma</th>
-                    <th className="py-1 pr-2">Decisão</th>
-                    <th className="py-1 pr-2">Responsável</th>
-                    <th className="py-1 pr-2">Tomei nota</th>
-                    <th className="py-1">Data</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fotoRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-3 text-[var(--color-muted)]">Sem linhas nesta folha.</td>
-                    </tr>
-                  ) : (
-                    fotoRows.map((r, i) => (
-                      <tr key={`${r.submittedAt}-${i}`} className="border-b border-[var(--color-line)]">
-                        <td className="py-1 pr-2">{r.alunoNome}</td>
-                        <td className="py-1 pr-2">{r.turma || "—"}</td>
-                        <td className="py-1 pr-2">{r.decisao === "sim" ? "Sim, autorizo" : "Não autorizo"}</td>
-                        <td className="py-1 pr-2">{r.responsavelNome}</td>
-                        <td className="py-1 pr-2">{r.tomeiNotaNome}</td>
-                        <td className="py-1">{r.data || r.submittedAt.slice(0, 10)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant={lastExport === "autorizacao-fotos" ? "default" : "secondary"}
+              onClick={() => void exportAutorizacoesFotos()}
+            >
+              Autorização de fotos
+            </Button>
+            <span className="text-xs text-[var(--color-muted)]">
+              {fotoEstado}
+              {fotoRows.length ? ` · ${fotoRows.length} resposta(s), não são os 68 alunos` : ""}
+            </span>
+          </div>
           <p className="mt-3 text-xs text-[var(--color-muted)]">
             Saldo BAI: <strong>{formatKz(movsApp[movsApp.length - 1]?.saldo ?? 0)}</strong> ·{" "}
             {movsApp.length} linhas · {alunos.length} alunos · Conta {seed.escola.contaBai}.
