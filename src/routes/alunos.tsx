@@ -793,8 +793,9 @@ function MatriculaForm({
       <div className="space-y-2 sm:col-span-2 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)]/50 p-3">
         <Label className="text-sm font-semibold">Métodos de pagamento (por rubrica)</Label>
         <p className="text-[11px] text-[var(--color-muted)]">
-          Escolha o método em cada linha (ex.: inscrição em dinheiro, seguro e manuais em cartão).
-          Só <strong>Cartão</strong>, <strong>Transferência</strong> e <strong>Depósito em dinheiro (conta BAI)</strong> geram entrada no extrato Banco BAI. «Dinheiro (em mão)» não entra no extrato.
+          {form.bolsaEstudos
+            ? "Bolsa de estudos: a matrícula pode ser gravada sem escolher método de pagamento."
+            : "Escolha o método em cada linha (ex.: inscrição em dinheiro, seguro e manuais em cartão). Só Cartão, Transferência e Depósito em dinheiro (conta BAI) geram entrada no extrato Banco BAI. «Dinheiro (em mão)» não entra no extrato."}
         </p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {([
@@ -1961,6 +1962,7 @@ function Alunos() {
    * Evita gravar vários métodos “por defeito” sem o utilizador ter escolhido.
    */
   function validarMetodosObrigatorios(form: FormState): string | null {
+    if (form.bolsaEstudos) return null;
     const t = calcTotais(form);
     const checks: [number, string, string][] = [
       [t.inscricao, form.metodoInscricao, "Inscrição"],
