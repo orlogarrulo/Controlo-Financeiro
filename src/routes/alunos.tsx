@@ -501,7 +501,7 @@ function propinaDefaultFromTurma(turma: string): number {
   return PROPINA_PRIMAIRE;
 }
 
-/** ID automático via nextIdForTurma (anti-colisão multi-PC). */
+/** ID de matrícula: só PREFIX-NN. Nunca sufixo de computador. */
 function nextAlunoId(turma: string, existing: Aluno[]): string {
   return nextIdForTurma(
     turma,
@@ -871,6 +871,16 @@ function MatriculaForm({
         />
       </div>
       <div className="space-y-1.5">
+        <Label>NIF do encarregado de educação</Label>
+        <Input
+          data-focus="nif"
+          value={form.nif}
+          onChange={(e) => setForm({ ...form, nif: e.target.value.replace(/[^\d]/g, "").slice(0, 14) })}
+          inputMode="numeric"
+          placeholder="N.º de contribuinte"
+        />
+      </div>
+      <div className="space-y-1.5">
         <Label>Morada</Label>
         <Input
           value={form.morada}
@@ -885,14 +895,6 @@ function MatriculaForm({
       <div className="space-y-1.5">
         <Label>BI (opcional)</Label>
         <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
-      </div>
-      <div className="space-y-1.5">
-        <Label>NIF do encarregado de educação</Label>
-        <Input
-          value={form.nif}
-          onChange={(e) => setForm({ ...form, nif: e.target.value })}
-          placeholder="Número de contribuinte"
-        />
       </div>
       <div className="space-y-1.5">
         <Label>Data da inscrição</Label>
@@ -3158,7 +3160,7 @@ function Alunos() {
     const pref = a.faturaDestinatario;
     let destTipo: "pai" | "mae" | "outro" | "empresa" = pref?.tipo || "pai";
     let destNome = (pref?.nome || "").trim();
-    let destNif = (pref?.nif || "").trim();
+    let destNif = (pref?.nif || a.nif || "").trim();
     let destMorada = (pref?.morada || a.morada || "").trim();
     if (!destNome) {
       if ((a.pai || "").trim()) {

@@ -1,0 +1,19 @@
+NIF do encarregado + repor 68 alunos
+=====================================
+
+Matrícula
+- Campo «NIF do encarregado de educação» ao lado do e-mail.
+- Grava na ficha (campo nif).
+
+Recibos e faturas
+- O NIF da ficha sai no documento, mesmo sem destinatário de empresa.
+- Linha: «NIF do encarregado: …»
+
+Arquivo
+- Compara documentos com Matrículas.
+- Se o Arquivo tiver mais alunos, aparece «Repor alunos do Arquivo».
+- Só repõe ID de turma (P3-07, CM2-02…) e nome real. Não cria «Aluno CM2-02-3».
+- A escola tem 68. O botão diz com quantos ficou Matrículas.
+
+Publicar: copiar por cima da raiz do repositório, commit, push, redeploy.
+No PC: Arquivo → Repor alunos do Arquivo → confirmar 68 em Matrículas.

@@ -621,7 +621,7 @@ export function buildInvoiceHtml(opts: {
     a.mae ||
     a.encarregado ||
     "Encarregado de educação";
-  const destNif = (dest?.nif || a.faturaDestinatario?.nif || "").trim();
+  const destNif = (dest?.nif || a.faturaDestinatario?.nif || a.nif || "").trim();
   const destMorada = (dest?.morada || a.faturaDestinatario?.morada || a.morada || "").trim();
   const destTipo = dest?.tipo || a.faturaDestinatario?.tipo;
   const destLabel =
@@ -676,7 +676,7 @@ export function buildInvoiceHtml(opts: {
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Facturado a</p>
         <p style="margin:0;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:#6b7280;font-weight:600;">${destLabel}</p>
         <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
-        ${destNif ? `<p style="margin:2px 0 0;font-size:11px;color:#4b5563;">NIF / Contribuinte: <strong>${destNif}</strong></p>` : ""}
+        ${destNif ? `<p style="margin:2px 0 0;font-size:11px;color:#4b5563;">NIF do encarregado: <strong>${destNif}</strong></p>` : ""}
         ${destMorada ? `<p style="margin:2px 0 0;font-size:11px;color:#4b5563;">Morada: ${destMorada}</p>` : ""}
         <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma} · Sexe / Sexo: <strong style="color:#111827;">${a.sexo === "Masculin" ? "Masculin (M)" : a.sexo === "Féminin" ? "Féminin (F)" : "—"}</strong></p>

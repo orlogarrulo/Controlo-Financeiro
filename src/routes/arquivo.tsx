@@ -33,7 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getSeed, useFinance, alunosAll } from "@/lib/store";
+import { getSeed, useFinance, alunosAll, reporAlunosDoArquivo } from "@/lib/store";
 import type {
   DocumentoAluno,
   DocumentoAlunoEstado,
@@ -807,8 +807,28 @@ function ArquivoPage() {
     <div className="space-y-6">
       <PageHeader
         title="Arquivo"
-        description={`Recibos e faturas dos ${alunos.length} aluno(s) de Matrículas. Duplicado funde-se na ficha que fica. Pesquisa, PDF e recibo a partir da fatura.`}
+        description={`Recibos e faturas. Matrículas: ${alunos.length} aluno(s). No Arquivo: ${stats.alunosComDoc} com documento. A escola tem 68 — se faltar alguém, repor a partir daqui.`}
       />
+      {stats.alunosComDoc > alunos.length ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>
+            O Arquivo tem documentos de {stats.alunosComDoc} aluno(s) e Matrículas mostra {alunos.length}. Faltam fichas.
+          </p>
+          <Button
+            size="sm"
+            onClick={() => {
+              const r = reporAlunosDoArquivo();
+              toast.success(
+                r.repostos > 0
+                  ? `Repostos ${r.repostos} aluno(s). Matrículas fica com ${r.emMatriculas}.`
+                  : `Nada a repor. Arquivo ${r.noArquivo} · Matrículas ${r.emMatriculas}.`,
+              );
+            }}
+          >
+            Repor alunos do Arquivo
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Kpi label="Documentos" value={String(stats.total)} />

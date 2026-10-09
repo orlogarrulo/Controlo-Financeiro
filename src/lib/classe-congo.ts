@@ -105,41 +105,29 @@ export function prefixFromTurma(turma: string): string {
 
 /**
  * Próximo ID de matrícula para a turma.
- * Formato legado: PREFIX-NN · novo: PREFIX-NN-xxxx (sufixo anti-colisão multi-PC).
- * Dois dispositivos com o mesmo max local já não geram o mesmo ID.
+ * Formato único: PREFIX-NN (CP1-04). Sem sufixo de computador.
+ * O sufixo (CP1-04-gtje) fazia o recibo ir para o Arquivo e a ficha
+ * não entrar em Matrículas. A colisão entre PCs resolve-se na nuvem,
+ * não no ID.
  */
 export function nextIdForTurma(turma: string, taken: Iterable<string>): string {
   const prefix = prefixFromTurma(turma);
-  const takenSet = new Set(
-    [...taken].map((id) => String(id || "").trim().toUpperCase()).filter(Boolean),
-  );
-  // Aceita IDs legados PREFIX-NN e novos PREFIX-NN-xxxx
-  const re = new RegExp(`^${prefix}-(\\d+)(?:-[a-z0-9]+)?$`, "i");
+  const takenBases = new Set<string>();
+  const re = new RegExp(`^${prefix}-(\\d{2})(?:-[a-z0-9]+)?$`, "i");
   let max = 0;
-  for (const id of taken) {
-    const m = String(id || "").match(re);
-    if (m) max = Math.max(max, Number(m[1]) || 0);
+  for (const raw of taken) {
+    const id = String(raw || "").trim();
+    const m = id.match(re);
+    if (!m) continue;
+    const n = Number(m[1]) || 0;
+    max = Math.max(max, n);
+    takenBases.add(`${prefix}-${String(n).padStart(2, "0")}`.toUpperCase());
   }
-  const rand4 = () => {
-    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let out = "";
-    const cryptoObj = typeof crypto !== "undefined" ? crypto : undefined;
-    if (cryptoObj?.getRandomValues) {
-      const buf = new Uint8Array(4);
-      cryptoObj.getRandomValues(buf);
-      for (let i = 0; i < 4; i++) out += alphabet[buf[i]! % alphabet.length]!;
-      return out;
-    }
-    for (let i = 0; i < 4; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)]!;
-    return out;
-  };
-  // Base sequencial + sufixo aleatório: P1-05-k7x2 (evita colisão multi-dispositivo)
-  for (let attempt = 0; attempt < 64; attempt++) {
-    const n = max + 1 + Math.floor(attempt / 8);
-    const id = `${prefix}-${String(n).padStart(2, "0")}-${rand4()}`;
-    if (!takenSet.has(id.toUpperCase())) return id;
+  for (let n = max + 1; n < max + 80; n++) {
+    const id = `${prefix}-${String(n).padStart(2, "0")}`;
+    if (!takenBases.has(id.toUpperCase())) return id;
   }
-  return `${prefix}-${String(max + 1).padStart(2, "0")}-${Date.now().toString(36).slice(-4)}`;
+  return `${prefix}-${String(max + 1).padStart(2, "0")}`;
 }
 
 /** Idade típica da turma em 1/out (min, max inclusive). */

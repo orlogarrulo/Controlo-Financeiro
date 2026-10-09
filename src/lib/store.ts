@@ -375,6 +375,7 @@ type Store = ExtraState & {
   /** Força 4E-04 Nildo (recibo Arquivo) — ID reutilizado após realinhamento. */
   forcarFichaNildo4E04: () => { ok: boolean; message: string };
   sanearAlunosDuplicados: () => { removidos: number; detalhes: string[] };
+  reporAlunosDoArquivo: () => { repostos: number; noArquivo: number; emMatriculas: number; detalhes: string[] };
   reabrirAlunosUnicos: () => { restaurados: number; detalhes: string[] };
   importLancamentos: (rows: CapturaInput[]) => number;
   addRecibosSalario: (rows: ReciboSalario[]) => void;
@@ -2945,6 +2946,7 @@ export const useFinance = create<Store>()(
       recuperarAlunosOcultos: () => recuperarAlunosOcultos(),
       forcarFichaNildo4E04: () => forcarFichaNildo4E04(),
       sanearAlunosDuplicados: () => sanearAlunosDuplicados(),
+      reporAlunosDoArquivo: () => reporAlunosDoArquivo(),
       reabrirAlunosUnicos: () => reabrirAlunosUnicos(),
       importLancamentos: (rows) => {
         requireEdit(get);
@@ -4926,7 +4928,7 @@ export function isFichaProtegida(id: string): boolean {
 /** Família Zembo: estavam no controlo Campus Cidade e não entravam em Matrículas. */
 export const ALUNOS_ZEMBO: Aluno[] = [
   {
-    id: "CP1-ZEM",
+    id: "CP1-05",
     nome: "João Francisco Zembo",
     turma: "CP1",
     grupo: "Primaire",
@@ -4937,47 +4939,47 @@ export const ALUNOS_ZEMBO: Aluno[] = [
     seguro: 0,
     extras: 0,
     curso: 0,
-    mensalidade1: 0,
+    mensalidade1: 40000,
     propina: 75000,
-    dataPag: "",
-    bruto: 127000,
+    dataPag: "2026-10-08",
+    bruto: 167000,
     descPct: 0,
-    liquido: 127000,
+    liquido: 167000,
     encarregado: "",
     telefone: "",
     bi: "",
     familia: "Francisco Zembo",
-    recibo: "",
-    obs: "Transferido do Campus Cidade · inscrição 167.000 Kz já paga na cidade (acerto 0).",
-    statusPag: "registado",
+    recibo: "RC-202610-GR3T-53",
+    obs: "Reposto do Arquivo · liquidação matrícula 167.000 Kz · 08/10/2026.",
+    statusPag: "pago",
     transferidoCampusCidade: true,
     dataNascimento: "2020-10-29",
   },
   {
-    id: "P3-ZEM",
-    nome: "Etiandro Marcio Francisco Zembo",
-    turma: "P3",
-    grupo: "Maternelle",
-    inscricao: 180000,
+    id: "CP1-04",
+    nome: "Eliandro Marcio Francisco Zembo",
+    turma: "CP1",
+    grupo: "Primaire",
+    inscricao: 127000,
     manuais: 0,
     cadernos: 0,
     uniforme: 0,
     seguro: 0,
     extras: 0,
     curso: 0,
-    mensalidade1: 0,
-    propina: 170000,
-    dataPag: "",
-    bruto: 180000,
+    mensalidade1: 40000,
+    propina: 75000,
+    dataPag: "2026-10-08",
+    bruto: 167000,
     descPct: 0,
-    liquido: 180000,
+    liquido: 167000,
     encarregado: "",
     telefone: "",
     bi: "",
     familia: "Francisco Zembo",
-    recibo: "",
-    obs: "Transferido do Campus Cidade · Maternelle · pago na cidade 167.000 Kz · remanescente 13.000 Kz.",
-    statusPag: "registado",
+    recibo: "RC-202610-9GFL-28",
+    obs: "Reposto do Arquivo · liquidação matrícula 167.000 Kz · 08/10/2026.",
+    statusPag: "pago",
     transferidoCampusCidade: true,
     dataNascimento: "2021-12-02",
   },
@@ -5856,6 +5858,110 @@ export function alunosAll(
     push(z);
   }
   return out;
+}
+
+/**
+ * Repõe em Matrículas os alunos que só existem no Arquivo (fatura/recibo).
+ * Ignora códigos de movimento e fichas «Aluno …». Não duplica pelo nome.
+ * A escola tem 68 alunos; o Arquivo é a lista de controlo.
+ */
+export function reporAlunosDoArquivo(): { repostos: number; noArquivo: number; emMatriculas: number; detalhes: string[] } {
+  const state = useFinance.getState();
+  const fontes = [
+    ...(state.documentosAluno || []).map((d) => ({
+      alunoId: d.alunoId,
+      alunoNome: d.alunoNome,
+      valor: d.valor,
+    })),
+    ...(state.codigosRecibo || []).map((d) => ({
+      alunoId: d.alunoId,
+      alunoNome: d.alunoNome,
+      valor: d.valor,
+    })),
+  ];
+  const deleted = new Set(state.alunosDeletedIds || []);
+  const visibles = alunosAll(state.alunosExtra || [], state.alunosOverrides || {}, state.alunosDeletedIds || []);
+  const ids = new Set(visibles.map((a) => a.id));
+  const nomes = new Set(visibles.map((a) => normalizeNomeAluno(a.nome)).filter(Boolean));
+  const byId = new Map<string, { nome: string; valor: number }>();
+  for (const d of fontes) {
+    const id = idMatriculaDeArquivo(d.alunoId);
+    const nome = String(d.alunoNome || "").trim();
+    if (!id || !nome || /^aluno\s/i.test(nome) || /teste browser/i.test(nome)) continue;
+    const nn = normalizeNomeAluno(nome.replace(/\s*-\s*campus cidade\s*$/i, ""));
+    if (nn && nomes.has(nn)) continue;
+    const prev = byId.get(id);
+    if (!prev || nome.length > prev.nome.length) {
+      byId.set(id, { nome, valor: Number(d.valor) || prev?.valor || 0 });
+    }
+  }
+  const extras = [...(state.alunosExtra || [])];
+  const detalhes: string[] = [];
+  const deletedNext = [...(state.alunosDeletedIds || [])];
+  for (const [id, info] of byId) {
+    const nn = normalizeNomeAluno(info.nome);
+    if (ids.has(id) || (nn && nomes.has(nn))) continue;
+    if (deleted.has(id)) {
+      const i = deletedNext.indexOf(id);
+      if (i >= 0) deletedNext.splice(i, 1);
+    }
+    const turma = turmaFromId(id) || "";
+    extras.push({
+      id,
+      nome: info.nome,
+      turma,
+      grupo: grupoFromTurma(turma),
+      inscricao: 0,
+      manuais: 0,
+      uniforme: 0,
+      seguro: 0,
+      extras: 0,
+      curso: 0,
+      mensalidade1: 0,
+      propina: 0,
+      dataPag: "2026-10-08",
+      bruto: info.valor,
+      descPct: 0,
+      liquido: info.valor,
+      encarregado: "",
+      telefone: "",
+      bi: "",
+      familia: "",
+      recibo: "",
+      obs: "Reposto a partir do Arquivo",
+      statusPag: "pago",
+      transferidoCampusCidade: /campus cidade/i.test(info.nome) || info.valor === 167000,
+    } as Aluno);
+    ids.add(id);
+    if (nn) nomes.add(nn);
+    detalhes.push(`${id} · ${info.nome}`);
+  }
+  if (detalhes.length) {
+    useFinance.setState({ alunosExtra: extras, alunosDeletedIds: deletedNext });
+    try {
+      persistAlunosCensoLocal(alunosAll(extras, state.alunosOverrides || {}, deletedNext));
+    } catch {
+      /* ignore */
+    }
+    try {
+      useFinance.getState().pushAudit?.("repor_arquivo", `${detalhes.length} aluno(s) do Arquivo`);
+    } catch {
+      /* ignore */
+    }
+  }
+  const emMatriculas = alunosAll(
+    useFinance.getState().alunosExtra || [],
+    useFinance.getState().alunosOverrides || {},
+    useFinance.getState().alunosDeletedIds || [],
+  ).length;
+  return { repostos: detalhes.length, noArquivo: byId.size, emMatriculas, detalhes };
+}
+
+/** CP1-04-gtje e CP1-05-5pfb são a mesma matrícula CP1-04 / CP1-05. */
+function idMatriculaDeArquivo(raw?: string): string {
+  const s = String(raw || "").trim();
+  const m = s.match(/^((?:P[123]|CP[12]|CE[12]|CM[12]|[3-6]E)-\d{2})(?:-[a-z0-9]+)?$/i);
+  return m ? m[1].toUpperCase() : "";
 }
 
 /**Ids que NÃO têm substituto (idAnterior) nem homónimo visível.
