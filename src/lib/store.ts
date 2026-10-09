@@ -374,6 +374,7 @@ type Store = ExtraState & {
   recuperarAlunosOcultos: () => { restaurados: number; detalhes: string[] };
   /** Força 4E-04 Nildo (recibo Arquivo) — ID reutilizado após realinhamento. */
   forcarFichaNildo4E04: () => { ok: boolean; message: string };
+  garantirAlunosZembo: () => number;
   sanearAlunosDuplicados: () => { removidos: number; detalhes: string[] };
   reporAlunosDoArquivo: () => { repostos: number; noArquivo: number; emMatriculas: number; detalhes: string[] };
   reabrirAlunosUnicos: () => { restaurados: number; detalhes: string[] };
@@ -2945,6 +2946,7 @@ export const useFinance = create<Store>()(
       },
       recuperarAlunosOcultos: () => recuperarAlunosOcultos(),
       forcarFichaNildo4E04: () => forcarFichaNildo4E04(),
+      garantirAlunosZembo: () => garantirAlunosZembo(),
       sanearAlunosDuplicados: () => sanearAlunosDuplicados(),
       reporAlunosDoArquivo: () => reporAlunosDoArquivo(),
       reabrirAlunosUnicos: () => reabrirAlunosUnicos(),
@@ -4919,6 +4921,12 @@ export const FICHAS_PROTEGIDAS: Record<
     grupo: "Collège",
     propinaOut: 75000,
   },
+  "CP1-04": {
+    nome: "Eliandro Marcio Francisco Zembo",
+    turma: "CP1",
+    grupo: "Primaire",
+    propinaOut: 75000,
+  },
 };
 
 export function isFichaProtegida(id: string): boolean {
@@ -4987,7 +4995,9 @@ export const ALUNOS_ZEMBO: Aluno[] = [
 
 export function garantirAlunosZembo(): number {
   const state = useFinance.getState();
-  const deleted = new Set(state.alunosDeletedIds || []);
+  const deleted = new Set(
+    (state.alunosDeletedIds || []).filter((id) => id !== "CP1-04" && id !== "CP1-05"),
+  );
   const extras = [...(state.alunosExtra || [])];
   const nomes = new Set(extras.map((a) => normalizeNomeAluno(a.nome)));
   let n = 0;
@@ -5002,8 +5012,11 @@ export function garantirAlunosZembo(): number {
     nomes.add(normalizeNomeAluno(z.nome));
     n += 1;
   }
-  if (n > 0) {
-    useFinance.setState({ alunosExtra: extras });
+  if (n > 0 || (state.alunosDeletedIds || []).some((id) => id === "CP1-04" || id === "CP1-05")) {
+    useFinance.setState({
+      alunosExtra: extras,
+      alunosDeletedIds: (state.alunosDeletedIds || []).filter((id) => id !== "CP1-04" && id !== "CP1-05"),
+    });
     try {
       persistAlunosCensoLocal(extras);
     } catch {

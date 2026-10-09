@@ -183,6 +183,11 @@ export function HydrateStore() {
           console.warn("[forçar] 4E-04 Nildo", e);
         }
         try {
+          useFinance.getState().garantirAlunosZembo?.();
+        } catch (e) {
+          console.warn("[forçar] Zembo", e);
+        }
+        try {
           // Outro PC não pode ressuscitar fichas a partir do Arquivo local e empurrá-las.
           if (!adoptedNeonThisBoot) {
             const r0 = useFinance.getState().recuperarAlunosOcultos?.();
