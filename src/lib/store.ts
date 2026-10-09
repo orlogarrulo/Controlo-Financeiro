@@ -4165,6 +4165,7 @@ export function realinharIdsPorTurma(): number {
   // Extras
   for (const a of [...extras]) {
     if (!a?.id) continue;
+    if (FICHAS_PROTEGIDAS[a.id]) continue;
     const turma = resolveTurmaOficial(a);
     if (!turma) continue;
     const fromId = turmaFromId(a.id);
@@ -4923,6 +4924,12 @@ export const FICHAS_PROTEGIDAS: Record<
   },
   "CP1-04": {
     nome: "Eliandro Marcio Francisco Zembo",
+    turma: "CP1",
+    grupo: "Primaire",
+    propinaOut: 75000,
+  },
+  "CP1-05": {
+    nome: "João Francisco Zembo",
     turma: "CP1",
     grupo: "Primaire",
     propinaOut: 75000,
@@ -5821,13 +5828,12 @@ export function alunosAll(
   const out: Aluno[] = [];
   const seenIds = new Set<string>();
 
-  const push = (a: Aluno) => {
+  const push = (a: Aluno, force = false) => {
     if (!a?.id || seenIds.has(a.id)) return;
     if (!isCanonicalAlunoId(a.id) || isMovimentoNaoAluno(a.id)) return;
     const nome = String(a.nome || "").trim();
     if (!nome || /^aluno\s/i.test(nome)) return;
-    // Apagado fica apagado em todos os PCs (não ressuscitar por recibo antigo).
-    if (deleted.has(a.id)) return;
+    if (!force && deleted.has(a.id)) return;
     seenIds.add(a.id);
     out.push(apply(a));
   };
@@ -5872,12 +5878,12 @@ export function alunosAll(
       recibo: "",
       obs: `Ficha protegida (${id})`,
       statusPag: "pago",
-    } as Aluno);
+    } as Aluno, true);
   }
   for (const z of ALUNOS_ZEMBO) {
-    if (seenIds.has(z.id) || deleted.has(z.id)) continue;
+    if (seenIds.has(z.id)) continue;
     if ([...out].some((a) => normalizeNomeAluno(a.nome) === normalizeNomeAluno(z.nome))) continue;
-    push(z);
+    push(z, true);
   }
   return out;
 }
