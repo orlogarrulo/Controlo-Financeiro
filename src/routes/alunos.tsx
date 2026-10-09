@@ -2257,22 +2257,27 @@ function Alunos() {
                 const deltaPacote = pacoteMudou
                   ? inscForm - (Number(editing.inscricao) || 0)
                   : 0;
+                const propinaForm = num(form.propina);
+                const mesesForm = num(form.mesesPropina) || 0;
+                const mensForm = t.mensalidade1;
                 return {
                   inscricao: inscFinal,
                   seguro: seguroFinal,
-                  manuais: Number(editing.manuais) || 0,
-                  cadernos: Number(editing.cadernos) || 0,
-                  uniforme: Number(editing.uniforme) || 0,
-                  extras: Number(editing.extras) || 0,
-                  curso: Number(editing.curso) || 0,
+                  manuais: num(form.manuais),
+                  cadernos: num(form.cadernos),
+                  uniforme: num(form.uniforme),
+                  extras: num(form.extras),
+                  curso: num(form.curso),
+                  transporte: num(form.transporte),
+                  alimentacao: num(form.alimentacao),
                   cartaoEstudante: cartaoFinal,
-                  mensalidade1: Number(editing.mensalidade1) || 0,
-                  mesesPropina: Number(editing.mesesPropina) || 0,
-                  propina: num(form.propina),
+                  mensalidade1: mensForm,
+                  mesesPropina: mesesForm,
+                  propina: propinaForm,
                   dataPag: editing.dataPag || form.dataPag.trim(),
-                  bruto: pacoteMudou ? Math.max(0, brutoBase + deltaPacote) : brutoBase,
-                  descPct: Number(editing.descPct) || 0,
-                  liquido: pacoteMudou ? Math.max(0, liquidoBase + deltaPacote) : liquidoBase,
+                  bruto: t.bruto || (pacoteMudou ? Math.max(0, brutoBase + deltaPacote) : brutoBase),
+                  descPct: t.descPct || 0,
+                  liquido: t.liquido || (pacoteMudou ? Math.max(0, liquidoBase + deltaPacote) : liquidoBase),
                   statusPag: editing.statusPag,
                   recibo: editing.recibo,
                 };
@@ -2313,8 +2318,19 @@ function Alunos() {
         }
       }
       toast.success(`Aluno ${editing.id} actualizado`);
+      const gravado =
+        alunosAll(
+          useFinance.getState().alunosExtra || [],
+          useFinance.getState().alunosOverrides || {},
+          useFinance.getState().alunosDeletedIds || [],
+        ).find((a) => a.id === editing.id) || editing;
       setEditing(null);
       clearDeepLink();
+      try {
+        abrirRecibo(gravado);
+      } catch (err) {
+        console.warn("[saveEdit] abrirRecibo", err);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
     }
