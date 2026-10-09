@@ -5017,7 +5017,17 @@ export function garantirAlunosZembo(): number {
       const cur = extras[ix];
       const trocada = /kanadji|bamba|celeste nunes/i.test(`${cur.pai || ""} ${cur.mae || ""} ${cur.encarregado || ""} ${cur.recibo || ""}`);
       if (trocada || cur.id !== z.id) {
-        extras[ix] = { ...cur, ...z, id: z.id, telefone: cur.telefone || z.telefone, email: cur.email || z.email };
+        extras[ix] = {
+          ...cur,
+          id: z.id,
+          nome: z.nome,
+          pai: z.pai,
+          mae: z.mae,
+          encarregado: z.encarregado,
+          familia: z.familia,
+          turma: cur.turma || z.turma,
+          grupo: cur.grupo || z.grupo,
+        };
         n += 1;
       }
       nomes.add(normalizeNomeAluno(z.nome));
@@ -5823,19 +5833,17 @@ export function alunosAll(
       }
     }
     if (merged.id === "CP1-04" || merged.id === "CP1-05") {
+      merged.nome = merged.id === "CP1-04" ? "Eliandro Marcio Francisco Zembo" : "João Francisco Zembo";
       merged.pai = "Raúl Yanou Massiala Zembo";
       merged.mae = "Marlene Nené Francisco Zembo";
-      merged.encarregado = "Raúl Yanou Massiala Zembo";
+      merged.encarregado = merged.encarregado && !/kanadji|bamba/i.test(merged.encarregado)
+        ? merged.encarregado
+        : "Raúl Yanou Massiala Zembo";
       merged.familia = "Francisco Zembo";
       merged.turma = "CP1";
       merged.grupo = "Primaire";
-      merged.recibo = merged.id === "CP1-04" ? "RC-202610-9GFL-28" : "RC-202610-GR3T-53";
-      merged.liquido = 167000;
-      merged.bruto = 167000;
-      merged.foto = "";
       if (merged.telefone === "923 668 888") merged.telefone = "";
-      merged.faturaDestinatario = { tipo: "pai", nome: "Raúl Yanou Massiala Zembo" };
-      if (/kanadji|bamba|celeste nunes|82\.000/i.test(merged.obs || "")) {
+      if (/kanadji|bamba|celeste nunes/i.test(merged.obs || "")) {
         merged.obs = "Ficha própria Zembo. Não usar dados da família Kanadji.";
       }
     }
