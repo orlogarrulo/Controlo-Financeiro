@@ -6432,56 +6432,6 @@
       "transferidoCampusCidade": false
     },
     {
-      "bi": "",
-      "id": "P1-05",
-      "mae": "",
-      "obs": "52.º aluno — ficha criada a partir do nome. Completar turma, encarregado e liquidação no PC da escola.",
-      "pai": "",
-      "nome": "Rockia",
-      "sexo": "",
-      "bruto": 0,
-      "curso": 0,
-      "email": "",
-      "grupo": "Maternelle",
-      "turma": "Maternelle P1",
-      "extras": 0,
-      "morada": "",
-      "recibo": "",
-      "seguro": 0,
-      "dataPag": "",
-      "descPct": 0,
-      "familia": "",
-      "liquido": 0,
-      "manuais": 0,
-      "propina": 170000,
-      "cadernos": 0,
-      "telefone": "",
-      "uniforme": 0,
-      "inscricao": 0,
-      "statusPag": "pendente",
-      "transporte": 0,
-      "alimentacao": 0,
-      "encarregado": "",
-      "irmaosNivel": 0,
-      "mensalidade1": 0,
-      "mesesPropina": 0,
-      "docsEntregues": {
-        "biPais": false,
-        "fotos4": false,
-        "seguro": false,
-        "biAluno": false,
-        "boletimNotas": false,
-        "atestadoMedico": false,
-        "boletimVacinas": false
-      },
-      "dataNascimento": "",
-      "cartaoEstudante": 0,
-      "lugarNascimento": "",
-      "metodoPagamento": "",
-      "campanhaPromoSetembro": false,
-      "transferidoCampusCidade": false
-    },
-    {
       "bi": "5275/2026",
       "id": "P1-06",
       "mae": "Joana Muangala Alexandre",
@@ -7967,19 +7917,6 @@
       "pagamentos": {},
       "pagamentosEm": {},
       "obs": "Seguro próprio (externo)"
-    },
-    {
-      "id": "P1-05",
-      "nome": "Rockia",
-      "turma": "Maternelle P1",
-      "propina": 170000,
-      "pagamentos": {
-        "out": 234000
-      },
-      "pagamentosEm": {
-        "out": "2026-09-22"
-      },
-      "obs": "52.º aluno — ficha criada a partir do nome. Completar turma, encarregado e liquidação no PC da escola."
     },
     {
       "id": "P1-06",

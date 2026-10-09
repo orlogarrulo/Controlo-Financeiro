@@ -5822,6 +5822,23 @@ export function alunosAll(
         merged.statusPag = "pago";
       }
     }
+    if (merged.id === "CP1-04" || merged.id === "CP1-05") {
+      merged.pai = "Raúl Yanou Massiala Zembo";
+      merged.mae = "Marlene Nené Francisco Zembo";
+      merged.encarregado = "Raúl Yanou Massiala Zembo";
+      merged.familia = "Francisco Zembo";
+      merged.turma = "CP1";
+      merged.grupo = "Primaire";
+      merged.recibo = merged.id === "CP1-04" ? "RC-202610-9GFL-28" : "RC-202610-GR3T-53";
+      merged.liquido = 167000;
+      merged.bruto = 167000;
+      merged.foto = "";
+      if (merged.telefone === "923 668 888") merged.telefone = "";
+      merged.faturaDestinatario = { tipo: "pai", nome: "Raúl Yanou Massiala Zembo" };
+      if (/kanadji|bamba|celeste nunes|82\.000/i.test(merged.obs || "")) {
+        merged.obs = "Ficha própria Zembo. Não usar dados da família Kanadji.";
+      }
+    }
     return merged;
   };
 
