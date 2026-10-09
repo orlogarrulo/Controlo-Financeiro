@@ -2318,19 +2318,30 @@ function Alunos() {
         }
       }
       toast.success(`Aluno ${editing.id} actualizado`);
-      const gravado =
-        alunosAll(
-          useFinance.getState().alunosExtra || [],
-          useFinance.getState().alunosOverrides || {},
-          useFinance.getState().alunosDeletedIds || [],
-        ).find((a) => a.id === editing.id) || editing;
+      const gravado = {
+        ...editing,
+        id: editing.id,
+        nome: form.nome.trim() || editing.nome,
+        inscricao: t.inscricao,
+        seguro: t.seguro,
+        propina: num(form.propina),
+        mesesPropina: num(form.mesesPropina) || 0,
+        mensalidade1: t.mensalidade1,
+        liquido: t.liquido,
+        bruto: t.bruto,
+        transferidoCampusCidade: form.transferidoCampusCidade,
+        recibo: editing.recibo,
+      } as Aluno;
       setEditing(null);
       clearDeepLink();
-      try {
-        abrirRecibo(gravado);
-      } catch (err) {
-        console.warn("[saveEdit] abrirRecibo", err);
-      }
+      window.setTimeout(() => {
+        try {
+          abrirRecibo(gravado);
+        } catch (err) {
+          console.warn("[saveEdit] abrirRecibo", err);
+          toast.error("Ficha gravada, mas o recibo não abriu. Use o botão Recibo na lista.");
+        }
+      }, 50);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível guardar");
     }
@@ -3272,8 +3283,12 @@ function Alunos() {
     // — só entram se o utilizador as marcar no diálogo do recibo.
     // Sem propina na ficha (mensalidade1/mesesPropina = 0): não incluir propinas no recibo.
     // Propina no recibo de liquidação só se mensalidade1 > 0 (não basta mesesPropina)
-    const semPropinaMatricula = !(Number(a.mensalidade1) > 0);
+    const semPropinaMatricula = !(Number(a.mensalidade1) > 0) && !(Number(a.propina) > 0);
     linhas = linhas.map((l) => {
+      if (l.key === "propinas" && Number(a.propina) > 0 && !(l.value > 0)) {
+        const meses = Math.max(1, Number(a.mesesPropina) || 1);
+        return { ...l, on: true, value: Number(a.propina) * (Number(a.mesesPropina) > 0 ? Number(a.mesesPropina) : 1), label: meses > 1 ? l.label : l.label };
+      }
       if (semPropinaMatricula && l.key === "propinas") {
         return { ...l, on: false, value: 0 };
       }
@@ -4391,14 +4406,7 @@ function Alunos() {
             setForm={setForm}
             onSave={saveEdit}
             onCancel={() => { setEditing(null); clearDeepLink(); }}
-            protegerLiquidacaoPaga={
-              Boolean(
-                editing &&
-                  (editing.statusPag === "pago" ||
-                    (Number(editing.liquido) > 0 &&
-                      (Boolean(editing.dataPag) || Boolean(editing.recibo)))),
-              )
-            }
+            protegerLiquidacaoPaga={false}
           />
           {canEdit && editing ? (
             <div className="mt-4 border-t border-red-200 pt-3">
