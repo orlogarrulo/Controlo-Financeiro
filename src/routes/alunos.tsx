@@ -875,9 +875,15 @@ function MatriculaForm({
         <Input
           data-focus="nif"
           value={form.nif}
-          onChange={(e) => setForm({ ...form, nif: e.target.value.replace(/[^\d]/g, "").slice(0, 14) })}
-          inputMode="numeric"
-          placeholder="N.º de contribuinte"
+          maxLength={15}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              nif: e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 15).toUpperCase(),
+            })
+          }
+          inputMode="text"
+          placeholder="Até 15 letras ou números"
         />
       </div>
       <div className="space-y-1.5">
