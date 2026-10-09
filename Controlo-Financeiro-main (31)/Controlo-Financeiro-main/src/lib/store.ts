@@ -4923,6 +4923,94 @@ export function isFichaProtegida(id: string): boolean {
   return Boolean(FICHAS_PROTEGIDAS[id]);
 }
 
+/** Família Zembo: estavam no controlo Campus Cidade e não entravam em Matrículas. */
+export const ALUNOS_ZEMBO: Aluno[] = [
+  {
+    id: "CP1-ZEM",
+    nome: "João Francisco Zembo",
+    turma: "CP1",
+    grupo: "Primaire",
+    inscricao: 127000,
+    manuais: 0,
+    cadernos: 0,
+    uniforme: 0,
+    seguro: 0,
+    extras: 0,
+    curso: 0,
+    mensalidade1: 0,
+    propina: 75000,
+    dataPag: "",
+    bruto: 127000,
+    descPct: 0,
+    liquido: 127000,
+    encarregado: "",
+    telefone: "",
+    bi: "",
+    familia: "Francisco Zembo",
+    recibo: "",
+    obs: "Transferido do Campus Cidade · inscrição 167.000 Kz já paga na cidade (acerto 0).",
+    statusPag: "registado",
+    transferidoCampusCidade: true,
+    dataNascimento: "2020-10-29",
+  },
+  {
+    id: "P3-ZEM",
+    nome: "Etiandro Marcio Francisco Zembo",
+    turma: "P3",
+    grupo: "Maternelle",
+    inscricao: 180000,
+    manuais: 0,
+    cadernos: 0,
+    uniforme: 0,
+    seguro: 0,
+    extras: 0,
+    curso: 0,
+    mensalidade1: 0,
+    propina: 170000,
+    dataPag: "",
+    bruto: 180000,
+    descPct: 0,
+    liquido: 180000,
+    encarregado: "",
+    telefone: "",
+    bi: "",
+    familia: "Francisco Zembo",
+    recibo: "",
+    obs: "Transferido do Campus Cidade · Maternelle · pago na cidade 167.000 Kz · remanescente 13.000 Kz.",
+    statusPag: "registado",
+    transferidoCampusCidade: true,
+    dataNascimento: "2021-12-02",
+  },
+];
+
+export function garantirAlunosZembo(): number {
+  const state = useFinance.getState();
+  const deleted = new Set(state.alunosDeletedIds || []);
+  const extras = [...(state.alunosExtra || [])];
+  const nomes = new Set(extras.map((a) => normalizeNomeAluno(a.nome)));
+  let n = 0;
+  for (const z of ALUNOS_ZEMBO) {
+    if (deleted.has(z.id)) continue;
+    if (extras.some((a) => a.id === z.id || normalizeNomeAluno(a.nome) === normalizeNomeAluno(z.nome))) {
+      nomes.add(normalizeNomeAluno(z.nome));
+      continue;
+    }
+    if (nomes.has(normalizeNomeAluno(z.nome))) continue;
+    extras.push({ ...z, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    nomes.add(normalizeNomeAluno(z.nome));
+    n += 1;
+  }
+  if (n > 0) {
+    useFinance.setState({ alunosExtra: extras });
+    try {
+      persistAlunosCensoLocal(extras);
+    } catch {
+      /* ignore */
+    }
+  }
+  return n;
+}
+
 export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
   const ID = "4E-04";
   const prot = FICHAS_PROTEGIDAS[ID];
@@ -5759,6 +5847,11 @@ export function alunosAll(
       obs: `Ficha protegida (${id})`,
       statusPag: "pago",
     } as Aluno);
+  }
+  for (const z of ALUNOS_ZEMBO) {
+    if (seenIds.has(z.id) || deleted.has(z.id)) continue;
+    if ([...out].some((a) => normalizeNomeAluno(a.nome) === normalizeNomeAluno(z.nome))) continue;
+    push(z);
   }
   return out;
 }

@@ -139,6 +139,8 @@ export type Aluno = {
   /** Morada / endereço. */
   morada?: string;
   bi: string;
+  /** NIF / número de contribuinte do encarregado de educação. */
+  nif?: string;
   familia: string;
   recibo: string;
   obs: string;

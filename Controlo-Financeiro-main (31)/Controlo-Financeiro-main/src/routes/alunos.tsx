@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas } from "@/lib/store"
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirAlunosZembo } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
@@ -287,6 +287,7 @@ type FormState = {
   email: string;
   morada: string;
   bi: string;
+  nif: string;
   familia: string;
   obs: string;
   dataNascimento: string;
@@ -354,6 +355,7 @@ function emptyForm(): FormState {
     email: "",
     morada: "",
     bi: "",
+    nif: "",
     familia: "",
     obs: "",
     dataNascimento: "",
@@ -883,6 +885,14 @@ function MatriculaForm({
       <div className="space-y-1.5">
         <Label>BI (opcional)</Label>
         <Input value={form.bi} onChange={(e) => setForm({ ...form, bi: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label>NIF do encarregado de educação</Label>
+        <Input
+          value={form.nif}
+          onChange={(e) => setForm({ ...form, nif: e.target.value })}
+          placeholder="Número de contribuinte"
+        />
       </div>
       <div className="space-y-1.5">
         <Label>Data da inscrição</Label>
@@ -1711,6 +1721,11 @@ function Alunos() {
     } catch (e) {
       console.warn("[matriculas] forçar 4E-04 Nildo", e);
     }
+    try {
+      garantirAlunosZembo();
+    } catch (e) {
+      console.warn("[matriculas] família Zembo", e);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const escola = getSeed().escola;
@@ -1865,6 +1880,7 @@ function Alunos() {
       email: a.email || "",
       morada: a.morada || "",
       bi: a.bi || "",
+      nif: a.nif || "",
       familia: a.familia || "",
       obs: a.obs || "",
       dataNascimento: a.dataNascimento || "",
@@ -2070,6 +2086,7 @@ function Alunos() {
       email: form.email.trim(),
       morada: form.morada.trim(),
       bi: form.bi.trim(),
+      nif: form.nif.trim(),
       familia: form.familia.trim() || form.nome.trim().split(" ").slice(-2).join(" "),
       recibo,
       obs: buildObs(form),
@@ -2181,6 +2198,7 @@ function Alunos() {
         email: form.email.trim(),
         morada: form.morada.trim(),
         bi: form.bi.trim(),
+      nif: form.nif.trim(),
         familia: form.familia.trim(),
         obs: buildObs(form),
         dataNascimento: form.dataNascimento.trim() || undefined,
