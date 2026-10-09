@@ -4981,12 +4981,14 @@ export const ALUNOS_ZEMBO: Aluno[] = [
     bruto: 167000,
     descPct: 0,
     liquido: 167000,
-    encarregado: "",
+    pai: "Raúl Yanou Massiala Zembo",
+    mae: "Marlene Nené Francisco Zembo",
+    encarregado: "Raúl Yanou Massiala Zembo",
     telefone: "",
     bi: "",
     familia: "Francisco Zembo",
     recibo: "RC-202610-9GFL-28",
-    obs: "Reposto do Arquivo · liquidação matrícula 167.000 Kz · 08/10/2026.",
+    obs: "Ficha própria. Recibo RC-202610-9GFL-28 · 167.000 Kz. Não é da família Kanadji.",
     statusPag: "pago",
     transferidoCampusCidade: true,
     dataNascimento: "2021-12-02",
@@ -5003,7 +5005,14 @@ export function garantirAlunosZembo(): number {
   let n = 0;
   for (const z of ALUNOS_ZEMBO) {
     if (deleted.has(z.id)) continue;
-    if (extras.some((a) => a.id === z.id || normalizeNomeAluno(a.nome) === normalizeNomeAluno(z.nome))) {
+    const ix = extras.findIndex((a) => a.id === z.id || normalizeNomeAluno(a.nome) === normalizeNomeAluno(z.nome));
+    if (ix >= 0) {
+      const cur = extras[ix];
+      const trocada = /kanadji|bamba|celeste nunes/i.test(`${cur.pai || ""} ${cur.mae || ""} ${cur.encarregado || ""} ${cur.recibo || ""}`);
+      if (trocada || cur.id !== z.id) {
+        extras[ix] = { ...cur, ...z, id: z.id, telefone: cur.telefone || z.telefone, email: cur.email || z.email };
+        n += 1;
+      }
       nomes.add(normalizeNomeAluno(z.nome));
       continue;
     }
