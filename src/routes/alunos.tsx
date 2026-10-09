@@ -2811,12 +2811,10 @@ function Alunos() {
       <div style="border-left:3px solid #9ca3af;padding:10px 12px;background:#f9fafb;border-radius:0 8px 8px 0;">
         <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Facturado a</p>
         <p style="margin:6px 0 0;font-size:13px;font-weight:700;color:#111827;">${encarregado}</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${nomeComSufixoCampus(a)}</strong></p>
+        <p style="margin:4px 0 0;font-size:12px;color:#4b5563;">Aluno: <strong style="color:#111827;">${a.nome}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">${a.id} · ${a.turma} · Sexe / Sexo: <strong style="color:#111827;">${a.sexo === "Masculin" ? "Masculin (M)" : a.sexo === "Féminin" ? "Féminin (F)" : "—"}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Date de naissance / Data de nascimento: <strong style="color:#111827;">${(() => { const d = (a.dataNascimento || "").slice(0, 10); const p = d.split("-"); return p.length >= 3 && p[0] ? `${p[2]}/${p[1]}/${p[0]}` : "—"; })()}</strong></p>
         <p style="margin:2px 0 0;font-size:11px;color:#6b7280;">Tel. ${a.telefone || "—"} · ${email || "—"}</p>
-        ${a.transferidoCampusCidade ? `<p style="margin:6px 0 0;font-size:11px;color:#4b5563;font-weight:700;">Aluno(a) transferido(a) do Campus Cidade</p>
-        <p style="margin:4px 0 0;font-size:10px;color:#6b7280;line-height:1.35;">Pacotes: 82.000 · 99.000 · 127.000 Kz (cada um inclui matrícula + seguro escolar + cartão de estudante). Propina mensal 75.000 Kz.</p>` : ""}
       </div>
     </div>
 
