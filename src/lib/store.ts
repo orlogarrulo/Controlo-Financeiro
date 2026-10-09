@@ -5733,12 +5733,6 @@ export function alunosAll(
   const deleted = new Set(
     (deletedIds || []).filter((id) => !FICHAS_PROTEGIDAS[id]),
   );
-  // Nome único não pode desaparecer só por estar em apagados.
-  const nomesVivos = new Set(
-    [...(seed.alunos || []), ...(extras || [])]
-      .filter((a) => a?.id && !deleted.has(a.id))
-      .map((a) => normalizeNomeAluno(a.nome)),
-  );
 
   const apply = (a: Aluno): Aluno => {
     const o = overrides[a.id];
@@ -5805,20 +5799,28 @@ export function alunosAll(
 
   const push = (a: Aluno) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    if (deleted.has(a.id) && nomesVivos.has(normalizeNomeAluno(a.nome))) return;
+    if (!isCanonicalAlunoId(a.id) || isMovimentoNaoAluno(a.id)) return;
+    const nome = String(a.nome || "").trim();
+    if (!nome || /^aluno\s/i.test(nome)) return;
+    // Apagado fica apagado em todos os PCs (não ressuscitar por recibo antigo).
+    if (deleted.has(a.id)) return;
     seenIds.add(a.id);
     out.push(apply(a));
   };
 
-  // O seed não é censo. Sem nuvem, o ecrã mostra a última lista gravada, não a fotografia antiga.
+  // Mesma lista em todos os computadores: extras da nuvem, depois censo local, depois seed.
+  // Nome repetido não conta duas vezes (o primeiro — nuvem — ganha).
   const seenNames = new Set<string>();
   const pushUnique = (a: Aluno) => {
     const nome = normalizeNomeAluno(a?.nome || "");
     if (!nome || seenNames.has(nome)) return;
-    seenNames.add(nome);
+    const before = out.length;
     push(a);
+    if (out.length > before) seenNames.add(nome);
   };
   for (const a of extras || []) pushUnique(a);
+  for (const a of alunosCensoLocal()) pushUnique(a);
+  for (const a of seed.alunos || []) pushUnique(a);
   // Fichas protegidas: se faltarem (sync apagou extra), injectar sempre
   for (const [id, prot] of Object.entries(FICHAS_PROTEGIDAS)) {
     if (seenIds.has(id)) continue;

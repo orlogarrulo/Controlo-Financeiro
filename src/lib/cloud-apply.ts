@@ -16,6 +16,7 @@ import {
   persistAlunosCensoLocal,
   SEED_ALUNO_IDS,
   isCanonicalAlunoId,
+  isMovimentoNaoAluno,
   useFinance,
 } from "@/lib/store";
 import {
@@ -252,6 +253,30 @@ export function applyRemotePayload(raw: FinanceCloudPayload, opts?: { authoritat
     const nomeN =
       FICHAS_PROTEGIDAS["4E-04"]?.nome || String(dN?.alunoNome || cur.nome || "").trim() || "Nildo Azael Fortunato José";
     byId.set("4E-04", { ...cur, nome: nomeN, turma: cur.turma || "4ème", statusPag: cur.statusPag || "pago" });
+  }
+
+  // Fichas falsas (código de movimento, «Aluno CM2-02-3») não entram no censo partilhado.
+  for (const [id, row] of Array.from(byId.entries())) {
+    const nome = String(row.nome || "").trim();
+    if (!isCanonicalAlunoId(id) || isMovimentoNaoAluno(id) || !nome || /^aluno\s/i.test(nome)) {
+      byId.delete(id);
+    }
+  }
+  if (opts?.authoritative) {
+    const nomes = new Set<string>();
+    for (const [id, row] of Array.from(byId.entries())) {
+      const nome = String(row.nome || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!nome || nomes.has(nome)) {
+        byId.delete(id);
+        continue;
+      }
+      nomes.add(nome);
+    }
   }
 
   const recibos = fixRecibosPago(

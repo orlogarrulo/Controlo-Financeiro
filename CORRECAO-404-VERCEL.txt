@@ -1,0 +1,22 @@
+CONTROLO FINANCEIRO · 404 Vercel
+================================
+
+Sintoma
+  Página azul da Vercel: "This page doesn't exist" / 404 NOT_FOUND
+  (cpt1::…). Não é um erro da app — a Vercel não encontra a função.
+
+Causa
+  vercel.json só tinha buildCommand. A Vercel tratava o projecto como
+  Vite estático e procurava dist/index.html. Esta app é TanStack Start +
+  Nitro (preset vercel): o servidor fica em .vercel/output, não em dist.
+
+Correcção
+  vercel.json declara "framework": "tanstack-start".
+  vite.config.ts já inclui nitro({ preset: "vercel" }) no build.
+
+Publicar
+  1. Substituir a pasta do repositório por este pacote (ou só vercel.json).
+  2. Commit + push.
+  3. No painel Vercel: Framework Preset = TanStack Start.
+     Output Directory deve ficar VAZIO (não "dist").
+  4. Redeploy. A raiz (/) tem de abrir o painel, não a página azul.

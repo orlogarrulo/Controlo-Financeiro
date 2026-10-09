@@ -1,0 +1,18 @@
+CONTROLO FINANCEIRO · pacote 9 Out 2026
+=======================================
+
+1. 404 da Vercel
+   vercel.json declara framework tanstack-start.
+   No painel: Framework Preset = TanStack Start, Output Directory vazio.
+
+2. Número de alunos igual em todos os computadores
+   - No arranque a Neon manda (ecc-neon-authority-20261009).
+   - A cache antiga não é reenviada (não volta a criar «Aluno CM2-02-3»).
+   - Lista = nuvem + censo local + seed, sem nomes repetidos e sem códigos de movimento.
+   - Apagado fica apagado. O Arquivo local não ressuscita fichas neste arranque.
+
+Publicar
+  Extrair, commit, push, redeploy.
+  Em cada PC e telemóvel: fechar a app e Ctrl+Shift+R.
+  O primeiro ecrã tem de dizer «Dados sincronizados da nuvem».
+  Matrículas deve mostrar o mesmo número em todos os aparelhos.

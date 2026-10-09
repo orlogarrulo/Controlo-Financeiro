@@ -39,8 +39,8 @@ const DIRTY_KEY = "ecc-financeiro-dirty";
 const PERSIST_KEY = "ecc-financeiro-v3";
 const CLASSES_MIGRATE_KEY = "ecc-classes-congo-v8"; // v8: realinha IDs à turma (P1-07→CM2-xx, 4E-02 idade 5→P3-xx)
 const CARTE_SCOLAIRE_MIGRATE_KEY = "ecc-carte-scolaire-v1"; // sexo + lieu de naissance + cartão FR
-/** Primeira abertura desta versão adopta a Neon restaurada e não empurra a cache antiga. */
-const NEON_AUTHORITY_KEY = "ecc-neon-authority-20261007";
+/** Primeira abertura desta versão adopta a Neon e não empurra a cache antiga. */
+const NEON_AUTHORITY_KEY = "ecc-neon-authority-20261009";
 /** Verificação periódica da nuvem com o separador visível (só lê updated_at; payload só se mudou). */
 const PERIODIC_PULL_MS = 45_000;
 const PUSH_DEBOUNCE_MS = 1_200;
@@ -183,11 +183,14 @@ export function HydrateStore() {
           console.warn("[forçar] 4E-04 Nildo", e);
         }
         try {
-          const r0 = useFinance.getState().recuperarAlunosOcultos?.();
-          if (r0 && r0.restaurados > 0) {
-            toast.success(
-              `Matrículas restauradas: ${r0.restaurados} aluno(s) a partir do Arquivo.`,
-            );
+          // Outro PC não pode ressuscitar fichas a partir do Arquivo local e empurrá-las.
+          if (!adoptedNeonThisBoot) {
+            const r0 = useFinance.getState().recuperarAlunosOcultos?.();
+            if (r0 && r0.restaurados > 0) {
+              toast.success(
+                `Matrículas restauradas: ${r0.restaurados} aluno(s) a partir do Arquivo.`,
+              );
+            }
           }
         } catch (e) {
           console.warn("[recuperar] alunos ocultos", e);
@@ -195,8 +198,7 @@ export function HydrateStore() {
         try {
           useFinance.getState().syncPropinasFromMatriculas?.();
           const r = reporPropinasFromMatriculas();
-          // r.alunos = total activo alinhado Matrículas ↔ Propinas (ex.: 53)
-          if (r.removidos > 0) {
+          if (r.removidos > 0 && !adoptedNeonThisBoot) {
             toast.message(
               `Propinas alinhadas: ${r.alunos} aluno(s) · ${r.removidos} linha(s) órfã(s) removida(s).`,
             );
@@ -241,7 +243,16 @@ export function HydrateStore() {
         console.warn("[classes-congo] migrate", e);
       }
 
-      if (useFinance.getState() !== stateBeforeMigrations) markDirty();
+      if (useFinance.getState() !== stateBeforeMigrations && !adoptedNeonThisBoot) markDirty();
+      if (adoptedNeonThisBoot) {
+        localChangeSeq = 0;
+        try {
+          localStorage.setItem(NEON_AUTHORITY_KEY, new Date().toISOString());
+          localStorage.removeItem(DIRTY_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
       unsub = useFinance.subscribe(() => {
         if (!ready.current || remoteApplyDepth > 0) return;
         markDirty();
@@ -251,7 +262,8 @@ export function HydrateStore() {
         }, PUSH_DEBOUNCE_MS);
       });
       // Alterações feitas pelas migrações acima (antes de subscrever) também seguem.
-      if (isDirty()) void pushCloud();
+      // Se a Neon acabou de mandar, não reenviar — senão o outro PC volta a ver outro número.
+      if (isDirty() && !adoptedNeonThisBoot) void pushCloud();
 
       periodic = setInterval(() => {
         if (document.visibilityState !== "visible") return;
@@ -339,6 +351,8 @@ function payloadHasData(p: FinanceCloudPayload): boolean {
 }
 
 let pullInFlight: Promise<void> | null = null;
+/** Arranque adoptou a Neon: as migrações locais não podem reenviar fichas falsas. */
+let adoptedNeonThisBoot = false;
 
 /** Pede só o updated_at; se a nuvem mudou (ou temos alterações por enviar), faz pull completo. */
 async function checkCloudVersion(reason: string) {
@@ -367,6 +381,7 @@ async function pullAndMerge(reason: string): Promise<void> {
       const hasRemote = remoteTs > 0 && payloadHasData(remote.payload);
       // Outro PC, outro seed ou cache antiga: no arranque a Neon manda sempre.
       const adoptNeon = reason === "boot" && hasRemote;
+      if (adoptNeon) adoptedNeonThisBoot = true;
       withRemoteApply(() => {
         if (hasRemote) applyRemotePayload(remote.payload, adoptNeon ? { authoritative: true } : undefined);
         if (remoteFotos && Object.keys(remoteFotos).length > 0) applyRemoteFotos(remoteFotos);
