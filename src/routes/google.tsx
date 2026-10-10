@@ -46,6 +46,7 @@ import {
 import { todayIso, formatKz } from "@/lib/format";
 import type { MovimentoBai } from "@/data/types";
 import { isCollaborator1 } from "@/lib/can-edit";
+import { PastasPcPanel } from "@/components/pastas-pc-panel";
 
 export const Route = createFileRoute("/google")({ component: GooglePage });
 
@@ -583,6 +584,8 @@ function GooglePage() {
             : "Pode exportar CSV. A importação está reservada ao Colaborador 1."
         }
       />
+
+      <PastasPcPanel />
 
       <div className="mb-4 flex flex-wrap gap-2">
         {(

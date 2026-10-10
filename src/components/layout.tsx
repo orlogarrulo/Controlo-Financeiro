@@ -29,7 +29,7 @@ const NAV = [
   { to: "/salarios", label: "Salários", icon: Banknote },
   { to: "/arquivo", label: "Arquivo", icon: Archive },
   { to: "/inbox", label: "Inbox", icon: Inbox },
-  { to: "/google", label: "Google Sheets", icon: Cloud },
+  { to: "/google", label: "Google / Pastas PC", icon: Cloud },
   { to: "/auditoria", label: "Auditoria", icon: ClipboardCheck, adminOnly: true },
   { to: "/pendencias", label: "Pendências", icon: ListChecks, adminOnly: true },
 ];

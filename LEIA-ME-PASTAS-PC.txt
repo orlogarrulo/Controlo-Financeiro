@@ -1,0 +1,29 @@
+# Pastas no PC — campus cidade e campus Nova Vida
+
+A app no browser não pode criar pastas no Windows sem a sua autorização (segurança do Chrome/Edge).
+
+## Ligar uma vez
+
+1. Abra a app no **Chrome ou Edge** (não Firefox).
+2. Menu **Google Sheets**.
+3. **Ligar pasta do PC e criar campus**.
+4. Escolha uma pasta, por exemplo `Documentos\Ecole Consulaire`.
+
+A app cria:
+
+- `campus cidade\`
+- `campus Nova Vida\`
+- em cada uma, uma pasta por aluno
+- dentro do aluno: `ficha de matrícula`, `recibos`, `faturas`
+
+## Automático
+
+Com a pasta ligada, cada matrícula nova, alteração de aluno, recibo ou fatura no arquivo volta a escrever os ficheiros (cerca de 1 segundo depois).
+
+Campus: aluno com «transferido do Campus Cidade» vai para `campus cidade`; os restantes para `campus Nova Vida`.
+
+Se o Chrome pedir autorização outra vez, use **Autorizar e sincronizar** na mesma página.
+
+## Cópia inicial incluída neste pacote
+
+A pasta `Pastas-PC-Windows` deste pacote já tem a estrutura com os alunos do seed. Pode copiá-la para o PC e, na app, ligar exactamente essa pasta para a app passar a actualizá-la.

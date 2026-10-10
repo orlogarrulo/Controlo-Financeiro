@@ -1,0 +1,20 @@
+Deploy desta versão — pastas no PC
+
+O que muda
+- Menu: Google / Pastas PC
+- Na página, bloco «Pastas no PC (Windows)»
+- Liga uma pasta do Windows (Chrome ou Edge) e cria campus cidade e campus Nova Vida
+- Nova matrícula, alteração, recibo ou fatura actualizam a pasta do aluno
+
+Vercel
+1. Importe este projecto (framework Vite, npm run build, output dist).
+2. vercel.json já está na raiz.
+3. Depois do deploy, abra o site no Chrome ou Edge, menu Google / Pastas PC, «Ligar pasta do PC e criar campus».
+4. Escolha Documentos\Ecole Consulaire (onde extraiu Pastas-PC-Windows.zip).
+
+Local
+npm install
+npm run dev
+Abra http://localhost:8080 no Chrome ou Edge.
+
+O Firefox não escreve pastas no disco.

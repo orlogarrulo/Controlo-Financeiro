@@ -10,6 +10,15 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AppShell } from "@/components/layout";
 import { OperatorGate } from "@/components/operator-gate";
 import { HydrateStore } from "@/components/hydrate-store";
+import { iniciarSyncPastasPc } from "@/lib/pastas-pc";
+import { useEffect } from "react";
+
+function PastasPcBoot() {
+  useEffect(() => {
+    iniciarSyncPastasPc();
+  }, []);
+  return null;
+}
 import { Toaster } from "sonner";
 import appCss from "../styles.css?url";
 
@@ -108,6 +117,7 @@ export const Route = createRootRoute({
         <PreviewHostBridge />
         <AuthProvider>
           <HydrateStore />
+          <PastasPcBoot />
           <RootBody />
         </AuthProvider>
         <Scripts />
