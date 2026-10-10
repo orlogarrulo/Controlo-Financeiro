@@ -703,7 +703,8 @@ function MatriculaForm({
 }) {
   const totais = calcTotais(form);
   return (
-    <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
+    <div className="flex max-h-[72vh] flex-col">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Nome do aluno *</Label>
         <Input
@@ -1667,11 +1668,23 @@ function MatriculaForm({
           Sessão do Colaborador 1 já autorizada — não é necessário voltar a digitar o código.
         </p>
       )}
+      </div>
 
-      <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
-        <p className="mr-auto self-center text-[11px] text-[var(--color-muted)]">
-          Exige método de pagamento. Grava o aluno mesmo sem emitir recibo ou fatura.
-        </p>
+      <div className="mt-3 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface)] pt-3">
+        {onDelete ? (
+          <Button
+            type="button"
+            variant="secondary"
+            className="mr-auto border-red-300 text-red-700 hover:bg-red-50"
+            onClick={onDelete}
+          >
+            Eliminar aluno
+          </Button>
+        ) : (
+          <p className="mr-auto text-[11px] text-[var(--color-muted)]">
+            Exige método de pagamento. Grava mesmo sem recibo ou fatura.
+          </p>
+        )}
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancelar
         </Button>
@@ -1679,21 +1692,6 @@ function MatriculaForm({
           Guardar matrícula
         </Button>
       </div>
-      {onDelete ? (
-        <div className="sm:col-span-2 mt-2 border-t border-red-200 pt-3">
-          <p className="mb-2 text-[11px] text-red-700">
-            Zona perigosa — remove o aluno de Matrículas, Propinas, Arquivo, recibos e BAI da matrícula.
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            className="text-red-700 hover:bg-red-50"
-            onClick={onDelete}
-          >
-            Eliminar aluno definitivamente
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
   }
@@ -2062,7 +2060,10 @@ function Alunos() {
   }
 
   async function saveNew() {
-    if (!canEdit) return;
+    if (!canEdit) {
+      toast.error("Apenas o Colaborador 1 pode gravar matrículas.");
+      return;
+    }
     if (!isAdminUnlocked() && form.pin !== resolveEntryPin(useFinance.getState().uiPrefs?.entryPin)) {
       toast.error("Código incorrecto.");
       return;
@@ -2084,7 +2085,7 @@ function Alunos() {
     }
     const t = calcTotais(form);
     const taken = new Set(alunos.map((a) => a.id));
-    for (const id of IDS_ZEMBO_ANTIGOS) taken.add(id);
+    for (const oldId of IDS_ZEMBO_ANTIGOS) taken.add(oldId);
     let id = nextAlunoId(form.turma, [...taken]);
     while (IDS_ZEMBO_ANTIGOS.has(id)) {
       taken.add(id);
@@ -2146,15 +2147,27 @@ function Alunos() {
     } as Aluno;
     try {
       addAluno(aluno);
+      const st = useFinance.getState();
+      const ficou = alunosAll(st.alunosExtra || [], st.alunosOverrides || {}, st.alunosDeletedIds || []).some(
+        (a) => a.id === id,
+      );
+      if (!ficou) {
+        toast.error(`A matrícula ${id} não ficou na lista. Não foi gravada.`);
+        return;
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível gravar a matrícula.");
       return;
     }
     if (form.bolsaEstudos) aplicarBolsaPropina(id);
     await syncFotoToCloud(id, foto);
+    let nuvem = false;
     try {
       const { pushFinanceNow } = await import("@/components/hydrate-store");
-      if (typeof pushFinanceNow === "function") await pushFinanceNow();
+      if (typeof pushFinanceNow === "function") {
+        const r = await pushFinanceNow();
+        nuvem = Boolean(r?.ok);
+      }
     } catch {
       try {
         window.dispatchEvent(new CustomEvent("ecc-finance-push"));
@@ -2162,10 +2175,14 @@ function Alunos() {
         /* ignore */
       }
     }
-    toast.success(`Matrícula ${id} gravada na base. Recibo e fatura podem ser emitidos depois.`);
+    toast.success(
+      nuvem
+        ? `Gravado: ${aluno.nome} · ${id}. Já está na base.`
+        : `Gravado neste PC: ${aluno.nome} · ${id}. A sincronizar com a base…`,
+    );
     setCreating(false);
     setForm(emptyForm());
-    setQ("");
+    setQ(aluno.nome.split(" ")[0] || "");
     setTurmaFiltro("todas");
     setSoSemTelefone(false);
   }
@@ -4428,7 +4445,7 @@ function Alunos() {
             setForm={setForm}
             onSave={saveEdit}
             onCancel={() => { setEditing(null); clearDeepLink(); }}
-            onDelete={canEdit && editing ? () => void eliminarAlunoDefinitivo(editing) : undefined}
+            onDelete={editing ? () => void eliminarAlunoDefinitivo(editing) : undefined}
             protegerLiquidacaoPaga={false}
           />
         </DialogContent>
