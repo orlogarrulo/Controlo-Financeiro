@@ -17,6 +17,7 @@
 import type { Aluno, DocumentoAluno } from "@/data/types";
 import { formatKz } from "@/lib/format";
 import { alunosAll, useFinance } from "@/lib/store";
+import { LOGO_FICHA_JPEG_B64, LOGO_FICHA_W, LOGO_FICHA_H } from "@/lib/logo-ficha-pdf";
 
 export const PASTA_CAMPUS_CIDADE = "campus cidade";
 export const PASTA_CAMPUS_NOVA_VIDA = "campus Nova Vida";
@@ -157,115 +158,118 @@ function linha(label: string, value: string | number | undefined | null) {
   return `${label}: ${v}`;
 }
 
-/** PDF A4 de ficha: caixas alinhadas, lugar da foto, sem valores. */
+/** Texto seguro para PDF WinAnsi: acentos de FR/PT ficam correctos. */
+function pdfTexto(s: string): string {
+  const extra: Record<string, number> = {
+    "\u0152": 0x8c, "\u0153": 0x9c, "\u20ac": 0x80, "\u201c": 0x93, "\u201d": 0x94,
+    "\u2018": 0x91, "\u2019": 0x92, "\u2013": 0x96, "\u2014": 0x97, "\u2026": 0x85,
+  };
+  let out = "";
+  for (const ch of s.normalize("NFC")) {
+    const c = ch.codePointAt(0) ?? 63;
+    if (ch === "\\") out += "\\\\";
+    else if (ch === "(") out += "\\(";
+    else if (ch === ")") out += "\\)";
+    else if (c >= 32 && c <= 126) out += ch;
+    else if (c >= 160 && c <= 255) out += "\\" + c.toString(8).padStart(3, "0");
+    else if (extra[ch]) out += "\\" + extra[ch].toString(8).padStart(3, "0");
+    else out += "?";
+  }
+  return out;
+}
+
+function campusVisivel(campus: string): string {
+  return campus.replace(/^campus\s+/i, "").trim() || campus;
+}
+
+/** PDF A4: logotipo, caixas, foto, francês, sem valores. */
 function pdfFormulario(aluno: Aluno, campus: string, quando: string): Uint8Array {
   const v = (x: string | number | undefined | null) =>
     x === undefined || x === null || String(x).trim() === "" ? "" : String(x);
-  const esc = (s: string) =>
-    s.normalize("NFC").replace(/[^\x20-\xff]/g, "?").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const cmds: string[] = [];
   const text = (x: number, y: number, size: number, s: string) => {
-    cmds.push("BT", `/F1 ${size} Tf`, `1 0 0 1 ${x} ${y} Tm`, `(${esc(s)}) Tj`, "ET");
+    cmds.push("BT", `/F1 ${size} Tf`, `1 0 0 1 ${x} ${y} Tm`, `(${pdfTexto(s)}) Tj`, "ET");
   };
   const box = (x: number, y: number, w: number, h: number) => {
     cmds.push(`${x} ${y} ${w} ${h} re S`);
   };
   const field = (x: number, y: number, w: number, label: string, value: string) => {
-    text(x, y + 16, 8, label);
-    box(x, y, w, 14);
-    text(x + 4, y + 4, 9, value.slice(0, Math.floor(w / 5)));
+    text(x, y + 15, 8, label);
+    box(x, y, w, 13);
+    text(x + 4, y + 3, 9, value.slice(0, Math.max(8, Math.floor(w / 5.2))));
   };
 
-  text(40, 800, 14, "Ecole Consulaire du Congo - Luanda");
-  text(40, 782, 11, "FICHA DE MATRICULA");
-  text(40, 766, 8, `Campus ${campus}    Actualizada ${quando}`);
-  box(430, 730, 120, 90);
-  text(462, 770, 9, "FOTO");
-  text(448, 756, 7, "colar aqui");
+  cmds.push("q", "78 0 0 78 40 748 cm", "/Im1 Do", "Q");
+  text(128, 800, 13, "École Consulaire");
+  text(128, 784, 9, "de la République du Congo");
+  text(128, 768, 11, "FICHE D'INSCRIPTION");
+  text(128, 754, 8, `Campus ${campusVisivel(campus)}`);
+  box(455, 742, 100, 84);
+  text(488, 778, 9, "PHOTO");
+  text(468, 764, 7, "coller ici");
 
-  field(40, 720, 250, "ID", v(aluno.id));
-  field(300, 720, 110, "Turma", v(aluno.turma));
-  field(40, 684, 510, "Nome completo", v(aluno.nome));
-  field(40, 648, 150, "Data de nascimento", v(aluno.dataNascimento));
-  field(200, 648, 200, "Lugar de nascimento", v(aluno.lugarNascimento));
-  field(410, 648, 140, "Sexo", v(aluno.sexo));
-  field(40, 612, 250, "B.I.", v(aluno.bi));
-  field(300, 612, 250, "NIF", v(aluno.nif));
+  field(40, 708, 170, "Matricule", v(aluno.id));
+  field(220, 708, 200, "Classe", v(aluno.turma));
+  field(430, 708, 125, "Sexe", v(aluno.sexo));
+  field(40, 672, 515, "Nom complet", v(aluno.nome));
+  field(40, 636, 170, "Date de naissance", v(aluno.dataNascimento));
+  field(220, 636, 335, "Lieu de naissance", v(aluno.lugarNascimento));
+  field(40, 600, 250, "Carte d'identité", v(aluno.bi));
+  field(300, 600, 255, "NIF", v(aluno.nif));
 
-  text(40, 590, 10, "FILIACAO E ENCARREGADO");
-  field(40, 558, 510, "Nome do pai", v(aluno.pai));
-  field(40, 522, 510, "Nome da mae", v(aluno.mae));
-  field(40, 486, 330, "Encarregado de educacao", v(aluno.encarregado));
-  field(380, 486, 170, "Telefone", v(aluno.telefone));
-  field(40, 450, 250, "E-mail", v(aluno.email));
-  field(300, 450, 250, "Familia", v(aluno.familia));
-  field(40, 414, 510, "Morada", v(aluno.morada));
+  text(40, 578, 10, "FILIATION ET RESPONSABLE");
+  field(40, 546, 515, "Nom du père", v(aluno.pai));
+  field(40, 510, 515, "Nom de la mère", v(aluno.mae));
+  field(40, 474, 330, "Responsable légal", v(aluno.encarregado));
+  field(380, 474, 175, "Téléphone", v(aluno.telefone));
+  field(40, 438, 250, "E-mail", v(aluno.email));
+  field(300, 438, 255, "Famille", v(aluno.familia));
+  field(40, 402, 515, "Adresse", v(aluno.morada));
 
-  text(40, 392, 10, "SAUDE");
-  field(40, 360, 165, "Grupo sanguineo", v(aluno.grupoSanguineo));
-  field(215, 360, 165, "Alergias medicamentos", v(aluno.alergiasMedicamentos));
-  field(390, 360, 160, "Alergias alimentares", v(aluno.alergiasAlimentares));
-  field(40, 324, 510, "Clinica mais proxima", v(aluno.clinicaProxima));
+  text(40, 380, 10, "SANTÉ");
+  field(40, 348, 165, "Groupe sanguin", v(aluno.grupoSanguineo));
+  field(215, 348, 165, "Allergies médicaments", v(aluno.alergiasMedicamentos));
+  field(390, 348, 165, "Allergies alimentaires", v(aluno.alergiasAlimentares));
+  field(40, 312, 515, "Clinique la plus proche", v(aluno.clinicaProxima));
 
-  text(40, 302, 10, "OBSERVACOES");
-  box(40, 230, 510, 64);
-  text(46, 276, 9, v(aluno.obs).slice(0, 90));
+  text(40, 290, 10, "OBSERVATIONS");
+  box(40, 214, 515, 68);
+  text(46, 264, 9, v(aluno.obs).slice(0, 95));
 
-  text(40, 200, 9, "Assinatura do encarregado");
-  box(40, 150, 230, 36);
-  text(300, 200, 9, "Data");
-  box(300, 150, 140, 36);
-  text(40, 120, 8, "Documento para o dossier do aluno. Sem valores. Gerado pela app.");
+  text(40, 196, 9, "Signature du responsable");
+  box(40, 148, 230, 36);
+  text(300, 196, 9, "Date");
+  box(300, 148, 140, 36);
+  text(40, 42, 8, `Mise à jour ${quando}`);
 
   const stream = cmds.join("\n");
-  const objects = [
+  const logo = Uint8Array.from(atob(LOGO_FICHA_JPEG_B64), (c) => c.charCodeAt(0));
+  const objects: Array<string | Uint8Array> = [
     "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
     "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >> >> endobj\n",
     `4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream\nendobj\n`,
     "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj\n",
+    `6 0 obj << /Type /XObject /Subtype /Image /Width ${LOGO_FICHA_W} /Height ${LOGO_FICHA_H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logo.length} >> stream\n`,
+    logo,
+    "\nendstream\nendobj\n",
   ];
-  let pdf = "%PDF-1.4\n";
+  const enc = new TextEncoder();
+  const parts: Uint8Array[] = [enc.encode("%PDF-1.4\n")];
   const offsets = [0];
   for (const obj of objects) {
-    offsets.push(pdf.length);
-    pdf += obj;
+    offsets.push(parts.reduce((n, b) => n + b.length, 0));
+    parts.push(typeof obj === "string" ? enc.encode(obj) : obj);
   }
-  const xref = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i < offsets.length; i++) pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return new TextEncoder().encode(pdf);
-}
-
-function docTexto(d: DocumentoAluno, aluno: Aluno | undefined, quando: string) {
-  const linhas = (d.linhas || [])
-    .filter((l) => l.on !== false)
-    .map((l) => `  - ${l.label}: ${formatKz(l.value || 0)}`)
-    .join("\r\n");
-  return [
-    `École Consulaire · ${d.tipo === "recibo" ? "Recibo" : "Fatura"} ${d.numero}`,
-    `Actualizado automaticamente pela app em ${quando}`,
-    "",
-    linha("Tipo", d.tipo),
-    linha("Modelo", d.modelo),
-    linha("Número", d.numero),
-    linha("Aluno", d.alunoNome || aluno?.nome),
-    linha("ID aluno", d.alunoId),
-    linha("Turma", aluno?.turma),
-    linha("Mês", d.mesRef || d.mesKey),
-    linha("Valor", formatKz(d.valor || 0)),
-    linha("Estado", d.estado),
-    linha("Emitido em", d.emitidoEm),
-    linha("Pago em", d.pagoEm),
-    linha("Fatura de origem", d.faturaNumero),
-    linha("Código verificação", d.codigoVerificacao),
-    linha("Notas", d.notas),
-    linhas ? `\r\nLinhas:\r\n${linhas}` : "",
-    "",
-  ]
-    .filter(Boolean)
-    .join("\r\n");
+  const xref = parts.reduce((n, b) => n + b.length, 0);
+  let tail = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i < offsets.length; i++) tail += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  tail += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  parts.push(enc.encode(tail));
+  const out = new Uint8Array(parts.reduce((n, b) => n + b.length, 0));
+  let o = 0;
+  for (const b of parts) { out.set(b, o); o += b.length; }
+  return out;
 }
 
 function nomeFicheiroDoc(d: DocumentoAluno) {
