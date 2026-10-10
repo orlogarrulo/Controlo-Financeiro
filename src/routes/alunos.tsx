@@ -2088,7 +2088,7 @@ function Alunos() {
     for (const oldId of useFinance.getState().alunosDeletedIds || []) taken.add(oldId);
     for (const oldId of IDS_ZEMBO_ANTIGOS) taken.add(oldId);
     let id = nextAlunoId(form.turma, [...taken]);
-    while (IDS_ZEMBO_ANTIGOS.has(id) || taken.has(id)) {
+    for (let i = 0; i < 30 && (IDS_ZEMBO_ANTIGOS.has(id) || taken.has(id)); i++) {
       taken.add(id);
       id = nextAlunoId(form.turma, [...taken]);
     }
@@ -2161,31 +2161,21 @@ function Alunos() {
       return;
     }
     if (form.bolsaEstudos) aplicarBolsaPropina(id);
-    await syncFotoToCloud(id, foto);
-    let nuvem = false;
-    try {
-      const { pushFinanceNow } = await import("@/components/hydrate-store");
-      if (typeof pushFinanceNow === "function") {
-        const r = await pushFinanceNow();
-        nuvem = Boolean(r?.ok);
-      }
-    } catch {
-      try {
-        window.dispatchEvent(new CustomEvent("ecc-finance-push"));
-      } catch {
-        /* ignore */
-      }
-    }
-    toast.success(
-      nuvem
-        ? `Gravado: ${aluno.nome} · ${id}. Já está na base.`
-        : `Gravado neste PC: ${aluno.nome} · ${id}. A sincronizar com a base…`,
-    );
+    void syncFotoToCloud(id, foto);
+    toast.success(`Gravado: ${aluno.nome} · ${id}.`);
     setCreating(false);
     setForm(emptyForm());
     setQ(aluno.nome.split(" ")[0] || "");
     setTurmaFiltro("todas");
     setSoSemTelefone(false);
+    void (async () => {
+      try {
+        const { pushFinanceNow } = await import("@/components/hydrate-store");
+        if (typeof pushFinanceNow === "function") await pushFinanceNow();
+      } catch {
+        /* a sincronização normal trata disto */
+      }
+    })();
   }
 
 

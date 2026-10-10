@@ -157,23 +157,66 @@ function linha(label: string, value: string | number | undefined | null) {
   return `${label}: ${v}`;
 }
 
-/** PDF A4 só com texto (sem imagens): mais leve que Word e abre para imprimir. */
-function pdfTexto(titulo: string, linhas: string[]): Uint8Array {
+/** PDF A4 de ficha: caixas alinhadas, lugar da foto, sem valores. */
+function pdfFormulario(aluno: Aluno, campus: string, quando: string): Uint8Array {
+  const v = (x: string | number | undefined | null) =>
+    x === undefined || x === null || String(x).trim() === "" ? "" : String(x);
   const esc = (s: string) =>
-    s
-      .normalize("NFC")
-      .replace(/[^\x20-\xff]/g, "?")
-      .replace(/\\/g, "\\\\")
-      .replace(/\(/g, "\\(")
-      .replace(/\)/g, "\\)");
-  const cmds: string[] = ["BT", "/F1 16 Tf", "50 800 Td", `(${esc(titulo)}) Tj`];
-  let y = 776;
-  for (const linha of linhas) {
-    if (y < 48) break;
-    y -= 16;
-    cmds.push(`/F1 10 Tf`, `1 0 0 1 50 ${y} Tm`, `(${esc(linha)}) Tj`);
-  }
-  cmds.push("ET");
+    s.normalize("NFC").replace(/[^\x20-\xff]/g, "?").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const cmds: string[] = [];
+  const text = (x: number, y: number, size: number, s: string) => {
+    cmds.push("BT", `/F1 ${size} Tf`, `1 0 0 1 ${x} ${y} Tm`, `(${esc(s)}) Tj`, "ET");
+  };
+  const box = (x: number, y: number, w: number, h: number) => {
+    cmds.push(`${x} ${y} ${w} ${h} re S`);
+  };
+  const field = (x: number, y: number, w: number, label: string, value: string) => {
+    text(x, y + 16, 8, label);
+    box(x, y, w, 14);
+    text(x + 4, y + 4, 9, value.slice(0, Math.floor(w / 5)));
+  };
+
+  text(40, 800, 14, "Ecole Consulaire du Congo - Luanda");
+  text(40, 782, 11, "FICHA DE MATRICULA");
+  text(40, 766, 8, `Campus ${campus}    Actualizada ${quando}`);
+  box(430, 730, 120, 90);
+  text(462, 770, 9, "FOTO");
+  text(448, 756, 7, "colar aqui");
+
+  field(40, 720, 250, "ID", v(aluno.id));
+  field(300, 720, 110, "Turma", v(aluno.turma));
+  field(40, 684, 510, "Nome completo", v(aluno.nome));
+  field(40, 648, 150, "Data de nascimento", v(aluno.dataNascimento));
+  field(200, 648, 200, "Lugar de nascimento", v(aluno.lugarNascimento));
+  field(410, 648, 140, "Sexo", v(aluno.sexo));
+  field(40, 612, 250, "B.I.", v(aluno.bi));
+  field(300, 612, 250, "NIF", v(aluno.nif));
+
+  text(40, 590, 10, "FILIACAO E ENCARREGADO");
+  field(40, 558, 510, "Nome do pai", v(aluno.pai));
+  field(40, 522, 510, "Nome da mae", v(aluno.mae));
+  field(40, 486, 330, "Encarregado de educacao", v(aluno.encarregado));
+  field(380, 486, 170, "Telefone", v(aluno.telefone));
+  field(40, 450, 250, "E-mail", v(aluno.email));
+  field(300, 450, 250, "Familia", v(aluno.familia));
+  field(40, 414, 510, "Morada", v(aluno.morada));
+
+  text(40, 392, 10, "SAUDE");
+  field(40, 360, 165, "Grupo sanguineo", v(aluno.grupoSanguineo));
+  field(215, 360, 165, "Alergias medicamentos", v(aluno.alergiasMedicamentos));
+  field(390, 360, 160, "Alergias alimentares", v(aluno.alergiasAlimentares));
+  field(40, 324, 510, "Clinica mais proxima", v(aluno.clinicaProxima));
+
+  text(40, 302, 10, "OBSERVACOES");
+  box(40, 230, 510, 64);
+  text(46, 276, 9, v(aluno.obs).slice(0, 90));
+
+  text(40, 200, 9, "Assinatura do encarregado");
+  box(40, 150, 230, 36);
+  text(300, 200, 9, "Data");
+  box(300, 150, 140, 36);
+  text(40, 120, 8, "Documento para o dossier do aluno. Sem valores. Gerado pela app.");
+
   const stream = cmds.join("\n");
   const objects = [
     "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
@@ -190,44 +233,9 @@ function pdfTexto(titulo: string, linhas: string[]): Uint8Array {
   }
   const xref = pdf.length;
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i < offsets.length; i++) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
+  for (let i = 1; i < offsets.length; i++) pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
   pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return new TextEncoder().encode(pdf);
-}
-
-function fichaPdf(aluno: Aluno, campus: string, quando: string): Uint8Array {
-  const v = (x: string | number | undefined | null) =>
-    x === undefined || x === null || x === "" ? "-" : String(x);
-  return pdfTexto("Ecole Consulaire - Ficha de matricula", [
-    `Actualizada ${quando}  |  Campus ${campus}  |  pronta a imprimir`,
-    "",
-    "IDENTIFICACAO",
-    `ID: ${v(aluno.id)}    Turma: ${v(aluno.turma)}    Grupo: ${v(aluno.grupo)}`,
-    `Nome: ${v(aluno.nome)}`,
-    `Nascimento: ${v(aluno.dataNascimento)}    Lugar: ${v(aluno.lugarNascimento)}    Sexo: ${v(aluno.sexo)}`,
-    `BI: ${v(aluno.bi)}    NIF: ${v(aluno.nif)}`,
-    "",
-    "ENCARREGADO",
-    `Encarregado: ${v(aluno.encarregado)}    Tel: ${v(aluno.telefone)}`,
-    `Pai: ${v(aluno.pai)}`,
-    `Mae: ${v(aluno.mae)}`,
-    `E-mail: ${v(aluno.email)}`,
-    `Morada: ${v(aluno.morada)}`,
-    `Familia: ${v(aluno.familia)}`,
-    "",
-    "VALORES",
-    `Estado: ${v(aluno.statusPag)}    Metodo: ${v(aluno.metodoPagamento)}    Data: ${v(aluno.dataPag)}`,
-    `Inscricao: ${formatKz(aluno.inscricao || 0)}    Seguro: ${formatKz(aluno.seguro || 0)}`,
-    `Manuais: ${formatKz(aluno.manuais || 0)}    Uniforme: ${formatKz(aluno.uniforme || 0)}`,
-    `Propina: ${formatKz(aluno.propina || 0)}    Liquido: ${formatKz(aluno.liquido || 0)}`,
-    `Recibo: ${v(aluno.recibo)}`,
-    `Obs: ${v(aluno.obs)}`,
-    "",
-    "Assinatura do encarregado: ________________________    Data: ____________",
-    "Documento gerado pela app para o dossier do aluno.",
-  ]);
 }
 
 function docTexto(d: DocumentoAluno, aluno: Aluno | undefined, quando: string) {
@@ -276,7 +284,7 @@ async function syncAluno(
   const ficha = await ensureDir(pasta, "ficha de matrícula");
   const recibos = await ensureDir(pasta, "recibos");
   const faturas = await ensureDir(pasta, "faturas");
-  await writeBytes(ficha, "ficha-de-matricula.pdf", fichaPdf(aluno, campus, quando));
+  await writeBytes(ficha, "ficha-de-matricula.pdf", pdfFormulario(aluno, campus, quando));
   try {
     await ficha.removeEntry("ficha-de-matricula.txt");
   } catch {
