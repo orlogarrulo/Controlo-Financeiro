@@ -13,7 +13,7 @@ import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edi
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
 import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirUnicaRockia, removerZemboDefinitivo, isolarFichasDeOutros, IDS_ZEMBO_ANTIGOS } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
-import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
+import { nextIdForTurma, prefixFromTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
 import { declaracaoMatriculaHtml } from "@/lib/declaracao-matricula";
 import {
@@ -2085,15 +2085,23 @@ function Alunos() {
       return;
     }
     const t = calcTotais(form);
-    const taken = new Set(alunos.map((a) => a.id));
+    const st = useFinance.getState();
+    const taken = new Set<string>();
+    for (const a of alunos) if (a.id) taken.add(a.id);
+    for (const a of st.alunosExtra || []) if (a.id) taken.add(a.id);
     for (const s of getSeed().alunos || []) if (s.id) taken.add(s.id);
-    for (const oldId of useFinance.getState().alunosDeletedIds || []) taken.add(oldId);
+    for (const oldId of st.alunosDeletedIds || []) taken.add(oldId);
     for (const oldId of IDS_ZEMBO_ANTIGOS) taken.add(oldId);
-    let id = nextAlunoId(form.turma, [...taken]);
-    for (let i = 0; i < 30 && (IDS_ZEMBO_ANTIGOS.has(id) || taken.has(id)); i++) {
-      taken.add(id);
-      id = nextAlunoId(form.turma, [...taken]);
+    const prefix = prefixFromTurma(form.turma);
+    let id = "";
+    for (let n = 1; n < 90; n++) {
+      const candidato = `${prefix}-${String(n).padStart(2, "0")}`;
+      if (!taken.has(candidato) && !IDS_ZEMBO_ANTIGOS.has(candidato)) {
+        id = candidato;
+        break;
+      }
     }
+    if (!id) id = `${prefix}-90`;
     const encarregado = form.pai.trim() || form.mae.trim() || "";
     const foto = await ensureFotoForSync(form.foto || undefined);
     const aluno: Aluno = {

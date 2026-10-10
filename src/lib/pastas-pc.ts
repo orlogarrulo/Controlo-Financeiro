@@ -272,6 +272,34 @@ function pdfFormulario(aluno: Aluno, campus: string, quando: string): Uint8Array
   return out;
 }
 
+function docTexto(d: DocumentoAluno, aluno: Aluno | undefined, quando: string) {
+  const linhas = (d.linhas || [])
+    .filter((l) => l.on !== false)
+    .map((l) => `  - ${l.label}: ${formatKz(l.value || 0)}`)
+    .join("\r\n");
+  return [
+    `École Consulaire · ${d.tipo === "recibo" ? "Recibo" : "Fatura"} ${d.numero}`,
+    `Actualizado automaticamente pela app em ${quando}`,
+    "",
+    linha("Tipo", d.tipo),
+    linha("Modelo", d.modelo),
+    linha("Número", d.numero),
+    linha("Aluno", d.alunoNome || aluno?.nome),
+    linha("ID aluno", d.alunoId),
+    linha("Turma", aluno?.turma),
+    linha("Mês", d.mesRef || d.mesKey),
+    linha("Valor", formatKz(d.valor || 0)),
+    linha("Estado", d.estado),
+    linha("Método", d.metodo),
+    linha("Data", d.data),
+    linha("Emitido por", d.emitidoPor),
+    linhas ? `\r\nLinhas:\r\n${linhas}` : "",
+    d.obs ? `\r\nObs: ${d.obs}` : "",
+  ]
+    .filter(Boolean)
+    .join("\r\n");
+}
+
 function nomeFicheiroDoc(d: DocumentoAluno) {
   const n = `${d.numero || d.id || "doc"}`.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").slice(0, 60);
   return `${n}.txt`;

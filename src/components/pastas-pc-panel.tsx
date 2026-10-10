@@ -61,16 +61,6 @@ export function PastasPcPanel() {
   return (
     <section className="mb-4 rounded-[var(--radius-lg)] border border-[var(--color-line)] bg-[var(--color-surface)] p-5">
       <h2 className="font-display text-xl">Pastas no PC (Windows)</h2>
-      <p className="mt-2 text-sm text-[var(--color-muted)]">
-        Cria <strong>{PASTA_CAMPUS_CIDADE}</strong> e <strong>{PASTA_CAMPUS_NOVA_VIDA}</strong>. Dentro de
-        cada campus, uma pasta por aluno com <strong>ficha de matrícula</strong>, <strong>recibos</strong> e{" "}
-        <strong>faturas</strong>. Nova matrícula, alteração ou recibo/fatura novo actualizam a pasta
-        automaticamente — desde que esta origem (Chrome ou Edge) esteja ligada à pasta.
-      </p>
-      <p className="mt-2 text-sm text-[var(--color-muted)]">
-        Escolha uma pasta vazia, por exemplo Documentos\Ecole Consulaire. O Firefox não suporta esta
-        escrita directa no disco.
-      </p>
       {status?.erro ? <p className="mt-2 text-sm text-red-600">{status.erro}</p> : null}
       {status?.ligada ? (
         <p className="mt-3 text-sm">
