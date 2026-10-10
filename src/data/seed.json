@@ -5784,58 +5784,6 @@
       "transferidoCampusCidade": true
     },
     {
-      "id": "CP1-04",
-      "nome": "Eliandro Marcio Francisco Zembo",
-      "turma": "CP1",
-      "grupo": "Primaire",
-      "inscricao": 127000,
-      "manuais": 0,
-      "uniforme": 0,
-      "seguro": 0,
-      "extras": 0,
-      "curso": 0,
-      "mensalidade1": 40000,
-      "propina": 75000,
-      "dataPag": "2026-10-08",
-      "bruto": 167000,
-      "descPct": 0,
-      "liquido": 167000,
-      "encarregado": "",
-      "telefone": "",
-      "bi": "",
-      "familia": "Francisco Zembo",
-      "recibo": "RC-202610-9GFL-28",
-      "obs": "Reposto do Arquivo",
-      "statusPag": "pago",
-      "transferidoCampusCidade": true
-    },
-    {
-      "id": "CP1-05",
-      "nome": "João Francisco Zembo",
-      "turma": "CP1",
-      "grupo": "Primaire",
-      "inscricao": 127000,
-      "manuais": 0,
-      "uniforme": 0,
-      "seguro": 0,
-      "extras": 0,
-      "curso": 0,
-      "mensalidade1": 40000,
-      "propina": 75000,
-      "dataPag": "2026-10-08",
-      "bruto": 167000,
-      "descPct": 0,
-      "liquido": 167000,
-      "encarregado": "",
-      "telefone": "",
-      "bi": "",
-      "familia": "Francisco Zembo",
-      "recibo": "RC-202610-GR3T-53",
-      "obs": "Reposto do Arquivo",
-      "statusPag": "pago",
-      "transferidoCampusCidade": true
-    },
-    {
       "bi": "5274/2026",
       "id": "CP2-01",
       "mae": "Joana Muangala Alexandre",
@@ -8071,26 +8019,6 @@
         "out": "2026-09-30"
       },
       "obs": "Encarregada de Educação será a avó materna - Anabela Francisco Pedro"
-    },
-    {
-      "id": "CP1-04",
-      "nome": "Eliandro Marcio Francisco Zembo",
-      "turma": "CP1",
-      "propina": 75000,
-      "pagamentos": {
-        "out": 40000
-      },
-      "obs": "Reposto do Arquivo"
-    },
-    {
-      "id": "CP1-05",
-      "nome": "João Francisco Zembo",
-      "turma": "CP1",
-      "propina": 75000,
-      "pagamentos": {
-        "out": 40000
-      },
-      "obs": "Reposto do Arquivo"
     }
   ],
   "salarios": [

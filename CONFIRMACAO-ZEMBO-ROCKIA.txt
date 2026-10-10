@@ -1,0 +1,12 @@
+Alterações neste pacote recente
+
+Zembo — removidos com todos os registos
+- CP1-04 Eliandro Marcio Francisco Zembo
+- CP1-05 João Francisco Zembo
+Ao abrir a app saem: ficha, propinas, recibos, faturas, arquivo, conta corrente, lançamentos e entradas do Banco BAI (APP-MAT-CP1-04 / CP1-05, nome Zembo, recibos RC-202610-9GFL-28 e RC-202610-GR3T-53). Não voltam.
+
+Rockia — uma só aluna
+- 4E-05 Rockia Alicia Muazangui Drame Bakary (Collège / 4ème)
+- O duplicado Maternelle P1-05 é apagado da nuvem ao abrir.
+
+As restantes alterações deste zip mantêm-se.

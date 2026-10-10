@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirAlunosZembo } from "@/lib/store"
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, removerZemboDefinitivo, garantirUnicaRockia } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
@@ -1730,9 +1730,10 @@ function Alunos() {
       console.warn("[matriculas] forçar 4E-04 Nildo", e);
     }
     try {
-      garantirAlunosZembo();
+      removerZemboDefinitivo();
+      garantirUnicaRockia();
     } catch (e) {
-      console.warn("[matriculas] família Zembo", e);
+      console.warn("[matriculas] zembo/rockia", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

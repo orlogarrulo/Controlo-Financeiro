@@ -4922,134 +4922,96 @@ export const FICHAS_PROTEGIDAS: Record<
     grupo: "Collège",
     propinaOut: 75000,
   },
-  "CP1-04": {
-    nome: "Eliandro Marcio Francisco Zembo",
-    turma: "CP1",
-    grupo: "Primaire",
-    propinaOut: 75000,
-  },
-  "CP1-05": {
-    nome: "João Francisco Zembo",
-    turma: "CP1",
-    grupo: "Primaire",
-    propinaOut: 75000,
-  },
 };
 
 export function isFichaProtegida(id: string): boolean {
   return Boolean(FICHAS_PROTEGIDAS[id]);
 }
 
-/** Família Zembo: estavam no controlo Campus Cidade e não entravam em Matrículas. */
-export const ALUNOS_ZEMBO: Aluno[] = [
-  {
-    id: "CP1-05",
-    nome: "João Francisco Zembo",
-    turma: "CP1",
-    grupo: "Primaire",
-    inscricao: 127000,
-    manuais: 0,
-    cadernos: 0,
-    uniforme: 0,
-    seguro: 0,
-    extras: 0,
-    curso: 0,
-    mensalidade1: 40000,
-    propina: 75000,
-    dataPag: "2026-10-08",
-    bruto: 167000,
-    descPct: 0,
-    liquido: 167000,
-    encarregado: "",
-    telefone: "",
-    bi: "",
-    familia: "Francisco Zembo",
-    recibo: "RC-202610-GR3T-53",
-    obs: "Reposto do Arquivo · liquidação matrícula 167.000 Kz · 08/10/2026.",
-    statusPag: "pago",
-    transferidoCampusCidade: true,
-    dataNascimento: "2020-10-29",
-  },
-  {
-    id: "CP1-04",
-    nome: "Eliandro Marcio Francisco Zembo",
-    turma: "CP1",
-    grupo: "Primaire",
-    inscricao: 127000,
-    manuais: 0,
-    cadernos: 0,
-    uniforme: 0,
-    seguro: 0,
-    extras: 0,
-    curso: 0,
-    mensalidade1: 40000,
-    propina: 75000,
-    dataPag: "2026-10-08",
-    bruto: 167000,
-    descPct: 0,
-    liquido: 167000,
-    pai: "Raúl Yanou Massiala Zembo",
-    mae: "Marlene Nené Francisco Zembo",
-    encarregado: "Raúl Yanou Massiala Zembo",
-    telefone: "",
-    bi: "",
-    familia: "Francisco Zembo",
-    recibo: "RC-202610-9GFL-28",
-    obs: "Ficha própria. Recibo RC-202610-9GFL-28 · 167.000 Kz. Não é da família Kanadji.",
-    statusPag: "pago",
-    transferidoCampusCidade: true,
-    dataNascimento: "2021-12-02",
-  },
-];
+export const ALUNOS_ZEMBO: Aluno[] = [];
 
 export function garantirAlunosZembo(): number {
-  const state = useFinance.getState();
-  const deleted = new Set(
-    (state.alunosDeletedIds || []).filter((id) => id !== "CP1-04" && id !== "CP1-05"),
+  return removerZemboDefinitivo().removidos.length;
+}
+
+/** Zembo saem de vez: ficha, recibos, faturas, propinas e entradas BAI. */
+export function removerZemboDefinitivo(): { removidos: string[] } {
+  const ids = ["CP1-04", "CP1-05"];
+  const idSet = new Set(ids);
+  const recibos = ["RC-202610-GR3T-53", "RC-202610-9GFL-28"];
+  const st = useFinance.getState();
+  const eZembo = (blob: string) => {
+    const t = blob.toLowerCase();
+    return (
+      /zembo/.test(t) ||
+      ids.some((id) => t.includes(id.toLowerCase())) ||
+      recibos.some((r) => t.includes(r.toLowerCase())) ||
+      /app-mat-cp1-0[45]/.test(t)
+    );
+  };
+  const baiFora = (st.movimentosBaiExtra || []).filter(
+    (m) => !eZembo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`),
   );
-  const extras = [...(state.alunosExtra || [])];
-  const nomes = new Set(extras.map((a) => normalizeNomeAluno(a.nome)));
-  let n = 0;
-  for (const z of ALUNOS_ZEMBO) {
-    if (deleted.has(z.id)) continue;
-    const ix = extras.findIndex((a) => a.id === z.id || normalizeNomeAluno(a.nome) === normalizeNomeAluno(z.nome));
-    if (ix >= 0) {
-      const cur = extras[ix];
-      const trocada = /kanadji|bamba|celeste nunes/i.test(`${cur.pai || ""} ${cur.mae || ""} ${cur.encarregado || ""} ${cur.recibo || ""}`);
-      if (trocada || cur.id !== z.id) {
-        extras[ix] = {
-          ...cur,
-          id: z.id,
-          nome: z.nome,
-          pai: z.pai,
-          mae: z.mae,
-          encarregado: z.encarregado,
-          familia: z.familia,
-          turma: cur.turma || z.turma,
-          grupo: cur.grupo || z.grupo,
-        };
-        n += 1;
-      }
-      nomes.add(normalizeNomeAluno(z.nome));
-      continue;
-    }
-    if (nomes.has(normalizeNomeAluno(z.nome))) continue;
-    extras.push({ ...z, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    nomes.add(normalizeNomeAluno(z.nome));
-    n += 1;
+  const baiIds = (st.movimentosBaiExtra || [])
+    .filter((m) => eZembo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
+    .map((m) => m.id)
+    .filter(Boolean);
+  const seedBaiIds = (getSeed().movimentosBai || [])
+    .filter((m) => eZembo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
+    .map((m) => m.id)
+    .filter(Boolean);
+  useFinance.setState({
+    alunosDeletedIds: Array.from(new Set([...(st.alunosDeletedIds || []), ...ids])),
+    alunosOverrides: Object.fromEntries(
+      Object.entries(st.alunosOverrides || {}).filter(([id]) => !idSet.has(id)),
+    ),
+    alunosExtra: (st.alunosExtra || []).filter((a) => !idSet.has(a.id) && !/zembo/i.test(a.nome || "")),
+    mensalidades: (st.mensalidades || []).filter((m) => !idSet.has(m.id) && !/zembo/i.test(m.nome || "")),
+    fotos: Object.fromEntries(Object.entries(st.fotos || {}).filter(([id]) => !idSet.has(id))),
+    documentosAluno: (st.documentosAluno || []).filter(
+      (d) => !idSet.has(d.alunoId) && !eZembo(`${d.alunoNome || ""} ${d.numero || ""} ${d.codigoVerificacao || ""}`),
+    ),
+    codigosRecibo: (st.codigosRecibo || []).filter(
+      (c) => !idSet.has(c.alunoId) && !eZembo(`${c.alunoNome || ""} ${c.codigo || ""}`),
+    ),
+    faturasPropina: (st.faturasPropina || []).filter((f) => !idSet.has(f.alunoId || "")),
+    contaCorrente: (st.contaCorrente || []).filter((c) => !idSet.has(c.alunoId)),
+    crmEnvios: (st.crmEnvios || []).filter((r) => !idSet.has(r.alunoId)),
+    extras: (st.extras || []).filter(
+      (e) => !eZembo(`${e.id || ""} ${e.descricao || ""} ${e.observacoes || ""} ${e.fornecedor || ""} ${e.docInterno || ""}`),
+    ),
+    movimentosBaiExtra: baiFora,
+    movimentosBaiDeletedIds: Array.from(
+      new Set([...(st.movimentosBaiDeletedIds || []), ...baiIds, ...seedBaiIds]),
+    ),
+  });
+  try {
+    persistAlunosCensoLocal(useFinance.getState().alunosExtra || []);
+  } catch {
+    /* ignore */
   }
-  if (n > 0 || (state.alunosDeletedIds || []).some((id) => id === "CP1-04" || id === "CP1-05")) {
-    useFinance.setState({
-      alunosExtra: extras,
-      alunosDeletedIds: (state.alunosDeletedIds || []).filter((id) => id !== "CP1-04" && id !== "CP1-05"),
-    });
-    try {
-      persistAlunosCensoLocal(extras);
-    } catch {
-      /* ignore */
-    }
-  }
-  return n;
+  return { removidos: ids };
+}
+
+/** Uma só Rockia: 4E-05 Collège. O duplicado Maternelle P1-05 fica apagado. */
+export function garantirUnicaRockia(): { removida: boolean } {
+  const st = useFinance.getState();
+  const idRock = "P1-05";
+  useFinance.setState({
+    alunosDeletedIds: Array.from(new Set([...(st.alunosDeletedIds || []), idRock])),
+    alunosOverrides: Object.fromEntries(
+      Object.entries(st.alunosOverrides || {}).filter(([id]) => id !== idRock),
+    ),
+    alunosExtra: (st.alunosExtra || []).filter((a) => a.id !== idRock),
+    mensalidades: (st.mensalidades || []).filter((m) => m.id !== idRock),
+    fotos: Object.fromEntries(Object.entries(st.fotos || {}).filter(([id]) => id !== idRock)),
+    documentosAluno: (st.documentosAluno || []).filter((d) => d.alunoId !== idRock),
+    codigosRecibo: (st.codigosRecibo || []).filter((c) => c.alunoId !== idRock),
+    faturasPropina: (st.faturasPropina || []).filter((f) => f.alunoId !== idRock),
+    contaCorrente: (st.contaCorrente || []).filter((c) => c.alunoId !== idRock),
+    crmEnvios: (st.crmEnvios || []).filter((r) => r.alunoId !== idRock),
+  });
+  return { removida: true };
 }
 
 export function forcarFichaNildo4E04(): { ok: boolean; message: string } {
@@ -5832,21 +5794,6 @@ export function alunosAll(
         merged.statusPag = "pago";
       }
     }
-    if (merged.id === "CP1-04" || merged.id === "CP1-05") {
-      merged.nome = merged.id === "CP1-04" ? "Eliandro Marcio Francisco Zembo" : "João Francisco Zembo";
-      merged.pai = "Raúl Yanou Massiala Zembo";
-      merged.mae = "Marlene Nené Francisco Zembo";
-      merged.encarregado = merged.encarregado && !/kanadji|bamba/i.test(merged.encarregado)
-        ? merged.encarregado
-        : "Raúl Yanou Massiala Zembo";
-      merged.familia = "Francisco Zembo";
-      merged.turma = "CP1";
-      merged.grupo = "Primaire";
-      if (merged.telefone === "923 668 888") merged.telefone = "";
-      if (/kanadji|bamba|celeste nunes/i.test(merged.obs || "")) {
-        merged.obs = "Ficha própria Zembo. Não usar dados da família Kanadji.";
-      }
-    }
     return merged;
   };
 
@@ -5855,6 +5802,8 @@ export function alunosAll(
 
   const push = (a: Aluno, force = false) => {
     if (!a?.id || seenIds.has(a.id)) return;
+    if (a.id === "P1-05" || a.id === "CP1-04" || a.id === "CP1-05") return;
+    if (/zembo/i.test(a.nome || "")) return;
     if (!isCanonicalAlunoId(a.id) || isMovimentoNaoAluno(a.id)) return;
     const nome = String(a.nome || "").trim();
     if (!nome || /^aluno\s/i.test(nome)) return;
@@ -5904,11 +5853,6 @@ export function alunosAll(
       obs: `Ficha protegida (${id})`,
       statusPag: "pago",
     } as Aluno, true);
-  }
-  for (const z of ALUNOS_ZEMBO) {
-    if (seenIds.has(z.id)) continue;
-    if ([...out].some((a) => normalizeNomeAluno(a.nome) === normalizeNomeAluno(z.nome))) continue;
-    push(z, true);
   }
   return out;
 }
