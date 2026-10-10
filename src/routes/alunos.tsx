@@ -2085,9 +2085,10 @@ function Alunos() {
     }
     const t = calcTotais(form);
     const taken = new Set(alunos.map((a) => a.id));
+    for (const oldId of useFinance.getState().alunosDeletedIds || []) taken.add(oldId);
     for (const oldId of IDS_ZEMBO_ANTIGOS) taken.add(oldId);
     let id = nextAlunoId(form.turma, [...taken]);
-    while (IDS_ZEMBO_ANTIGOS.has(id)) {
+    while (IDS_ZEMBO_ANTIGOS.has(id) || taken.has(id)) {
       taken.add(id);
       id = nextAlunoId(form.turma, [...taken]);
     }
