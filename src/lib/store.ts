@@ -4934,30 +4934,29 @@ export function garantirAlunosZembo(): number {
   return removerZemboDefinitivo().removidos.length;
 }
 
-/** Zembo saem de vez: ficha, recibos, faturas, propinas e entradas BAI. */
+/** Apaga só as fichas antigas CP1-04 e CP1-05. Uma matrícula nova Zembo pode ser gravada. */
 export function removerZemboDefinitivo(): { removidos: string[] } {
   const ids = ["CP1-04", "CP1-05"];
   const idSet = new Set(ids);
   const recibos = ["RC-202610-GR3T-53", "RC-202610-9GFL-28"];
   const st = useFinance.getState();
-  const eZembo = (blob: string) => {
+  const eAntigo = (blob: string) => {
     const t = blob.toLowerCase();
     return (
-      /zembo/.test(t) ||
       ids.some((id) => t.includes(id.toLowerCase())) ||
       recibos.some((r) => t.includes(r.toLowerCase())) ||
       /app-mat-cp1-0[45]/.test(t)
     );
   };
   const baiFora = (st.movimentosBaiExtra || []).filter(
-    (m) => !eZembo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`),
+    (m) => !eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`),
   );
   const baiIds = (st.movimentosBaiExtra || [])
-    .filter((m) => eZembo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
+    .filter((m) => eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
     .map((m) => m.id)
     .filter(Boolean);
   const seedBaiIds = (getSeed().movimentosBai || [])
-    .filter((m) => eZembo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
+    .filter((m) => eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
     .map((m) => m.id)
     .filter(Boolean);
   useFinance.setState({
@@ -4965,20 +4964,20 @@ export function removerZemboDefinitivo(): { removidos: string[] } {
     alunosOverrides: Object.fromEntries(
       Object.entries(st.alunosOverrides || {}).filter(([id]) => !idSet.has(id)),
     ),
-    alunosExtra: (st.alunosExtra || []).filter((a) => !idSet.has(a.id) && !/zembo/i.test(a.nome || "")),
-    mensalidades: (st.mensalidades || []).filter((m) => !idSet.has(m.id) && !/zembo/i.test(m.nome || "")),
+    alunosExtra: (st.alunosExtra || []).filter((a) => !idSet.has(a.id)),
+    mensalidades: (st.mensalidades || []).filter((m) => !idSet.has(m.id)),
     fotos: Object.fromEntries(Object.entries(st.fotos || {}).filter(([id]) => !idSet.has(id))),
     documentosAluno: (st.documentosAluno || []).filter(
-      (d) => !idSet.has(d.alunoId) && !eZembo(`${d.alunoNome || ""} ${d.numero || ""} ${d.codigoVerificacao || ""}`),
+      (d) => !idSet.has(d.alunoId) && !recibos.includes(String(d.numero || "")) && !recibos.includes(String(d.codigoVerificacao || "")),
     ),
     codigosRecibo: (st.codigosRecibo || []).filter(
-      (c) => !idSet.has(c.alunoId) && !eZembo(`${c.alunoNome || ""} ${c.codigo || ""}`),
+      (c) => !idSet.has(c.alunoId) && !recibos.includes(String(c.codigo || "")),
     ),
     faturasPropina: (st.faturasPropina || []).filter((f) => !idSet.has(f.alunoId || "")),
     contaCorrente: (st.contaCorrente || []).filter((c) => !idSet.has(c.alunoId)),
     crmEnvios: (st.crmEnvios || []).filter((r) => !idSet.has(r.alunoId)),
     extras: (st.extras || []).filter(
-      (e) => !eZembo(`${e.id || ""} ${e.descricao || ""} ${e.observacoes || ""} ${e.fornecedor || ""} ${e.docInterno || ""}`),
+      (e) => !eAntigo(`${e.id || ""} ${e.descricao || ""} ${e.observacoes || ""} ${e.docInterno || ""}`),
     ),
     movimentosBaiExtra: baiFora,
     movimentosBaiDeletedIds: Array.from(
@@ -5803,7 +5802,6 @@ export function alunosAll(
   const push = (a: Aluno, force = false) => {
     if (!a?.id || seenIds.has(a.id)) return;
     if (a.id === "P1-05" || a.id === "CP1-04" || a.id === "CP1-05") return;
-    if (/zembo/i.test(a.nome || "")) return;
     if (!isCanonicalAlunoId(a.id) || isMovimentoNaoAluno(a.id)) return;
     const nome = String(a.nome || "").trim();
     if (!nome || /^aluno\s/i.test(nome)) return;

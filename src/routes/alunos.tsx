@@ -1666,7 +1666,10 @@ function MatriculaForm({
         </p>
       )}
 
-      <div className="flex justify-end gap-2 sm:col-span-2">
+      <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
+        <p className="mr-auto self-center text-[11px] text-[var(--color-muted)]">
+          Exige método de pagamento. Grava o aluno mesmo sem emitir recibo ou fatura.
+        </p>
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancelar
         </Button>
@@ -2064,7 +2067,6 @@ function Alunos() {
     }
     const t = calcTotais(form);
     const id = nextAlunoId(form.turma, alunos);
-    const recibo = nextRecibo(alunos);
     const encarregado = form.pai.trim() || form.mae.trim() || "";
     const foto = await ensureFotoForSync(form.foto || undefined);
     const aluno: Aluno = {
@@ -2097,10 +2099,10 @@ function Alunos() {
       bi: form.bi.trim(),
       nif: form.nif.trim(),
       familia: form.familia.trim() || form.nome.trim().split(" ").slice(-2).join(" "),
-      recibo,
+      recibo: "",
       obs: buildObs(form),
       propina: num(form.propina),
-      statusPag: t.liquido > 0 ? "pago" : "registado",
+      statusPag: "registado",
       dataNascimento: form.dataNascimento.trim() || undefined,
       lugarNascimento: form.lugarNascimento.trim() || undefined,
       sexo: form.sexo || undefined,
@@ -2119,10 +2121,14 @@ function Alunos() {
         : undefined,
       docsEntregues: form.docsEntregues,
     } as Aluno;
-    addAluno(aluno);
+    try {
+      addAluno(aluno);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível gravar a matrícula.");
+      return;
+    }
     if (form.bolsaEstudos) aplicarBolsaPropina(id);
     await syncFotoToCloud(id, foto);
-    // Sincronizar de imediato com a nuvem para outros PCs e para não perder a ficha
     try {
       const { pushFinanceNow } = await import("@/components/hydrate-store");
       if (typeof pushFinanceNow === "function") await pushFinanceNow();
@@ -2133,20 +2139,12 @@ function Alunos() {
         /* ignore */
       }
     }
-    toast.success(`Matrícula ${id} · recibo ${recibo} · ${formatKz(t.liquido)}`);
+    toast.success(`Matrícula ${id} gravada na base. Recibo e fatura podem ser emitidos depois.`);
     setCreating(false);
     setForm(emptyForm());
-    // Garantir que a ficha fica visível e o recibo pode ser impresso de imediato
     setQ("");
     setTurmaFiltro("todas");
     setSoSemTelefone(false);
-    // Abrir recibo de liquidação (mesmo fluxo do botão Recibo na lista)
-    try {
-      abrirRecibo(aluno);
-    } catch (e) {
-      console.warn("[saveNew] abrirRecibo", e);
-      toast.message(`Aluna gravada: ${id}. Pesquise «${aluno.nome.split(" ")[0]}» na lista para abrir o recibo.`);
-    }
   }
 
 
