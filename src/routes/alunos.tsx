@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirUnicaRockia, libertarZembo } from "@/lib/store"
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirUnicaRockia, removerZemboDefinitivo, IDS_ZEMBO_ANTIGOS } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
@@ -1751,9 +1751,9 @@ function Alunos() {
     }
     try {
       garantirUnicaRockia();
-      libertarZembo();
+      removerZemboDefinitivo();
     } catch (e) {
-      console.warn("[matriculas] rockia", e);
+      console.warn("[matriculas] zembo/rockia", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2083,7 +2083,13 @@ function Alunos() {
       return;
     }
     const t = calcTotais(form);
-    const id = nextAlunoId(form.turma, alunos);
+    const taken = new Set(alunos.map((a) => a.id));
+    for (const id of IDS_ZEMBO_ANTIGOS) taken.add(id);
+    let id = nextAlunoId(form.turma, [...taken]);
+    while (IDS_ZEMBO_ANTIGOS.has(id)) {
+      taken.add(id);
+      id = nextAlunoId(form.turma, [...taken]);
+    }
     const encarregado = form.pai.trim() || form.mae.trim() || "";
     const foto = await ensureFotoForSync(form.foto || undefined);
     const aluno: Aluno = {

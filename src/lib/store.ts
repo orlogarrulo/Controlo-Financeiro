@@ -4934,15 +4934,14 @@ export function garantirAlunosZembo(): number {
   return removerZemboDefinitivo().removidos.length;
 }
 
-/** Deixa CP1-04 e CP1-05 graváveis de novo. Não apaga fichas. */
+/** Os IDs antigos dos Zembo ficam fechados. Uma matrícula nova recebe outro ID. */
+export const IDS_ZEMBO_ANTIGOS = new Set(["CP1-04", "CP1-05"]);
+
 export function libertarZembo(): void {
-  const ids = new Set(["CP1-04", "CP1-05"]);
-  const st = useFinance.getState();
-  const deleted = (st.alunosDeletedIds || []).filter((id) => !ids.has(id));
-  if (deleted.length !== (st.alunosDeletedIds || []).length) {
-    useFinance.setState({ alunosDeletedIds: deleted });
-  }
+  /* já não reabre as fichas antigas */
 }
+
+/** Apaga as fichas antigas e o Arquivo que as fazia voltar. */
 export function removerZemboDefinitivo(): { removidos: string[] } {
   const ids = ["CP1-04", "CP1-05"];
   const idSet = new Set(ids);
@@ -4959,14 +4958,40 @@ export function removerZemboDefinitivo(): { removidos: string[] } {
   const baiFora = (st.movimentosBaiExtra || []).filter(
     (m) => !eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`),
   );
-  const baiIds = (st.movimentosBaiExtra || [])
-    .filter((m) => eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
-    .map((m) => m.id)
-    .filter(Boolean);
-  const seedBaiIds = (getSeed().movimentosBai || [])
-    .filter((m) => eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
-    .map((m) => m.id)
-    .filter(Boolean);
+  const baiIds = [
+    ...(st.movimentosBaiExtra || [])
+      .filter((m) => eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
+      .map((m) => m.id),
+    ...(getSeed().movimentosBai || [])
+      .filter((m) => eAntigo(`${m.id || ""} ${m.descricao || ""} ${m.observacoes || ""}`))
+      .map((m) => m.id),
+  ].filter(Boolean);
+  const docsAntigos = (st.documentosAluno || []).filter(
+    (d) =>
+      idSet.has(d.alunoId) ||
+      recibos.includes(String(d.numero || "")) ||
+      recibos.includes(String(d.codigoVerificacao || "")),
+  );
+  const fatsAntigas = (st.faturasPropina || []).filter((f) => idSet.has(f.alunoId || ""));
+  const codsAntigos = (st.codigosRecibo || []).filter(
+    (c) => idSet.has(c.alunoId) || recibos.includes(String(c.codigo || "")),
+  );
+  const tombstones = new Set(st.documentosAlunoDeletedIds || []);
+  for (const d of docsAntigos) tombstones.add(d.id);
+  for (const d of docsAntigos) {
+    for (const k of documentoTombstoneKeys(d)) tombstones.add(k);
+  }
+  for (const f of fatsAntigas) {
+    for (const k of documentoTombstoneKeys({ id: f.id, numero: f.numero })) tombstones.add(k);
+  }
+  for (const c of codsAntigos) {
+    for (const k of documentoTombstoneKeys({ id: c.id, codigo: c.codigo, numero: c.codigo })) tombstones.add(k);
+  }
+  for (const r of recibos) {
+    tombstones.add(`num:${r}`);
+    tombstones.add(`cod:${r}`);
+    tombstones.add(`rc-legacy-${r}`);
+  }
   useFinance.setState({
     alunosDeletedIds: Array.from(new Set([...(st.alunosDeletedIds || []), ...ids])),
     alunosOverrides: Object.fromEntries(
@@ -4975,6 +5000,7 @@ export function removerZemboDefinitivo(): { removidos: string[] } {
     alunosExtra: (st.alunosExtra || []).filter((a) => !idSet.has(a.id)),
     mensalidades: (st.mensalidades || []).filter((m) => !idSet.has(m.id)),
     fotos: Object.fromEntries(Object.entries(st.fotos || {}).filter(([id]) => !idSet.has(id))),
+    documentosAlunoDeletedIds: Array.from(tombstones),
     documentosAluno: (st.documentosAluno || []).filter(
       (d) => !idSet.has(d.alunoId) && !recibos.includes(String(d.numero || "")) && !recibos.includes(String(d.codigoVerificacao || "")),
     ),
@@ -4988,9 +5014,7 @@ export function removerZemboDefinitivo(): { removidos: string[] } {
       (e) => !eAntigo(`${e.id || ""} ${e.descricao || ""} ${e.observacoes || ""} ${e.docInterno || ""}`),
     ),
     movimentosBaiExtra: baiFora,
-    movimentosBaiDeletedIds: Array.from(
-      new Set([...(st.movimentosBaiDeletedIds || []), ...baiIds, ...seedBaiIds]),
-    ),
+    movimentosBaiDeletedIds: Array.from(new Set([...(st.movimentosBaiDeletedIds || []), ...baiIds])),
   });
   try {
     persistAlunosCensoLocal(useFinance.getState().alunosExtra || []);
@@ -5809,7 +5833,7 @@ export function alunosAll(
 
   const push = (a: Aluno, force = false) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    if (a.id === "P1-05") return;
+    if (a.id === "P1-05" || IDS_ZEMBO_ANTIGOS.has(a.id)) return;
     if (!isCanonicalAlunoId(a.id) || isMovimentoNaoAluno(a.id)) return;
     const nome = String(a.nome || "").trim();
     if (!nome || /^aluno\s/i.test(nome)) return;
@@ -5904,10 +5928,7 @@ export function reporAlunosDoArquivo(): { repostos: number; noArquivo: number; e
   for (const [id, info] of byId) {
     const nn = normalizeNomeAluno(info.nome);
     if (ids.has(id) || (nn && nomes.has(nn))) continue;
-    if (deleted.has(id)) {
-      const i = deletedNext.indexOf(id);
-      if (i >= 0) deletedNext.splice(i, 1);
-    }
+    if (deleted.has(id) && IDS_ZEMBO_ANTIGOS.has(id)) continue;
     const turma = turmaFromId(id) || "";
     extras.push({
       id,

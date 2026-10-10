@@ -17,7 +17,7 @@ import {
   sanearAlunosDuplicados,
   sincronizarCadastro,
   garantirUnicaRockia,
-  libertarZembo,
+  removerZemboDefinitivo,
 } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 import {
@@ -186,9 +186,9 @@ export function HydrateStore() {
         }
         try {
           garantirUnicaRockia();
-          libertarZembo();
+          removerZemboDefinitivo();
         } catch (e) {
-          console.warn("[censo] rockia", e);
+          console.warn("[censo] zembo/rockia", e);
         }
         try {
           // Outro PC não pode ressuscitar fichas a partir do Arquivo local e empurrá-las.
