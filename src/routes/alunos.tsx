@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, removerZemboDefinitivo, garantirUnicaRockia } from "@/lib/store"
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirUnicaRockia, libertarZembo } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
@@ -690,12 +690,14 @@ function MatriculaForm({
   setForm,
   onSave,
   onCancel,
+  onDelete,
   protegerLiquidacaoPaga = false,
 }: {
   form: FormState;
   setForm: Dispatch<SetStateAction<FormState>>;
   onSave: () => void | Promise<void>;
   onCancel: () => void;
+  onDelete?: () => void;
   /** Se true (edição com liquidação já paga): Campus Cidade só muda propina futura; não recalcula taxas/líquido. */
   protegerLiquidacaoPaga?: boolean;
 }) {
@@ -1677,6 +1679,21 @@ function MatriculaForm({
           Guardar matrícula
         </Button>
       </div>
+      {onDelete ? (
+        <div className="sm:col-span-2 mt-2 border-t border-red-200 pt-3">
+          <p className="mb-2 text-[11px] text-red-700">
+            Zona perigosa — remove o aluno de Matrículas, Propinas, Arquivo, recibos e BAI da matrícula.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            className="text-red-700 hover:bg-red-50"
+            onClick={onDelete}
+          >
+            Eliminar aluno definitivamente
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
   }
@@ -1733,10 +1750,10 @@ function Alunos() {
       console.warn("[matriculas] forçar 4E-04 Nildo", e);
     }
     try {
-      removerZemboDefinitivo();
       garantirUnicaRockia();
+      libertarZembo();
     } catch (e) {
-      console.warn("[matriculas] zembo/rockia", e);
+      console.warn("[matriculas] rockia", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -4405,24 +4422,9 @@ function Alunos() {
             setForm={setForm}
             onSave={saveEdit}
             onCancel={() => { setEditing(null); clearDeepLink(); }}
+            onDelete={canEdit && editing ? () => void eliminarAlunoDefinitivo(editing) : undefined}
             protegerLiquidacaoPaga={false}
           />
-          {canEdit && editing ? (
-            <div className="mt-4 border-t border-red-200 pt-3">
-              <p className="mb-2 text-[11px] text-red-700">
-                Zona perigosa — remove o aluno de Matrículas, Propinas, Arquivo, recibos e BAI da matrícula.
-                Não fica só oculto.
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                className="text-red-700 hover:bg-red-50"
-                onClick={() => void eliminarAlunoDefinitivo(editing)}
-              >
-                Eliminar aluno definitivamente
-              </Button>
-            </div>
-          ) : null}
         </DialogContent>
       </Dialog>
 

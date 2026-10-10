@@ -16,8 +16,8 @@ import {
   reporPropinasFromMatriculas,
   sanearAlunosDuplicados,
   sincronizarCadastro,
-  removerZemboDefinitivo,
   garantirUnicaRockia,
+  libertarZembo,
 } from "@/lib/store";
 import { enrichAlunoCarteFields } from "@/lib/carte-scolaire";
 import {
@@ -185,10 +185,10 @@ export function HydrateStore() {
           console.warn("[forçar] 4E-04 Nildo", e);
         }
         try {
-          removerZemboDefinitivo();
           garantirUnicaRockia();
+          libertarZembo();
         } catch (e) {
-          console.warn("[censo] zembo/rockia", e);
+          console.warn("[censo] rockia", e);
         }
         try {
           // Outro PC não pode ressuscitar fichas a partir do Arquivo local e empurrá-las.

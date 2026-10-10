@@ -4934,7 +4934,15 @@ export function garantirAlunosZembo(): number {
   return removerZemboDefinitivo().removidos.length;
 }
 
-/** Apaga só as fichas antigas CP1-04 e CP1-05. Uma matrícula nova Zembo pode ser gravada. */
+/** Deixa CP1-04 e CP1-05 graváveis de novo. Não apaga fichas. */
+export function libertarZembo(): void {
+  const ids = new Set(["CP1-04", "CP1-05"]);
+  const st = useFinance.getState();
+  const deleted = (st.alunosDeletedIds || []).filter((id) => !ids.has(id));
+  if (deleted.length !== (st.alunosDeletedIds || []).length) {
+    useFinance.setState({ alunosDeletedIds: deleted });
+  }
+}
 export function removerZemboDefinitivo(): { removidos: string[] } {
   const ids = ["CP1-04", "CP1-05"];
   const idSet = new Set(ids);
@@ -5801,7 +5809,7 @@ export function alunosAll(
 
   const push = (a: Aluno, force = false) => {
     if (!a?.id || seenIds.has(a.id)) return;
-    if (a.id === "P1-05" || a.id === "CP1-04" || a.id === "CP1-05") return;
+    if (a.id === "P1-05") return;
     if (!isCanonicalAlunoId(a.id) || isMovimentoNaoAluno(a.id)) return;
     const nome = String(a.nome || "").trim();
     if (!nome || /^aluno\s/i.test(nome)) return;

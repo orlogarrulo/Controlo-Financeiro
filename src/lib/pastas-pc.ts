@@ -145,48 +145,89 @@ async function writeText(dir: FileSystemDirectoryHandle, name: string, text: str
   await w.close();
 }
 
+async function writeBytes(dir: FileSystemDirectoryHandle, name: string, data: Uint8Array) {
+  const fh = await dir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(data);
+  await w.close();
+}
+
 function linha(label: string, value: string | number | undefined | null) {
   const v = value === undefined || value === null || value === "" ? "—" : String(value);
   return `${label}: ${v}`;
 }
 
-function fichaTexto(aluno: Aluno, campus: string, quando: string) {
-  return [
-    "École Consulaire · Ficha de matrícula",
-    `Actualizado automaticamente pela app em ${quando}`,
+/** PDF A4 só com texto (sem imagens): mais leve que Word e abre para imprimir. */
+function pdfTexto(titulo: string, linhas: string[]): Uint8Array {
+  const esc = (s: string) =>
+    s
+      .normalize("NFC")
+      .replace(/[^\x20-\xff]/g, "?")
+      .replace(/\\/g, "\\\\")
+      .replace(/\(/g, "\\(")
+      .replace(/\)/g, "\\)");
+  const cmds: string[] = ["BT", "/F1 16 Tf", "50 800 Td", `(${esc(titulo)}) Tj`];
+  let y = 776;
+  for (const linha of linhas) {
+    if (y < 48) break;
+    y -= 16;
+    cmds.push(`/F1 10 Tf`, `1 0 0 1 50 ${y} Tm`, `(${esc(linha)}) Tj`);
+  }
+  cmds.push("ET");
+  const stream = cmds.join("\n");
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n",
+    `4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream\nendobj\n`,
+    "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj\n",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const obj of objects) {
+    offsets.push(pdf.length);
+    pdf += obj;
+  }
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i < offsets.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return new TextEncoder().encode(pdf);
+}
+
+function fichaPdf(aluno: Aluno, campus: string, quando: string): Uint8Array {
+  const v = (x: string | number | undefined | null) =>
+    x === undefined || x === null || x === "" ? "-" : String(x);
+  return pdfTexto("Ecole Consulaire - Ficha de matricula", [
+    `Actualizada ${quando}  |  Campus ${campus}  |  pronta a imprimir`,
     "",
-    linha("Campus", campus),
-    linha("ID", aluno.id),
-    linha("Nome", aluno.nome),
-    linha("Turma", aluno.turma),
-    linha("Grupo", aluno.grupo),
-    linha("Data de nascimento", aluno.dataNascimento),
-    linha("Lugar de nascimento", aluno.lugarNascimento),
-    linha("Sexo", aluno.sexo),
-    linha("Encarregado", aluno.encarregado),
-    linha("Pai", aluno.pai),
-    linha("Mãe", aluno.mae),
-    linha("Telefone", aluno.telefone),
-    linha("E-mail", aluno.email),
-    linha("NIF", aluno.nif),
-    linha("BI", aluno.bi),
-    linha("Morada", aluno.morada),
-    linha("Família", aluno.familia),
-    linha("Estado pagamento", aluno.statusPag),
-    linha("Método", aluno.metodoPagamento),
-    linha("Data pagamento", aluno.dataPag),
-    linha("Inscrição", formatKz(aluno.inscricao || 0)),
-    linha("Seguro", formatKz(aluno.seguro || 0)),
-    linha("Manuais", formatKz(aluno.manuais || 0)),
-    linha("Uniforme", formatKz(aluno.uniforme || 0)),
-    linha("Propina", formatKz(aluno.propina || 0)),
-    linha("Líquido", formatKz(aluno.liquido || 0)),
-    linha("Recibo matrícula", aluno.recibo),
-    linha("Observações", aluno.obs),
+    "IDENTIFICACAO",
+    `ID: ${v(aluno.id)}    Turma: ${v(aluno.turma)}    Grupo: ${v(aluno.grupo)}`,
+    `Nome: ${v(aluno.nome)}`,
+    `Nascimento: ${v(aluno.dataNascimento)}    Lugar: ${v(aluno.lugarNascimento)}    Sexo: ${v(aluno.sexo)}`,
+    `BI: ${v(aluno.bi)}    NIF: ${v(aluno.nif)}`,
     "",
-    "Esta ficha é gerada pela app. Não apague a pasta: novas matrículas e alterações voltam a escrevê-la.",
+    "ENCARREGADO",
+    `Encarregado: ${v(aluno.encarregado)}    Tel: ${v(aluno.telefone)}`,
+    `Pai: ${v(aluno.pai)}`,
+    `Mae: ${v(aluno.mae)}`,
+    `E-mail: ${v(aluno.email)}`,
+    `Morada: ${v(aluno.morada)}`,
+    `Familia: ${v(aluno.familia)}`,
     "",
-  ].join("\r\n");
+    "VALORES",
+    `Estado: ${v(aluno.statusPag)}    Metodo: ${v(aluno.metodoPagamento)}    Data: ${v(aluno.dataPag)}`,
+    `Inscricao: ${formatKz(aluno.inscricao || 0)}    Seguro: ${formatKz(aluno.seguro || 0)}`,
+    `Manuais: ${formatKz(aluno.manuais || 0)}    Uniforme: ${formatKz(aluno.uniforme || 0)}`,
+    `Propina: ${formatKz(aluno.propina || 0)}    Liquido: ${formatKz(aluno.liquido || 0)}`,
+    `Recibo: ${v(aluno.recibo)}`,
+    `Obs: ${v(aluno.obs)}`,
+    "",
+    "Assinatura do encarregado: ________________________    Data: ____________",
+    "Documento gerado pela app para o dossier do aluno.",
+  ]);
 }
 
 function docTexto(d: DocumentoAluno, aluno: Aluno | undefined, quando: string) {
@@ -235,7 +276,12 @@ async function syncAluno(
   const ficha = await ensureDir(pasta, "ficha de matrícula");
   const recibos = await ensureDir(pasta, "recibos");
   const faturas = await ensureDir(pasta, "faturas");
-  await writeText(ficha, "ficha-de-matricula.txt", fichaTexto(aluno, campus, quando));
+  await writeBytes(ficha, "ficha-de-matricula.pdf", fichaPdf(aluno, campus, quando));
+  try {
+    await ficha.removeEntry("ficha-de-matricula.txt");
+  } catch {
+    /* o txt antigo pode não existir */
+  }
   await writeText(
     pasta,
     "_ecc-aluno.txt",
