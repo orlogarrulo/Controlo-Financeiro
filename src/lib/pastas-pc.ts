@@ -187,16 +187,16 @@ function pdfFormulario(aluno: Aluno, campus: string, quando: string): Uint8Array
   const v = (x: string | number | undefined | null) =>
     x === undefined || x === null || String(x).trim() === "" ? "" : String(x);
   const cmds: string[] = [];
-  const text = (x: number, y: number, size: number, s: string) => {
-    cmds.push("BT", `/F1 ${size} Tf`, `1 0 0 1 ${x} ${y} Tm`, `(${pdfTexto(s)}) Tj`, "ET");
+  const text = (x: number, y: number, size: number, s: string, bold = false) => {
+    cmds.push("BT", `/${bold ? "F2" : "F1"} ${size} Tf`, `1 0 0 1 ${x} ${y} Tm`, `(${pdfTexto(s)}) Tj`, "ET");
   };
   const box = (x: number, y: number, w: number, h: number) => {
     cmds.push(`${x} ${y} ${w} ${h} re S`);
   };
-  const field = (x: number, y: number, w: number, label: string, value: string) => {
+  const field = (x: number, y: number, w: number, label: string, value: string, bold = false) => {
     text(x, y + 15, 8, label);
     box(x, y, w, 13);
-    text(x + 4, y + 3, 9, value.slice(0, Math.max(8, Math.floor(w / 5.2))));
+    text(x + 4, y + 3, 9, value.slice(0, Math.max(8, Math.floor(w / 5.2))), bold);
   };
 
   cmds.push("q", "78 0 0 78 40 748 cm", "/Im1 Do", "Q");
@@ -208,20 +208,20 @@ function pdfFormulario(aluno: Aluno, campus: string, quando: string): Uint8Array
   text(488, 778, 9, "PHOTO");
   text(468, 764, 7, "coller ici");
 
-  field(40, 708, 170, "Matricule", v(aluno.id));
+  field(40, 708, 170, "Matricule", v(aluno.id), true);
   field(220, 708, 200, "Classe", v(aluno.turma));
   field(430, 708, 125, "Sexe", v(aluno.sexo));
-  field(40, 672, 515, "Nom complet", v(aluno.nome));
+  field(40, 672, 515, "Nom complet", v(aluno.nome), true);
   field(40, 636, 170, "Date de naissance", v(aluno.dataNascimento));
   field(220, 636, 335, "Lieu de naissance", v(aluno.lugarNascimento));
-  field(40, 600, 250, "Carte d'identité", v(aluno.bi));
-  field(300, 600, 255, "NIF", v(aluno.nif));
+  field(40, 600, 515, "Carte d'identité", v(aluno.bi));
 
   text(40, 578, 10, "FILIATION ET RESPONSABLE");
   field(40, 546, 515, "Nom du père", v(aluno.pai));
   field(40, 510, 515, "Nom de la mère", v(aluno.mae));
-  field(40, 474, 330, "Responsable légal", v(aluno.encarregado));
-  field(380, 474, 175, "Téléphone", v(aluno.telefone));
+  field(40, 474, 230, "Responsable légal", v(aluno.encarregado));
+  field(280, 474, 140, "NIF", v(aluno.nif));
+  field(430, 474, 125, "Téléphone", v(aluno.telefone));
   field(40, 438, 250, "E-mail", v(aluno.email));
   field(300, 438, 255, "Famille", v(aluno.familia));
   field(40, 402, 515, "Adresse", v(aluno.morada));
@@ -247,12 +247,13 @@ function pdfFormulario(aluno: Aluno, campus: string, quando: string): Uint8Array
   const objects: Array<string | Uint8Array> = [
     "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
     "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >> >> endobj\n",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 7 0 R >> /XObject << /Im1 6 0 R >> >> >> endobj\n",
     `4 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream\nendobj\n`,
     "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj\n",
     `6 0 obj << /Type /XObject /Subtype /Image /Width ${LOGO_FICHA_W} /Height ${LOGO_FICHA_H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logo.length} >> stream\n`,
     logo,
     "\nendstream\nendobj\n",
+    "7 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >> endobj\n",
   ];
   const enc = new TextEncoder();
   const parts: Uint8Array[] = [enc.encode("%PDF-1.4\n")];
