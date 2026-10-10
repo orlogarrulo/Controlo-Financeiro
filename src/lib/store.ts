@@ -1507,8 +1507,14 @@ export const useFinance = create<Store>()(
         }
         const by = get().activeOperator || "—";
         const now = new Date().toISOString();
+        const mesmoId = (get().alunosExtra || []).find((a) => a.id === aluno.id);
+        if (mesmoId && normalizeNomeAluno(mesmoId.nome || "") !== nomeN) {
+          throw new Error(`O ID ${aluno.id} já pertence a ${mesmoId.nome}. A matrícula nova não foi gravada por cima.`);
+        }
         const row = {
           ...aluno,
+          idAnterior: undefined,
+          recibo: "",
           criadoPor: by,
           createdAt: aluno.createdAt || now,
           updatedAt: now,
@@ -4936,6 +4942,42 @@ export function garantirAlunosZembo(): number {
 
 /** Os IDs antigos dos Zembo ficam fechados. Uma matrícula nova recebe outro ID. */
 export const IDS_ZEMBO_ANTIGOS = new Set(["CP1-04", "CP1-05"]);
+
+/** Uma ficha nunca herda outra pessoa: corta idAnterior e recibo copiados. */
+export function isolarFichasDeOutros(): number {
+  const st = useFinance.getState();
+  const extras = [...(st.alunosExtra || [])];
+  const byId = new Map(extras.map((a) => [a.id, a]));
+  const donoRecibo = new Map<string, string>();
+  for (const a of extras) {
+    const r = String(a.recibo || "").trim().toUpperCase();
+    if (r && !donoRecibo.has(r)) donoRecibo.set(r, a.id);
+  }
+  let n = 0;
+  const next = extras.map((a) => {
+    const nome = normalizeNomeAluno(a.nome || "");
+    let copy = a;
+    const prev = a.idAnterior ? byId.get(a.idAnterior) : undefined;
+    if (prev && normalizeNomeAluno(prev.nome || "") !== nome) {
+      const { idAnterior: _drop, ...rest } = copy;
+      copy = rest as typeof a;
+      n += 1;
+    }
+    const rec = String(copy.recibo || "").trim().toUpperCase();
+    const donoId = rec ? donoRecibo.get(rec) : "";
+    const dono = donoId ? byId.get(donoId) : undefined;
+    if (dono && dono.id !== copy.id && normalizeNomeAluno(dono.nome || "") !== nome) {
+      copy = { ...copy, recibo: "" };
+      n += 1;
+    }
+    return copy;
+  });
+  if (n > 0) {
+    useFinance.setState({ alunosExtra: next });
+    persistAlunosCensoLocal(next);
+  }
+  return n;
+}
 
 export function libertarZembo(): void {
   /* já não reabre as fichas antigas */

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isAdminUnlocked, isCollaborator1, resolveEntryPin } from "@/lib/can-edit";
 import { escolaLogoSrc, loadEscolaLogoDataUrl as loadLogoShared } from "@/lib/logo-escola";
-import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirUnicaRockia, removerZemboDefinitivo, IDS_ZEMBO_ANTIGOS } from "@/lib/store"
+import { alunosAll, getSeed, useFinance, recalcularClassesMatriculas, reporPropinasFromMatriculas, garantirUnicaRockia, removerZemboDefinitivo, isolarFichasDeOutros, IDS_ZEMBO_ANTIGOS } from "@/lib/store"
 import { sincronizarPagamentosSeparadores, fundirMensalidades, aplicarBolsaPropina, removerBolsaPropina } from "@/lib/propina-estado";
 import { nextIdForTurma, resolveTurmaOficial } from "@/lib/classe-congo";
 import { formatDate, formatKz, todayIso } from "@/lib/format";
@@ -1750,6 +1750,7 @@ function Alunos() {
     try {
       garantirUnicaRockia();
       removerZemboDefinitivo();
+      isolarFichasDeOutros();
     } catch (e) {
       console.warn("[matriculas] zembo/rockia", e);
     }
@@ -2085,6 +2086,7 @@ function Alunos() {
     }
     const t = calcTotais(form);
     const taken = new Set(alunos.map((a) => a.id));
+    for (const s of getSeed().alunos || []) if (s.id) taken.add(s.id);
     for (const oldId of useFinance.getState().alunosDeletedIds || []) taken.add(oldId);
     for (const oldId of IDS_ZEMBO_ANTIGOS) taken.add(oldId);
     let id = nextAlunoId(form.turma, [...taken]);

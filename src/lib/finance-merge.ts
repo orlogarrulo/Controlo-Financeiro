@@ -173,16 +173,18 @@ export function resolveAlunoIdCollisionsCloud(
       continue;
     }
     if (ln && rn && ln !== rn) {
+      // Pessoa diferente no mesmo ID: ficha nova, sem herdar a antiga.
       const turma =
         String((row as { turma?: string })?.turma || "").trim() ||
         String((ex as { turma?: string })?.turma || "").trim() ||
         "AL";
       const newId = nextIdForTurma(turma, taken);
       taken.add(newId);
+      const fresh = { ...(row as object) } as Record<string, unknown>;
+      delete fresh.idAnterior;
       outIncoming.push({
-        ...(row as object),
+        ...fresh,
         id: newId,
-        idAnterior: id,
         updatedAt: new Date().toISOString(),
       });
       remapped += 1;
